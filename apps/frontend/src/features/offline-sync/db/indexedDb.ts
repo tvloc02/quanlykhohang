@@ -1,0 +1,1 @@
+// Placeholder IndexedDB setup

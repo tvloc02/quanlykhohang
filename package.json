@@ -1,0 +1,8 @@
+{
+  "name": "smart-wms",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

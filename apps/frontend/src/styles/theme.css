@@ -1,0 +1,15 @@
+:root {
+  --color-primary: #06B6D4;
+  --color-primary-light: #7EE7F5;
+  --color-primary-dark: #0891B2;
+  --color-secondary: #CFF9FB;
+  --color-accent: #E6FBFF;
+  --color-primary-bg: #F0FDFF;
+}
+
+/* Utility helpers for non-tailwind usage */
+.bg-primary { background-color: var(--color-primary); }
+.text-primary { color: var(--color-primary); }
+.bg-primary-light { background-color: var(--color-primary-light); }
+.text-primary-light { color: var(--color-primary-light); }
+.bg-accent { background-color: var(--color-accent); }

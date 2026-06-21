@@ -1,0 +1,1 @@
+// Placeholder barcode mapping entity

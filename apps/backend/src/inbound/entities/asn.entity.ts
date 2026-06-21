@@ -1,0 +1,1 @@
+// Placeholder ASN entity
