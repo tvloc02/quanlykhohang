@@ -64,6 +64,43 @@ function getUserLabel() {
   }
 }
 
+function ChartBar({ label, value, total }: { label: string; value: number; total: number }) {
+  const width = total > 0 ? Math.max(5, Math.round((value / total) * 100)) : 5;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-sm font-medium text-slate-600">
+        <span>{label}</span>
+        <span>{formatNumber(value)}</span>
+      </div>
+      <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full bg-gradient-to-r from-cyan-600 to-sky-400" style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function QuickActionCard({ icon: Icon, label, description, to }: { icon: React.ComponentType<{ className?: string }>; label: string; description: string; to: string }) {
+  return (
+    <Link
+      to={to}
+      className="group flex flex-col justify-between rounded-3xl border border-slate-200 bg-slate-50 p-5 text-left transition hover:-translate-y-1 hover:bg-white hover:shadow-xl"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div className="rounded-2xl bg-cyan-600 p-3 text-white shadow-sm">
+          <Icon className="h-5 w-5" />
+        </div>
+        <span className="inline-flex rounded-full bg-cyan-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-700">
+          Mở ngay
+        </span>
+      </div>
+      <div className="mt-5">
+        <h3 className="text-base font-bold text-slate-900">{label}</h3>
+        <p className="mt-2 text-sm text-slate-500">{description}</p>
+      </div>
+    </Link>
+  );
+}
+
 function StatusList({ title, statuses }: { title: string; statuses: Record<string, number> }) {
   const entries = Object.entries(statuses).filter(([, count]) => count > 0);
 
@@ -77,11 +114,14 @@ function StatusList({ title, statuses }: { title: string; statuses: Record<strin
           </p>
         ) : (
           entries.map(([status, count]) => (
-            <div key={status} className="flex items-center justify-between rounded-2xl bg-cyan-50/70 px-4 py-3">
-              <span className="text-sm font-semibold text-slate-700">{status}</span>
-              <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-cyan-700 shadow-sm">
-                {formatNumber(count)}
-              </span>
+            <div key={status} className="space-y-3">
+              <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
+                <span>{status}</span>
+                <span>{formatNumber(count)}</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${Math.max(5, Math.min(100, (count / Math.max(...entries.map(([, value]) => value))) * 100))}%` }} />
+              </div>
             </div>
           ))
         )}
@@ -142,12 +182,11 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       
-      {/* Header gọn nhẹ */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-5">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Tổng quan hệ thống</h1>
+          <h1 className="text-2xl font-black text-slate-900">Dashboard tổng quan</h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Xin chào <span className="font-bold text-slate-700">{getUserLabel()}</span>. Dữ liệu được cập nhật lúc: {updatedAt}
+            Xin chào <span className="font-bold text-slate-700">{getUserLabel()}</span>. Dữ liệu cập nhật lúc {updatedAt}.
           </p>
         </div>
         <button
@@ -157,7 +196,7 @@ export default function Dashboard() {
           className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
         >
           <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin text-cyan-600' : 'text-slate-400'}`} />
-          Làm mới
+          Tải lại
         </button>
       </div>
 
@@ -301,6 +340,13 @@ export default function Dashboard() {
               <StatusList title="Trạng thái nhập kho" statuses={overview.inbound.byStatus} />
               <StatusList title="Trạng thái xuất kho" statuses={overview.outbound.byStatus} />
             </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+            <QuickActionCard icon={PackageCheck} label="Nhập hàng" description="Tạo phiếu nhập kho mới" to="/inbound/purchase-orders" />
+            <QuickActionCard icon={Truck} label="Xuất hàng" description="Xem và quản lý đơn xuất" to="/outbound/orders" />
+            <QuickActionCard icon={Boxes} label="Kho hàng" description="Kiểm tra kho và vị trí" to="/warehouses" />
+            <QuickActionCard icon={Users} label="Nhân sự" description="Quản lý vai trò và người dùng" to="/personnel" />
           </section>
         </>
       ) : null}

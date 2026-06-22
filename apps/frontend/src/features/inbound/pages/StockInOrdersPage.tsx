@@ -98,6 +98,7 @@ type StockInOrder = {
     logs: StockInOrderLog[];
 };
 
+
 type Toast = {
     type: 'success' | 'error';
     message: string;
@@ -284,6 +285,12 @@ export default function StockInOrdersPage() {
         loadData();
     }, [loadData]);
 
+    const selectedOrder = React.useMemo(
+        () => orders.find((order) => order.id === selectedId) || orders[0] || null,
+        [orders, selectedId],
+    );
+
+
     React.useEffect(() => {
         if (!selectedId && orders[0]) {
             setSelectedId(orders[0].id);
@@ -305,11 +312,6 @@ export default function StockInOrdersPage() {
             setCreateSourceId((current) => current || purchaseOrders[0].id);
         }
     }, [purchaseOrders]);
-
-    const selectedOrder = React.useMemo(
-        () => orders.find((order) => order.id === selectedId) || orders[0] || null,
-        [orders, selectedId],
-    );
 
     React.useEffect(() => {
         setDraft(makeDraft(selectedOrder));
@@ -491,6 +493,7 @@ export default function StockInOrdersPage() {
             setSaving(false);
         }
     };
+
 
     const selectedOrderDifferences = selectedOrder
         ? selectedOrder.details.filter((detail) => {
@@ -781,7 +784,6 @@ export default function StockInOrdersPage() {
                                     </div>
                                 </div>
                             </div>
-
                             {/* Actions Footer */}
                             <div className="flex flex-col gap-3 bg-slate-50/50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between rounded-b-2xl">
                                 <div className="text-sm font-medium text-slate-600">

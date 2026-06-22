@@ -58,23 +58,34 @@ const menuItems = [
       { icon: Package, label: 'Nhập kho', path: '/inbound/stock-in' },
     ]
   },
+  { icon: Package, label: 'Lắp ráp', path: '/inbound/assembly', badge: null },
   { icon: TrendingUp, label: 'Xuất kho', path: '/outbound', badge: null },
   { icon: Truck, label: 'Luân chuyển', path: '/delivery', badge: null },
   { icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null },
   { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null },
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null },
   { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null },
-  { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null },
+  { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null, allowedRoles: ['admin', 'manager'] },
 ];
+
+function getStoredUserRole() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || '{}')?.role as string | undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const storedUserRole = getStoredUserRole();
 
-  const filteredMenuItems = menuItems.filter(item => 
-    item.label.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredMenuItems = menuItems.filter((item) => {
+    const roleAllowed = !item.allowedRoles || item.allowedRoles.includes(storedUserRole || '');
+    return roleAllowed && item.label.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   const toggleExpanded = (path: string) => {
     setExpandedItems(prev => {

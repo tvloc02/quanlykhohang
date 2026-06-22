@@ -35,14 +35,15 @@ export class WarehousesService {
     createWarehouseDto: CreateWarehouseDto,
     actor?: { id?: string; email?: string },
   ): Promise<Warehouse> {
-    const existingCode = await this.findByCode(createWarehouseDto.code);
+    const normalizedCode = createWarehouseDto.code.trim().toUpperCase();
+    const existingCode = await this.findByCode(normalizedCode);
     if (existingCode) {
       throw new BadRequestException('Warehouse code already exists');
     }
 
     const warehouse = this.repo.create({
-      id: this.generateId(),
-      code: createWarehouseDto.code.trim().toUpperCase(),
+      id: createWarehouseDto.id?.trim() || this.generateId(),
+      code: normalizedCode,
       name: createWarehouseDto.name.trim(),
       address: createWarehouseDto.address?.trim() || '',
       status: createWarehouseDto.status || 'active',
@@ -72,11 +73,12 @@ export class WarehousesService {
     const warehouse = await this.findOne(id);
 
     if (updateWarehouseDto.code && updateWarehouseDto.code !== warehouse.code) {
-      const existingCode = await this.findByCode(updateWarehouseDto.code);
+      const normalizedCode = updateWarehouseDto.code.trim().toUpperCase();
+      const existingCode = await this.findByCode(normalizedCode);
       if (existingCode) {
         throw new BadRequestException('Warehouse code already exists');
       }
-      warehouse.code = updateWarehouseDto.code.trim().toUpperCase();
+      warehouse.code = normalizedCode;
     }
 
     if (updateWarehouseDto.name !== undefined) {

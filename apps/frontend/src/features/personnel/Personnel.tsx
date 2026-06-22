@@ -19,7 +19,9 @@ import {
   getStoredWarehouses,
   getUserWarehouseIds,
   getUserWarehouseNames,
+  mergeStoredWarehouses,
   saveStoredWarehouses,
+  type WarehouseRecord,
 } from '../../shared/utils/warehouseAssignments';
 
 type Role = {
@@ -168,7 +170,7 @@ function buildEmptyForm(defaultRole = 'staff'): PersonnelForm {
   };
 }
 
-function buildUserForm(user: PersonnelUser, profile?: PersonnelProfile): PersonnelForm {
+function buildUserForm(user: PersonnelUser, profile?: PersonnelProfile, warehouses: WarehouseRecord[] = getStoredWarehouses()): PersonnelForm {
   return {
     email: user.email,
     fullName: user.fullName || '',
@@ -177,8 +179,63 @@ function buildUserForm(user: PersonnelUser, profile?: PersonnelProfile): Personn
     status: profile?.status || 'active',
     password: '',
     role: getPrimaryRole(user),
-    warehouseIds: getUserWarehouseIds(user.id),
+    warehouseIds: getUserWarehouseIds(user.id, warehouses),
   };
+}
+
+function normalizeWarehouseRecord(warehouse: WarehouseRecord): WarehouseRecord {
+  return {
+    ...warehouse,
+    code: warehouse.code.trim().toUpperCase(),
+    name: warehouse.name.trim(),
+    address: warehouse.address.trim(),
+    managerIds: Array.from(new Set(warehouse.managerIds)),
+    staffIds: Array.from(new Set(warehouse.staffIds)),
+  };
+}
+
+function warehouseListEquals(a: WarehouseRecord, b: WarehouseRecord) {
+  const normalizeIds = (ids: string[]) => [...new Set(ids)].sort();
+  return (
+    a.id === b.id &&
+    a.code.trim().toUpperCase() === b.code.trim().toUpperCase() &&
+    a.name.trim() === b.name.trim() &&
+    a.address.trim() === b.address.trim() &&
+    a.status === b.status &&
+    JSON.stringify(normalizeIds(a.managerIds)) === JSON.stringify(normalizeIds(b.managerIds)) &&
+    JSON.stringify(normalizeIds(a.staffIds)) === JSON.stringify(normalizeIds(b.staffIds))
+  );
+}
+
+async function upsertWarehouseToApi(warehouse: WarehouseRecord) {
+  const payload = normalizeWarehouseRecord(warehouse);
+  const updateResponse = await fetch(`${API_BASE_URL}/warehouses/${encodeURIComponent(payload.id)}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (updateResponse.ok) {
+    return (await updateResponse.json()) as WarehouseRecord;
+  }
+
+  if (updateResponse.status !== 404) {
+    const data = await updateResponse.json().catch(() => null);
+    throw new Error(data?.message || 'Không lưu được kho hàng');
+  }
+
+  const createResponse = await fetch(`${API_BASE_URL}/warehouses`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!createResponse.ok) {
+    const data = await createResponse.json().catch(() => null);
+    throw new Error(data?.message || 'Không tạo được kho hàng');
+  }
+
+  return (await createResponse.json()) as WarehouseRecord;
 }
 
 function StyledSelect({
@@ -261,31 +318,62 @@ export default function PersonnelManagement() {
     setError('');
 
     try {
-      const [usersResponse, rolesResponse] = await Promise.all([
+      const [usersResponse, rolesResponse, warehousesResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }),
         fetch(`${API_BASE_URL}/roles`, { headers: authHeaders() }),
+        fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }),
       ]);
 
-      if ([401, 403].includes(usersResponse.status) || [401, 403].includes(rolesResponse.status)) {
+      if (
+        [401, 403].includes(usersResponse.status) ||
+        [401, 403].includes(rolesResponse.status) ||
+        [401, 403].includes(warehousesResponse.status)
+      ) {
         throw new Error('AUTH_FALLBACK');
       }
 
       if (!usersResponse.ok) {
         const data = await usersResponse.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách nhân sự');
+        throw new Error(data?.message || 'Kh?ng t?i ???c danh s?ch nh?n s?');
       }
 
       if (!rolesResponse.ok) {
         const data = await rolesResponse.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách vai trò');
+        throw new Error(data?.message || 'Kh?ng t?i ???c danh s?ch vai tr?');
       }
 
       const userData = (await usersResponse.json()) as PersonnelUser[];
       const roleData = (await rolesResponse.json()) as Role[];
+      const warehouseData = warehousesResponse.ok ? ((await warehousesResponse.json()) as WarehouseRecord[]) : [];
+      const fallbackWarehouses = getStoredWarehouses();
+      const nextWarehouses = (warehouseData.length > 0
+        ? mergeStoredWarehouses(warehouseData, fallbackWarehouses)
+        : fallbackWarehouses
+      ).map((warehouse) => ({
+        ...warehouse,
+        code: warehouse.code.trim().toUpperCase(),
+        name: warehouse.name.trim(),
+        address: warehouse.address.trim(),
+        managerIds: Array.from(new Set(warehouse.managerIds)),
+        staffIds: Array.from(new Set(warehouse.staffIds)),
+      }));
       const nextRoles = roleData.length > 0 ? roleData : DEFAULT_ROLES;
       const nextUsers = userData.length > 0 ? userData : getFallbackPersonnelUsers();
       setUsers(nextUsers);
       setRoles(nextRoles);
+      setWarehouses(nextWarehouses);
+      saveStoredWarehouses(nextWarehouses);
+
+      const remoteById = new Map(warehouseData.map((warehouse) => [warehouse.id, warehouse]));
+      const warehousesToSync = nextWarehouses.filter((warehouse) => {
+        const remoteWarehouse = remoteById.get(warehouse.id);
+        return !remoteWarehouse || !warehouseListEquals(remoteWarehouse, warehouse);
+      });
+
+      if (warehousesToSync.length > 0) {
+        await Promise.all(warehousesToSync.map((warehouse) => upsertWarehouseToApi(warehouse)));
+      }
+
       saveStoredPersonnelUsers(nextUsers);
       setForm((current) => ({
         ...current,
@@ -293,14 +381,16 @@ export default function PersonnelManagement() {
       }));
     } catch (err) {
       const fallbackUsers = getFallbackPersonnelUsers();
+      const fallbackWarehouses = getStoredWarehouses();
       setUsers(fallbackUsers);
       setRoles(DEFAULT_ROLES);
+      setWarehouses(fallbackWarehouses);
       setForm((current) => ({
         ...current,
         role: DEFAULT_ROLES.some((role) => role.name === current.role) ? current.role : 'staff',
       }));
       if (err instanceof Error && err.message !== 'AUTH_FALLBACK' && !/unauthorized/i.test(err.message)) {
-        setError(err.message || 'Không tải được dữ liệu nhân sự');
+        setError(err.message || 'Kh?ng t?i ???c d? li?u nh?n s?');
       }
     } finally {
       setLoading(false);
@@ -380,7 +470,27 @@ export default function PersonnelManagement() {
     return undefined;
   };
 
-  const syncWarehouseAssignments = (userId: string, role: string, warehouseIds: string[]) => {
+  const applyWarehouses = (nextWarehouses: WarehouseRecord[]) => {
+    const normalizedWarehouses = nextWarehouses.map(normalizeWarehouseRecord);
+    setWarehouses(normalizedWarehouses);
+    saveStoredWarehouses(normalizedWarehouses);
+  };
+
+  const persistWarehouseAssignments = async (nextWarehouses: WarehouseRecord[]) => {
+    const currentById = new Map(warehouses.map((warehouse) => [warehouse.id, warehouse]));
+    const changedWarehouses = nextWarehouses.filter((warehouse) => {
+      const currentWarehouse = currentById.get(warehouse.id);
+      return !currentWarehouse || !warehouseListEquals(currentWarehouse, warehouse);
+    });
+
+    if (changedWarehouses.length > 0) {
+      await Promise.all(changedWarehouses.map((warehouse) => upsertWarehouseToApi(warehouse)));
+    }
+
+    applyWarehouses(nextWarehouses);
+  };
+
+  const syncWarehouseAssignments = async (userId: string, role: string, warehouseIds: string[]) => {
     const selectedWarehouseIds = new Set(warehouseIds);
     const assignmentField = getWarehouseAssignmentField(role);
 
@@ -399,19 +509,49 @@ export default function PersonnelManagement() {
       };
     });
 
-    setWarehouses(nextWarehouses);
-    saveStoredWarehouses(nextWarehouses);
+    await persistWarehouseAssignments(nextWarehouses);
   };
 
-  const removeWarehouseAssignments = (userId: string) => {
+  const removeWarehouseAssignments = async (userId: string) => {
     const nextWarehouses = warehouses.map((warehouse) => ({
       ...warehouse,
       managerIds: warehouse.managerIds.filter((id) => id !== userId),
       staffIds: warehouse.staffIds.filter((id) => id !== userId),
     }));
 
-    setWarehouses(nextWarehouses);
-    saveStoredWarehouses(nextWarehouses);
+    await persistWarehouseAssignments(nextWarehouses);
+  };
+
+  const syncWarehouseAssignmentsLocally = (userId: string, role: string, warehouseIds: string[]) => {
+    const selectedWarehouseIds = new Set(warehouseIds);
+    const assignmentField = getWarehouseAssignmentField(role);
+
+    const nextWarehouses = warehouses.map((warehouse) => {
+      const managerIds = warehouse.managerIds.filter((id) => id !== userId);
+      const staffIds = warehouse.staffIds.filter((id) => id !== userId);
+
+      if (!selectedWarehouseIds.has(warehouse.id) || !assignmentField) {
+        return { ...warehouse, managerIds, staffIds };
+      }
+
+      return {
+        ...warehouse,
+        managerIds: assignmentField === 'managerIds' ? [...managerIds, userId] : managerIds,
+        staffIds: assignmentField === 'staffIds' ? [...staffIds, userId] : staffIds,
+      };
+    });
+
+    applyWarehouses(nextWarehouses);
+  };
+
+  const removeWarehouseAssignmentsLocally = (userId: string) => {
+    const nextWarehouses = warehouses.map((warehouse) => ({
+      ...warehouse,
+      managerIds: warehouse.managerIds.filter((id) => id !== userId),
+      staffIds: warehouse.staffIds.filter((id) => id !== userId),
+    }));
+
+    applyWarehouses(nextWarehouses);
   };
 
   const toggleWarehouse = (warehouseId: string) => {
@@ -447,7 +587,7 @@ export default function PersonnelManagement() {
     setSuccess('');
     setSelectedUser(user);
     setShowPassword(false);
-    setForm(buildUserForm(user, profiles[user.id]));
+    setForm(buildUserForm(user, profiles[user.id], warehouses));
     setModalMode(mode);
   };
 
@@ -566,6 +706,7 @@ export default function PersonnelManagement() {
           status,
         },
         warehouseIds,
+        password: (values[headerMap.password] || '').trim(),
       };
     });
   };
@@ -585,11 +726,50 @@ export default function PersonnelManagement() {
       const nextUsers = [...users];
       const nextProfiles = { ...profiles };
 
-      parsedRows.forEach(({ user, profile, warehouseIds }) => {
+      for (const { user, profile, warehouseIds, password } of parsedRows) {
         const existing = existingByEmail.get(user.email.toLowerCase());
-        const savedUser = existing
-          ? { ...existing, fullName: user.fullName, roles: user.roles }
-          : user;
+        const requestBody: Record<string, string> = {
+          email: user.email,
+          fullName: user.fullName,
+          phone: profile.phone,
+          role: user.roles?.[0]?.name || 'staff',
+        };
+
+        if (existing) {
+          if (password) {
+            requestBody.password = password;
+          }
+        } else {
+          requestBody.password = password || 'Aa123456';
+        }
+
+        let savedUser = existing || user;
+
+        try {
+          const response = await fetch(
+            existing ? `${API_BASE_URL}/users/${existing.id}` : `${API_BASE_URL}/users`,
+            {
+              method: existing ? 'PUT' : 'POST',
+              headers: authHeaders(),
+              body: JSON.stringify(requestBody),
+            },
+          );
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => null);
+            throw new Error(data?.message || 'Không lưu được nhân sự từ file CSV');
+          }
+
+          savedUser = (await response.json()) as PersonnelUser;
+        } catch (err) {
+          if (err instanceof TypeError) {
+            savedUser = existing
+              ? { ...existing, fullName: user.fullName, roles: user.roles }
+              : user;
+          } else {
+            throw err;
+          }
+        }
 
         if (!existing) {
           nextUsers.push(savedUser);
@@ -599,8 +779,8 @@ export default function PersonnelManagement() {
         }
 
         nextProfiles[savedUser.id] = profile;
-        syncWarehouseAssignments(savedUser.id, savedUser.roles?.[0]?.name || 'staff', warehouseIds);
-      });
+        await syncWarehouseAssignments(savedUser.id, savedUser.roles?.[0]?.name || 'staff', warehouseIds);
+      }
 
       setUsers(nextUsers);
       saveStoredPersonnelUsers(nextUsers);
@@ -658,7 +838,7 @@ export default function PersonnelManagement() {
     saveStoredPersonnelProfiles(nextProfiles);
   };
 
-  const savePersonnelLocally = (isEdit: boolean) => {
+  const savePersonnelLocally = async (isEdit: boolean) => {
     const savedUserId = isEdit && selectedUser ? selectedUser.id : crypto.randomUUID();
     const nextUser: PersonnelUser = {
       id: savedUserId,
@@ -674,12 +854,12 @@ export default function PersonnelManagement() {
     setUsers(nextUsers);
     saveStoredPersonnelUsers(nextUsers);
     saveProfile(savedUserId);
-    syncWarehouseAssignments(savedUserId, form.role, form.warehouseIds);
+    syncWarehouseAssignmentsLocally(savedUserId, form.role, form.warehouseIds);
     setSuccess(isEdit ? 'Đã cập nhật nhân sự.' : 'Đã tạo nhân sự mới.');
     closeModal();
   };
 
-  const deletePersonnelLocally = (userId: string) => {
+  const deletePersonnelLocally = async (userId: string) => {
     const nextUsers = users.filter((user) => user.id !== userId);
     const nextProfiles = { ...profiles };
     delete nextProfiles[userId];
@@ -688,7 +868,7 @@ export default function PersonnelManagement() {
     saveStoredPersonnelUsers(nextUsers);
     setProfiles(nextProfiles);
     saveStoredPersonnelProfiles(nextProfiles);
-    removeWarehouseAssignments(userId);
+    removeWarehouseAssignmentsLocally(userId);
     setSuccess('Đã xóa nhân sự.');
     closeModal();
   };
@@ -724,7 +904,7 @@ export default function PersonnelManagement() {
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         if ([401, 403].includes(response.status) || /unauthorized/i.test(data?.message || '')) {
-          savePersonnelLocally(isEdit);
+          await savePersonnelLocally(isEdit);
           return;
         }
         throw new Error(data?.message || (isEdit ? 'Không cập nhật được nhân sự' : 'Không tạo được nhân sự'));
@@ -733,14 +913,14 @@ export default function PersonnelManagement() {
       const savedUser = (await response.json()) as PersonnelUser;
       const savedUserId = isEdit && selectedUser ? selectedUser.id : savedUser.id;
       saveProfile(savedUserId);
-      syncWarehouseAssignments(savedUserId, form.role, form.warehouseIds);
+      await syncWarehouseAssignments(savedUserId, form.role, form.warehouseIds);
 
       setSuccess(isEdit ? 'Đã cập nhật nhân sự.' : 'Đã tạo nhân sự mới.');
       closeModal();
       await loadData();
     } catch (err) {
       if (err instanceof TypeError) {
-        savePersonnelLocally(modalMode === 'edit');
+        await savePersonnelLocally(modalMode === 'edit');
         return;
       }
       setError(err instanceof Error ? err.message : 'Không lưu được nhân sự');
@@ -765,7 +945,7 @@ export default function PersonnelManagement() {
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         if ([401, 403].includes(response.status) || /unauthorized/i.test(data?.message || '')) {
-          deletePersonnelLocally(selectedUser.id);
+          await deletePersonnelLocally(selectedUser.id);
           return;
         }
         throw new Error(data?.message || 'Không xóa được nhân sự');
@@ -776,12 +956,12 @@ export default function PersonnelManagement() {
       delete nextProfiles[selectedUser.id];
       setProfiles(nextProfiles);
       saveStoredPersonnelProfiles(nextProfiles);
-      removeWarehouseAssignments(selectedUser.id);
+      await removeWarehouseAssignments(selectedUser.id);
       closeModal();
       await loadData();
     } catch (err) {
       if (err instanceof TypeError) {
-        deletePersonnelLocally(selectedUser.id);
+        await deletePersonnelLocally(selectedUser.id);
         return;
       }
       setError(err instanceof Error ? err.message : 'Không xóa được nhân sự');

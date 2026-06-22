@@ -33,6 +33,7 @@ export class UsersService {
       email: createUserDto.email,
       password: hashed,
       fullName: createUserDto.fullName,
+      phone: createUserDto.phone,
       roles: [role],
     });
     const savedUser = await this.repo.save(user);
@@ -76,6 +77,10 @@ export class UsersService {
 
     if (updateUserDto.fullName !== undefined) {
       user.fullName = updateUserDto.fullName;
+    }
+
+    if (updateUserDto.phone !== undefined) {
+      user.phone = updateUserDto.phone;
     }
 
     if (updateUserDto.role) {

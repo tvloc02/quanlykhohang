@@ -1,7 +1,7 @@
 import React from 'react';
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'ghost' | 'white';
+  variant?: 'primary' | 'ghost' | 'white' | 'secondary';
   size?: 'sm' | 'md' | 'lg';
 };
 
@@ -14,6 +14,7 @@ export default function Button({
 }: ButtonProps) {
   const variantMap: Record<string, string> = {
     primary: 'bg-cyan-600 text-white hover:bg-cyan-700',
+    secondary: 'bg-slate-100 text-slate-900 hover:bg-slate-200',
     ghost: 'bg-transparent text-cyan-700 hover:bg-cyan-50',
     white: 'bg-white text-cyan-600 hover:bg-gray-100',
   };

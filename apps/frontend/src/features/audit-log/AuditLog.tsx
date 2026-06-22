@@ -67,6 +67,9 @@ export default function AuditLog() {
       const response = await fetch(`${API_BASE_URL}/audit-logs`, { headers: authHeaders() });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
+        if (response.status === 403) {
+          throw new Error(data?.message || 'Bạn không có quyền truy cập nhật ký hoạt động.');
+        }
         throw new Error(data?.message || 'Không tải được nhật ký hoạt động');
       }
 

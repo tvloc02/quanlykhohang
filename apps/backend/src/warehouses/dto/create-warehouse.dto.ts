@@ -1,4 +1,5 @@
 export class CreateWarehouseDto {
+  id?: string;
   code: string;
   name: string;
   address?: string;

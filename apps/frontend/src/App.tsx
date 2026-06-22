@@ -21,6 +21,7 @@ import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
 import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSectionPlaceholderPage';
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import StockInReceiptsPage from './features/inbound/pages/StockInReceiptsPage';
+import AssemblyPage from './features/inbound/pages/AssemblyPage';
 
 function getStoredUser() {
   try {
@@ -49,6 +50,21 @@ function SupplierRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
   if (user.role !== 'supplier') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
+
+function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
+  const token = localStorage.getItem('token');
+  const user = getStoredUser();
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  if (user.role === 'supplier') {
+    return <Navigate to="/supplier-portal" replace />;
+  }
+  if (!allowedRoles.includes(user.role || '')) {
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
@@ -171,6 +187,16 @@ function App() {
           }
         />
         <Route
+          path="/inbound/assembly"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <AssemblyPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/inbound/stock-in"
           element={
             <ProtectedRoute>
@@ -223,11 +249,11 @@ function App() {
         <Route
           path="/audit-log"
           element={
-            <ProtectedRoute>
+            <RoleRoute allowedRoles={['admin', 'manager']}>
               <MainLayout>
                 <AuditLog />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route

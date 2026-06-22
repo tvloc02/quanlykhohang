@@ -13,6 +13,7 @@ import {
 import Toast from '../../shared/components/Toast';
 import {
   getStoredWarehouses,
+  mergeStoredWarehouses,
   saveStoredWarehouses,
   type WarehouseRecord,
 } from '../../shared/utils/warehouseAssignments';
@@ -80,6 +81,62 @@ function buildWarehouseForm(warehouse: WarehouseRecord): WarehouseForm {
   };
 }
 
+function normalizeWarehouseRecord(warehouse: WarehouseRecord): WarehouseRecord {
+  return {
+    ...warehouse,
+    code: warehouse.code.trim().toUpperCase(),
+    name: warehouse.name.trim(),
+    address: warehouse.address.trim(),
+    managerIds: Array.from(new Set(warehouse.managerIds)),
+    staffIds: Array.from(new Set(warehouse.staffIds)),
+  };
+}
+
+function warehouseListEquals(a: WarehouseRecord, b: WarehouseRecord) {
+  const normalizeIds = (ids: string[]) => [...new Set(ids)].sort();
+  return (
+    a.id === b.id &&
+    a.code.trim().toUpperCase() === b.code.trim().toUpperCase() &&
+    a.name.trim() === b.name.trim() &&
+    a.address.trim() === b.address.trim() &&
+    a.status === b.status &&
+    JSON.stringify(normalizeIds(a.managerIds)) === JSON.stringify(normalizeIds(b.managerIds)) &&
+    JSON.stringify(normalizeIds(a.staffIds)) === JSON.stringify(normalizeIds(b.staffIds))
+  );
+}
+
+async function upsertWarehouseToApi(warehouse: WarehouseRecord) {
+  const payload = normalizeWarehouseRecord(warehouse);
+
+  const updateResponse = await fetch(`${API_BASE_URL}/warehouses/${encodeURIComponent(payload.id)}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (updateResponse.ok) {
+    return (await updateResponse.json()) as WarehouseRecord;
+  }
+
+  if (updateResponse.status !== 404) {
+    const data = await updateResponse.json().catch(() => null);
+    throw new Error(data?.message || 'Không lưu được kho hàng');
+  }
+
+  const createResponse = await fetch(`${API_BASE_URL}/warehouses`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!createResponse.ok) {
+    const data = await createResponse.json().catch(() => null);
+    throw new Error(data?.message || 'Không tạo được kho hàng');
+  }
+
+  return (await createResponse.json()) as WarehouseRecord;
+}
+
 export default function WarehouseManagement() {
   const [users, setUsers] = React.useState<PersonnelUser[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
@@ -91,6 +148,7 @@ export default function WarehouseManagement() {
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
   const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
 
   // Pagination states
   const [pageSize, setPageSize] = React.useState(20);
@@ -109,15 +167,25 @@ export default function WarehouseManagement() {
 
       const data = (await response.json()) as WarehouseRecord[];
       const fallback = getStoredWarehouses();
-      const nextWarehouses = data.length > 0 ? data : fallback;
+      const nextWarehouses = (data.length > 0 ? mergeStoredWarehouses(data, fallback) : fallback).map(
+        normalizeWarehouseRecord,
+      );
 
       setWarehouses(nextWarehouses);
-      if (data.length > 0) {
-        saveStoredWarehouses(data);
+      saveStoredWarehouses(nextWarehouses);
+
+      const remoteById = new Map(data.map((warehouse) => [warehouse.id, warehouse]));
+      const warehousesToSync = nextWarehouses.filter((warehouse) => {
+        const remoteWarehouse = remoteById.get(warehouse.id);
+        return !remoteWarehouse || !warehouseListEquals(remoteWarehouse, warehouse);
+      });
+
+      if (warehousesToSync.length > 0) {
+        await Promise.all(warehousesToSync.map((warehouse) => upsertWarehouseToApi(warehouse)));
       }
     } catch (err) {
       const fallback = getStoredWarehouses();
-      setWarehouses(fallback);
+      setWarehouses(fallback.map(normalizeWarehouseRecord));
       if (fallback.length === 0 && err instanceof Error && err.message !== 'Không tải được danh sách kho hàng') {
         setError(err.message);
       }
@@ -216,7 +284,7 @@ export default function WarehouseManagement() {
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!form.code.trim() || !form.name.trim()) {
-      setError('Vui lòng nhập mã kho và tên kho.');
+      setError('Vui l?ng nh?p m? kho v? t?n kho.');
       return;
     }
 
@@ -226,7 +294,7 @@ export default function WarehouseManagement() {
     );
 
     if (duplicateCode) {
-      setError('Mã kho đã tồn tại.');
+      setError('M? kho ?? t?n t?i.');
       return;
     }
 
@@ -240,20 +308,48 @@ export default function WarehouseManagement() {
       staffIds: form.staffIds,
     };
 
-    setWarehouses((current) =>
-      modalMode === 'edit'
-        ? current.map((warehouse) => (warehouse.id === payload.id ? payload : warehouse))
-        : [payload, ...current],
-    );
-    setSuccess(modalMode === 'edit' ? 'Đã cập nhật kho hàng.' : 'Đã thêm kho hàng mới.');
-    closeModal();
+    void (async () => {
+      setSaving(true);
+      setError('');
+      try {
+        await upsertWarehouseToApi(payload);
+        await loadData();
+        setSuccess(modalMode === 'edit' ? '?? c?p nh?t kho h?ng.' : '?? th?m kho h?ng m?i.');
+        closeModal();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Kh?ng l?u ???c kho h?ng');
+      } finally {
+        setSaving(false);
+      }
+    })();
   };
 
   const handleDelete = () => {
     if (!selectedWarehouse) return;
-    setWarehouses((current) => current.filter((warehouse) => warehouse.id !== selectedWarehouse.id));
-    setSuccess('Đã xóa kho hàng.');
-    closeModal();
+
+    void (async () => {
+      setSaving(true);
+      setError('');
+      try {
+        const response = await fetch(`${API_BASE_URL}/warehouses/${encodeURIComponent(selectedWarehouse.id)}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        });
+
+        if (!response.ok && response.status !== 404) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.message || 'Kh?ng x?a ???c kho h?ng');
+        }
+
+        await loadData();
+        setSuccess('?? x?a kho h?ng.');
+        closeModal();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Kh?ng x?a ???c kho h?ng');
+      } finally {
+        setSaving(false);
+      }
+    })();
   };
 
   const modalTitle =
@@ -519,7 +615,12 @@ export default function WarehouseManagement() {
                   <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
                     Hủy
                   </button>
-                  <button type="button" onClick={handleDelete} className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700">
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={saving}
+                    className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
+                  >
                     Xóa kho
                   </button>
                 </div>
@@ -628,8 +729,12 @@ export default function WarehouseManagement() {
                     {modalMode === 'view' ? 'Đóng' : 'Hủy'}
                   </button>
                   {modalMode !== 'view' && (
-                    <button type="submit" className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700">
-                      {modalMode === 'create' ? 'Thêm kho' : 'Lưu thay đổi'}
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                    >
+                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Thêm kho' : 'Lưu thay đổi'}
                     </button>
                   )}
                 </div>

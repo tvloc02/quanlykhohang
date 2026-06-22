@@ -20,6 +20,12 @@ import {
   XCircle,
 } from 'lucide-react';
 import InboundSectionPlaceholderPage from './InboundSectionPlaceholderPage';
+import {
+  getStoredWarehouses,
+  mergeStoredWarehouses,
+  saveStoredWarehouses,
+  type WarehouseRecord,
+} from '../../../shared/utils/warehouseAssignments';
 
 type SupplierProduct = {
   id: string;
@@ -42,6 +48,15 @@ type Supplier = {
   leadTimeDays: number;
   currency: string;
   products?: SupplierProduct[];
+};
+
+type PurchaseOrderUser = {
+  id: string;
+  email: string;
+  fullName?: string;
+  roles?: {
+    name: string;
+  }[];
 };
 
 type PurchaseOrderLine = {
@@ -118,11 +133,11 @@ function authHeaders() {
   };
 }
 
-function makeRow(): FormLine {
+function makeRow(warehouseCode = 'KHO-NVL'): FormLine {
   return {
     rowId: `${Date.now()}-${Math.random()}`,
     productId: '',
-    warehouseCode: 'KHO-NVL',
+    warehouseCode,
     expectedQty: '1',
     receivedQty: '0',
     unitPrice: '0',
@@ -179,6 +194,45 @@ function getUserPhone(payload: any): string {
   );
 }
 
+function getPrimaryRole(user: PurchaseOrderUser) {
+  if (!Array.isArray(user.roles) || user.roles.length === 0) return 'staff';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'admin')) return 'admin';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'manager')) return 'manager';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'staff')) return 'staff';
+  return String(user.roles[0]?.name || 'staff');
+}
+
+function getCurrentUserId() {
+  const storedUser = getStoredUser();
+  if (storedUser?.id) return String(storedUser.id);
+  if (storedUser?.email) return String(storedUser.email);
+
+  const payload = parseJwtPayload(localStorage.getItem('token') || '');
+  if (payload?.sub !== undefined && payload?.sub !== null) return String(payload.sub);
+  if (payload?.email) return String(payload.email);
+
+  return '';
+}
+
+function isWarehouseAssignedToUser(userId: string, warehouse: WarehouseRecord) {
+  return warehouse.managerIds.includes(userId) || warehouse.staffIds.includes(userId);
+}
+
+function getWarehouseOptionsForUser(userId: string, warehouses: WarehouseRecord[]) {
+  if (!userId) return warehouses;
+  return warehouses.filter((warehouse) => isWarehouseAssignedToUser(userId, warehouse));
+}
+
+function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: PurchaseOrderUser[]) {
+  if (!warehouse) return [];
+  const approvedManagerIds = new Set(warehouse.managerIds.map(String));
+  return users.filter(
+    (user) =>
+      approvedManagerIds.has(String(user.id)) &&
+      ['admin', 'manager'].includes(getPrimaryRole(user)),
+  );
+}
+
 const modalSelectClass =
   'h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 pr-10 outline-none appearance-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10';
 
@@ -190,7 +244,7 @@ function buildEmptyForm(supplierId = '', warehouseCode = ''): OrderForm {
     expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     status: 'CREATED',
     description: '',
-    items: [makeRow(), makeRow(), makeRow(), makeRow(), makeRow()],
+    items: [makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode)],
     creatorName: '',
     creatorPhone: '',
     warehouseCode,
@@ -281,8 +335,8 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 function PurchaseOrdersPageContent() {
   const [orders, setOrders] = React.useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
-  const [warehouses, setWarehouses] = React.useState<Array<{ id: string; code: string; name: string }>>([]);
-  const [users, setUsers] = React.useState<Array<{ id: string; email: string; fullName?: string; roles?: { name: string }[] }>>([]);
+  const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
+  const [users, setUsers] = React.useState<PurchaseOrderUser[]>([]);
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<'all' | 'waiting' | 'approved' | 'partial' | 'done' | 'cancelled'>('all');
   const [timeFilter, setTimeFilter] = React.useState<TimeFilter>('this-month');
@@ -297,6 +351,7 @@ function PurchaseOrdersPageContent() {
   const [deleteTarget, setDeleteTarget] = React.useState<PurchaseOrder | null>(null);
   const [receiveOpen, setReceiveOpen] = React.useState(false);
   const [receiveRows, setReceiveRows] = React.useState<Array<{ detailId: string; label: string; qty: string }>>([]);
+  const currentUserId = React.useMemo(() => getCurrentUserId(), []);
 
   React.useEffect(() => {
     if (!toast) return;
@@ -327,15 +382,25 @@ function PurchaseOrdersPageContent() {
       }
       if (warehousesResponse && warehousesResponse.ok) {
         const warehouseData = await warehousesResponse.json();
-        setWarehouses(
-          Array.isArray(warehouseData)
-            ? warehouseData.map((warehouse: any) => ({
-                id: String(warehouse.id ?? warehouse.code ?? ''),
-                code: String(warehouse.code ?? warehouse.id ?? ''),
-                name: String(warehouse.name ?? warehouse.code ?? warehouse.id ?? ''),
-              }))
-            : [],
-        );
+        const normalizedWarehouses: WarehouseRecord[] = Array.isArray(warehouseData)
+          ? warehouseData.map((warehouse: any) => ({
+              id: String(warehouse.id ?? warehouse.code ?? ''),
+              code: String(warehouse.code ?? warehouse.id ?? '').toUpperCase(),
+              name: String(warehouse.name ?? warehouse.code ?? warehouse.id ?? ''),
+              address: String(warehouse.address ?? ''),
+              status: warehouse.status === 'inactive' ? 'inactive' : 'active',
+              managerIds: Array.isArray(warehouse.managerIds) ? warehouse.managerIds.map((id: unknown) => String(id)) : [],
+              staffIds: Array.isArray(warehouse.staffIds) ? warehouse.staffIds.map((id: unknown) => String(id)) : [],
+            }))
+          : [];
+        const fallbackWarehouses = getStoredWarehouses();
+        const nextWarehouses = normalizedWarehouses.length > 0
+          ? mergeStoredWarehouses(normalizedWarehouses, fallbackWarehouses)
+          : fallbackWarehouses;
+        setWarehouses(nextWarehouses);
+        if (normalizedWarehouses.length > 0) {
+          saveStoredWarehouses(nextWarehouses);
+        }
       }
       if (usersResponse && usersResponse.ok) {
         const usersData = await usersResponse.json();
@@ -428,11 +493,64 @@ function PurchaseOrdersPageContent() {
   const partialCount = orders.filter((order) => statusToFilter(order.status) === 'partial').length;
   const completedCount = orders.filter((order) => statusToFilter(order.status) === 'done').length;
 
+  const accessibleWarehouses = React.useMemo(
+    () => getWarehouseOptionsForUser(currentUserId, warehouses),
+    [currentUserId, warehouses],
+  );
+  const selectedWarehouseRecord = React.useMemo(
+    () =>
+      warehouses.find(
+        (warehouse) => warehouse.code === form.warehouseCode || warehouse.id === form.warehouseCode,
+      ) || null,
+    [warehouses, form.warehouseCode],
+  );
+  const warehouseOptions = React.useMemo(() => {
+    if (!form.warehouseCode) {
+      return accessibleWarehouses;
+    }
+
+    const selectedExists = accessibleWarehouses.some(
+      (warehouse) => warehouse.code === form.warehouseCode || warehouse.id === form.warehouseCode,
+    );
+
+    if (selectedExists) {
+      return accessibleWarehouses;
+    }
+
+    return selectedWarehouseRecord ? [selectedWarehouseRecord, ...accessibleWarehouses] : accessibleWarehouses;
+  }, [accessibleWarehouses, form.warehouseCode, selectedWarehouseRecord]);
+  const approverOptions = React.useMemo(
+    () => getApproversForWarehouse(selectedWarehouseRecord, users),
+    [selectedWarehouseRecord, users],
+  );
+
+  React.useEffect(() => {
+    if (modalMode !== 'create' && modalMode !== 'edit') return;
+    if (!form.warehouseCode) {
+      if (form.approverId) {
+        setForm((current) => ({ ...current, approverId: '' }));
+      }
+      return;
+    }
+
+    const nextApproverId = approverOptions.some((user) => user.id === form.approverId)
+      ? form.approverId
+      : approverOptions[0]?.id || '';
+
+    if (nextApproverId !== form.approverId) {
+      setForm((current) => ({ ...current, approverId: nextApproverId }));
+    }
+  }, [approverOptions, form.approverId, form.warehouseCode, modalMode]);
+
   const supplierProducts = suppliers.find((supplier) => supplier.id === form.supplierId)?.products || [];
 
   const openCreate = async () => {
     const fallbackSupplier = suppliers[0]?.id || '';
-    const defaultWarehouse = warehouses[0]?.code || warehouses[0]?.id || '';
+    const defaultWarehouse = accessibleWarehouses[0]?.code || accessibleWarehouses[0]?.id || '';
+    if (!defaultWarehouse) {
+      setToast({ type: 'error', message: 'Bạn chưa được gán kho nào để tạo đơn mua hàng.' });
+      return;
+    }
     const token = localStorage.getItem('token') || '';
     const payload = parseJwtPayload(token);
     const creatorName = getUserDisplayName(payload);
@@ -460,10 +578,10 @@ function PurchaseOrdersPageContent() {
               receivedQty: String(detail.receivedQty || 0),
               unitPrice: String(detail.unitPrice || 0),
             }))
-          : [makeRow()],
+          : [makeRow((order as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
       creatorName: (order as any).creatorName || '',
       creatorPhone: (order as any).creatorPhone || '',
-      warehouseCode: (order as any).warehouseCode || warehouses[0]?.code || '',
+      warehouseCode: (order as any).warehouseCode || accessibleWarehouses[0]?.code || '',
       approverId: (order as any).approverId || '',
     });
     setSelectedId(order.id);
@@ -506,6 +624,28 @@ function PurchaseOrdersPageContent() {
     event.preventDefault();
     if (!form.supplierId || form.items.length === 0) {
       setToast({ type: 'error', message: 'Vui lòng chọn nhà cung cấp và ít nhất một dòng hàng.' });
+      return;
+    }
+
+    const selectedWarehouse = warehouses.find(
+      (warehouse) => warehouse.code === form.warehouseCode || warehouse.id === form.warehouseCode,
+    );
+    if (!selectedWarehouse) {
+      setToast({ type: 'error', message: 'Vui lòng chọn kho hợp lệ.' });
+      return;
+    }
+
+    const canUseWarehouse = accessibleWarehouses.some(
+      (warehouse) => warehouse.code === form.warehouseCode || warehouse.id === form.warehouseCode,
+    );
+    if (modalMode === 'create' && !canUseWarehouse) {
+      setToast({ type: 'error', message: 'Bạn chỉ có thể tạo đơn với kho được gán cho mình.' });
+      return;
+    }
+
+    const approverIsValid = approverOptions.some((user) => user.id === form.approverId);
+    if (approverOptions.length > 0 && !approverIsValid) {
+      setToast({ type: 'error', message: 'Vui lòng chọn người duyệt là quản lý của kho đã chọn.' });
       return;
     }
 
@@ -660,7 +800,7 @@ function PurchaseOrdersPageContent() {
     : null;
 
   const addRow = () => {
-    setForm((current) => ({ ...current, items: [...current.items, makeRow()] }));
+    setForm((current) => ({ ...current, items: [...current.items, makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')] }));
   };
 
   const updateRow = (rowId: string, patch: Partial<FormLine>) => {
@@ -673,7 +813,7 @@ function PurchaseOrdersPageContent() {
   const removeRow = (rowId: string) => {
     setForm((current) => ({
       ...current,
-      items: current.items.length > 1 ? current.items.filter((item) => item.rowId !== rowId) : [makeRow()],
+      items: current.items.length > 1 ? current.items.filter((item) => item.rowId !== rowId) : [makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
     }));
   };
 
@@ -692,7 +832,7 @@ function PurchaseOrdersPageContent() {
       items: [
         ...current.items,
         {
-          ...makeRow(),
+          ...makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL'),
           productId: firstProduct,
           unitPrice: supplierProducts[0] ? String(parseMoney(supplierProducts[0].purchasePrice)) : '0',
         },
@@ -1108,16 +1248,32 @@ function PurchaseOrdersPageContent() {
                   <label className="mb-2 block text-sm font-bold text-slate-700">Kho mặc định</label>
                   <select
                     value={form.warehouseCode || ''}
-                    onChange={(event) => setForm((current) => ({ ...current, warehouseCode: event.target.value }))}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        warehouseCode: event.target.value,
+                        approverId: '',
+                        items: current.items.map((item) => ({
+                          ...item,
+                          warehouseCode: event.target.value || item.warehouseCode,
+                        })),
+                      }))
+                    }
                     className={modalSelectClass}
+                    disabled={warehouseOptions.length === 0}
                   >
                     <option value="">Chọn kho</option>
-                    {warehouses.map((w) => (
+                    {warehouseOptions.map((w) => (
                       <option key={w.id} value={w.code}>
                         {w.code} - {w.name}
                       </option>
                     ))}
                   </select>
+                  {accessibleWarehouses.length === 0 && (
+                    <p className="mt-2 text-xs font-semibold text-amber-600">
+                      Bạn chưa được gán kho nào. Hãy nhờ quản lý kho phân quyền trước khi tạo đơn.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">Người duyệt</label>
@@ -1125,16 +1281,22 @@ function PurchaseOrdersPageContent() {
                     value={form.approverId || ''}
                     onChange={(event) => setForm((current) => ({ ...current, approverId: event.target.value }))}
                     className={modalSelectClass}
+                    disabled={approverOptions.length === 0 || !form.warehouseCode}
                   >
                     <option value="">Chọn người duyệt</option>
-                    {users
-                      .filter((u) => ['admin', 'manager'].includes(u.roles?.[0]?.name || ''))
-                      .map((u) => (
+                    {approverOptions.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.fullName || u.email}
                         </option>
                       ))}
                   </select>
+                  {!form.warehouseCode ? (
+                    <p className="mt-2 text-xs font-semibold text-slate-500">Chọn kho trước để lọc người duyệt.</p>
+                  ) : approverOptions.length === 0 ? (
+                    <p className="mt-2 text-xs font-semibold text-amber-600">
+                      Kho này chưa có quản lý được gán. Hãy gán quản lý kho trong màn Nhân sự.
+                    </p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái</label>
