@@ -3,6 +3,7 @@ import { BaseEntity } from '../../../entities/base.entity';
 import { Assembly } from './assembly.entity';
 import { Product } from '../../../entities/product.entity';
 
+// Force TS compilation
 @Entity('assembly_details')
 export class AssemblyDetail extends BaseEntity {
   @ManyToOne(() => Assembly, (assembly) => assembly.details, { onDelete: 'CASCADE' })
