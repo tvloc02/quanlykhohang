@@ -22,6 +22,7 @@ import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSecti
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import StockInReceiptsPage from './features/inbound/pages/StockInReceiptsPage';
 import AssemblyPage from './features/inbound/pages/AssemblyPage';
+import StocktakePage from './features/inventory/pages/StocktakePage';
 
 function getStoredUser() {
   try {
@@ -232,6 +233,16 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <Inventory />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StocktakePage />
               </MainLayout>
             </ProtectedRoute>
           }

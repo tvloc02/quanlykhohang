@@ -4,11 +4,17 @@ import { InventoryService } from './inventory.service';
 import { InventoryController } from './inventory.controller';
 import { StockBalance } from './entities/stock-balance.entity';
 import { Product } from '../entities/product.entity';
+import { Stocktake } from './stocktake/entities/stocktake.entity';
+import { StocktakeDetail } from './stocktake/entities/stocktake-detail.entity';
+import { StocktakeService } from './stocktake/stocktake.service';
+import { StocktakeController } from './stocktake/stocktake.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([StockBalance, Product])],
-  controllers: [InventoryController],
-  providers: [InventoryService],
-  exports: [InventoryService],
+  imports: [
+    TypeOrmModule.forFeature([StockBalance, Product, Stocktake, StocktakeDetail]),
+  ],
+  controllers: [InventoryController, StocktakeController],
+  providers: [InventoryService, StocktakeService],
+  exports: [InventoryService, StocktakeService],
 })
 export class InventoryModule {}

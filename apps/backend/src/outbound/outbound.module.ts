@@ -7,10 +7,14 @@ import { OutboundDetail } from './entities/outbound-detail.entity';
 import { PickingTask } from './entities/picking-task.entity';
 import { Customer } from '../entities/customer.entity';
 import { Product } from '../entities/product.entity';
+import { StockBalance } from '../inventory/entities/stock-balance.entity';
 import { ErpIntegrationModule } from '../erp-integration/erp-integration.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OutboundOrder, OutboundDetail, PickingTask, Customer, Product]), ErpIntegrationModule],
+  imports: [
+    TypeOrmModule.forFeature([OutboundOrder, OutboundDetail, PickingTask, Customer, Product, StockBalance]),
+    ErpIntegrationModule,
+  ],
   controllers: [OutboundController],
   providers: [OutboundService],
   exports: [OutboundService],

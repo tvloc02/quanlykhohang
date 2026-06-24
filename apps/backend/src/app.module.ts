@@ -24,7 +24,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
       type: 'mysql',
       url: process.env.DATABASE_URL,
       autoLoadEntities: true,
-      synchronize: false,
+      synchronize: true,
       logging: false,
     }),
     AuthModule,
