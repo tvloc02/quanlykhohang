@@ -161,7 +161,7 @@ export default function Outbound() {
       setForm({
         orderNo: order.orderNo,
         customer: order.customer,
-        dueDate: order.dueDate,
+        dueDate: order.dueDate ? order.dueDate.slice(0, 10) : '',
         status: order.status,
         items: order.items,
       });
@@ -511,6 +511,7 @@ export default function Outbound() {
                     <input
                       type="date"
                       value={form.dueDate}
+                      min={new Date().toISOString().split('T')[0]}
                       onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
                       readOnly={modalMode === 'view'}
                       className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"

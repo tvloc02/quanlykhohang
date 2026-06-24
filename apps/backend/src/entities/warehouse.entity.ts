@@ -17,10 +17,10 @@ export class Warehouse {
   @Column('enum', { enum: ['active', 'inactive'], default: 'active' })
   status: 'active' | 'inactive';
 
-  @Column('simple-array', { default: '' })
+  @Column('simple-array', { nullable: true })
   managerIds: string[];
 
-  @Column('simple-array', { default: '' })
+  @Column('simple-array', { nullable: true })
   staffIds: string[];
 
   @CreateDateColumn({ type: 'datetime' })

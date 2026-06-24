@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Post, Put } from '@nestjs/common';
 import { OutboundService } from './outbound.service';
 import { CreateOutboundOrderDto } from './dto/create-outbound-order.dto';
 import { AddOutboundDetailDto } from './dto/add-outbound-detail.dto';
@@ -6,16 +6,45 @@ import { PickDetailDto } from './dto/pick-detail.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { ConfirmPickingDto } from './dto/confirm-picking.dto';
 
-@Controller('outbound')
+@Controller('outbounds')
 export class OutboundController {
   constructor(private service: OutboundService) {}
 
-  @Post('orders')
-  createOrder(@Body() dto: CreateOutboundOrderDto) {
-    return this.service.createOrder(dto);
+  // ─── CRUD endpoints (used by frontend Outbound.tsx) ──────────
+
+  @Get()
+  findAll() {
+    return this.service.findAll();
   }
 
-  @Post('orders/:id/details')
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.service.findOne(id);
+  }
+
+  @Post()
+  create(@Body() dto: CreateOutboundOrderDto) {
+    return this.service.createOutbound(dto);
+  }
+
+  @Put(':id')
+  update(@Param('id') id: string, @Body() dto: CreateOutboundOrderDto) {
+    return this.service.updateOutbound(id, dto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.service.removeOutbound(id);
+  }
+
+  @Post(':id/confirm')
+  confirm(@Param('id') id: string, @Headers('idempotency-key') idempotencyKey?: string) {
+    return this.service.confirmOutbound(id, idempotencyKey);
+  }
+
+  // ─── Detail / Picking endpoints ──────────────────────────────
+
+  @Post(':id/details')
   addDetail(@Param('id') id: string, @Body() dto: AddOutboundDetailDto) {
     return this.service.addDetail(id, dto);
   }
@@ -23,11 +52,6 @@ export class OutboundController {
   @Post('details/:detailId/pick')
   pickDetail(@Param('detailId') detailId: string, @Body() dto: PickDetailDto) {
     return this.service.pickDetail(detailId, dto.qty);
-  }
-
-  @Post('orders/:id/confirm')
-  confirmOrder(@Param('id') id: string, @Headers('idempotency-key') idempotencyKey?: string) {
-    return this.service.confirmOrder(id, idempotencyKey);
   }
 
   @Post('tasks')
@@ -40,17 +64,7 @@ export class OutboundController {
     return this.service.confirmTask(taskId, dto.taskId);
   }
 
-  @Get('orders')
-  findAllOrders() {
-    return this.service.findAllOrders();
-  }
-
-  @Get('orders/:id')
-  findOrder(@Param('id') id: string) {
-    return this.service.findOrder(id);
-  }
-
-  @Get('tasks')
+  @Get('tasks/all')
   findTasks() {
     return this.service.findTasks();
   }
