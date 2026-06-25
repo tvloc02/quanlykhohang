@@ -14,7 +14,10 @@ import Toast from '../../shared/components/Toast';
 import {
   getStoredWarehouses,
   mergeStoredWarehouses,
+  normalizeWarehouseRecord,
   saveStoredWarehouses,
+  upsertWarehouseToApi,
+  warehouseListEquals,
   type WarehouseRecord,
 } from '../../shared/utils/warehouseAssignments';
 
@@ -51,7 +54,11 @@ function authHeaders() {
 }
 
 function getPrimaryRole(user: PersonnelUser) {
-  return user.roles?.[0]?.name || 'staff';
+  if (!Array.isArray(user.roles) || user.roles.length === 0) return 'staff';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'admin')) return 'admin';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'manager')) return 'manager';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'staff')) return 'staff';
+  return String(user.roles[0]?.name || 'staff');
 }
 
 function getDisplayName(user?: PersonnelUser) {
@@ -71,70 +78,15 @@ function buildEmptyForm(): WarehouseForm {
 }
 
 function buildWarehouseForm(warehouse: WarehouseRecord): WarehouseForm {
+  const normalizedWarehouse = normalizeWarehouseRecord(warehouse);
   return {
-    code: warehouse.code,
-    name: warehouse.name,
-    address: warehouse.address,
-    status: warehouse.status,
-    managerIds: warehouse.managerIds,
-    staffIds: warehouse.staffIds,
+    code: normalizedWarehouse.code,
+    name: normalizedWarehouse.name,
+    address: normalizedWarehouse.address,
+    status: normalizedWarehouse.status,
+    managerIds: normalizedWarehouse.managerIds,
+    staffIds: normalizedWarehouse.staffIds,
   };
-}
-
-function normalizeWarehouseRecord(warehouse: WarehouseRecord): WarehouseRecord {
-  return {
-    ...warehouse,
-    code: warehouse.code.trim().toUpperCase(),
-    name: warehouse.name.trim(),
-    address: warehouse.address.trim(),
-    managerIds: Array.from(new Set(warehouse.managerIds)),
-    staffIds: Array.from(new Set(warehouse.staffIds)),
-  };
-}
-
-function warehouseListEquals(a: WarehouseRecord, b: WarehouseRecord) {
-  const normalizeIds = (ids: string[]) => [...new Set(ids)].sort();
-  return (
-    a.id === b.id &&
-    a.code.trim().toUpperCase() === b.code.trim().toUpperCase() &&
-    a.name.trim() === b.name.trim() &&
-    a.address.trim() === b.address.trim() &&
-    a.status === b.status &&
-    JSON.stringify(normalizeIds(a.managerIds)) === JSON.stringify(normalizeIds(b.managerIds)) &&
-    JSON.stringify(normalizeIds(a.staffIds)) === JSON.stringify(normalizeIds(b.staffIds))
-  );
-}
-
-async function upsertWarehouseToApi(warehouse: WarehouseRecord) {
-  const payload = normalizeWarehouseRecord(warehouse);
-
-  const updateResponse = await fetch(`${API_BASE_URL}/warehouses/${encodeURIComponent(payload.id)}`, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify(payload),
-  });
-
-  if (updateResponse.ok) {
-    return (await updateResponse.json()) as WarehouseRecord;
-  }
-
-  if (updateResponse.status !== 404) {
-    const data = await updateResponse.json().catch(() => null);
-    throw new Error(data?.message || 'Không lưu được kho hàng');
-  }
-
-  const createResponse = await fetch(`${API_BASE_URL}/warehouses`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(payload),
-  });
-
-  if (!createResponse.ok) {
-    const data = await createResponse.json().catch(() => null);
-    throw new Error(data?.message || 'Không tạo được kho hàng');
-  }
-
-  return (await createResponse.json()) as WarehouseRecord;
 }
 
 export default function WarehouseManagement() {
@@ -174,14 +126,20 @@ export default function WarehouseManagement() {
       setWarehouses(nextWarehouses);
       saveStoredWarehouses(nextWarehouses);
 
-      const remoteById = new Map(data.map((warehouse) => [warehouse.id, warehouse]));
+      const remoteById = new Map(data.map((warehouse) => [String(warehouse.id), normalizeWarehouseRecord(warehouse)]));
       const warehousesToSync = nextWarehouses.filter((warehouse) => {
         const remoteWarehouse = remoteById.get(warehouse.id);
         return !remoteWarehouse || !warehouseListEquals(remoteWarehouse, warehouse);
       });
 
       if (warehousesToSync.length > 0) {
-        await Promise.all(warehousesToSync.map((warehouse) => upsertWarehouseToApi(warehouse)));
+        const syncedWarehouses = await Promise.all(warehousesToSync.map((warehouse) => upsertWarehouseToApi(warehouse)));
+        const syncedById = new Map(syncedWarehouses.map((warehouse) => [warehouse.id, warehouse]));
+        const mergedAfterSync = nextWarehouses.map(
+          (warehouse) => syncedById.get(warehouse.id) || warehouse,
+        );
+        setWarehouses(mergedAfterSync);
+        saveStoredWarehouses(mergedAfterSync);
       }
     } catch (err) {
       const fallback = getStoredWarehouses();
@@ -314,10 +272,10 @@ export default function WarehouseManagement() {
       try {
         await upsertWarehouseToApi(payload);
         await loadData();
-        setSuccess(modalMode === 'edit' ? '?? c?p nh?t kho h?ng.' : '?? th?m kho h?ng m?i.');
+        setSuccess(modalMode === 'edit' ? 'Đã cập nhật kho hàng.' : 'Đã thêm kho hàng mới.');
         closeModal();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Kh?ng l?u ???c kho h?ng');
+        setError(err instanceof Error ? err.message : 'Không lưu được kho hàng');
       } finally {
         setSaving(false);
       }
