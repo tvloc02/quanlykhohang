@@ -13,18 +13,44 @@ export class WarehousesService {
     private readonly auditLogService: AuditLogService,
   ) {}
 
-  async findAll(): Promise<Warehouse[]> {
-    return this.repo.find({
-      order: { createdAt: 'DESC' },
-    });
+  private parseWarehouse(warehouse: Warehouse) {
+    return {
+      ...warehouse,
+      managerIds: this.parseJsonArray(warehouse.managerIds),
+      staffIds: this.parseJsonArray(warehouse.staffIds),
+    };
   }
 
-  async findOne(id: string): Promise<Warehouse> {
+  private parseJsonArray(value: string | null | undefined): string[] {
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      // Handle legacy comma-separated format from simple-array
+      return value.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+  }
+
+  /** Internal: returns raw Warehouse entity for TypeORM operations */
+  private async findOneEntity(id: string): Promise<Warehouse> {
     const warehouse = await this.repo.findOne({ where: { id } });
     if (!warehouse) {
       throw new NotFoundException(`Warehouse with ID ${id} not found`);
     }
     return warehouse;
+  }
+
+  async findAll() {
+    const warehouses = await this.repo.find({
+      order: { createdAt: 'DESC' },
+    });
+    return warehouses.map((w) => this.parseWarehouse(w));
+  }
+
+  async findOne(id: string) {
+    const warehouse = await this.findOneEntity(id);
+    return this.parseWarehouse(warehouse);
   }
 
   async findByCode(code: string): Promise<Warehouse | null> {
@@ -34,7 +60,7 @@ export class WarehousesService {
   async create(
     createWarehouseDto: CreateWarehouseDto,
     actor?: { id?: string; email?: string },
-  ): Promise<Warehouse> {
+  ) {
     const normalizedCode = createWarehouseDto.code.trim().toUpperCase();
     const existingCode = await this.findByCode(normalizedCode);
     if (existingCode) {
@@ -47,8 +73,8 @@ export class WarehousesService {
       name: createWarehouseDto.name.trim(),
       address: createWarehouseDto.address?.trim() || '',
       status: createWarehouseDto.status || 'active',
-      managerIds: createWarehouseDto.managerIds || [],
-      staffIds: createWarehouseDto.staffIds || [],
+      managerIds: JSON.stringify(createWarehouseDto.managerIds || []),
+      staffIds: JSON.stringify(createWarehouseDto.staffIds || []),
     });
 
     const saved = await this.repo.save(warehouse);
@@ -62,15 +88,15 @@ export class WarehousesService {
       metadata: { code: saved.code, name: saved.name },
     });
 
-    return saved;
+    return this.parseWarehouse(saved);
   }
 
   async update(
     id: string,
     updateWarehouseDto: UpdateWarehouseDto,
     actor?: { id?: string; email?: string },
-  ): Promise<Warehouse> {
-    const warehouse = await this.findOne(id);
+  ) {
+    const warehouse = await this.findOneEntity(id);
 
     if (updateWarehouseDto.code && updateWarehouseDto.code !== warehouse.code) {
       const normalizedCode = updateWarehouseDto.code.trim().toUpperCase();
@@ -94,11 +120,11 @@ export class WarehousesService {
     }
 
     if (updateWarehouseDto.managerIds !== undefined) {
-      warehouse.managerIds = updateWarehouseDto.managerIds || [];
+      warehouse.managerIds = JSON.stringify(updateWarehouseDto.managerIds || []);
     }
 
     if (updateWarehouseDto.staffIds !== undefined) {
-      warehouse.staffIds = updateWarehouseDto.staffIds || [];
+      warehouse.staffIds = JSON.stringify(updateWarehouseDto.staffIds || []);
     }
 
     const updated = await this.repo.save(warehouse);
@@ -112,11 +138,11 @@ export class WarehousesService {
       metadata: { code: updated.code, name: updated.name },
     });
 
-    return updated;
+    return this.parseWarehouse(updated);
   }
 
   async remove(id: string, actor?: { id?: string; email?: string }): Promise<void> {
-    const warehouse = await this.findOne(id);
+    const warehouse = await this.findOneEntity(id);
     await this.repo.remove(warehouse);
 
     await this.auditLogService.append({

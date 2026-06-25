@@ -17,7 +17,11 @@ export class UsersService {
   ) {}
 
   async findAll(): Promise<User[]> {
-    return this.repo.find({ relations: ['roles'] });
+    // Exclude users that have the 'supplier' role (supplier portal accounts)
+    const allUsers = await this.repo.find({ relations: ['roles'] });
+    return allUsers.filter(
+      (user) => !user.roles?.some((role) => role.name === 'supplier'),
+    );
   }
 
   async create(createUserDto: CreateUserDto, actor?: { id?: string; email?: string }): Promise<User> {
