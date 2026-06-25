@@ -1098,7 +1098,12 @@ function StocktakeDetailModal({
             {canFinish && (
               <button
                 onClick={handleFinishCounting}
-                className="rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg"
+                disabled={!stocktake.details || stocktake.details.length === 0}
+                className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition ${
+                  !stocktake.details || stocktake.details.length === 0
+                    ? 'opacity-50 cursor-not-allowed grayscale'
+                    : 'hover:shadow-lg'
+                }`}
                 style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}
               >
                 <span className="flex items-center gap-2">
