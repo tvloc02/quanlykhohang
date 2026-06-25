@@ -17,11 +17,11 @@ export class Warehouse {
   @Column('enum', { enum: ['active', 'inactive'], default: 'active' })
   status: 'active' | 'inactive';
 
-  @Column('simple-array', { nullable: true })
-  managerIds: string[];
+  @Column({ type: 'text', nullable: true })
+  managerIds: string;
 
-  @Column('simple-array', { nullable: true })
-  staffIds: string[];
+  @Column({ type: 'text', nullable: true })
+  staffIds: string;
 
   @CreateDateColumn({ type: 'datetime' })
   createdAt: Date;

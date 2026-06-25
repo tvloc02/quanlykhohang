@@ -12,14 +12,22 @@ async function ensureWarehouseTable(dataSource: DataSource) {
       \`name\` varchar(255) NOT NULL,
       \`address\` varchar(500) NULL,
       \`status\` enum('active', 'inactive') NOT NULL DEFAULT 'active',
-      \`managerIds\` text NOT NULL,
-      \`staffIds\` text NOT NULL,
+      \`managerIds\` text NULL,
+      \`staffIds\` text NULL,
       \`createdAt\` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
       \`updatedAt\` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (\`id\`),
       UNIQUE KEY \`IDX_warehouses_code\` (\`code\`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Fix existing columns: make TEXT columns nullable (MySQL doesn't allow default values on TEXT)
+  try {
+    await dataSource.query(`ALTER TABLE \`warehouses\` MODIFY COLUMN \`managerIds\` text NULL`);
+    await dataSource.query(`ALTER TABLE \`warehouses\` MODIFY COLUMN \`staffIds\` text NULL`);
+  } catch {
+    // Ignore errors if columns are already correct
+  }
 }
 
 async function bootstrap() {
