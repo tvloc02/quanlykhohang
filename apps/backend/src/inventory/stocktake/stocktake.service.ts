@@ -12,9 +12,17 @@ import { UpdateCountDto } from './dto/update-count.dto';
 type SerializedStocktake = {
   id: string;
   stocktakeNo: string;
+  requestNo?: string;
   locationCode: string;
   status: string;
   plannedDate?: string;
+  requestDate?: string;
+  dueDate?: string;
+  branch?: string;
+  purpose?: string;
+  reference?: string;
+  checkBy?: string;
+  detailBy?: string;
   assignee?: string;
   note?: string;
   createdBy?: string;
@@ -68,14 +76,28 @@ export class StocktakeService {
     const stocktake = this.stocktakeRepo.create({
       stocktakeNo,
       locationCode: dto.locationCode.trim(),
-      status: 'DRAFT',
+      status: dto.isRequest ? 'REQUESTED' : 'DRAFT',
       plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : undefined,
       assignee: dto.assignee?.trim() || undefined,
       note: dto.note?.trim() || undefined,
       createdBy: dto.createdBy?.trim() || undefined,
+      branch: dto.branch?.trim() || undefined,
+      dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+      purpose: dto.purpose?.trim() || undefined,
+      reference: dto.reference?.trim() || undefined,
+      checkBy: dto.checkBy?.trim() || undefined,
+      detailBy: dto.detailBy?.trim() || undefined,
     });
 
     const saved = await this.stocktakeRepo.save(stocktake);
+
+    // If created as a request, generate a requestNo and set requestDate
+    if (dto.isRequest) {
+      const requestNo = await this.generateRequestNo();
+      saved.requestNo = requestNo;
+      saved.requestDate = new Date();
+      await this.stocktakeRepo.save(saved);
+    }
 
     if (dto.productIds && dto.productIds.length > 0) {
       for (const productId of dto.productIds) {
@@ -84,6 +106,18 @@ export class StocktakeService {
     }
 
     return this.serialize(await this.findEntity(saved.id));
+  }
+
+  async acceptRequest(id: string, acceptedBy?: string) {
+    const stocktake = await this.findEntity(id);
+    if (stocktake.status !== 'REQUESTED') {
+      throw new BadRequestException('Chỉ có thể tiếp nhận yêu cầu ở trạng thái REQUESTED');
+    }
+
+    stocktake.status = 'DRAFT';
+    if (acceptedBy) stocktake.assignee = acceptedBy.trim();
+    await this.stocktakeRepo.save(stocktake);
+    return this.serialize(await this.findEntity(id));
   }
 
   async findAll() {
@@ -318,9 +352,12 @@ export class StocktakeService {
     return {
       id: stocktake.id,
       stocktakeNo: stocktake.stocktakeNo,
+      requestNo: stocktake.requestNo,
       locationCode: stocktake.locationCode,
       status: stocktake.status,
       plannedDate: toDateString(stocktake.plannedDate),
+      requestDate: toDateString(stocktake.requestDate),
+      dueDate: toDateString(stocktake.dueDate),
       assignee: stocktake.assignee,
       note: stocktake.note,
       createdBy: stocktake.createdBy,
@@ -332,6 +369,17 @@ export class StocktakeService {
       countedItems,
       differenceItems,
     };
+  }
+
+  private async generateRequestNo() {
+    // Prefix for request numbers
+    let index = (await this.stocktakeRepo.count()) + 1;
+    let code = `YCKK${String(index).padStart(5, '0')}`;
+    while (await this.stocktakeRepo.findOne({ where: { requestNo: code } })) {
+      index += 1;
+      code = `YCKK${String(index).padStart(5, '0')}`;
+    }
+    return code;
   }
 
   private serializeDetail(detail: StocktakeDetail): SerializedDetail {

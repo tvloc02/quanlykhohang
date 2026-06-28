@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, ForbiddenException } from '@nestjs/common';
+import { Request } from 'express';
 import { StocktakeService } from './stocktake.service';
 import { CreateStocktakeDto } from './dto/create-stocktake.dto';
 import { AddStocktakeDetailDto } from './dto/add-stocktake-detail.dto';
@@ -9,7 +10,14 @@ export class StocktakeController {
   constructor(private readonly service: StocktakeService) {}
 
   @Post()
-  create(@Body() dto: CreateStocktakeDto) {
+  create(@Body() dto: CreateStocktakeDto, @Req() req: Request) {
+    if (dto.isRequest) {
+      const permsHeader = req.headers['x-permissions'] || (req as any).user?.permissions;
+      const perms = Array.isArray(permsHeader) ? permsHeader : String(permsHeader || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (!perms.includes('stocktake:request')) {
+        throw new ForbiddenException('Không có quyền tạo yêu cầu kiểm kê');
+      }
+    }
     return this.service.create(dto);
   }
 
@@ -46,6 +54,16 @@ export class StocktakeController {
   @Post(':id/finish-counting')
   finishCounting(@Param('id') id: string) {
     return this.service.finishCounting(id);
+  }
+
+  @Post(':id/accept')
+  acceptRequest(@Param('id') id: string, @Body() body: { acceptedBy?: string }, @Req() req: Request) {
+    const permsHeader = req.headers['x-permissions'] || (req as any).user?.permissions;
+    const perms = Array.isArray(permsHeader) ? permsHeader : String(permsHeader || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!perms.includes('stocktake:accept')) {
+      throw new ForbiddenException('Không có quyền tiếp nhận yêu cầu kiểm kê');
+    }
+    return this.service.acceptRequest(id, body?.acceptedBy);
   }
 
   @Post(':id/approve')

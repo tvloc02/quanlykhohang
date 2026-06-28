@@ -105,6 +105,7 @@ function authHeaders() {
 // ─── STATUS CONFIG ─────────────────────────────────────────────
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  REQUESTED: { label: 'Yêu cầu', color: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-200' },
   DRAFT: { label: 'Nháp', color: 'text-slate-600', bg: 'bg-slate-100', border: 'border-slate-200' },
   COUNTING: { label: 'Đang đếm', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
   COUNTING_DONE: { label: 'Chờ duyệt', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
@@ -187,11 +188,14 @@ export default function StocktakePage() {
   const totalCounting = stocktakes.filter((s) => s.status === 'COUNTING').length;
   const totalWaiting = stocktakes.filter((s) => s.status === 'COUNTING_DONE').length;
   const totalApproved = stocktakes.filter((s) => s.status === 'APPROVED').length;
+  const totalRequests = stocktakes.filter((s) => s.status === 'REQUESTED').length;
 
   // ── Actions ─────────────────────────────────────────────────
 
   const showSuccess = (msg: string) => setToast({ message: msg, type: 'success' });
   const showError = (msg: string) => setToast({ message: msg, type: 'error' });
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const hasAcceptPermission = Array.isArray(currentUser.permissions) ? currentUser.permissions.includes('stocktake:accept') : String(currentUser.permissions || '').split(',').includes('stocktake:accept');
 
   const handleViewDetail = async (id: string) => {
     try {
@@ -204,6 +208,26 @@ export default function StocktakePage() {
       showError(err instanceof Error ? err.message : 'Lỗi');
     }
   };
+
+    const handleAcceptRequest = async (id: string) => {
+      try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const res = await fetch(`${API_BASE}/inventory/stocktakes/${id}/accept`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ acceptedBy: user.fullName || user.email || '' }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.message || 'Không thể tiếp nhận yêu cầu');
+        }
+        showSuccess('Đã tiếp nhận yêu cầu kiểm kê');
+        loadData();
+        if (selectedStocktake?.id === id) handleViewDetail(id);
+      } catch (err) {
+        showError(err instanceof Error ? err.message : 'Lỗi');
+      }
+    };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bạn chắc chắn muốn xóa phiên kiểm kê này?')) return;
@@ -305,6 +329,7 @@ export default function StocktakePage() {
         <SummaryCard icon={Clock} label="Đang đếm" value={totalCounting} color="amber" />
         <SummaryCard icon={AlertTriangle} label="Chờ duyệt" value={totalWaiting} color="blue" />
         <SummaryCard icon={ShieldCheck} label="Đã duyệt" value={totalApproved} color="emerald" />
+        <SummaryCard icon={ListChecks} label="Yêu cầu kiểm kê" value={totalRequests} color="violet" />
       </div>
 
       {/* Search */}
@@ -413,6 +438,15 @@ export default function StocktakePage() {
                             </button>
                           </>
                         )}
+                        {item.status === 'REQUESTED' && hasAcceptPermission && (
+                          <button
+                            onClick={() => handleAcceptRequest(item.id)}
+                            className="rounded-lg p-2 text-violet-600 transition hover:bg-violet-50 hover:text-violet-700"
+                            title="Tiếp nhận yêu cầu"
+                          >
+                            <Check size={16} />
+                          </button>
+                        )}
                         {item.status === 'DRAFT' && (
                           <button
                             onClick={() => handleDelete(item.id)}
@@ -465,6 +499,7 @@ export default function StocktakePage() {
         <CreateStocktakeModal
           onClose={() => setShowCreateModal(false)}
           onCreated={() => { setShowCreateModal(false); loadData(); showSuccess('Đã tạo phiên kiểm kê mới'); }}
+          onSaveAndAdd={(created) => { loadData(); showSuccess('Đã lưu yêu cầu, bạn có thể tạo tiếp'); }}
           onError={showError}
         />
       )}
@@ -515,10 +550,12 @@ function SummaryCard({ icon: Icon, label, value, color }: { icon: any; label: st
 function CreateStocktakeModal({
   onClose,
   onCreated,
+  onSaveAndAdd,
   onError,
 }: {
   onClose: () => void;
   onCreated: () => void;
+  onSaveAndAdd?: (created?: any) => void;
   onError: (msg: string) => void;
 }) {
   const [locationCode, setLocationCode] = React.useState('');
@@ -526,16 +563,35 @@ function CreateStocktakeModal({
   const [assignee, setAssignee] = React.useState('');
   const [note, setNote] = React.useState('');
   const [selectedProductIds, setSelectedProductIds] = React.useState<string[]>([]);
+  const [isRequest, setIsRequest] = React.useState(false);
+  const [requestDate, setRequestDate] = React.useState<string>(new Date().toISOString().slice(0, 16));
+  const [requestNo, setRequestNo] = React.useState<string>('');
+  const [branch, setBranch] = React.useState<string>('');
+  const [dueDate, setDueDate] = React.useState<string>('');
+  const [purpose, setPurpose] = React.useState<string>('');
+  const [reference, setReference] = React.useState<string>('');
+  const [checkBy, setCheckBy] = React.useState<string>('ALL');
+  const [detailBy, setDetailBy] = React.useState<string>('');
   const [submitting, setSubmitting] = React.useState(false);
 
   const [warehouses, setWarehouses] = React.useState<any[]>([]);
   const [users, setUsers] = React.useState<any[]>([]);
   const [products, setProducts] = React.useState<ProductOption[]>([]);
 
+  const modalUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const canRequest = Array.isArray(modalUser.permissions) ? modalUser.permissions.includes('stocktake:request') : String(modalUser.permissions || '').split(',').includes('stocktake:request');
+
   React.useEffect(() => {
     fetch(`${API_BASE}/warehouses`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => setWarehouses(Array.isArray(data) ? data : data?.data || []))
+      .catch(() => {});
+    // Try load branches if available
+    fetch(`${API_BASE}/branches`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setWarehouses((prev) => prev.concat(data));
+      })
       .catch(() => {});
       
     fetch(`${API_BASE}/users`, { headers: authHeaders() })
@@ -567,15 +623,77 @@ function CreateStocktakeModal({
           plannedDate: plannedDate || undefined,
           assignee: assignee || undefined,
           note: note.trim() || undefined,
+          isRequest: isRequest || undefined,
           createdBy: user.fullName || user.email || undefined,
           productIds: selectedProductIds.length > 0 ? selectedProductIds : undefined,
+          branch: branch || undefined,
+          dueDate: dueDate || undefined,
+          purpose: purpose.trim() || undefined,
+          reference: reference.trim() || undefined,
+          checkBy: checkBy || undefined,
+          detailBy: detailBy || undefined,
         }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || 'Không thể tạo phiên kiểm kê');
       }
+      const created = await res.json().catch(() => null);
+      // If server returns a requestNo, display it
+      if (created?.requestNo) setRequestNo(created.requestNo);
       onCreated();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Lỗi');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitSaveAndAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const res = await fetch(`${API_BASE}/inventory/stocktakes`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          locationCode: locationCode.trim(),
+          plannedDate: plannedDate || undefined,
+          assignee: assignee || undefined,
+          note: note.trim() || undefined,
+          isRequest: isRequest || undefined,
+          createdBy: user.fullName || user.email || undefined,
+          productIds: selectedProductIds.length > 0 ? selectedProductIds : undefined,
+          branch: branch || undefined,
+          dueDate: dueDate || undefined,
+          purpose: purpose.trim() || undefined,
+          reference: reference.trim() || undefined,
+          checkBy: checkBy || undefined,
+          detailBy: detailBy || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Không thể tạo phiên kiểm kê');
+      }
+      const created = await res.json().catch(() => null);
+      if (created?.requestNo) setRequestNo(created.requestNo);
+      // Reset form for new entry
+      setLocationCode('');
+      setPlannedDate('');
+      setAssignee('');
+      setNote('');
+      setSelectedProductIds([]);
+      setIsRequest(false);
+      setBranch('');
+      setDueDate('');
+      setPurpose('');
+      setReference('');
+      setCheckBy('ALL');
+      setDetailBy('');
+      // Notify parent to refresh list and show message
+      if (onSaveAndAdd) onSaveAndAdd(created);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Lỗi');
     } finally {
@@ -594,11 +712,11 @@ function CreateStocktakeModal({
       <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between border-b-2 border-slate-200 px-6 py-4 flex-shrink-0">
-          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}>
               <ClipboardList className="h-5 w-5 text-white" />
             </div>
-            <h2 className="text-lg font-black text-slate-900">Tạo phiên kiểm kê</h2>
+            <h2 className="text-lg font-black text-slate-900">{isRequest ? 'Thêm yêu cầu kiểm kê' : 'Tạo phiên kiểm kê'}</h2>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 transition hover:bg-slate-100">
             <X size={20} className="text-slate-500" />
@@ -607,6 +725,17 @@ function CreateStocktakeModal({
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+          <div className="grid grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Ngày yêu cầu</label>
+              <input type="datetime-local" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Số yêu cầu</label>
+              <input value={requestNo} readOnly placeholder="(sẽ sinh tự động sau khi lưu)" className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-4 text-sm outline-none" />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-5">
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">
@@ -683,21 +812,36 @@ function CreateStocktakeModal({
             />
           </div>
 
+          {canRequest && (
+            <div className="flex items-center gap-3">
+              <input id="isRequest" type="checkbox" checked={isRequest} onChange={(e) => setIsRequest(e.target.checked)} className="w-4 h-4 text-cyan-600" />
+              <label htmlFor="isRequest" className="text-sm font-medium text-slate-700">Tạo là yêu cầu kiểm kê (gửi từ phòng ban)</label>
+            </div>
+          )}
+
           <div className="flex items-center gap-3 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-xl border-2 border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+              className="rounded-xl border-2 border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
             >
               Hủy
             </button>
             <button
+              type="button"
+              onClick={handleSubmitSaveAndAdd}
+              disabled={submitting}
+              className="rounded-xl border-2 border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              {submitting ? 'Đang lưu...' : 'Lưu và Thêm'}
+            </button>
+            <button
               type="submit"
               disabled={submitting}
-              className="flex-1 rounded-xl px-5 py-3 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-50"
+              className="rounded-xl px-5 py-3 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-50"
               style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
             >
-              {submitting ? 'Đang tạo...' : 'Tạo phiên kiểm kê'}
+              {submitting ? 'Đang lưu...' : 'Lưu'}
             </button>
           </div>
         </form>
