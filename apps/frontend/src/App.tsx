@@ -9,7 +9,6 @@ import Categories from './features/categories/Categories';
 import Suppliers from './features/suppliers/Suppliers';
 import Personnel from './features/personnel/Personnel';
 import WarehouseManagement from './features/warehouses/WarehouseManagement';
-import Outbound from './features/outbound/Outbound';
 import Delivery from './features/delivery/Delivery';
 import Inventory from './features/inventory/Inventory';
 import Reports from './features/reports/Reports';
@@ -23,6 +22,10 @@ import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import StockInReceiptsPage from './features/inbound/pages/StockInReceiptsPage';
 import AssemblyPage from './features/inbound/pages/AssemblyPage';
 import StocktakePage from './features/inventory/pages/StocktakePage';
+import TaskAssignPage from './features/outbound/pages/TaskAssignPage';
+import Outbound from './features/outbound/Outbound';
+import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
+import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDetailPage';
 
 function getStoredUser() {
   try {
@@ -211,8 +214,46 @@ function App() {
           path="/outbound"
           element={
             <ProtectedRoute>
+              <Navigate to="/outbound/orders" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/orders"
+          element={
+            <ProtectedRoute>
               <MainLayout>
                 <Outbound />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/task-assign"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <TaskAssignPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/approve"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ApproveOutboundPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/shipping-notes"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <OutboundShippingNotePage />
               </MainLayout>
             </ProtectedRoute>
           }

@@ -1555,7 +1555,7 @@ function Input({
     );
 }
 
-export default function ReturnRequestsPage() {
+export default function ReturnRequestsPage({ receiptTypeFilter }: { receiptTypeFilter?: string }) {
     return <ReturnRequestsPageContent />;
 }
 
