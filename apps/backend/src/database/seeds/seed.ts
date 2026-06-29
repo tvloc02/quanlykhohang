@@ -76,6 +76,8 @@ async function seed(): Promise<void> {
     defaultCategory ||
     categoryRepository.create({
       name: 'General',
+      code: 'GENERAL',
+      type: 'item-group',
     });
   if (!defaultCategory) {
     await categoryRepository.save(category);
@@ -83,7 +85,7 @@ async function seed(): Promise<void> {
 
   const supplier =
     (await supplierRepository.findOne({ where: { name: 'Default Supplier' } })) ||
-    supplierRepository.create({ name: 'Default Supplier' });
+    supplierRepository.create({ name: 'Default Supplier', supplierCode: 'SUP-000' });
   if (!supplier.id) {
     await supplierRepository.save(supplier);
   }
