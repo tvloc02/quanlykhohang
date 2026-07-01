@@ -239,11 +239,15 @@ function getWarehouseOptionsForUser(userId: string, warehouses: WarehouseRecord[
 
 function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: ReturnRequestUser[]) {
     if (!warehouse) return [];
-    const approvedManagerIds = new Set(warehouse.managerIds.map(String));
+    const approvedWarehouseIds = new Set([
+        ...warehouse.managerIds.map(String),
+        ...warehouse.staffIds.map(String),
+    ]);
     return users.filter(
         (user) =>
-            approvedManagerIds.has(String(user.id)) &&
-            ['admin', 'manager'].includes(getPrimaryRole(user)),
+            approvedWarehouseIds.has(String(user.id)) &&
+            Array.isArray(user.roles) &&
+            user.roles.some((role) => String(role?.name).toLowerCase() === 'manager'),
     );
 }
 

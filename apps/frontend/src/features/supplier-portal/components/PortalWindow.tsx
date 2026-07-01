@@ -29,15 +29,17 @@ export default function PortalWindow({ title, eyebrow, icon, compact, active, on
     >
       <div className="flex items-center justify-between gap-3 border-b-2 border-slate-100 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
-            {icon}
-          </div>
+          {!compact && (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
+              {icon}
+            </div>
+          )}
           <div className="min-w-0">
-            <p className="text-xs font-black uppercase text-cyan-600">{eyebrow}</p>
+            {!compact && <p className="text-xs font-black uppercase text-cyan-600">{eyebrow}</p>}
             <h2 className={`${compact ? 'text-base' : 'text-xl'} truncate font-black text-slate-900`}>{title}</h2>
           </div>
         </div>
-        {onOpen && (
+        {onOpen && !compact && (
           <button
             type="button"
             onClick={(event) => {
