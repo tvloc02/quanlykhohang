@@ -123,6 +123,20 @@ const productExcelHeaders = [
   'NCC chính',
 ];
 
+const SUPPLIER_PORTAL_ACTIVE_WINDOW_KEY = 'supplierPortalActiveWindow';
+
+function getStoredActiveWindow(): SupplierPortalWindowId | null {
+  try {
+    const raw = localStorage.getItem(SUPPLIER_PORTAL_ACTIVE_WINDOW_KEY);
+    if (raw === 'supplier-info' || raw === 'products' || raw === 'purchase-orders' || raw === 'integration') {
+      return raw;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 function escapeXml(value: unknown) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -179,7 +193,7 @@ function downloadExcelFile(fileName: string, content: string) {
 }
 
 export default function SupplierProfilePage() {
-  const [activeWindow, setActiveWindow] = React.useState<SupplierPortalWindowId | null>(null);
+  const [activeWindow, setActiveWindow] = React.useState<SupplierPortalWindowId | null>(() => getStoredActiveWindow());
   const [profile, setProfile] = React.useState<SupplierProfile | null>(null);
   const [inboundReceipts, setInboundReceipts] = React.useState<InboundReceipt[]>([]);
   const [catalogCategories, setCatalogCategories] = React.useState<CatalogCategory[]>(() => getStoredCatalogCategories());
@@ -297,6 +311,18 @@ export default function SupplierProfilePage() {
       cancelled = true;
     };
   }, [loading, profile]);
+
+  React.useEffect(() => {
+    try {
+      if (activeWindow) {
+        localStorage.setItem(SUPPLIER_PORTAL_ACTIVE_WINDOW_KEY, activeWindow);
+      } else {
+        localStorage.removeItem(SUPPLIER_PORTAL_ACTIVE_WINDOW_KEY);
+      }
+    } catch {
+      // ignore storage failures
+    }
+  }, [activeWindow]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -867,39 +893,67 @@ export default function SupplierProfilePage() {
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">Nhóm hàng <span className="text-red-500">*</span></label>
-                    <select value={productForm.itemGroup} onChange={(event) => setProductForm((current) => ({ ...current, itemGroup: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" required>
-                      <option value="">Chọn nhóm hàng</option>
+                    <input
+                      list="item-group-options"
+                      value={productForm.itemGroup}
+                      onChange={(event) => setProductForm((current) => ({ ...current, itemGroup: event.target.value }))}
+                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                      placeholder="Nhập hoặc chọn nhóm hàng"
+                      required
+                    />
+                    <datalist id="item-group-options">
                       {itemGroupOptions.map((category) => (
-                        <option key={category.id} value={category.name}>{category.code} - {category.name}</option>
+                        <option key={category.id} value={category.name}>{category.code ? `${category.code} - ${category.name}` : category.name}</option>
                       ))}
-                    </select>
+                    </datalist>
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">Đơn vị tính <span className="text-red-500">*</span></label>
-                    <select value={productForm.unit} onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" required>
-                      <option value="">Chọn ĐVT</option>
+                    <input
+                      list="unit-options"
+                      value={productForm.unit}
+                      onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value }))}
+                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                      placeholder="Nhập hoặc chọn ĐVT"
+                      required
+                    />
+                    <datalist id="unit-options">
                       {unitOptions.map((category) => (
-                        <option key={category.id} value={category.name}>{category.code} - {category.name}</option>
+                        <option key={category.id} value={category.name}>{category.code ? `${category.code} - ${category.name}` : category.name}</option>
                       ))}
-                    </select>
+                    </datalist>
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">Thuộc tính quản lý <span className="text-red-500">*</span></label>
-                    <select value={productForm.managementType} onChange={(event) => setProductForm((current) => ({ ...current, managementType: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" required>
-                      <option value="">Chọn thuộc tính</option>
+                    <input
+                      list="management-type-options"
+                      value={productForm.managementType}
+                      onChange={(event) => setProductForm((current) => ({ ...current, managementType: event.target.value }))}
+                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                      placeholder="Nhập hoặc chọn thuộc tính"
+                      required
+                    />
+                    <datalist id="management-type-options">
                       {managementTypeOptions.map((category) => (
-                        <option key={category.id} value={category.name}>{category.code} - {category.name}</option>
+                        <option key={category.id} value={category.name}>{category.code ? `${category.code} - ${category.name}` : category.name}</option>
                       ))}
-                    </select>
+                    </datalist>
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">Vị trí lưu trữ <span className="text-red-500">*</span></label>
-                    <select value={productForm.storagePosition} onChange={(event) => setProductForm((current) => ({ ...current, storagePosition: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" required>
-                      <option value="">Chọn vị trí</option>
+                    <input
+                      list="storage-position-options"
+                      value={productForm.storagePosition}
+                      onChange={(event) => setProductForm((current) => ({ ...current, storagePosition: event.target.value }))}
+                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                      placeholder="Nhập hoặc chọn vị trí lưu trữ"
+                      required
+                    />
+                    <datalist id="storage-position-options">
                       {storagePositionOptions.map((category) => (
-                        <option key={category.id} value={category.name}>{category.code} - {category.name}</option>
+                        <option key={category.id} value={category.name}>{category.code ? `${category.code} - ${category.name}` : category.name}</option>
                       ))}
-                    </select>
+                    </datalist>
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">Tồn tối thiểu</label>

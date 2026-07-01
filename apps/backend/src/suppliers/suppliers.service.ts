@@ -65,12 +65,46 @@ export class SuppliersService {
       }
     });
 
-    if (dto.accountEmail && dto.accountPassword) {
-      supplier.user = await this.createSupplierAccount(dto.accountEmail, dto.accountPassword, dto.name || supplier.name);
+    if (dto.accountEmail || dto.accountPassword) {
+      supplier.user = await this.updateOrCreateSupplierUser(supplier.user, dto, supplier.name);
     }
 
     const saved = await this.supplierRepo.save(supplier);
     return this.findOne(saved.id);
+  }
+
+  private async updateOrCreateSupplierUser(existingUser: User | undefined, dto: UpdateSupplierDto, supplierName?: string) {
+    const email = dto.accountEmail?.trim().toLowerCase();
+    const password = dto.accountPassword?.trim();
+
+    if (!existingUser && !email) {
+      throw new BadRequestException('Email đăng nhập NCC là bắt buộc khi tạo hoặc cập nhật tài khoản.');
+    }
+
+    if (!existingUser) {
+      if (!password) {
+        throw new BadRequestException('Mật khẩu là bắt buộc khi tạo tài khoản NCC mới.');
+      }
+      return this.createSupplierAccount(email!, password, supplierName);
+    }
+
+    if (email && email !== existingUser.email) {
+      const duplicate = await this.userRepo.findOne({ where: { email } });
+      if (duplicate && duplicate.id !== existingUser.id) {
+        throw new BadRequestException('Email tài khoản NCC đã tồn tại');
+      }
+      existingUser.email = email;
+    }
+
+    if (password) {
+      existingUser.password = await bcrypt.hash(password, 10);
+    }
+
+    if (supplierName) {
+      existingUser.fullName = supplierName;
+    }
+
+    return this.userRepo.save(existingUser);
   }
 
   async updateMine(user: { supplierId?: string }, dto: UpdateSupplierDto) {

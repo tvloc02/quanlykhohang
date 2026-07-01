@@ -58,8 +58,9 @@ type SupplierField = string | {
 type RawProduct = {
   id?: string;
   sku?: string;
+  internalSku?: string;
   name?: string;
-  category?: string;
+  category?: string | { name?: string };
   unit?: string;
   defaultWarehouse?: string;
   location?: string;
@@ -144,12 +145,17 @@ function normalizeSupplierField(supplier: SupplierField): string {
   return supplier.name || supplier.supplierCode || supplier.id || '';
 }
 
+function normalizeCategory(category?: string | { name?: string }): string {
+  if (!category) return '';
+  return typeof category === 'string' ? category : category.name || '';
+}
+
 function normalizeProduct(product: RawProduct): Product {
   return {
     id: product.id || crypto.randomUUID(),
-    sku: product.sku || '',
+    sku: product.internalSku || product.sku || '',
     name: product.name || '',
-    category: product.category || '',
+    category: normalizeCategory(product.category),
     unit: product.unit || '',
     defaultWarehouse: product.defaultWarehouse || '',
     location: product.location || '',

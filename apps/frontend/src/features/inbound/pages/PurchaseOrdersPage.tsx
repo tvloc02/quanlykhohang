@@ -233,11 +233,15 @@ function getWarehouseOptionsForUser(userId: string, warehouses: WarehouseRecord[
 
 function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: PurchaseOrderUser[]) {
   if (!warehouse) return [];
-  const approvedManagerIds = new Set(warehouse.managerIds.map(String));
+  const approvedWarehouseIds = new Set([
+    ...warehouse.managerIds.map(String),
+    ...warehouse.staffIds.map(String),
+  ]);
   return users.filter(
     (user) =>
-      approvedManagerIds.has(String(user.id)) &&
-      ['admin', 'manager'].includes(getPrimaryRole(user)),
+      approvedWarehouseIds.has(String(user.id)) &&
+      Array.isArray(user.roles) &&
+      user.roles.some((role) => String(role?.name).toLowerCase() === 'manager'),
   );
 }
 
@@ -364,6 +368,7 @@ function PurchaseOrdersPageContent() {
   const [pageSize, setPageSize] = React.useState(10);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selectedOrderDetails, setSelectedOrderDetails] = React.useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [toast, setToast] = React.useState<Toast | null>(null);
@@ -456,8 +461,8 @@ function PurchaseOrdersPageContent() {
   }, []);
 
   const selectedOrder = React.useMemo(
-    () => orders.find((order) => order.id === selectedId) || null,
-    [orders, selectedId],
+    () => (selectedOrderDetails?.id === selectedId ? selectedOrderDetails : orders.find((order) => order.id === selectedId)) || null,
+    [orders, selectedId, selectedOrderDetails],
   );
 
   React.useEffect(() => {
@@ -636,13 +641,28 @@ function PurchaseOrdersPageContent() {
     setModalMode('edit');
   };
 
-  const openView = (order: PurchaseOrder) => {
+  const openView = async (order: PurchaseOrder) => {
     setSelectedId(order.id);
+    setSelectedOrderDetails(null);
     setModalMode('view');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        headers: authHeaders(),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không tải được chi tiết đơn mua hàng');
+      }
+      setSelectedOrderDetails((await response.json()) as PurchaseOrder);
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tải chi tiết đơn hàng' });
+    }
   };
 
   const closeModal = () => {
     setModalMode(null);
+    setSelectedOrderDetails(null);
     setDeleteTarget(null);
     setSaving(false);
   };
@@ -1110,7 +1130,7 @@ function PurchaseOrdersPageContent() {
                       </span>
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">
-                      {order.supplier?.name || '-'}
+                      {order.supplier?.name || order.supplier?.supplierCode || '-'}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{order.description || '-'}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{formatMoney(order.totalAmount)}</td>
@@ -1221,7 +1241,7 @@ function PurchaseOrdersPageContent() {
                   <h4 className="mb-4 text-sm font-bold uppercase text-slate-500">Thông tin chung</h4>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Field label="Mã đơn hàng" value={selectedOrder.poNumber} />
-                    <Field label="Nhà cung cấp" value={selectedOrder.supplier?.name || '-'} />
+                    <Field label="Nhà cung cấp" value={selectedOrder.supplier?.name || selectedOrder.supplier?.supplierCode || '-'} />
                     <Field label="Ngày đơn hàng" value={formatDate(selectedOrder.orderDate)} />
                     <Field label="Ngày giao hàng" value={formatDate(selectedOrder.expectedDate)} />
                     <Field label="Diễn giải" value={selectedOrder.description || '-'} />

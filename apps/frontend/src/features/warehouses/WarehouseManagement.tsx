@@ -47,10 +47,12 @@ type ModalMode = 'create' | 'view' | 'edit' | 'delete' | null;
 const API_BASE_URL = 'http://localhost:3000/api';
 
 function authHeaders() {
-  return {
+  const token = localStorage.getItem('token');
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
   };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
 }
 
 function getPrimaryRole(user: PersonnelUser) {
@@ -112,6 +114,12 @@ export default function WarehouseManagement() {
 
     try {
       const response = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() });
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        return;
+      }
+
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         throw new Error(data?.message || 'Không tải được danh sách kho hàng');
@@ -156,6 +164,12 @@ export default function WarehouseManagement() {
     async function loadUsers() {
       try {
         const response = await fetch(`${API_BASE_URL}/users`, { headers: authHeaders() });
+        if (response.status === 401) {
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+          return;
+        }
+
         if (!response.ok) throw new Error('Không tải được danh sách nhân sự');
         setUsers((await response.json()) as PersonnelUser[]);
       } catch (err) {

@@ -5,14 +5,6 @@ export class CreateProductDto {
   @IsString()
   internalSku: string;
 
-  @IsOptional()
-  @IsString()
-  supplierBarcode?: string;
-
-  @IsOptional()
-  @IsString()
-  supplierId?: string;
-
   @IsNotEmpty()
   @IsString()
   name: string;
