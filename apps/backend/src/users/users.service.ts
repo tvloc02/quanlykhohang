@@ -25,7 +25,8 @@ export class UsersService {
   }
 
   async create(createUserDto: CreateUserDto, actor?: { id?: string; email?: string }): Promise<User> {
-    const hashed = await bcrypt.hash(createUserDto.password, 10);
+    const rawPassword = createUserDto.password ?? (Math.random().toString(36).slice(-8) + 'A1');
+    const hashed = await bcrypt.hash(rawPassword, 10);
     const roleName = createUserDto.role || 'staff';
     let role = await this.roleRepo.findOne({ where: { name: roleName } });
 
