@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
 import * as express from 'express';
+import { ValidationPipe } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 async function ensureWarehouseTable(dataSource: DataSource) {
@@ -36,6 +37,7 @@ async function bootstrap() {
   app.use(helmet());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }));
   app.enableCors({
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

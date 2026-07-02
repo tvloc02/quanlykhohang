@@ -59,7 +59,18 @@ const menuItems = [
     ]
   },
   { icon: Package, label: 'Lắp ráp', path: '/inbound/assembly', badge: null },
-  { icon: TrendingUp, label: 'Xuất kho', path: '/outbound', badge: null },
+  {
+    icon: TrendingUp,
+    label: 'Xuất kho',
+    path: '/outbound',
+    badge: null,
+    children: [
+      { icon: FileText, label: 'Đơn đặt hàng', path: '/outbound/orders' },
+      { icon: ClipboardList, label: 'Phân công công việc', path: '/outbound/task-assign' },
+      { icon: CheckCheck, label: 'Lệnh xuất kho', path: '/outbound/approve' },
+      { icon: Package, label: 'Phiếu xuất kho', path: '/outbound/shipping-notes' },
+    ],
+  },
   { icon: Truck, label: 'Luân chuyển', path: '/delivery', badge: null },
   {
     icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null,
