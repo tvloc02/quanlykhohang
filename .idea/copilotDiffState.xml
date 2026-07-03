@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CopilotDiffPersistence">
+    <option name="pendingDiffs">
+      <map>
+        <entry key="$PROJECT_DIR$/.env">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/.env" />
+              <option name="updatedContent" value="DATABASE_URL=mysql://root:root@localhost:3306/smart_wms&#10;JWT_SECRET=your_jwt_secret_key_here&#10;JWT_EXPIRATION=24h&#10;NODE_ENV=development&#10;PORT=3306" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/apps/backend/Dockerfile">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/apps/backend/Dockerfile" />
+              <option name="updatedContent" value="# Use the official Node.js 18 image as the base image&#10;FROM node:18&#10;&#10;# Set the working directory&#10;WORKDIR /usr/src/app&#10;&#10;# Copy package.json and package-lock.json&#10;COPY package*.json ./&#10;&#10;# Install dependencies&#10;RUN npm install&#10;&#10;# Copy the rest of the application code&#10;COPY . .&#10;&#10;# Expose the application port&#10;EXPOSE 3000&#10;&#10;# Start the application&#10;CMD [&quot;npm&quot;, &quot;run&quot;, &quot;start&quot;]" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/apps/frontend/Dockerfile">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/apps/frontend/Dockerfile" />
+              <option name="updatedContent" value="# Use the official Node.js 18 image as the base image&#10;FROM node:18&#10;&#10;# Set the working directory&#10;WORKDIR /usr/src/app&#10;&#10;# Copy package.json and package-lock.json&#10;COPY package*.json ./&#10;&#10;# Install dependencies&#10;RUN npm install&#10;&#10;# Copy the rest of the application code&#10;COPY . .&#10;&#10;# Expose the application port&#10;EXPOSE 5173&#10;&#10;# Start the application&#10;CMD [&quot;npm&quot;, &quot;run&quot;, &quot;dev&quot;]" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>

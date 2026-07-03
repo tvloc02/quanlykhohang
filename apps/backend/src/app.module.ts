@@ -16,6 +16,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { RolesModule } from './roles/roles.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
+import { CustomerPortalModule } from './customer-portal/customer-portal.module';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
       type: 'mysql',
       url: process.env.DATABASE_URL,
       autoLoadEntities: true,
-      synchronize: false,
+      synchronize: true,
       logging: false,
     }),
     AuthModule,
@@ -42,6 +43,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
     RolesModule,
     ErpIntegrationModule,
     NotificationsModule,
+    CustomerPortalModule,
   ],
   controllers: [],
   providers: [],
