@@ -12,13 +12,37 @@ export class Stocktake extends BaseEntity {
 
   @Column({
     type: 'enum',
-    enum: ['DRAFT', 'COUNTING', 'COUNTING_DONE', 'APPROVED', 'REJECTED'],
+    enum: ['REQUESTED', 'DRAFT', 'COUNTING', 'COUNTING_DONE', 'APPROVED', 'REJECTED'],
     default: 'DRAFT',
   })
   status: string;
 
   @Column({ type: 'text', nullable: true })
   note?: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  branch?: string;
+
+  @Column({ type: 'datetime', nullable: true })
+  dueDate?: Date;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  purpose?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  reference?: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: true, unique: true })
+  requestNo?: string;
+
+  @Column({ type: 'datetime', nullable: true })
+  requestDate?: Date;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  checkBy?: string;
+
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  detailBy?: string;
 
   @Column({ type: 'datetime', nullable: true })
   plannedDate?: Date;

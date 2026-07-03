@@ -166,6 +166,7 @@ export default function Suppliers() {
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [selectedSupplier, setSelectedSupplier] = React.useState<Supplier | null>(null);
   const [form, setForm] = React.useState<SupplierForm>(buildEmptyForm());
+  const [showPassword, setShowPassword] = React.useState(false);
   const [pageSize, setPageSize] = React.useState(20);
   const [currentPage, setCurrentPage] = React.useState(1);
 
@@ -224,6 +225,7 @@ export default function Suppliers() {
     setModalMode(null);
     setSelectedSupplier(null);
     setSaving(false);
+    setShowPassword(false);
   };
 
   const openModal = (mode: ModalMode, supplier?: Supplier) => {
@@ -231,6 +233,7 @@ export default function Suppliers() {
     setSuccess('');
     setSelectedSupplier(supplier || null);
     setForm(supplier ? buildForm(supplier) : buildEmptyForm());
+    setShowPassword(false);
     setModalMode(mode);
   };
 
@@ -250,8 +253,11 @@ export default function Suppliers() {
       priorityLevel: form.priorityLevel,
     };
 
+    if (form.accountEmail.trim()) {
+      payload.accountEmail = form.accountEmail.trim().toLowerCase();
+    }
+
     if (modalMode === 'create' || form.accountPassword.trim()) {
-      payload.accountEmail = (form.accountEmail.trim() || form.email.trim()).toLowerCase();
       payload.accountPassword = form.accountPassword.trim();
     }
 
@@ -681,7 +687,23 @@ export default function Suppliers() {
                           <label className="mb-2 block text-sm font-bold text-slate-700">
                             Mật khẩu {modalMode === 'create' && <span className="text-red-500">*</span>}
                           </label>
-                          <input type="password" value={form.accountPassword} onChange={(event) => setForm((current) => ({ ...current, accountPassword: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-cyan-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder={modalMode === 'create' ? 'Tạo mật khẩu ban đầu' : 'Để trống nếu không tạo tài khoản mới'} />
+                          <div className="relative">
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              value={form.accountPassword}
+                              onChange={(event) => setForm((current) => ({ ...current, accountPassword: event.target.value }))}
+                              className="h-11 w-full rounded-xl border-2 border-cyan-200 bg-white px-4 pr-12 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                              placeholder={modalMode === 'create' ? 'Tạo mật khẩu ban đầu' : 'Để trống nếu không tạo tài khoản mới'}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword((current) => !current)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
+                              aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                            >
+                              <Eye className="h-5 w-5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </section>

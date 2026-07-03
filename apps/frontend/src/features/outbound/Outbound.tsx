@@ -11,6 +11,7 @@ import {
   CheckCircle,
   Filter,
 } from 'lucide-react';
+import { outboundApi, OutboundOrder, OutboundCreatePayload } from './api/outboundApi';
 
 // Tích hợp Toast nội bộ để không bị lỗi import
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
@@ -34,32 +35,39 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   );
 }
 
-interface OutboundOrder {
+interface ProductOption {
   id: string;
-  orderNo: string;
-  customer: string;
-  dueDate: string;
-  status: 'pending' | 'picking' | 'shipped';
-  items: number;
+  internalSku: string;
+  name: string;
 }
+
+interface WarehouseOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+type OutboundDetailRow = {
+  id: string;
+  productId: string;
+  warehouseCode: string;
+  requiredQty: number | '';
+  unitPrice: number | '';
+};
 
 type OutboundForm = {
   orderNo: string;
   customer: string;
   dueDate: string;
-  status: 'pending' | 'picking' | 'shipped';
-  items: number | '';
+  status: OutboundOrder['status'];
+  description: string;
+  details: OutboundDetailRow[];
 };
 
 type ModalMode = 'create' | 'view' | 'edit' | 'delete' | null;
 
-const API_BASE_URL = 'http://localhost:3000/api';
-
-function authHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-  };
+function makeEmptyDetailRow(): OutboundDetailRow {
+  return { id: crypto.randomUUID(), productId: '', warehouseCode: '', requiredQty: '', unitPrice: '' };
 }
 
 function buildEmptyForm(): OutboundForm {
@@ -68,9 +76,24 @@ function buildEmptyForm(): OutboundForm {
     customer: '',
     dueDate: '',
     status: 'pending',
-    items: '',
+    description: '',
+    details: [makeEmptyDetailRow()],
   };
 }
+
+const statusColor: Record<OutboundOrder['status'], string> = {
+  pending: 'border-yellow-200 bg-yellow-50 text-yellow-700',
+  picking: 'border-cyan-200 bg-cyan-50 text-cyan-700',
+  READY_TO_SHIP: 'border-blue-200 bg-blue-50 text-blue-700',
+  shipped: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+};
+
+const statusLabel: Record<OutboundOrder['status'], string> = {
+  pending: 'Chờ xử lý',
+  picking: 'Đang lấy hàng',
+  READY_TO_SHIP: 'Sẵn sàng xuất',
+  shipped: 'Đã giao',
+};
 
 export default function Outbound() {
   const [orders, setOrders] = React.useState<OutboundOrder[]>([]);
@@ -82,6 +105,8 @@ export default function Outbound() {
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [selectedOrder, setSelectedOrder] = React.useState<OutboundOrder | null>(null);
   const [form, setForm] = React.useState<OutboundForm>(buildEmptyForm());
+  const [products, setProducts] = React.useState<ProductOption[]>([]);
+  const [warehouses, setWarehouses] = React.useState<WarehouseOption[]>([]);
 
   // Pagination states
   const [pageSize, setPageSize] = React.useState(20);
@@ -92,13 +117,7 @@ export default function Outbound() {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/outbounds`, { headers: authHeaders() });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách đơn xuất hàng');
-      }
-
-      const data = (await response.json()) as OutboundOrder[];
+      const data = await outboundApi.listOrders();
       setOrders(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lỗi hệ thống khi tải dữ liệu');
@@ -110,6 +129,30 @@ export default function Outbound() {
   React.useEffect(() => {
     loadData();
   }, [loadData]);
+
+  React.useEffect(() => {
+    const fetchRefs = async () => {
+      try {
+        const [productsRes, warehousesRes] = await Promise.all([
+          fetch('http://localhost:3000/api/products', { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }),
+          fetch('http://localhost:3000/api/warehouses', { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }),
+        ]);
+
+        if (productsRes.ok) {
+          const data = await productsRes.json();
+          setProducts(Array.isArray(data) ? data.map((item: any) => ({ id: String(item.id), internalSku: String(item.internalSku || item.sku || item.id), name: String(item.name || item.internalSku || item.id) })) : []);
+        }
+        if (warehousesRes.ok) {
+          const data = await warehousesRes.json();
+          setWarehouses(Array.isArray(data) ? data.map((item: any) => ({ id: String(item.id), code: String(item.code || item.id).toUpperCase(), name: String(item.name || item.code || item.id) })) : []);
+        }
+      } catch (err) {
+        // Ignore reference loading errors, list still works.
+      }
+    };
+
+    fetchRefs();
+  }, []);
 
   // Reset trang khi filter
   React.useEffect(() => {
@@ -127,22 +170,10 @@ export default function Outbound() {
 
   // Calculate Pagination
   const totalItems = filteredOrders.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const startIndex = (currentPage - 1) * pageSize + 1;
+  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
-
-  const statusColor = {
-    pending: 'border-yellow-200 bg-yellow-50 text-yellow-700',
-    picking: 'border-cyan-200 bg-cyan-50 text-cyan-700',
-    shipped: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  };
-
-  const statusLabel = {
-    pending: 'Chờ xử lý',
-    picking: 'Đang lấy hàng',
-    shipped: 'Đã giao',
-  };
 
   const closeModal = () => {
     setModalMode(null);
@@ -154,7 +185,7 @@ export default function Outbound() {
     setError('');
     setSuccess('');
     setSelectedOrder(order || null);
-    
+
     if (mode === 'create') {
       setForm(buildEmptyForm());
     } else if (order) {
@@ -163,17 +194,51 @@ export default function Outbound() {
         customer: order.customer,
         dueDate: order.dueDate ? order.dueDate.slice(0, 10) : '',
         status: order.status,
-        items: order.items,
+        description: order.description || '',
+        details:
+          order.details && order.details.length > 0
+            ? order.details.map((detail) => ({
+                id: crypto.randomUUID(),
+                productId: detail.product?.id || '',
+                warehouseCode: detail.warehouseCode || '',
+                requiredQty: detail.requiredQty,
+                unitPrice: detail.unitPrice || '',
+              }))
+            : [makeEmptyDetailRow()],
       });
     }
-    
+
     setModalMode(mode);
+  };
+
+  const updateDetailRow = (rowId: string, changes: Partial<OutboundDetailRow>) => {
+    setForm((current) => ({
+      ...current,
+      details: current.details.map((row) => (row.id === rowId ? { ...row, ...changes } : row)),
+    }));
+  };
+
+  const addDetailRow = () => {
+    setForm((current) => ({ ...current, details: [...current.details, makeEmptyDetailRow()] }));
+  };
+
+  const removeDetailRow = (rowId: string) => {
+    setForm((current) => ({
+      ...current,
+      details: current.details.length > 1
+        ? current.details.filter((row) => row.id !== rowId)
+        : [makeEmptyDetailRow()],
+    }));
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!form.orderNo.trim() || !form.customer.trim() || !form.dueDate || form.items === '') {
-      setError('Vui lòng nhập đầy đủ các thông tin bắt buộc.');
+
+    const validDetails = form.details.filter((row) => row.productId && row.requiredQty !== '' && Number(row.requiredQty) > 0);
+    const hasMissingDetail = form.details.some((row) => row.productId ? row.requiredQty === '' || Number(row.requiredQty) <= 0 : false);
+
+    if (!form.orderNo.trim() || !form.customer.trim() || !form.dueDate || validDetails.length === 0 || hasMissingDetail) {
+      setError('Vui lòng nhập đầy đủ các thông tin đơn đặt hàng và chi tiết hàng hóa hợp lệ.');
       return;
     }
 
@@ -181,31 +246,33 @@ export default function Outbound() {
     setError('');
 
     try {
-      const isEdit = modalMode === 'edit';
-      const url = isEdit && selectedOrder ? `${API_BASE_URL}/outbounds/${selectedOrder.id}` : `${API_BASE_URL}/outbounds`;
-      
-      const response = await fetch(url, {
-        method: isEdit ? 'PUT' : 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          orderNo: form.orderNo.trim().toUpperCase(),
-          customer: form.customer.trim(),
-          dueDate: form.dueDate,
-          status: form.status,
-          items: Number(form.items),
-        }),
-      });
+      const payload: OutboundCreatePayload = {
+        orderNo: form.orderNo.trim().toUpperCase(),
+        customer: form.customer.trim(),
+        dueDate: form.dueDate,
+        status: form.status,
+        items: validDetails.length,
+        description: form.description.trim() || undefined,
+        details: validDetails.map((row) => ({
+          productId: row.productId,
+          requiredQty: Number(row.requiredQty),
+          warehouseCode: row.warehouseCode.trim() || undefined,
+          unitPrice: row.unitPrice === '' ? undefined : Number(row.unitPrice),
+        })),
+      };
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.message || (isEdit ? 'Không cập nhật được đơn xuất' : 'Không tạo được đơn xuất'));
+      if (modalMode === 'edit' && selectedOrder) {
+        await outboundApi.updateOrder(selectedOrder.id, payload);
+        setSuccess('Đã cập nhật đơn đặt hàng.');
+      } else {
+        await outboundApi.createOrder(payload);
+        setSuccess('Đã tạo đơn đặt hàng mới.');
       }
 
-      setSuccess(isEdit ? 'Đã cập nhật đơn xuất.' : 'Đã tạo đơn xuất mới.');
       closeModal();
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi khi lưu đơn xuất');
+      setError(err instanceof Error ? err.message : 'Lỗi khi lưu đơn đặt hàng');
     } finally {
       setSaving(false);
     }
@@ -217,21 +284,12 @@ export default function Outbound() {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/outbounds/${selectedOrder.id}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không xóa được đơn xuất');
-      }
-
-      setSuccess('Đã xóa đơn xuất.');
+      await outboundApi.deleteOrder(selectedOrder.id);
+      setSuccess('Đã xóa đơn đặt hàng.');
       closeModal();
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi khi xóa đơn xuất');
+      setError(err instanceof Error ? err.message : 'Lỗi khi xóa đơn đặt hàng');
     } finally {
       setSaving(false);
     }
@@ -250,9 +308,9 @@ export default function Outbound() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Quản lý xuất hàng</h1>
+          <h1 className="text-2xl font-black text-slate-900">Quản lý đơn đặt hàng</h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Theo dõi và quản lý các đơn xuất hàng cho khách hàng.
+            Theo dõi và quản lý các đơn đặt hàng xuất kho cho khách hàng.
           </p>
         </div>
 
@@ -262,7 +320,7 @@ export default function Outbound() {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Tạo đơn xuất
+          Tạo đơn đặt hàng
         </button>
       </div>
 
@@ -274,13 +332,13 @@ export default function Outbound() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-            placeholder="Tìm kiếm đơn xuất theo mã SO, khách hàng..."
+            placeholder="Tìm kiếm đơn đặt hàng theo mã SO, khách hàng..."
           />
         </div>
         <div className="flex justify-start xl:justify-end">
           <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
             <Filter size={18} className="text-slate-500" />
-            Lọc đơn xuất
+            Lọc đơn đặt hàng
           </button>
         </div>
       </div>
@@ -306,13 +364,13 @@ export default function Outbound() {
               {loading ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Đang tải dữ liệu đơn xuất...
+                    Đang tải dữ liệu đơn đặt hàng...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có đơn xuất phù hợp.
+                    Chưa có đơn đặt hàng phù hợp.
                   </td>
                 </tr>
               ) : (
@@ -328,7 +386,7 @@ export default function Outbound() {
                       {order.customer}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
-                      {new Date(order.dueDate).toLocaleDateString('vi-VN')}
+                      {order.dueDate ? new Date(order.dueDate).toLocaleDateString('vi-VN') : '-'}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700 font-bold">
                       {order.items} <span className="font-medium text-slate-500 text-xs">mặt hàng</span>
@@ -352,8 +410,8 @@ export default function Outbound() {
                         <button
                           type="button"
                           className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          aria-label="Sửa đơn xuất"
-                          title="Sửa đơn xuất"
+                          aria-label="Sửa đơn đặt hàng"
+                          title="Sửa đơn đặt hàng"
                           onClick={() => openModal('edit', order)}
                         >
                           <Pencil size={18} strokeWidth={2} />
@@ -361,8 +419,8 @@ export default function Outbound() {
                         <button
                           type="button"
                           className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          aria-label="Xóa đơn xuất"
-                          title="Xóa đơn xuất"
+                          aria-label="Xóa đơn đặt hàng"
+                          title="Xóa đơn đặt hàng"
                           onClick={() => openModal('delete', order)}
                         >
                           <Trash2 size={18} strokeWidth={2} />
@@ -446,10 +504,10 @@ export default function Outbound() {
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-800">
-                    {modalMode === 'create' ? 'Tạo đơn xuất mới' : modalMode === 'view' ? 'Chi tiết đơn xuất' : modalMode === 'edit' ? 'Sửa đơn xuất' : 'Xóa đơn xuất'}
+                    {modalMode === 'create' ? 'Tạo đơn đặt hàng mới' : modalMode === 'view' ? 'Chi tiết đơn đặt hàng' : modalMode === 'edit' ? 'Sửa đơn đặt hàng' : 'Xóa đơn đặt hàng'}
                   </h2>
                   <p className="text-sm font-medium text-slate-500">
-                    {modalMode === 'view' ? 'Thông tin chỉ xem' : modalMode === 'delete' ? 'Thao tác xóa đơn xuất hàng' : 'Cập nhật thông tin xuất hàng cho khách'}
+                    {modalMode === 'view' ? 'Thông tin chỉ xem' : modalMode === 'delete' ? 'Thao tác xóa đơn đặt hàng' : 'Cập nhật thông tin đơn đặt hàng cho khách'}
                   </p>
                 </div>
               </div>
@@ -461,7 +519,7 @@ export default function Outbound() {
             {modalMode === 'delete' ? (
               <div className="px-6 py-5">
                 <p className="text-base text-slate-700">
-                  Bạn có chắc muốn xóa đơn xuất{' '}
+                  Bạn có chắc muốn xóa đơn đặt hàng{' '}
                   <span className="font-black text-slate-950">{selectedOrder?.orderNo}</span> không?
                 </p>
                 <p className="mt-2 text-sm text-red-500 font-medium">Hành động này không thể hoàn tác.</p>
@@ -475,7 +533,7 @@ export default function Outbound() {
                     disabled={saving}
                     className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
                   >
-                    {saving ? 'Đang xóa...' : 'Xóa đơn xuất'}
+                    {saving ? 'Đang xóa...' : 'Xóa đơn đặt hàng'}
                   </button>
                 </div>
               </div>
@@ -534,17 +592,126 @@ export default function Outbound() {
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Số hàng hóa yêu cầu <span className="text-red-500">*</span></label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={form.items}
-                      onChange={(event) => setForm((current) => ({ ...current, items: event.target.value ? Number(event.target.value) : '' }))}
+                    <label className="mb-2 block text-sm font-bold text-slate-700">Mô tả đơn đặt hàng</label>
+                    <textarea
+                      value={form.description}
+                      onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                       readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                      placeholder="0"
-                      required
+                      rows={3}
+                      className="h-28 w-full rounded-xl border-2 border-slate-200 px-4 py-3 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                      placeholder="Ghi chú hoặc thông tin đặc thù cho đơn đặt hàng"
                     />
+                  </div>
+                </div>
+
+                <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-900">Chi tiết hàng xuất</p>
+                      <p className="text-sm text-slate-500">Chọn sản phẩm, kho và số lượng cần đặt hàng xuất kho.</p>
+                    </div>
+                    {modalMode !== 'view' && (
+                      <button
+                        type="button"
+                        onClick={addDetailRow}
+                        className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-cyan-700"
+                      >
+                        <PlusCircle className="h-4 w-4" />
+                        Thêm dòng
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] border-collapse bg-white">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+                          <th className="px-3 py-3">Sản phẩm</th>
+                          <th className="px-3 py-3">Kho</th>
+                          <th className="px-3 py-3 text-right">Số lượng</th>
+                          <th className="px-3 py-3 text-right">Đơn giá</th>
+                          <th className="px-3 py-3 text-right">Thành tiền</th>
+                          <th className="px-3 py-3 text-center"> </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {form.details.map((row) => {
+                          const selectedProduct = products.find((item) => item.id === row.productId);
+                          const lineTotal = row.requiredQty !== '' && row.unitPrice !== '' ? Number(row.requiredQty) * Number(row.unitPrice) : 0;
+                          return (
+                            <tr key={row.id} className="border-b border-slate-200">
+                              <td className="px-3 py-3 align-top">
+                                {modalMode === 'view' ? (
+                                  <div className="text-sm font-medium text-slate-700">{selectedProduct?.name || '-'}</div>
+                                ) : (
+                                  <select
+                                    value={row.productId}
+                                    onChange={(event) => updateDetailRow(row.id, { productId: event.target.value })}
+                                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                                  >
+                                    <option value="">Chọn sản phẩm</option>
+                                    {products.map((product) => (
+                                      <option key={product.id} value={product.id}>{`${product.internalSku} • ${product.name}`}</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 align-top">
+                                {modalMode === 'view' ? (
+                                  <div className="text-sm font-medium text-slate-700">{row.warehouseCode || '-'}</div>
+                                ) : (
+                                  <select
+                                    value={row.warehouseCode}
+                                    onChange={(event) => updateDetailRow(row.id, { warehouseCode: event.target.value })}
+                                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                                  >
+                                    <option value="">Chọn kho</option>
+                                    {warehouses.map((warehouse) => (
+                                      <option key={warehouse.id} value={warehouse.code}>{`${warehouse.code} • ${warehouse.name}`}</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 align-top">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={row.requiredQty}
+                                  onChange={(event) => updateDetailRow(row.id, { requiredQty: event.target.value ? Number(event.target.value) : '' })}
+                                  readOnly={modalMode === 'view'}
+                                  className="h-11 w-full rounded-xl border-2 border-slate-200 px-3 text-right outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="px-3 py-3 align-top">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={row.unitPrice}
+                                  onChange={(event) => updateDetailRow(row.id, { unitPrice: event.target.value ? Number(event.target.value) : '' })}
+                                  readOnly={modalMode === 'view'}
+                                  className="h-11 w-full rounded-xl border-2 border-slate-200 px-3 text-right outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                                  placeholder="0.00"
+                                />
+                              </td>
+                              <td className="px-3 py-3 align-top text-right text-sm font-bold text-slate-800">{lineTotal.toLocaleString('vi-VN')}</td>
+                              <td className="px-3 py-3 align-top text-center">
+                                {modalMode !== 'view' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeDetailRow(row.id)}
+                                    className="inline-flex h-9 min-w-[40px] items-center justify-center rounded-xl bg-red-50 text-red-600 transition hover:bg-red-100"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                ) : null}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
@@ -558,7 +725,7 @@ export default function Outbound() {
                       disabled={saving}
                       className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                     >
-                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo đơn xuất' : 'Lưu thay đổi'}
+                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo đơn đặt hàng' : 'Lưu thay đổi'}
                     </button>
                   )}
                 </div>
