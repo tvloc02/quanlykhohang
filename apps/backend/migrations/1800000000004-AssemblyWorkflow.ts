@@ -4,7 +4,7 @@ export class AssemblyWorkflow1800000000004 implements MigrationInterface {
   name = 'AssemblyWorkflow1800000000004';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`CREATE TABLE \`assemblies\` (
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS \`assemblies\` (
       \`id\` bigint NOT NULL AUTO_INCREMENT,
       \`assemblyCode\` varchar(255) NOT NULL,
       \`sourceStockInOrderId\` bigint NOT NULL,
@@ -24,7 +24,7 @@ export class AssemblyWorkflow1800000000004 implements MigrationInterface {
       INDEX \`IDX_assemblies_assembledProductId\` (\`assembledProductId\`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 
-    await queryRunner.query(`CREATE TABLE \`assembly_details\` (
+    await queryRunner.query(`CREATE TABLE IF NOT EXISTS \`assembly_details\` (
       \`id\` bigint NOT NULL AUTO_INCREMENT,
       \`assemblyId\` bigint NOT NULL,
       \`componentProductId\` bigint NOT NULL,
@@ -36,10 +36,14 @@ export class AssemblyWorkflow1800000000004 implements MigrationInterface {
       INDEX \`IDX_assembly_details_componentProductId\` (\`componentProductId\`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
 
-    await queryRunner.query(`ALTER TABLE \`assemblies\` ADD CONSTRAINT \`FK_assemblies_sourceStockInOrder\` FOREIGN KEY (\`sourceStockInOrderId\`) REFERENCES \`stock_in_orders\`(\`id\`) ON DELETE CASCADE ON UPDATE NO ACTION`);
-    await queryRunner.query(`ALTER TABLE \`assemblies\` ADD CONSTRAINT \`FK_assemblies_assembledProduct\` FOREIGN KEY (\`assembledProductId\`) REFERENCES \`products\`(\`id\`) ON DELETE RESTRICT ON UPDATE NO ACTION`);
-    await queryRunner.query(`ALTER TABLE \`assembly_details\` ADD CONSTRAINT \`FK_assembly_details_assembly\` FOREIGN KEY (\`assemblyId\`) REFERENCES \`assemblies\`(\`id\`) ON DELETE CASCADE ON UPDATE NO ACTION`);
-    await queryRunner.query(`ALTER TABLE \`assembly_details\` ADD CONSTRAINT \`FK_assembly_details_componentProduct\` FOREIGN KEY (\`componentProductId\`) REFERENCES \`products\`(\`id\`) ON DELETE RESTRICT ON UPDATE NO ACTION`);
+    await this.addConstraintIfNotExists(queryRunner, 'assemblies', 'FK_assemblies_sourceStockInOrder',
+      `ALTER TABLE \`assemblies\` ADD CONSTRAINT \`FK_assemblies_sourceStockInOrder\` FOREIGN KEY (\`sourceStockInOrderId\`) REFERENCES \`stock_in_orders\`(\`id\`) ON DELETE CASCADE ON UPDATE NO ACTION`);
+    await this.addConstraintIfNotExists(queryRunner, 'assemblies', 'FK_assemblies_assembledProduct',
+      `ALTER TABLE \`assemblies\` ADD CONSTRAINT \`FK_assemblies_assembledProduct\` FOREIGN KEY (\`assembledProductId\`) REFERENCES \`products\`(\`id\`) ON DELETE RESTRICT ON UPDATE NO ACTION`);
+    await this.addConstraintIfNotExists(queryRunner, 'assembly_details', 'FK_assembly_details_assembly',
+      `ALTER TABLE \`assembly_details\` ADD CONSTRAINT \`FK_assembly_details_assembly\` FOREIGN KEY (\`assemblyId\`) REFERENCES \`assemblies\`(\`id\`) ON DELETE CASCADE ON UPDATE NO ACTION`);
+    await this.addConstraintIfNotExists(queryRunner, 'assembly_details', 'FK_assembly_details_componentProduct',
+      `ALTER TABLE \`assembly_details\` ADD CONSTRAINT \`FK_assembly_details_componentProduct\` FOREIGN KEY (\`componentProductId\`) REFERENCES \`products\`(\`id\`) ON DELETE RESTRICT ON UPDATE NO ACTION`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
@@ -49,5 +53,15 @@ export class AssemblyWorkflow1800000000004 implements MigrationInterface {
     await queryRunner.query(`ALTER TABLE \`assemblies\` DROP FOREIGN KEY \`FK_assemblies_sourceStockInOrder\``);
     await queryRunner.query(`DROP TABLE \`assembly_details\``);
     await queryRunner.query(`DROP TABLE \`assemblies\``);
+  }
+
+  private async addConstraintIfNotExists(queryRunner: QueryRunner, table: string, constraintName: string, sql: string): Promise<void> {
+    const result = await queryRunner.query(
+      `SELECT COUNT(*) AS cnt FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?`,
+      [table, constraintName],
+    );
+    if (Number(result[0]?.cnt) === 0) {
+      await queryRunner.query(sql);
+    }
   }
 }

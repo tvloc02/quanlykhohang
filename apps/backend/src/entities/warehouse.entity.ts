@@ -40,18 +40,18 @@ export class Warehouse {
 
   @AfterLoad()
   normalizeAssignmentIds() {
-    this.managerIds = this.normalizeIds(this.managerIds);
-    this.staffIds = this.normalizeIds(this.staffIds);
+    (this as any).managerIds = this.parseIds(this.managerIds);
+    (this as any).staffIds = this.parseIds(this.staffIds);
   }
 
   @BeforeInsert()
   @BeforeUpdate()
   sanitizeAssignmentIds() {
-    this.managerIds = this.normalizeIds(this.managerIds);
-    this.staffIds = this.normalizeIds(this.staffIds);
+    this.managerIds = this.serializeIds(this.managerIds);
+    this.staffIds = this.serializeIds(this.staffIds);
   }
 
-  private normalizeIds(value?: string[] | string | null): string[] {
+  private parseIds(value?: string[] | string | null): string[] {
     if (value == null) return [];
 
     const rawValues = Array.isArray(value)
@@ -62,5 +62,10 @@ export class Warehouse {
           .filter(Boolean);
 
     return Array.from(new Set(rawValues.map((item) => String(item).trim()).filter(Boolean)));
+  }
+
+  private serializeIds(value?: string[] | string | null): string {
+    const ids = this.parseIds(value);
+    return ids.join(',');
   }
 }
