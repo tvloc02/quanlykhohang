@@ -97,6 +97,7 @@ type TimeFilter = 'this-month' | '7-days' | 'all';
 type ModalMode = 'create' | 'edit' | 'delete' | 'view' | null;
 
 type FormLine = {
+  id?: string;
   rowId: string;
   productId: string;
   warehouseCode: string;
@@ -613,34 +614,53 @@ function PurchaseOrdersPageContent() {
     setModalMode('create');
   };
 
-  const openEdit = (order: PurchaseOrder) => {
-    setForm({
-      poNumber: order.poNumber,
-      supplierId: order.supplier?.id || suppliers[0]?.id || '',
-      orderDate: order.orderDate ? order.orderDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-      expectedDate: order.expectedDate ? order.expectedDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-      status: (order.status?.toUpperCase() as OrderStatus) || 'CREATED',
-      description: order.description || '',
-      items:
-        order.details?.length
-          ? order.details.map((detail) => ({
-              rowId: `${detail.id}-${Date.now()}`,
-              productId: detail.product?.id || '',
-              warehouseCode: detail.warehouseCode || 'KHO-NVL',
-              expectedQty: String(detail.expectedQty || 0),
-              receivedQty: String(detail.receivedQty || 0),
-              unitPrice: String(detail.unitPrice || 0),
-            }))
-          : [makeRow((order as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
-      creatorName: (order as any).creatorName || '',
-      creatorPhone: (order as any).creatorPhone || '',
-      warehouseCode: (order as any).warehouseCode || accessibleWarehouses[0]?.code || '',
-      approverId: (order as any).approverId || '',
-    });
-    setSelectedId(order.id);
-    setModalMode('edit');
-  };
+  
 
+  const openEdit = async (order: PurchaseOrder) => {
+    setSelectedId(order.id);
+    setSelectedOrderDetails(null);
+    setModalMode('edit');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không tải được chi tiết đơn mua hàng');
+      }
+      const full = (await response.json()) as PurchaseOrder;
+      setSelectedOrderDetails(full);
+
+      setForm({
+        poNumber: full.poNumber,
+        supplierId: full.supplier?.id || suppliers[0]?.id || '',
+        orderDate: full.orderDate ? full.orderDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        expectedDate: full.expectedDate ? full.expectedDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
+        description: full.description || '',
+        items:
+          full.details?.length
+            ? full.details.map((detail) => ({
+                id: detail.id,
+                rowId: `${detail.id}-${Date.now()}`,
+                productId: detail.product?.id || '',
+                warehouseCode: detail.warehouseCode || 'KHO-NVL',
+                expectedQty: String(detail.expectedQty || 0),
+                receivedQty: String(detail.receivedQty || 0),
+                unitPrice: String(detail.unitPrice || 0),
+              }))
+            : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
+        creatorName: (full as any).creatorName || '',
+        creatorPhone: (full as any).creatorPhone || '',
+        warehouseCode: (full as any).warehouseCode || accessibleWarehouses[0]?.code || '',
+        approverId: (full as any).approverId || '',
+      });
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tải chi tiết đơn hàng' });
+    }
+  };
   const openView = async (order: PurchaseOrder) => {
     setSelectedId(order.id);
     setSelectedOrderDetails(null);
@@ -671,6 +691,7 @@ function PurchaseOrdersPageContent() {
     const items = form.items
       .filter((item) => item.productId && Number(item.expectedQty) > 0)
       .map((item) => ({
+        id: item.id,
         productId: item.productId,
         warehouseCode: item.warehouseCode.trim() || undefined,
         expectedQty: Number(item.expectedQty || 0),
@@ -678,7 +699,7 @@ function PurchaseOrdersPageContent() {
         unitPrice: Number(item.unitPrice || 0),
       }));
 
-    return {
+    const payload: any = {
       poNumber: form.poNumber.trim() || undefined,
       supplierId: form.supplierId,
       orderDate: form.orderDate,
@@ -689,8 +710,16 @@ function PurchaseOrdersPageContent() {
       creatorPhone: form.creatorPhone || undefined,
       warehouseCode: form.warehouseCode || undefined,
       approverId: form.approverId || undefined,
-      items,
     };
+
+    // For create, always include items. For edit, include items only when there are valid lines to avoid wiping existing lines unintentionally.
+    if (modalMode === 'edit') {
+      if (items.length) payload.items = items;
+    } else {
+      payload.items = items;
+    }
+
+    return payload;
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -723,7 +752,7 @@ function PurchaseOrdersPageContent() {
     }
 
     const payload = buildPayload();
-    if (!payload.items.length) {
+    if (!payload.items || !payload.items.length) {
       setToast({ type: 'error', message: 'Mỗi đơn mua hàng cần ít nhất một mặt hàng hợp lệ.' });
       return;
     }

@@ -122,14 +122,52 @@ export class InboundService {
     if (dto.description !== undefined) receipt.description = dto.description.trim() || undefined;
 
     if (dto.items) {
+      console.log('[InboundService] updatePurchaseOrder received items:', JSON.stringify(dto.items));
+      // Upsert details: update existing ones, create new ones, remove deleted ones
       const existingDetails = await this.detailRepo.find({
         where: { inboundReceipt: { id } as any },
         relations: ['inboundReceipt', 'product'],
       });
-      if (existingDetails.length) {
-        await this.detailRepo.remove(existingDetails);
+
+      const existingById = new Map<string, InboundDetail>();
+      for (const d of existingDetails) existingById.set(String(d.id), d);
+
+      const incomingIds = new Set<string>();
+
+      for (const item of dto.items) {
+        if (item.id && existingById.has(String(item.id))) {
+          // update existing detail
+          const exist = existingById.get(String(item.id));
+          if (!exist) continue;
+          const product = item.supplierProductId
+            ? await this.resolveProductFromSupplierProduct(item.supplierProductId)
+            : item.productId
+              ? await this.productRepo.findOneBy({ id: item.productId })
+              : exist.product;
+          if (!product) throw new NotFoundException('Product not found');
+
+          exist.product = product;
+          exist.warehouseCode = item.warehouseCode?.trim() || exist.warehouseCode;
+          exist.expectedQty = parseNumber(item.expectedQty ?? exist.expectedQty);
+          exist.receivedQty = Math.min(parseNumber(item.receivedQty ?? exist.receivedQty), exist.expectedQty);
+          exist.unitPrice = (parseNumber(item.unitPrice ?? parseNumber(exist.unitPrice))).toFixed(2);
+          exist.totalLineAmount = (parseNumber(exist.unitPrice) * parseNumber(exist.expectedQty)).toFixed(2);
+
+          await this.detailRepo.save(exist);
+          incomingIds.add(String(exist.id));
+        } else {
+          // create new detail
+          const detail = await this.buildDetail(receipt, item);
+          const saved = await this.detailRepo.save(detail);
+          incomingIds.add(String(saved.id));
+        }
       }
-      await this.persistDetails(receipt, dto.items);
+
+      // remove details not present in incoming payload
+      const toRemove = existingDetails.filter((d) => !incomingIds.has(String(d.id)));
+      if (toRemove.length) {
+        await this.detailRepo.remove(toRemove);
+      }
     }
 
     await this.recalculateTotalAmount(receipt.id);
