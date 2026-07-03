@@ -60,7 +60,13 @@ export default function Login() {
       });
 
       window.setTimeout(() => {
-        navigate(loggedInUser.role === 'supplier' ? '/supplier-portal' : '/dashboard');
+        if (loggedInUser.role === 'supplier') {
+          navigate('/supplier-portal');
+        } else if (loggedInUser.role === 'customer') {
+          navigate('/customer-portal');
+        } else {
+          navigate('/dashboard');
+        }
       }, 700);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Email hoặc mật khẩu không đúng';

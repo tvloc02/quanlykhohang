@@ -93,8 +93,13 @@ async function seed(): Promise<void> {
   const customer =
     (await customerRepository.findOne({ where: { name: 'Default Customer' } })) ||
     customerRepository.create({
+      customerCode: 'KH-DEFAULT',
       name: 'Default Customer',
       phone: '0987654321',
+      email: 'default-customer@example.com',
+      address: 'System Generated',
+      type: 'B2C',
+      status: 'active'
     });
   if (!customer.id) {
     await customerRepository.save(customer);
