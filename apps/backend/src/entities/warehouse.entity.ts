@@ -1,4 +1,13 @@
-import { Entity, PrimaryColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  AfterLoad,
+  BeforeInsert,
+  BeforeUpdate,
+} from 'typeorm';
 
 @Entity('warehouses')
 export class Warehouse {
@@ -28,4 +37,30 @@ export class Warehouse {
 
   @UpdateDateColumn({ type: 'datetime' })
   updatedAt: Date;
+
+  @AfterLoad()
+  normalizeAssignmentIds() {
+    this.managerIds = this.normalizeIds(this.managerIds);
+    this.staffIds = this.normalizeIds(this.staffIds);
+  }
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  sanitizeAssignmentIds() {
+    this.managerIds = this.normalizeIds(this.managerIds);
+    this.staffIds = this.normalizeIds(this.staffIds);
+  }
+
+  private normalizeIds(value?: string[] | string | null): string[] {
+    if (value == null) return [];
+
+    const rawValues = Array.isArray(value)
+      ? value
+      : String(value)
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean);
+
+    return Array.from(new Set(rawValues.map((item) => String(item).trim()).filter(Boolean)));
+  }
 }

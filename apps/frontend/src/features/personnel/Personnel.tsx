@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   Download,
   Eye,
@@ -20,7 +20,10 @@ import {
   getUserWarehouseIds,
   getUserWarehouseNames,
   mergeStoredWarehouses,
+  normalizeWarehouseRecord,
   saveStoredWarehouses,
+  upsertWarehouseToApi,
+  warehouseListEquals,
   type WarehouseRecord,
 } from '../../shared/utils/warehouseAssignments';
 
@@ -77,7 +80,11 @@ function authHeaders() {
 }
 
 function getPrimaryRole(user: PersonnelUser) {
-  return user.roles?.[0]?.name || 'staff';
+  if (!Array.isArray(user.roles) || user.roles.length === 0) return 'staff';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'admin')) return 'admin';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'manager')) return 'manager';
+  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'staff')) return 'staff';
+  return String(user.roles[0]?.name || 'staff');
 }
 
 function formatRole(role: string) {
@@ -181,61 +188,6 @@ function buildUserForm(user: PersonnelUser, profile?: PersonnelProfile, warehous
     role: getPrimaryRole(user),
     warehouseIds: getUserWarehouseIds(user.id, warehouses),
   };
-}
-
-function normalizeWarehouseRecord(warehouse: WarehouseRecord): WarehouseRecord {
-  return {
-    ...warehouse,
-    code: warehouse.code.trim().toUpperCase(),
-    name: warehouse.name.trim(),
-    address: warehouse.address.trim(),
-    managerIds: Array.from(new Set(warehouse.managerIds)),
-    staffIds: Array.from(new Set(warehouse.staffIds)),
-  };
-}
-
-function warehouseListEquals(a: WarehouseRecord, b: WarehouseRecord) {
-  const normalizeIds = (ids: string[]) => [...new Set(ids)].sort();
-  return (
-    a.id === b.id &&
-    a.code.trim().toUpperCase() === b.code.trim().toUpperCase() &&
-    a.name.trim() === b.name.trim() &&
-    a.address.trim() === b.address.trim() &&
-    a.status === b.status &&
-    JSON.stringify(normalizeIds(a.managerIds)) === JSON.stringify(normalizeIds(b.managerIds)) &&
-    JSON.stringify(normalizeIds(a.staffIds)) === JSON.stringify(normalizeIds(b.staffIds))
-  );
-}
-
-async function upsertWarehouseToApi(warehouse: WarehouseRecord) {
-  const payload = normalizeWarehouseRecord(warehouse);
-  const updateResponse = await fetch(`${API_BASE_URL}/warehouses/${encodeURIComponent(payload.id)}`, {
-    method: 'PUT',
-    headers: authHeaders(),
-    body: JSON.stringify(payload),
-  });
-
-  if (updateResponse.ok) {
-    return (await updateResponse.json()) as WarehouseRecord;
-  }
-
-  if (updateResponse.status !== 404) {
-    const data = await updateResponse.json().catch(() => null);
-    throw new Error(data?.message || 'Không lưu được kho hàng');
-  }
-
-  const createResponse = await fetch(`${API_BASE_URL}/warehouses`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(payload),
-  });
-
-  if (!createResponse.ok) {
-    const data = await createResponse.json().catch(() => null);
-    throw new Error(data?.message || 'Không tạo được kho hàng');
-  }
-
-  return (await createResponse.json()) as WarehouseRecord;
 }
 
 function StyledSelect({
@@ -349,14 +301,7 @@ export default function PersonnelManagement() {
       const nextWarehouses = (warehouseData.length > 0
         ? mergeStoredWarehouses(warehouseData, fallbackWarehouses)
         : fallbackWarehouses
-      ).map((warehouse) => ({
-        ...warehouse,
-        code: warehouse.code.trim().toUpperCase(),
-        name: warehouse.name.trim(),
-        address: warehouse.address.trim(),
-        managerIds: Array.from(new Set(warehouse.managerIds)),
-        staffIds: Array.from(new Set(warehouse.staffIds)),
-      }));
+      ).map(normalizeWarehouseRecord);
       const nextRoles = roleData.length > 0 ? roleData : DEFAULT_ROLES;
       const nextUsers = userData.length > 0 ? userData : getFallbackPersonnelUsers();
       setUsers(nextUsers);
@@ -364,7 +309,7 @@ export default function PersonnelManagement() {
       setWarehouses(nextWarehouses);
       saveStoredWarehouses(nextWarehouses);
 
-      const remoteById = new Map(warehouseData.map((warehouse) => [warehouse.id, warehouse]));
+      const remoteById = new Map(warehouseData.map((warehouse) => [String(warehouse.id), normalizeWarehouseRecord(warehouse)]));
       const warehousesToSync = nextWarehouses.filter((warehouse) => {
         const remoteWarehouse = remoteById.get(warehouse.id);
         return !remoteWarehouse || !warehouseListEquals(remoteWarehouse, warehouse);
@@ -491,65 +436,73 @@ export default function PersonnelManagement() {
   };
 
   const syncWarehouseAssignments = async (userId: string, role: string, warehouseIds: string[]) => {
+    const normalizedUserId = String(userId);
     const selectedWarehouseIds = new Set(warehouseIds);
     const assignmentField = getWarehouseAssignmentField(role);
 
     const nextWarehouses = warehouses.map((warehouse) => {
-      const managerIds = warehouse.managerIds.filter((id) => id !== userId);
-      const staffIds = warehouse.staffIds.filter((id) => id !== userId);
+      const managerIds = warehouse.managerIds.filter((id) => id !== normalizedUserId);
+      const staffIds = warehouse.staffIds.filter((id) => id !== normalizedUserId);
 
       if (!selectedWarehouseIds.has(warehouse.id) || !assignmentField) {
-        return { ...warehouse, managerIds, staffIds };
+        return normalizeWarehouseRecord({ ...warehouse, managerIds, staffIds });
       }
 
-      return {
+      return normalizeWarehouseRecord({
         ...warehouse,
-        managerIds: assignmentField === 'managerIds' ? [...managerIds, userId] : managerIds,
-        staffIds: assignmentField === 'staffIds' ? [...staffIds, userId] : staffIds,
-      };
+        managerIds: assignmentField === 'managerIds' ? [...managerIds, normalizedUserId] : managerIds,
+        staffIds: assignmentField === 'staffIds' ? [...staffIds, normalizedUserId] : staffIds,
+      });
     });
 
     await persistWarehouseAssignments(nextWarehouses);
   };
 
   const removeWarehouseAssignments = async (userId: string) => {
-    const nextWarehouses = warehouses.map((warehouse) => ({
-      ...warehouse,
-      managerIds: warehouse.managerIds.filter((id) => id !== userId),
-      staffIds: warehouse.staffIds.filter((id) => id !== userId),
-    }));
+    const normalizedUserId = String(userId);
+    const nextWarehouses = warehouses.map((warehouse) =>
+      normalizeWarehouseRecord({
+        ...warehouse,
+        managerIds: warehouse.managerIds.filter((id) => id !== normalizedUserId),
+        staffIds: warehouse.staffIds.filter((id) => id !== normalizedUserId),
+      }),
+    );
 
     await persistWarehouseAssignments(nextWarehouses);
   };
 
   const syncWarehouseAssignmentsLocally = (userId: string, role: string, warehouseIds: string[]) => {
+    const normalizedUserId = String(userId);
     const selectedWarehouseIds = new Set(warehouseIds);
     const assignmentField = getWarehouseAssignmentField(role);
 
     const nextWarehouses = warehouses.map((warehouse) => {
-      const managerIds = warehouse.managerIds.filter((id) => id !== userId);
-      const staffIds = warehouse.staffIds.filter((id) => id !== userId);
+      const managerIds = warehouse.managerIds.filter((id) => id !== normalizedUserId);
+      const staffIds = warehouse.staffIds.filter((id) => id !== normalizedUserId);
 
       if (!selectedWarehouseIds.has(warehouse.id) || !assignmentField) {
-        return { ...warehouse, managerIds, staffIds };
+        return normalizeWarehouseRecord({ ...warehouse, managerIds, staffIds });
       }
 
-      return {
+      return normalizeWarehouseRecord({
         ...warehouse,
-        managerIds: assignmentField === 'managerIds' ? [...managerIds, userId] : managerIds,
-        staffIds: assignmentField === 'staffIds' ? [...staffIds, userId] : staffIds,
-      };
+        managerIds: assignmentField === 'managerIds' ? [...managerIds, normalizedUserId] : managerIds,
+        staffIds: assignmentField === 'staffIds' ? [...staffIds, normalizedUserId] : staffIds,
+      });
     });
 
     applyWarehouses(nextWarehouses);
   };
 
   const removeWarehouseAssignmentsLocally = (userId: string) => {
-    const nextWarehouses = warehouses.map((warehouse) => ({
-      ...warehouse,
-      managerIds: warehouse.managerIds.filter((id) => id !== userId),
-      staffIds: warehouse.staffIds.filter((id) => id !== userId),
-    }));
+    const normalizedUserId = String(userId);
+    const nextWarehouses = warehouses.map((warehouse) =>
+      normalizeWarehouseRecord({
+        ...warehouse,
+        managerIds: warehouse.managerIds.filter((id) => id !== normalizedUserId),
+        staffIds: warehouse.staffIds.filter((id) => id !== normalizedUserId),
+      }),
+    );
 
     applyWarehouses(nextWarehouses);
   };

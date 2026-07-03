@@ -68,8 +68,9 @@ export class InboundService {
   }
 
   async createPurchaseOrder(dto: CreateAsnDto) {
-    const supplier = dto.supplierId ? await this.supplierRepo.findOneBy({ id: dto.supplierId }) : null;
-    if (dto.supplierId && !supplier) {
+    const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
+    const supplier = supplierId ? await this.supplierRepo.findOneBy({ id: supplierId }) : null;
+    if (supplierId && !supplier) {
       throw new NotFoundException('Supplier not found');
     }
 
@@ -85,7 +86,7 @@ export class InboundService {
     });
 
     const savedReceipt = await this.receiptRepo.save(receipt);
-    const details = await this.persistDetails(savedReceipt.id, dto.items || []);
+    const details = await this.persistDetails(savedReceipt, dto.items || []);
     savedReceipt.totalAmount = details.reduce((sum, detail) => sum + parseNumber(detail.totalLineAmount), 0).toFixed(2);
     await this.receiptRepo.save(savedReceipt);
 
@@ -99,8 +100,9 @@ export class InboundService {
   async updatePurchaseOrder(id: string, dto: CreateAsnDto) {
     const receipt = await this.findReceiptEntity(id);
 
-    if (dto.supplierId) {
-      const supplier = await this.supplierRepo.findOneBy({ id: dto.supplierId });
+    const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
+    if (supplierId) {
+      const supplier = await this.supplierRepo.findOneBy({ id: supplierId });
       if (!supplier) throw new NotFoundException('Supplier not found');
       receipt.supplier = supplier;
     }
@@ -120,14 +122,52 @@ export class InboundService {
     if (dto.description !== undefined) receipt.description = dto.description.trim() || undefined;
 
     if (dto.items) {
+      console.log('[InboundService] updatePurchaseOrder received items:', JSON.stringify(dto.items));
+      // Upsert details: update existing ones, create new ones, remove deleted ones
       const existingDetails = await this.detailRepo.find({
         where: { inboundReceipt: { id } as any },
         relations: ['inboundReceipt', 'product'],
       });
-      if (existingDetails.length) {
-        await this.detailRepo.remove(existingDetails);
+
+      const existingById = new Map<string, InboundDetail>();
+      for (const d of existingDetails) existingById.set(String(d.id), d);
+
+      const incomingIds = new Set<string>();
+
+      for (const item of dto.items) {
+        if (item.id && existingById.has(String(item.id))) {
+          // update existing detail
+          const exist = existingById.get(String(item.id));
+          if (!exist) continue;
+          const product = item.supplierProductId
+            ? await this.resolveProductFromSupplierProduct(item.supplierProductId)
+            : item.productId
+              ? await this.productRepo.findOneBy({ id: item.productId })
+              : exist.product;
+          if (!product) throw new NotFoundException('Product not found');
+
+          exist.product = product;
+          exist.warehouseCode = item.warehouseCode?.trim() || exist.warehouseCode;
+          exist.expectedQty = parseNumber(item.expectedQty ?? exist.expectedQty);
+          exist.receivedQty = Math.min(parseNumber(item.receivedQty ?? exist.receivedQty), exist.expectedQty);
+          exist.unitPrice = (parseNumber(item.unitPrice ?? parseNumber(exist.unitPrice))).toFixed(2);
+          exist.totalLineAmount = (parseNumber(exist.unitPrice) * parseNumber(exist.expectedQty)).toFixed(2);
+
+          await this.detailRepo.save(exist);
+          incomingIds.add(String(exist.id));
+        } else {
+          // create new detail
+          const detail = await this.buildDetail(receipt, item);
+          const saved = await this.detailRepo.save(detail);
+          incomingIds.add(String(saved.id));
+        }
       }
-      await this.persistDetails(id, dto.items);
+
+      // remove details not present in incoming payload
+      const toRemove = existingDetails.filter((d) => !incomingIds.has(String(d.id)));
+      if (toRemove.length) {
+        await this.detailRepo.remove(toRemove);
+      }
     }
 
     await this.recalculateTotalAmount(receipt.id);
@@ -171,7 +211,7 @@ export class InboundService {
 
   async addDetail(receiptId: string, dto: any) {
     const receipt = await this.findReceiptEntity(receiptId);
-    const detail = await this.buildDetail(receiptId, dto);
+    const detail = await this.buildDetail(receipt, dto);
     await this.detailRepo.save(detail);
     await this.recalculateTotalAmount(receipt.id);
     return this.serializeReceipt(await this.findReceiptEntity(receipt.id));
@@ -246,18 +286,18 @@ export class InboundService {
     return receipt;
   }
 
-  private async persistDetails(receiptId: string, items: PurchaseOrderItemDto[]) {
+  private async persistDetails(receipt: InboundReceipt, items: PurchaseOrderItemDto[]) {
     const savedDetails: InboundDetail[] = [];
 
     for (const item of items) {
-      const detail = await this.buildDetail(receiptId, item);
+      const detail = await this.buildDetail(receipt, item);
       savedDetails.push(await this.detailRepo.save(detail));
     }
 
     return savedDetails;
   }
 
-  private async buildDetail(receiptId: string, item: PurchaseOrderItemDto) {
+  private async buildDetail(receipt: InboundReceipt, item: PurchaseOrderItemDto) {
     const product = item.supplierProductId
       ? await this.resolveProductFromSupplierProduct(item.supplierProductId)
       : item.productId
@@ -273,7 +313,7 @@ export class InboundService {
     const receivedQty = Math.min(parseNumber(item.receivedQty), expectedQty);
 
     return this.detailRepo.create({
-      inboundReceipt: { id: receiptId } as InboundReceipt,
+      inboundReceipt: receipt,
       product,
       warehouseCode: item.warehouseCode?.trim() || undefined,
       expectedQty,

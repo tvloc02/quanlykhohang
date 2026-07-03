@@ -5,7 +5,6 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
-  ChevronRight,
   Clock3,
   FileText,
   Filter,
@@ -23,6 +22,7 @@ import InboundSectionPlaceholderPage from './InboundSectionPlaceholderPage';
 import {
   getStoredWarehouses,
   mergeStoredWarehouses,
+  normalizeWarehouseRecord,
   saveStoredWarehouses,
   type WarehouseRecord,
 } from '../../../shared/utils/warehouseAssignments';
@@ -94,9 +94,10 @@ type PurchaseOrder = {
 
 type OrderStatus = 'CREATED' | 'APPROVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
 type TimeFilter = 'this-month' | '7-days' | 'all';
-type ModalMode = 'create' | 'edit' | 'delete' | null;
+type ModalMode = 'create' | 'edit' | 'delete' | 'view' | null;
 
 type FormLine = {
+  id?: string;
   rowId: string;
   productId: string;
   warehouseCode: string;
@@ -122,6 +123,14 @@ type OrderForm = {
 type Toast = {
   type: 'success' | 'error';
   message: string;
+};
+
+type AdvancedFilters = {
+  startDate: string;
+  endDate: string;
+  supplierId: string;
+  minAmount: string;
+  maxAmount: string;
 };
 
 const API_BASE_URL = 'http://localhost:3000/api';
@@ -225,11 +234,15 @@ function getWarehouseOptionsForUser(userId: string, warehouses: WarehouseRecord[
 
 function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: PurchaseOrderUser[]) {
   if (!warehouse) return [];
-  const approvedManagerIds = new Set(warehouse.managerIds.map(String));
+  const approvedWarehouseIds = new Set([
+    ...warehouse.managerIds.map(String),
+    ...warehouse.staffIds.map(String),
+  ]);
   return users.filter(
     (user) =>
-      approvedManagerIds.has(String(user.id)) &&
-      ['admin', 'manager'].includes(getPrimaryRole(user)),
+      approvedWarehouseIds.has(String(user.id)) &&
+      Array.isArray(user.roles) &&
+      user.roles.some((role) => String(role?.name).toLowerCase() === 'manager'),
   );
 }
 
@@ -337,12 +350,26 @@ function PurchaseOrdersPageContent() {
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
   const [users, setUsers] = React.useState<PurchaseOrderUser[]>([]);
+  
+  // Filters
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<'all' | 'waiting' | 'approved' | 'partial' | 'done' | 'cancelled'>('all');
   const [timeFilter, setTimeFilter] = React.useState<TimeFilter>('this-month');
+  
+  // Advanced Filters
+  const [showAdvancedFilters, setShowAdvancedFilters] = React.useState(false);
+  const [advancedFilters, setAdvancedFilters] = React.useState<AdvancedFilters>({
+    startDate: '',
+    endDate: '',
+    supplierId: '',
+    minAmount: '',
+    maxAmount: '',
+  });
+
   const [pageSize, setPageSize] = React.useState(10);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selectedOrderDetails, setSelectedOrderDetails] = React.useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [toast, setToast] = React.useState<Toast | null>(null);
@@ -383,14 +410,14 @@ function PurchaseOrdersPageContent() {
       if (warehousesResponse && warehousesResponse.ok) {
         const warehouseData = await warehousesResponse.json();
         const normalizedWarehouses: WarehouseRecord[] = Array.isArray(warehouseData)
-          ? warehouseData.map((warehouse: any) => ({
+          ? warehouseData.map((warehouse: any) => normalizeWarehouseRecord({
               id: String(warehouse.id ?? warehouse.code ?? ''),
-              code: String(warehouse.code ?? warehouse.id ?? '').toUpperCase(),
+              code: String(warehouse.code ?? warehouse.id ?? ''),
               name: String(warehouse.name ?? warehouse.code ?? warehouse.id ?? ''),
               address: String(warehouse.address ?? ''),
               status: warehouse.status === 'inactive' ? 'inactive' : 'active',
-              managerIds: Array.isArray(warehouse.managerIds) ? warehouse.managerIds.map((id: unknown) => String(id)) : [],
-              staffIds: Array.isArray(warehouse.staffIds) ? warehouse.staffIds.map((id: unknown) => String(id)) : [],
+              managerIds: warehouse.managerIds,
+              staffIds: warehouse.staffIds,
             }))
           : [];
         const fallbackWarehouses = getStoredWarehouses();
@@ -428,29 +455,27 @@ function PurchaseOrdersPageContent() {
     loadData();
   }, [loadData]);
 
+  React.useEffect(() => {
+    const syncWarehouses = () => setWarehouses(getStoredWarehouses());
+    window.addEventListener('storage', syncWarehouses);
+    return () => window.removeEventListener('storage', syncWarehouses);
+  }, []);
+
   const selectedOrder = React.useMemo(
-    () => orders.find((order) => order.id === selectedId) || orders[0] || null,
-    [orders, selectedId],
+    () => (selectedOrderDetails?.id === selectedId ? selectedOrderDetails : orders.find((order) => order.id === selectedId)) || null,
+    [orders, selectedId, selectedOrderDetails],
   );
 
   React.useEffect(() => {
-    if (!selectedId && orders[0]) {
-      setSelectedId(orders[0].id);
-    }
-    if (selectedId && !orders.some((order) => order.id === selectedId)) {
-      setSelectedId(orders[0]?.id || null);
-    }
-  }, [orders, selectedId]);
-
-  React.useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, timeFilter]);
+  }, [search, statusFilter, timeFilter, advancedFilters]);
 
   const filteredOrders = React.useMemo(() => {
     const keyword = search.trim().toLowerCase();
     const now = new Date();
 
     return orders.filter((order) => {
+      // 1. Keyword search
       const matchesKeyword =
         !keyword ||
         order.poNumber.toLowerCase().includes(keyword) ||
@@ -458,23 +483,53 @@ function PurchaseOrdersPageContent() {
         order.description?.toLowerCase().includes(keyword) ||
         (order.details || []).some((detail) => detail.product?.name.toLowerCase().includes(keyword));
 
+      // 2. Status filter
       const matchesStatus = statusFilter === 'all' || statusToFilter(order.status) === statusFilter;
 
+      // 3. Simple Time Filter
       let matchesTime = true;
+      const orderDateObj = order.orderDate ? new Date(order.orderDate) : null;
+      
       if (timeFilter !== 'all') {
-        const orderDate = order.orderDate ? new Date(order.orderDate) : null;
-        if (!orderDate || Number.isNaN(orderDate.getTime())) {
+        if (!orderDateObj || Number.isNaN(orderDateObj.getTime())) {
           matchesTime = false;
         } else if (timeFilter === 'this-month') {
-          matchesTime = orderDate.getFullYear() === now.getFullYear() && orderDate.getMonth() === now.getMonth();
+          matchesTime = orderDateObj.getFullYear() === now.getFullYear() && orderDateObj.getMonth() === now.getMonth();
         } else if (timeFilter === '7-days') {
-          matchesTime = now.getTime() - orderDate.getTime() <= 7 * 24 * 60 * 60 * 1000;
+          matchesTime = now.getTime() - orderDateObj.getTime() <= 7 * 24 * 60 * 60 * 1000;
         }
       }
 
-      return matchesKeyword && matchesStatus && matchesTime;
+      // 4. Advanced Filters
+      let matchesAdvStartDate = true;
+      let matchesAdvEndDate = true;
+      let matchesAdvSupplier = true;
+      let matchesAdvMinAmt = true;
+      let matchesAdvMaxAmt = true;
+
+      if (advancedFilters.startDate && orderDateObj) {
+        const start = new Date(advancedFilters.startDate);
+        start.setHours(0, 0, 0, 0);
+        if (orderDateObj < start) matchesAdvStartDate = false;
+      }
+      if (advancedFilters.endDate && orderDateObj) {
+        const end = new Date(advancedFilters.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (orderDateObj > end) matchesAdvEndDate = false;
+      }
+      if (advancedFilters.supplierId) {
+        matchesAdvSupplier = order.supplier?.id === advancedFilters.supplierId;
+      }
+      if (advancedFilters.minAmount) {
+        matchesAdvMinAmt = order.totalAmount >= Number(advancedFilters.minAmount);
+      }
+      if (advancedFilters.maxAmount) {
+        matchesAdvMaxAmt = order.totalAmount <= Number(advancedFilters.maxAmount);
+      }
+
+      return matchesKeyword && matchesStatus && matchesTime && matchesAdvStartDate && matchesAdvEndDate && matchesAdvSupplier && matchesAdvMinAmt && matchesAdvMaxAmt;
     });
-  }, [orders, search, statusFilter, timeFilter]);
+  }, [orders, search, statusFilter, timeFilter, advancedFilters]);
 
   const totalItems = filteredOrders.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -490,7 +545,6 @@ function PurchaseOrdersPageContent() {
 
   const draftCount = orders.filter((order) => statusToFilter(order.status) === 'waiting').length;
   const approvedCount = orders.filter((order) => statusToFilter(order.status) === 'approved').length;
-  const partialCount = orders.filter((order) => statusToFilter(order.status) === 'partial').length;
   const completedCount = orders.filter((order) => statusToFilter(order.status) === 'done').length;
 
   const accessibleWarehouses = React.useMemo(
@@ -560,36 +614,75 @@ function PurchaseOrdersPageContent() {
     setModalMode('create');
   };
 
-  const openEdit = (order: PurchaseOrder) => {
-    setForm({
-      poNumber: order.poNumber,
-      supplierId: order.supplier?.id || suppliers[0]?.id || '',
-      orderDate: order.orderDate ? order.orderDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-      expectedDate: order.expectedDate ? order.expectedDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-      status: (order.status?.toUpperCase() as OrderStatus) || 'CREATED',
-      description: order.description || '',
-      items:
-        order.details?.length
-          ? order.details.map((detail) => ({
-              rowId: `${detail.id}-${Date.now()}`,
-              productId: detail.product?.id || '',
-              warehouseCode: detail.warehouseCode || 'KHO-NVL',
-              expectedQty: String(detail.expectedQty || 0),
-              receivedQty: String(detail.receivedQty || 0),
-              unitPrice: String(detail.unitPrice || 0),
-            }))
-          : [makeRow((order as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
-      creatorName: (order as any).creatorName || '',
-      creatorPhone: (order as any).creatorPhone || '',
-      warehouseCode: (order as any).warehouseCode || accessibleWarehouses[0]?.code || '',
-      approverId: (order as any).approverId || '',
-    });
+  
+
+  const openEdit = async (order: PurchaseOrder) => {
     setSelectedId(order.id);
+    setSelectedOrderDetails(null);
     setModalMode('edit');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không tải được chi tiết đơn mua hàng');
+      }
+      const full = (await response.json()) as PurchaseOrder;
+      setSelectedOrderDetails(full);
+
+      setForm({
+        poNumber: full.poNumber,
+        supplierId: full.supplier?.id || suppliers[0]?.id || '',
+        orderDate: full.orderDate ? full.orderDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        expectedDate: full.expectedDate ? full.expectedDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
+        description: full.description || '',
+        items:
+          full.details?.length
+            ? full.details.map((detail) => ({
+                id: detail.id,
+                rowId: `${detail.id}-${Date.now()}`,
+                productId: detail.product?.id || '',
+                warehouseCode: detail.warehouseCode || 'KHO-NVL',
+                expectedQty: String(detail.expectedQty || 0),
+                receivedQty: String(detail.receivedQty || 0),
+                unitPrice: String(detail.unitPrice || 0),
+              }))
+            : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
+        creatorName: (full as any).creatorName || '',
+        creatorPhone: (full as any).creatorPhone || '',
+        warehouseCode: (full as any).warehouseCode || accessibleWarehouses[0]?.code || '',
+        approverId: (full as any).approverId || '',
+      });
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tải chi tiết đơn hàng' });
+    }
+  };
+  const openView = async (order: PurchaseOrder) => {
+    setSelectedId(order.id);
+    setSelectedOrderDetails(null);
+    setModalMode('view');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        headers: authHeaders(),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không tải được chi tiết đơn mua hàng');
+      }
+      setSelectedOrderDetails((await response.json()) as PurchaseOrder);
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tải chi tiết đơn hàng' });
+    }
   };
 
   const closeModal = () => {
     setModalMode(null);
+    setSelectedOrderDetails(null);
     setDeleteTarget(null);
     setSaving(false);
   };
@@ -598,6 +691,7 @@ function PurchaseOrdersPageContent() {
     const items = form.items
       .filter((item) => item.productId && Number(item.expectedQty) > 0)
       .map((item) => ({
+        id: item.id,
         productId: item.productId,
         warehouseCode: item.warehouseCode.trim() || undefined,
         expectedQty: Number(item.expectedQty || 0),
@@ -605,7 +699,7 @@ function PurchaseOrdersPageContent() {
         unitPrice: Number(item.unitPrice || 0),
       }));
 
-    return {
+    const payload: any = {
       poNumber: form.poNumber.trim() || undefined,
       supplierId: form.supplierId,
       orderDate: form.orderDate,
@@ -616,8 +710,16 @@ function PurchaseOrdersPageContent() {
       creatorPhone: form.creatorPhone || undefined,
       warehouseCode: form.warehouseCode || undefined,
       approverId: form.approverId || undefined,
-      items,
     };
+
+    // For create, always include items. For edit, include items only when there are valid lines to avoid wiping existing lines unintentionally.
+    if (modalMode === 'edit') {
+      if (items.length) payload.items = items;
+    } else {
+      payload.items = items;
+    }
+
+    return payload;
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -650,7 +752,7 @@ function PurchaseOrdersPageContent() {
     }
 
     const payload = buildPayload();
-    if (!payload.items.length) {
+    if (!payload.items || !payload.items.length) {
       setToast({ type: 'error', message: 'Mỗi đơn mua hàng cần ít nhất một mặt hàng hợp lệ.' });
       return;
     }
@@ -840,6 +942,19 @@ function PurchaseOrdersPageContent() {
     }));
   };
 
+  const resetFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+    setTimeFilter('this-month');
+    setAdvancedFilters({
+      startDate: '',
+      endDate: '',
+      supplierId: '',
+      minAmount: '',
+      maxAmount: '',
+    });
+  }
+
   React.useEffect(() => {
     if (modalMode === 'create' && form.supplierId && form.items.length === 1 && !form.items[0].productId && supplierProducts[0]?.product?.id) {
       setForm((current) => ({
@@ -856,7 +971,7 @@ function PurchaseOrdersPageContent() {
   }, [form.items, form.supplierId, modalMode, supplierProducts]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {toast && (
         <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
           {toast.type === 'error' ? <XCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
@@ -881,40 +996,38 @@ function PurchaseOrdersPageContent() {
         </button>
       </div>
 
+      {/* TỔNG QUAN 4 THẺ MÀU CYAN ĐẬM */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-black uppercase text-slate-500">Tổng PO</p>
-          <p className="mt-2 text-3xl font-black text-slate-900">{orders.length}</p>
+        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
+          <p className="text-lg font-bold text-white uppercase tracking-wide">{orders.length} Tổng PO</p>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-          <p className="text-xs font-black uppercase text-amber-600">Chờ duyệt</p>
-          <p className="mt-2 text-3xl font-black text-amber-700">{draftCount}</p>
+        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
+          <p className="text-lg font-bold text-white uppercase tracking-wide">{draftCount} Chờ duyệt</p>
         </div>
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
-          <p className="text-xs font-black uppercase text-blue-600">Đã duyệt</p>
-          <p className="mt-2 text-3xl font-black text-blue-700">{approvedCount}</p>
+        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
+          <p className="text-lg font-bold text-white uppercase tracking-wide">{approvedCount} Đã duyệt</p>
         </div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
-          <p className="text-xs font-black uppercase text-emerald-600">Hoàn thành</p>
-          <p className="mt-2 text-3xl font-black text-emerald-700">{completedCount}</p>
+        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
+          <p className="text-lg font-bold text-white uppercase tracking-wide">{completedCount} Hoàn thành</p>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_0.9fr_0.9fr_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-              placeholder="Tìm theo số đơn, nhà cung cấp, diễn giải, mặt hàng..."
-            />
-          </div>
+      {/* THANH TÌM KIẾM & LỌC (Các ô tách rời) */}
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            placeholder="Tìm theo số đơn, nhà cung cấp, diễn giải, mặt hàng..."
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={timeFilter}
             onChange={(event) => setTimeFilter(event.target.value as TimeFilter)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           >
             <option value="this-month">Thời gian: Tháng này</option>
             <option value="7-days">Thời gian: 7 ngày gần đây</option>
@@ -923,7 +1036,7 @@ function PurchaseOrdersPageContent() {
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           >
             <option value="all">Tình trạng: Tất cả</option>
             <option value="waiting">Tình trạng: Chờ duyệt</option>
@@ -932,43 +1045,88 @@ function PurchaseOrdersPageContent() {
             <option value="done">Tình trạng: Hoàn thành</option>
             <option value="cancelled">Tình trạng: Đã hủy</option>
           </select>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setSearch('');
-                setStatusFilter('all');
-                setTimeFilter('this-month');
-              }}
-              className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              title="Đặt lại bộ lọc"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              title="Cài đặt"
-            >
-              <Filter className="h-4 w-4" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 shadow-sm"
+            title="Đặt lại bộ lọc"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 transition shadow-sm ${showAdvancedFilters ? 'border-cyan-500 bg-cyan-50 text-cyan-600' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}
+            title="Tìm kiếm chuyên sâu"
+          >
+            <Filter className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
+      {/* TÌM KIẾM CHUYÊN SÂU */}
+      {showAdvancedFilters && (
+        <div className="grid grid-cols-1 gap-4 rounded-xl border border-cyan-200 bg-cyan-50/30 p-4 shadow-sm md:grid-cols-2 lg:grid-cols-4">
+          <Input 
+            label="Ngày bắt đầu" 
+            type="date" 
+            value={advancedFilters.startDate} 
+            onChange={(value) => setAdvancedFilters(cur => ({ ...cur, startDate: value }))} 
+          />
+          <Input 
+            label="Ngày kết thúc" 
+            type="date" 
+            value={advancedFilters.endDate} 
+            onChange={(value) => setAdvancedFilters(cur => ({ ...cur, endDate: value }))} 
+          />
+          <div>
+            <label className="mb-2 block text-sm font-bold text-slate-700">Nhà cung cấp</label>
+            <select
+              value={advancedFilters.supplierId}
+              onChange={(e) => setAdvancedFilters(cur => ({ ...cur, supplierId: e.target.value }))}
+              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            >
+              <option value="">Tất cả nhà cung cấp</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input 
+                label="Tổng tiền từ" 
+                type="number" 
+                value={advancedFilters.minAmount} 
+                onChange={(value) => setAdvancedFilters(cur => ({ ...cur, minAmount: value }))} 
+                placeholder="VD: 100000"
+              />
+            </div>
+            <div className="flex-1">
+              <Input 
+                label="Tổng tiền đến" 
+                type="number" 
+                value={advancedFilters.maxAmount} 
+                onChange={(value) => setAdvancedFilters(cur => ({ ...cur, maxAmount: value }))} 
+                placeholder="VD: 5000000"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BẢNG DỮ LIỆU CHÍNH */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1180px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">#</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Số đơn hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày đơn hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Diễn giải</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tổng tiền</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tình trạng</th>
-                <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Số đơn hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Ngày đơn hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Nhà cung cấp</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Diễn giải</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Tổng tiền</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Tình trạng</th>
+                <th className="sticky right-0 w-40 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -990,60 +1148,51 @@ function PurchaseOrdersPageContent() {
                 paginatedOrders.map((order, index) => (
                   <tr
                     key={order.id}
-                    onClick={() => setSelectedId(order.id)}
-                    className={`group cursor-pointer border-b border-slate-200 transition hover:bg-cyan-50/50 ${selectedOrder?.id === order.id ? 'bg-blue-50/50' : ''}`}
+                    className="group border-b border-slate-200 transition hover:bg-slate-50"
                   >
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-600">{startIndex + index}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-sm font-black text-blue-600">{order.poNumber}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
-                      <span className="inline-flex items-center gap-2">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{startIndex + index}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{order.poNumber}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">
+                      <span className="inline-flex items-center gap-1">
                         <CalendarDays className="h-4 w-4 text-slate-400" />
                         {formatDate(order.orderDate)}
                       </span>
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-sm font-semibold text-slate-700">
-                      {order.supplier?.name || '-'}
-                      <p className="mt-1 text-xs font-semibold text-slate-400">{order.supplier?.supplierCode || '-'}</p>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">
+                      {order.supplier?.name || order.supplier?.supplierCode || '-'}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-sm text-slate-600">{order.description || '-'}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black text-slate-900">{formatMoney(order.totalAmount)}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{order.description || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{formatMoney(order.totalAmount)}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(order.status)}`}>
                         {statusLabel(order.status)}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-slate-50">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setSelectedId(order.id);
-                          }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          title="Xem"
+                          onClick={() => openView(order)}
+                          className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2 text-xs font-semibold text-cyan-700 transition-colors hover:bg-cyan-100"
                         >
-                          <ArrowUpRight className="h-4 w-4" />
+                          <ArrowUpRight className="h-3 w-3" />
+                          Xem
                         </button>
                         <button
                           type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openEdit(order);
-                          }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          onClick={() => openEdit(order)}
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
                           title="Sửa"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
+                          onClick={() => {
                             setDeleteTarget(order);
                             setModalMode('delete');
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition-colors hover:bg-red-100"
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100"
                           title="Xóa"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -1098,104 +1247,108 @@ function PurchaseOrdersPageContent() {
         </div>
       </div>
 
-      {selectedOrder && selectedOrderMetrics && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-2xl font-black text-slate-900">Đơn mua hàng {selectedOrder.poNumber}</p>
-              <p className="mt-1 text-sm font-medium text-slate-500">{selectedOrder.supplier?.name || '-'} · {formatDate(selectedOrder.orderDate)}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-lg border px-3 py-1 text-sm font-bold ${statusClass(selectedOrder.status)}`}>{statusLabel(selectedOrder.status)}</span>
-              <button type="button" onClick={() => setSelectedId(null)} className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" title="Đóng chi tiết">
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <Field label="Mã đơn hàng" value={selectedOrder.poNumber} />
-                <Field label="Nhà cung cấp" value={selectedOrder.supplier?.name || '-'} />
-                <Field label="Ngày đơn hàng" value={formatDate(selectedOrder.orderDate)} />
-                <Field label="Ngày giao hàng" value={formatDate(selectedOrder.expectedDate)} />
-                <Field label="Diễn giải" value={selectedOrder.description || '-'} />
-                <Field label="Tổng tiền" value={formatMoney(selectedOrder.totalAmount)} />
+      {/* POPUP XEM CHI TIẾT ĐƠN HÀNG */}
+      {modalMode === 'view' && selectedOrder && selectedOrderMetrics && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col">
+            <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 lg:flex-row lg:items-start lg:justify-between bg-slate-50">
+              <div>
+                <p className="text-2xl font-black text-slate-900">Chi tiết đơn hàng {selectedOrder.poNumber}</p>
+                <p className="mt-1 text-sm font-medium text-slate-500">{selectedOrder.supplier?.name || '-'} · {formatDate(selectedOrder.orderDate)}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${statusClass(selectedOrder.status)}`}>{statusLabel(selectedOrder.status)}</span>
+                <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 bg-white border border-slate-200 transition hover:bg-slate-100 hover:text-slate-700" title="Đóng">
+                  <X className="h-5 w-5" />
+                </button>
               </div>
             </div>
 
-            <div className="p-5">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center gap-2">
-                  <Clock3 className="h-4 w-4 text-cyan-600" />
-                  <p className="text-sm font-black uppercase text-slate-700">Tổng quan</p>
+            <div className="overflow-y-auto flex-1 p-6">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] mb-6">
+                <div className="rounded-xl border border-slate-200 bg-white p-5">
+                  <h4 className="mb-4 text-sm font-bold uppercase text-slate-500">Thông tin chung</h4>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <Field label="Mã đơn hàng" value={selectedOrder.poNumber} />
+                    <Field label="Nhà cung cấp" value={selectedOrder.supplier?.name || selectedOrder.supplier?.supplierCode || '-'} />
+                    <Field label="Ngày đơn hàng" value={formatDate(selectedOrder.orderDate)} />
+                    <Field label="Ngày giao hàng" value={formatDate(selectedOrder.expectedDate)} />
+                    <Field label="Diễn giải" value={selectedOrder.description || '-'} />
+                    <Field label="Tổng tiền" value={formatMoney(selectedOrder.totalAmount)} />
+                  </div>
                 </div>
-                <div className="mt-4 space-y-3">
-                  <SummaryRow label="Số dòng hàng" value={`${selectedOrderMetrics.lines}`} />
-                  <SummaryRow label="SL yêu cầu" value={`${selectedOrderMetrics.ordered}`} />
-                  <SummaryRow label="SL đã nhận" value={`${selectedOrderMetrics.received}`} />
-                  <SummaryRow label="Tổng tiền" value={formatMoney(selectedOrder.totalAmount)} />
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Clock3 className="h-5 w-5 text-cyan-600" />
+                    <p className="text-sm font-bold uppercase text-slate-700">Tổng quan số lượng</p>
+                  </div>
+                  <div className="space-y-3">
+                    <SummaryRow label="Số dòng hàng" value={`${selectedOrderMetrics.lines}`} />
+                    <SummaryRow label="SL yêu cầu" value={`${selectedOrderMetrics.ordered}`} />
+                    <SummaryRow label="SL đã nhận" value={`${selectedOrderMetrics.received}`} />
+                    <SummaryRow label="Tổng tiền" value={formatMoney(selectedOrder.totalAmount)} />
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <div className="border-t border-slate-200 px-5 py-4">
-            <div className="mb-3 flex items-center gap-2">
-              <FileText className="h-5 w-5 text-cyan-600" />
-              <h3 className="text-lg font-black text-slate-900">Hàng hóa</h3>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-slate-200">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] border-collapse bg-white">
-                  <thead className="bg-slate-50">
-                    <tr className="border-b border-slate-200">
-                      <th className="w-14 border-x border-slate-200 px-3 py-3 text-center text-sm font-black uppercase text-slate-700">#</th>
-                      <th className="border-x border-slate-200 px-3 py-3 text-left text-sm font-black uppercase text-slate-700">Mã hàng</th>
-                      <th className="border-x border-slate-200 px-3 py-3 text-left text-sm font-black uppercase text-slate-700">Tên hàng</th>
-                      <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-black uppercase text-slate-700">Kho</th>
-                      <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-black uppercase text-slate-700">ĐVT</th>
-                      <th className="border-x border-slate-200 px-3 py-3 text-right text-sm font-black uppercase text-slate-700">SL yêu cầu</th>
-                      <th className="border-x border-slate-200 px-3 py-3 text-right text-sm font-black uppercase text-slate-700">SL đã nhận</th>
-                      <th className="border-x border-slate-200 px-3 py-3 text-right text-sm font-black uppercase text-slate-700">Đơn giá</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(selectedOrder.details || []).length ? (
-                      (selectedOrder.details || []).map((detail, index) => (
-                        <tr key={detail.id} className="border-b border-slate-200 transition hover:bg-cyan-50/40">
-                          <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">{index + 1}</td>
-                          <td className="border-x border-slate-200 px-3 py-3 text-sm font-bold text-slate-800">{detail.product?.internalSku || '-'}</td>
-                          <td className="border-x border-slate-200 px-3 py-3 text-sm font-semibold text-slate-700">{detail.product?.name || '-'}</td>
-                          <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.warehouseCode || '-'}</td>
-                          <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">{detail.product?.unit || '-'}</td>
-                          <td className="border-x border-slate-200 px-3 py-3 text-right text-sm font-black text-slate-900">{detail.expectedQty}</td>
-                          <td className="border-x border-slate-200 px-3 py-3 text-right text-sm font-black text-slate-900">{detail.receivedQty}</td>
-                          <td className="border-x border-slate-200 px-3 py-3 text-right text-sm font-black text-slate-900">{formatMoney(detail.unitPrice)}</td>
+              <div>
+                <div className="mb-3 flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-cyan-600" />
+                  <h3 className="text-lg font-black text-slate-900">Danh sách Hàng hóa</h3>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-slate-200">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[980px] border-collapse bg-white">
+                      <thead className="bg-slate-50">
+                        <tr className="border-b border-slate-200">
+                          <th className="w-14 border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">STT</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Mã hàng</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Tên hàng</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Kho</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">ĐVT</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL yêu cầu</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL đã nhận</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Đơn giá</th>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={8} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
-                          Đơn hàng này chưa có dòng hàng nào.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {(selectedOrder.details || []).length ? (
+                          (selectedOrder.details || []).map((detail, index) => (
+                            <tr key={detail.id} className="border-b border-slate-200 transition hover:bg-slate-50">
+                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
+                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.internalSku || '-'}</td>
+                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.name || '-'}</td>
+                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.warehouseCode || '-'}</td>
+                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.unit || '-'}</td>
+                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.expectedQty}</td>
+                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.receivedQty}</td>
+                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{formatMoney(detail.unitPrice)}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+                              Đơn hàng này chưa có dòng hàng nào.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => approveOrder(selectedOrder)} disabled={saving} className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60">
                 Lập lệnh nhập kho
               </button>
-              <button type="button" onClick={() => openReceive(selectedOrder)} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-5 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-60">
+              <button type="button" onClick={() => { closeModal(); openReceive(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-5 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-60">
                 <Truck className="h-4 w-4" />
                 Nhận hàng
               </button>
-              <button type="button" onClick={() => completeOrder(selectedOrder)} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
+              <button type="button" onClick={() => { closeModal(); completeOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
                 <CheckCircle2 className="h-4 w-4" />
                 Hoàn thành
               </button>
@@ -1204,7 +1357,8 @@ function PurchaseOrdersPageContent() {
         </div>
       )}
 
-      {modalMode && (
+      {/* POPUP TẠO / SỬA */}
+      {(modalMode === 'create' || modalMode === 'edit') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
           <form onSubmit={handleSubmit} className="max-h-[92vh] w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4">
@@ -1344,13 +1498,13 @@ function PurchaseOrdersPageContent() {
                     <table className="w-full min-w-[1100px] bg-white">
                       <thead className="bg-slate-50">
                         <tr>
-                          <th className="w-16 px-3 py-3 text-center text-xs font-black uppercase text-slate-700">STT</th>
-                          <th className="px-3 py-3 text-center text-xs font-black uppercase text-slate-700">Mặt hàng</th>
-                          <th className="px-3 py-3 text-center text-xs font-black uppercase text-slate-700">SL yêu cầu</th>
-                          <th className="px-3 py-3 text-center text-xs font-black uppercase text-slate-700">SL đã nhận</th>
-                          <th className="px-3 py-3 text-center text-xs font-black uppercase text-slate-700">Đơn giá</th>
-                          <th className="px-3 py-3 text-center text-xs font-black uppercase text-slate-700">Thành tiền</th>
-                          <th className="px-3 py-3 text-center text-xs font-black uppercase text-slate-700">Xóa</th>
+                          <th className="w-16 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">STT</th>
+                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Mặt hàng</th>
+                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL yêu cầu</th>
+                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL đã nhận</th>
+                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Đơn giá</th>
+                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Thành tiền</th>
+                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Xóa</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 bg-white">
@@ -1360,7 +1514,7 @@ function PurchaseOrdersPageContent() {
                           const unitPrice = parseMoney(item.unitPrice);
                           return (
                             <tr key={item.rowId}>
-                              <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">{index + 1}</td>
+                              <td className="px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
                               <td className="px-3 py-3">
                                 <select
                                   value={item.productId}
@@ -1381,7 +1535,7 @@ function PurchaseOrdersPageContent() {
                                   min={0}
                                   value={item.expectedQty}
                                   onChange={(event) => updateRow(item.rowId, { expectedQty: event.target.value })}
-                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-right text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
                                 />
                               </td>
                               <td className="px-3 py-3">
@@ -1390,7 +1544,7 @@ function PurchaseOrdersPageContent() {
                                   min={0}
                                   value={item.receivedQty}
                                   onChange={(event) => updateRow(item.rowId, { receivedQty: event.target.value })}
-                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-right text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
                                 />
                               </td>
                               <td className="px-3 py-3">
@@ -1399,10 +1553,10 @@ function PurchaseOrdersPageContent() {
                                   min={0}
                                   value={item.unitPrice}
                                   onChange={(event) => updateRow(item.rowId, { unitPrice: event.target.value })}
-                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-right text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
                                 />
                               </td>
-                              <td className="px-3 py-3 text-right text-sm font-black text-slate-900">{formatMoney(expectedQty * unitPrice)}</td>
+                              <td className="px-3 py-3 text-center text-sm text-slate-600">{formatMoney(expectedQty * unitPrice)}</td>
                               <td className="px-3 py-3 text-center">
                                 <button type="button" onClick={() => removeRow(item.rowId)} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100">
                                   <Trash2 className="h-4 w-4" />
@@ -1433,6 +1587,7 @@ function PurchaseOrdersPageContent() {
         </div>
       )}
 
+      {/* POPUP NHẬN HÀNG */}
       {receiveOpen && selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
@@ -1459,7 +1614,7 @@ function PurchaseOrdersPageContent() {
                       min={0}
                       value={row.qty}
                       onChange={(event) => setReceiveRows((current) => current.map((item) => (item.detailId === row.detailId ? { ...item, qty: event.target.value } : item)))}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 text-right text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
                     />
                   </div>
                 ))}
@@ -1478,6 +1633,7 @@ function PurchaseOrdersPageContent() {
         </div>
       )}
 
+      {/* POPUP XÓA */}
       {modalMode === 'delete' && deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
