@@ -389,10 +389,12 @@ export default function MainLayout({ children }: LayoutProps) {
             style={{ height: '80px' }}
         >
           {/* Left Section: Toggle & Clock */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-shrink-0">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2.5 bg-white dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 hover:bg-cyan-50 dark:hover:bg-slate-800 rounded-xl transition-all group lg:hidden"
+              title={sidebarOpen ? "Đóng menu" : "Mở menu"}
+              aria-label={sidebarOpen ? "Đóng menu" : "Mở menu"}
+              className="h-[3.5rem] w-[3.5rem] flex items-center justify-center bg-white dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 hover:bg-cyan-50 dark:hover:bg-slate-800 rounded-xl transition-all group lg:hidden"
             >
               {sidebarOpen ? (
                   <X size={20} className="text-gray-600 dark:text-slate-300 group-hover:text-cyan-600" />
@@ -401,7 +403,7 @@ export default function MainLayout({ children }: LayoutProps) {
               )}
             </button>
 
-            <div className="hidden sm:flex items-center gap-3 rounded-xl border-2 border-gray-200 bg-gray-50 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-900">
+            <div className="hidden sm:flex items-center gap-3 rounded-xl border-2 border-gray-200 bg-gray-50 px-4 h-[3.5rem] dark:border-slate-700 dark:bg-slate-900">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-slate-800">
                 <Clock className="h-5 w-5" />
               </div>
@@ -412,9 +414,9 @@ export default function MainLayout({ children }: LayoutProps) {
             </div>
           </div>
 
-          {/* Center Section: Search Bar */}
-          <div className="pointer-events-none absolute left-1/2 hidden w-[420px] -translate-x-1/2 md:block lg:w-[560px] xl:w-[680px]">
-            <div className="pointer-events-auto flex items-center rounded-xl border-2 border-gray-200 bg-gray-50 px-5 py-2.5 transition-all focus-within:border-cyan-500 focus-within:ring-4 focus-within:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-900">
+          {/* Center Section: Search Bar (Flex Flow with dynamic sizing, preventing overlaps) */}
+          <div className="hidden md:flex flex-1 justify-center max-w-md lg:max-w-lg xl:max-w-2xl mx-auto px-4">
+            <div className="w-full flex items-center rounded-xl border-2 border-gray-200 bg-gray-50 px-5 h-[3.5rem] transition-all focus-within:border-cyan-500 focus-within:ring-4 focus-within:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-900">
               <Search size={18} className="mr-3 text-gray-400 dark:text-slate-500" />
               <input
                 type="text"
@@ -425,7 +427,7 @@ export default function MainLayout({ children }: LayoutProps) {
           </div>
 
           {/* Right Section: Cụm Dropdown */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 flex-shrink-0">
 
             {/* Notifications Dropdown */}
             <div className="relative dropdown-container">
@@ -436,7 +438,9 @@ export default function MainLayout({ children }: LayoutProps) {
                     setUserDropdownOpen(false);
                     setNotificationDropdownOpen(!notificationDropdownOpen);
                   }}
-                  className="relative p-3 rounded-xl bg-white dark:bg-slate-900 hover:bg-cyan-50 dark:hover:bg-slate-800 transition-colors border-2 border-gray-200 dark:border-slate-700 h-[3.1rem] flex items-center justify-center"
+                  title="Thông báo"
+                  aria-label="Thông báo"
+                  className="relative h-[3.5rem] w-[3.5rem] rounded-xl bg-white dark:bg-slate-900 hover:bg-cyan-50 dark:hover:bg-slate-800 transition-colors border-2 border-gray-200 dark:border-slate-700 flex items-center justify-center"
                 >
                   <Bell className="h-5 w-5 text-gray-600 dark:text-slate-300" />
                   {unreadCount > 0 && (

@@ -80,8 +80,12 @@ npm run dev
 ### 6. Login
 
 Mở http://localhost:5173 và đăng nhập:
-- **Email:** admin@example.com
-- **Password:** Admin@123
+- **Tài khoản Quản trị viên (Admin):**
+  - **Email:** admin@example.com
+  - **Mật khẩu:** Admin@123
+- **Tài khoản Khách hàng (Customer Portal):**
+  - **Email:** customer@example.com
+  - **Mật khẩu:** Customer@123
 
 ---
 

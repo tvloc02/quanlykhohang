@@ -34,7 +34,12 @@ async function ensureWarehouseTable(dataSource: DataSource) {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   await ensureWarehouseTable(app.get(DataSource));
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      xXssProtection: false,
+    }),
+  );
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }));

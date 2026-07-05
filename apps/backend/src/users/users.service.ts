@@ -17,11 +17,7 @@ export class UsersService {
   ) {}
 
   async findAll(): Promise<User[]> {
-    // Exclude users that have the 'supplier' or 'customer' role (portal accounts)
-    const allUsers = await this.repo.find({ relations: ['roles'] });
-    return allUsers.filter(
-      (user) => !user.roles?.some((role) => role.name === 'supplier' || role.name === 'customer'),
-    );
+    return this.repo.find({ relations: ['roles'] });
   }
 
   async create(createUserDto: CreateUserDto, actor?: { id?: string; email?: string }): Promise<User> {
@@ -40,6 +36,7 @@ export class UsersService {
       fullName: createUserDto.fullName,
       phone: createUserDto.phone,
       roles: [role],
+      status: createUserDto.status || 'active',
     });
     const savedUser = await this.repo.save(user);
     await this.auditLogService.append({
@@ -73,6 +70,9 @@ export class UsersService {
     if (actor?.id === id && updateUserDto.role) {
       throw new ForbiddenException('You cannot change your own role');
     }
+    if (actor?.id === id && updateUserDto.status === 'inactive') {
+      throw new ForbiddenException('You cannot deactivate your own account');
+    }
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
     }
@@ -86,6 +86,10 @@ export class UsersService {
 
     if (updateUserDto.phone !== undefined) {
       user.phone = updateUserDto.phone;
+    }
+
+    if (updateUserDto.status !== undefined) {
+      user.status = updateUserDto.status;
     }
 
     if (updateUserDto.role) {
@@ -141,5 +145,26 @@ export class UsersService {
       metadata: { email: user.email },
     });
     return { deleted: true };
+  }
+
+  async updateProfile(userId: string, dto: any): Promise<User> {
+    const user = await this.findOne(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (dto.fullName !== undefined) user.fullName = dto.fullName;
+    if (dto.phone !== undefined) user.phone = dto.phone;
+    if (dto.department !== undefined) user.department = dto.department;
+    if (dto.location !== undefined) user.location = dto.location;
+    return this.repo.save(user);
+  }
+
+  async changePassword(userId: string, currentPass: string, newPass: string): Promise<void> {
+    const user = await this.repo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    const isPasswordValid = await bcrypt.compare(currentPass, user.password);
+    if (!isPasswordValid) {
+      throw new BadRequestException('Mật khẩu hiện tại không chính xác');
+    }
+    user.password = await bcrypt.hash(newPass, 10);
+    await this.repo.save(user);
   }
 }
