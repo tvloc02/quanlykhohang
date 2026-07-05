@@ -64,14 +64,23 @@ export default function Inventory() {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/inventory`, { headers: authHeaders() });
+      const response = await fetch(`${API_BASE_URL}/inventory/balances`, { headers: authHeaders() });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         throw new Error(data?.message || 'Không tải được dữ liệu tồn kho');
       }
 
-      const data = (await response.json()) as StockItem[];
-      setStocks(data);
+      const rawData = await response.json();
+      const mappedData: StockItem[] = (rawData || []).map((item: any) => ({
+        id: item.id,
+        sku: item.product?.internalSku || '',
+        name: item.product?.name || '',
+        location: item.locationCode || '',
+        physical: Number(item.totalPhysical) || 0,
+        allocated: Number(item.allocated) || 0,
+        available: Number(item.available) || 0,
+      }));
+      setStocks(mappedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lỗi hệ thống khi tải dữ liệu');
     } finally {

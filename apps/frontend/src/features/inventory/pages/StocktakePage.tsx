@@ -586,13 +586,7 @@ function CreateStocktakeModal({
       .then((r) => r.json())
       .then((data) => setWarehouses(Array.isArray(data) ? data : data?.data || []))
       .catch(() => {});
-    // Try load branches if available
-    fetch(`${API_BASE}/branches`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setWarehouses((prev) => prev.concat(data));
-      })
-      .catch(() => {});
+      
       
     fetch(`${API_BASE}/users`, { headers: authHeaders() })
       .then((r) => r.json())

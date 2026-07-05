@@ -188,7 +188,7 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
               <div key={item.path}>
                 <div
                   onClick={() => toggleExpanded(item.path)}
-                  className={`w-full flex items-center px-4 py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group cursor-pointer ${
+                  className={`w-full flex items-center ${isOpen ? 'px-4' : 'justify-center'} py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group cursor-pointer ${
                     isActive || isChildActive
                       ? 'text-white'
                       : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
@@ -255,7 +255,7 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
             <Link
               key={item.path}
               to={item.path}
-              className={`w-full flex items-center px-4 py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group ${
+              className={`w-full flex items-center ${isOpen ? 'px-4' : 'justify-center'} py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group ${
                 isActive
                   ? 'text-white'
                   : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'

@@ -58,7 +58,7 @@ function formatNumber(value: number) {
 function getUserLabel() {
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    return user.email || 'Quản trị viên';
+    return user.fullName || user.email || 'Quản trị viên';
   } catch {
     return 'Quản trị viên';
   }
