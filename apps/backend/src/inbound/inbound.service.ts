@@ -63,11 +63,14 @@ export class InboundService {
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
   ) {}
 
-  async createReceipt(dto: CreateAsnDto) {
-    return this.createPurchaseOrder(dto);
+  async createReceipt(dto: CreateAsnDto, user?: any) {
+    return this.createPurchaseOrder(dto, user);
   }
 
-  async createPurchaseOrder(dto: CreateAsnDto) {
+  async createPurchaseOrder(dto: CreateAsnDto, user?: any) {
+    if (user?.role === 'supplier' && user?.supplierId) {
+      dto.supplierId = user.supplierId;
+    }
     const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
     const supplier = supplierId ? await this.supplierRepo.findOneBy({ id: supplierId }) : null;
     if (supplierId && !supplier) {
@@ -90,15 +93,19 @@ export class InboundService {
     savedReceipt.totalAmount = details.reduce((sum, detail) => sum + parseNumber(detail.totalLineAmount), 0).toFixed(2);
     await this.receiptRepo.save(savedReceipt);
 
-    return this.serializeReceipt(await this.findReceiptEntity(savedReceipt.id));
+    return this.serializeReceipt(await this.findReceiptEntity(savedReceipt.id, user));
   }
 
-  async updateReceipt(id: string, dto: CreateAsnDto) {
-    return this.updatePurchaseOrder(id, dto);
+  async updateReceipt(id: string, dto: CreateAsnDto, user?: any) {
+    return this.updatePurchaseOrder(id, dto, user);
   }
 
-  async updatePurchaseOrder(id: string, dto: CreateAsnDto) {
-    const receipt = await this.findReceiptEntity(id);
+  async updatePurchaseOrder(id: string, dto: CreateAsnDto, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
+
+    if (user?.role === 'supplier' && user?.supplierId) {
+      dto.supplierId = user.supplierId;
+    }
 
     const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
     if (supplierId) {
@@ -175,8 +182,8 @@ export class InboundService {
     return this.serializeReceipt(await this.findReceiptEntity(receipt.id));
   }
 
-  async removeReceipt(id: string) {
-    const receipt = await this.findReceiptEntity(id);
+  async removeReceipt(id: string, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
     const details = await this.detailRepo.find({
       where: { inboundReceipt: { id } as any },
       relations: ['inboundReceipt', 'product'],
@@ -188,15 +195,15 @@ export class InboundService {
     return { deleted: true };
   }
 
-  async approveReceipt(id: string) {
-    const receipt = await this.findReceiptEntity(id);
+  async approveReceipt(id: string, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
     receipt.status = 'APPROVED';
     await this.receiptRepo.save(receipt);
-    return this.serializeReceipt(await this.findReceiptEntity(id));
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
-  async completeReceipt(id: string) {
-    const receipt = await this.findReceiptEntity(id);
+  async completeReceipt(id: string, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
     const details = receipt.details || [];
 
     const hasMissing = details.some((detail) => parseNumber(detail.receivedQty) < parseNumber(detail.expectedQty));
@@ -206,18 +213,18 @@ export class InboundService {
 
     receipt.status = 'RECEIVED';
     await this.receiptRepo.save(receipt);
-    return this.serializeReceipt(await this.findReceiptEntity(id));
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
-  async addDetail(receiptId: string, dto: any) {
-    const receipt = await this.findReceiptEntity(receiptId);
+  async addDetail(receiptId: string, dto: any, user?: any) {
+    const receipt = await this.findReceiptEntity(receiptId, user);
     const detail = await this.buildDetail(receipt, dto);
     await this.detailRepo.save(detail);
     await this.recalculateTotalAmount(receipt.id);
-    return this.serializeReceipt(await this.findReceiptEntity(receipt.id));
+    return this.serializeReceipt(await this.findReceiptEntity(receipt.id, user));
   }
 
-  async receive(detailId: string, dto: ReceiveDto) {
+  async receive(detailId: string, dto: ReceiveDto, user?: any) {
     if (dto.items?.length) {
       const results = [];
       for (const item of dto.items) {
@@ -253,34 +260,47 @@ export class InboundService {
     return this.serializeDetail(detail);
   }
 
-  async findOne(id: string) {
-    return this.serializeReceipt(await this.findReceiptEntity(id));
+  async findOne(id: string, user?: any) {
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
-  async findAll() {
+  async findAll(user?: any) {
+    const whereClause: any = {};
+    if (user?.role === 'supplier' && user?.supplierId) {
+      whereClause.supplier = { id: user.supplierId };
+    } else if (user?.role === 'customer') {
+      return [];
+    }
+
     const receipts = await this.receiptRepo.find({
+      where: whereClause,
       relations: ['details', 'details.product', 'supplier'],
       order: { id: 'DESC' },
     });
     return receipts.map((receipt) => this.serializeReceipt(receipt));
   }
 
-  async findPurchaseOrders() {
-    return this.findAll();
+  async findPurchaseOrders(user?: any) {
+    return this.findAll(user);
   }
 
-  async findPurchaseOrder(id: string) {
-    return this.findOne(id);
+  async findPurchaseOrder(id: string, user?: any) {
+    return this.findOne(id, user);
   }
 
-  private async findReceiptEntity(id: string) {
+  private async findReceiptEntity(id: string, user?: any) {
+    const whereClause: any = { id };
+    if (user?.role === 'supplier' && user?.supplierId) {
+      whereClause.supplier = { id: user.supplierId };
+    }
+
     const receipt = await this.receiptRepo.findOne({
-      where: { id },
+      where: whereClause,
       relations: ['details', 'details.product', 'supplier'],
     });
 
     if (!receipt) {
-      throw new NotFoundException('Receipt not found');
+      throw new NotFoundException('Receipt not found or access denied');
     }
 
     return receipt;
