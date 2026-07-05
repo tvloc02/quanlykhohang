@@ -47,8 +47,9 @@ export class AuthService {
   async login(user: any) {
     if (!user) throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     const supplierId = user.supplier?.id;
+    const customerId = user.customer?.id;
     const userRole = Array.isArray(user.roles) ? user.roles[0]?.name : 'staff';
-    const payload = { sub: user.id, email: user.email, role: userRole, supplierId };
+    const payload = { sub: user.id, email: user.email, role: userRole, supplierId, customerId };
     const token = await this.jwtService.signAsync(payload);
 
     await this.auditLogService.append({
@@ -68,6 +69,7 @@ export class AuthService {
         fullName: user.fullName,
         role: user.role,
         supplierId,
+        customerId,
       },
     };
   }

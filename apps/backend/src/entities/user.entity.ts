@@ -2,6 +2,7 @@ import { Column, Entity, JoinTable, ManyToMany, OneToOne } from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { Role } from './role.entity';
 import { Supplier } from './supplier.entity';
+import { Customer } from './customer.entity';
 
 @Entity('users')
 export class User extends BaseEntity {
@@ -27,4 +28,7 @@ export class User extends BaseEntity {
 
   @OneToOne(() => Supplier, (supplier) => supplier.user)
   supplier?: Supplier;
+
+  @OneToOne(() => Customer, (customer) => customer.user)
+  customer?: Customer;
 }

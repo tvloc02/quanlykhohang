@@ -17,10 +17,10 @@ export class UsersService {
   ) {}
 
   async findAll(): Promise<User[]> {
-    // Exclude users that have the 'supplier' role (supplier portal accounts)
+    // Exclude users that have the 'supplier' or 'customer' role (portal accounts)
     const allUsers = await this.repo.find({ relations: ['roles'] });
     return allUsers.filter(
-      (user) => !user.roles?.some((role) => role.name === 'supplier'),
+      (user) => !user.roles?.some((role) => role.name === 'supplier' || role.name === 'customer'),
     );
   }
 
@@ -58,7 +58,7 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<(User & { role?: string }) | null> {
-    const user = await this.repo.findOne({ where: { email }, relations: ['roles', 'supplier'] });
+    const user = await this.repo.findOne({ where: { email }, relations: ['roles', 'supplier', 'customer'] });
     if (!user) return null;
 
     return {
