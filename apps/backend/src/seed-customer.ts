@@ -4,7 +4,7 @@ import { UsersService } from './users/users.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Customer } from './entities/customer.entity';
 import { Repository } from 'typeorm';
-
+//tao tai khoan khach hang
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
   
