@@ -42,7 +42,7 @@ async function seed(): Promise<void> {
   const warehouseRepository = dataSource.getRepository(Warehouse);
 
   const roles = await Promise.all(
-    ['admin', 'manager', 'staff', 'supplier'].map(async (name) => {
+    ['admin', 'manager', 'staff', 'supplier', 'customer'].map(async (name) => {
       let role = await roleRepository.findOne({ where: { name } });
       if (!role) {
         role = roleRepository.create({ name });

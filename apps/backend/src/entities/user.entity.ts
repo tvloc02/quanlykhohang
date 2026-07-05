@@ -18,6 +18,9 @@ export class User extends BaseEntity {
   @Column({ nullable: true })
   phone?: string;
 
+  @Column({ default: 'active' })
+  status: 'active' | 'inactive';
+
   @ManyToMany(() => Role)
   @JoinTable({
     name: 'user_roles',

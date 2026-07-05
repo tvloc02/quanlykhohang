@@ -4,4 +4,5 @@ export class UpdateUserDto {
   role?: string;
   fullName?: string;
   phone?: string;
+  status?: 'active' | 'inactive';
 }
