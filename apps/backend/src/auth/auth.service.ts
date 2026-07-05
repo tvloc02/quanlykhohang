@@ -36,6 +36,10 @@ export class AuthService {
       return null;
     }
 
+    if (user.status === 'inactive') {
+      throw new UnauthorizedException('Tài khoản đã bị vô hiệu hóa');
+    }
+
     const isPasswordValid = await bcrypt.compare(pass, user.password);
     if (user && isPasswordValid) {
       const { password, ...result } = user as any;

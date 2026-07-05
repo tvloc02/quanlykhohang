@@ -4,3 +4,4 @@ dist/
 apps/backend/.env
 .env.*
 .DS_Store
+.agents

@@ -70,6 +70,7 @@ const DEFAULT_ROLES: Role[] = [
   { id: 'role-manager', name: 'manager' },
   { id: 'role-staff', name: 'staff' },
   { id: 'role-supplier', name: 'supplier' },
+  { id: 'role-customer', name: 'customer' },
 ];
 
 function authHeaders() {
@@ -93,6 +94,7 @@ function formatRole(role: string) {
     manager: 'Quản lý',
     staff: 'Nhân viên',
     supplier: 'Nhà cung cấp',
+    customer: 'Khách hàng',
   };
 
   return roleMap[role] || role;
@@ -177,13 +179,13 @@ function buildEmptyForm(defaultRole = 'staff'): PersonnelForm {
   };
 }
 
-function buildUserForm(user: PersonnelUser, profile?: PersonnelProfile, warehouses: WarehouseRecord[] = getStoredWarehouses()): PersonnelForm {
+function buildUserForm(user: any, profile?: PersonnelProfile, warehouses: WarehouseRecord[] = getStoredWarehouses()): PersonnelForm {
   return {
     email: user.email,
     fullName: user.fullName || '',
     gender: profile?.gender || '',
     phone: profile?.phone || user.phone || '',
-    status: profile?.status || 'active',
+    status: user.status || profile?.status || 'active',
     password: '',
     role: getPrimaryRole(user),
     warehouseIds: getUserWarehouseIds(user.id, warehouses),
@@ -357,14 +359,14 @@ export default function PersonnelManagement() {
     setCurrentPage(1);
   }, [search, roleFilter, personnelStatusFilter]);
 
-  const getProfile = (user: PersonnelUser): PersonnelProfile => ({
+  const getProfile = (user: any): PersonnelProfile => ({
     gender: profiles[user.id]?.gender || '-',
     phone: profiles[user.id]?.phone || user.phone || '-',
-    status: profiles[user.id]?.status || 'active',
+    status: user.status || profiles[user.id]?.status || 'active',
   });
 
-  const activeUsers = users.filter((user) => getProfile(user).status === 'active' && getPrimaryRole(user) !== 'supplier');
-  const inactiveUsers = users.filter((user) => getProfile(user).status === 'inactive' && getPrimaryRole(user) !== 'supplier');
+  const activeUsers = users.filter((user) => getProfile(user).status === 'active');
+  const inactiveUsers = users.filter((user) => getProfile(user).status === 'inactive');
   const listedUsers = personnelStatusFilter === 'active' ? activeUsers : inactiveUsers;
   const filteredUsers = listedUsers.filter((user) => {
     const role = getPrimaryRole(user);
@@ -380,7 +382,7 @@ export default function PersonnelManagement() {
       userWarehouses.some((warehouseName) => warehouseName.toLowerCase().includes(keyword));
     const matchesRole = roleFilter === 'all' || role === roleFilter;
 
-    return matchesKeyword && matchesRole && role !== 'supplier';
+    return matchesKeyword && matchesRole;
   });
 
   // Calculate Pagination
@@ -392,7 +394,7 @@ export default function PersonnelManagement() {
 
   const roleOptions = [
     { value: 'all', label: 'Vai trò: -- Chọn tất cả --' },
-    ...roles.filter((role) => role.name !== 'supplier').map((role) => ({ value: role.name, label: formatRole(role.name) })),
+    ...roles.map((role) => ({ value: role.name, label: formatRole(role.name) })),
   ];
   const genderOptions = [
     { value: '', label: '-- Chọn --' },
@@ -404,7 +406,7 @@ export default function PersonnelManagement() {
     { value: 'active', label: 'Đang hoạt động' },
     { value: 'inactive', label: 'Không hoạt động' },
   ];
-  const formRoleOptions = roles.filter((role) => role.name !== 'supplier').map((role) => ({ value: role.name, label: formatRole(role.name) }));
+  const formRoleOptions = roles.map((role) => ({ value: role.name, label: formatRole(role.name) }));
   const selectedWarehouseNames = warehouses
     .filter((warehouse) => form.warehouseIds.includes(warehouse.id))
     .map((warehouse) => warehouse.name);
@@ -842,6 +844,7 @@ export default function PersonnelManagement() {
         fullName: form.fullName,
         phone: form.phone,
         role: form.role,
+        status: form.status,
       };
 
       if (form.password) {
