@@ -189,10 +189,12 @@ export default function Login() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
+                <label htmlFor="login-email" className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
                 <div className="relative">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
                   <input
+                    id="login-email"
+                    name="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -204,10 +206,12 @@ export default function Login() {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Mật khẩu</label>
+                <label htmlFor="login-password" className="block text-sm font-semibold text-slate-700 mb-2">Mật khẩu</label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
                   <input
+                    id="login-password"
+                    name="password"
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -219,8 +223,13 @@ export default function Login() {
               </div>
 
               <div className="flex items-center justify-between pt-2">
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                  <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500" />
+                <label htmlFor="remember-me" className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                  <input
+                    id="remember-me"
+                    name="rememberMe"
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                  />
                   Ghi nhớ đăng nhập
                 </label>
                 <a href="#" className="text-sm font-semibold text-cyan-700 hover:underline">

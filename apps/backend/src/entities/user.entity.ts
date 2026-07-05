@@ -1,4 +1,4 @@
-import { Column, Entity, JoinTable, ManyToMany, OneToOne } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinTable, ManyToMany, OneToOne } from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { Role } from './role.entity';
 import { Supplier } from './supplier.entity';
@@ -17,6 +17,18 @@ export class User extends BaseEntity {
 
   @Column({ nullable: true })
   phone?: string;
+
+  @Column({ default: 'active' })
+  status: 'active' | 'inactive';
+
+  @Column({ nullable: true })
+  department?: string;
+
+  @Column({ nullable: true })
+  location?: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
 
   @ManyToMany(() => Role)
   @JoinTable({
