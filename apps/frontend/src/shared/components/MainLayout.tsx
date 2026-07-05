@@ -392,6 +392,8 @@ export default function MainLayout({ children }: LayoutProps) {
           <div className="flex items-center gap-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              title={sidebarOpen ? "Đóng menu" : "Mở menu"}
+              aria-label={sidebarOpen ? "Đóng menu" : "Mở menu"}
               className="p-2.5 bg-white dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 hover:bg-cyan-50 dark:hover:bg-slate-800 rounded-xl transition-all group lg:hidden"
             >
               {sidebarOpen ? (
@@ -436,6 +438,8 @@ export default function MainLayout({ children }: LayoutProps) {
                     setUserDropdownOpen(false);
                     setNotificationDropdownOpen(!notificationDropdownOpen);
                   }}
+                  title="Thông báo"
+                  aria-label="Thông báo"
                   className="relative p-3 rounded-xl bg-white dark:bg-slate-900 hover:bg-cyan-50 dark:hover:bg-slate-800 transition-colors border-2 border-gray-200 dark:border-slate-700 h-[3.1rem] flex items-center justify-center"
                 >
                   <Bell className="h-5 w-5 text-gray-600 dark:text-slate-300" />
