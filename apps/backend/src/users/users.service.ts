@@ -146,4 +146,25 @@ export class UsersService {
     });
     return { deleted: true };
   }
+
+  async updateProfile(userId: string, dto: any): Promise<User> {
+    const user = await this.findOne(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (dto.fullName !== undefined) user.fullName = dto.fullName;
+    if (dto.phone !== undefined) user.phone = dto.phone;
+    if (dto.department !== undefined) user.department = dto.department;
+    if (dto.location !== undefined) user.location = dto.location;
+    return this.repo.save(user);
+  }
+
+  async changePassword(userId: string, currentPass: string, newPass: string): Promise<void> {
+    const user = await this.repo.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    const isPasswordValid = await bcrypt.compare(currentPass, user.password);
+    if (!isPasswordValid) {
+      throw new BadRequestException('Mật khẩu hiện tại không chính xác');
+    }
+    user.password = await bcrypt.hash(newPass, 10);
+    await this.repo.save(user);
+  }
 }

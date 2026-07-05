@@ -71,6 +71,40 @@ async function seed(): Promise<void> {
     await userRepository.save(adminUser);
   }
 
+  const customerRole = roles.find((role) => role.name === 'customer');
+  const existingCustomerUser = await userRepository.findOne({
+    where: { email: 'customer@example.com' },
+    relations: ['roles'],
+  });
+
+  if (!existingCustomerUser && customerRole) {
+    const password = await bcrypt.hash('Customer@123', 10);
+    const customerUser = userRepository.create({
+      email: 'customer@example.com',
+      password,
+      fullName: 'Khách hàng VIP',
+      phone: '0987654321',
+      roles: [customerRole],
+    });
+    const savedCustomerUser = await userRepository.save(customerUser);
+
+    let customerProfile = await customerRepository.findOne({ where: { customerCode: 'KH001' } });
+    if (!customerProfile) {
+      customerProfile = customerRepository.create({
+        customerCode: 'KH001',
+        name: 'Công ty Cổ phần Mua Sắm VN',
+        email: 'customer@example.com',
+        phone: '0987654321',
+        address: '123 Đường Điện Biên Phủ, Quận Bình Thạnh, TP.HCM',
+        type: 'B2B',
+        status: 'active',
+        contactPerson: 'Anh Tuấn',
+        user: savedCustomerUser,
+      });
+      await customerRepository.save(customerProfile);
+    }
+  }
+
   const defaultCategory = await categoryRepository.findOne({ where: { name: 'General' } });
   const category =
     defaultCategory ||
