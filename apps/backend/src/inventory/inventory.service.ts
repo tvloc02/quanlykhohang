@@ -40,13 +40,29 @@ export class InventoryService {
     return this.balanceRepo.save(balance);
   }
 
-  async findAll() {
-    return this.balanceRepo.find({ relations: ['product'] });
+  async findAll(user?: any) {
+    const whereClause: any = {};
+    if (user?.role === 'supplier' && user?.supplierId) {
+      whereClause.product = { supplier: { id: user.supplierId } };
+    } else if (user?.role === 'customer') {
+      return [];
+    }
+    return this.balanceRepo.find({
+      where: whereClause,
+      relations: ['product', 'product.supplier'],
+    });
   }
 
-  async findOne(id: string) {
-    const balance = await this.balanceRepo.findOne({ where: { id }, relations: ['product'] });
-    if (!balance) throw new NotFoundException('Stock balance not found');
+  async findOne(id: string, user?: any) {
+    const whereClause: any = { id };
+    if (user?.role === 'supplier' && user?.supplierId) {
+      whereClause.product = { supplier: { id: user.supplierId } };
+    }
+    const balance = await this.balanceRepo.findOne({
+      where: whereClause,
+      relations: ['product', 'product.supplier'],
+    });
+    if (!balance) throw new NotFoundException('Stock balance not found or access denied');
     return balance;
   }
 

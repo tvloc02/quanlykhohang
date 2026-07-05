@@ -1,80 +1,98 @@
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { InboundService } from './inbound.service';
 import { CreateAsnDto } from './dto/create-asn.dto';
 import { AddDetailDto } from './dto/add-detail.dto';
 import { ReceiveDto } from './dto/receive.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @Controller('inbound')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class InboundController {
   constructor(private svc: InboundService) {}
 
   @Post()
-  create(@Body() dto: CreateAsnDto) {
-    return this.svc.createReceipt(dto);
+  @Roles('admin', 'manager', 'supplier')
+  create(@Body() dto: CreateAsnDto, @Req() req: any) {
+    return this.svc.createReceipt(dto, req.user);
   }
 
   @Get('purchase-orders')
-  findPurchaseOrders() {
-    return this.svc.findPurchaseOrders();
+  @Roles('admin', 'manager', 'staff', 'supplier')
+  findPurchaseOrders(@Req() req: any) {
+    return this.svc.findPurchaseOrders(req.user);
   }
 
   @Post('purchase-orders')
-  createPurchaseOrder(@Body() dto: CreateAsnDto) {
-    return this.svc.createPurchaseOrder(dto);
+  @Roles('admin', 'manager', 'supplier')
+  createPurchaseOrder(@Body() dto: CreateAsnDto, @Req() req: any) {
+    return this.svc.createPurchaseOrder(dto, req.user);
   }
 
   @Get('purchase-orders/:id')
-  findPurchaseOrder(@Param('id') id: string) {
-    return this.svc.findPurchaseOrder(id);
+  @Roles('admin', 'manager', 'staff', 'supplier')
+  findPurchaseOrder(@Param('id') id: string, @Req() req: any) {
+    return this.svc.findPurchaseOrder(id, req.user);
   }
 
   @Put('purchase-orders/:id')
-  updatePurchaseOrder(@Param('id') id: string, @Body() dto: CreateAsnDto) {
-    return this.svc.updatePurchaseOrder(id, dto);
+  @Roles('admin', 'manager', 'supplier')
+  updatePurchaseOrder(@Param('id') id: string, @Body() dto: CreateAsnDto, @Req() req: any) {
+    return this.svc.updatePurchaseOrder(id, dto, req.user);
   }
 
   @Delete('purchase-orders/:id')
-  removePurchaseOrder(@Param('id') id: string) {
-    return this.svc.removeReceipt(id);
+  @Roles('admin', 'manager')
+  removePurchaseOrder(@Param('id') id: string, @Req() req: any) {
+    return this.svc.removeReceipt(id, req.user);
   }
 
   @Post('purchase-orders/:id/approve')
-  approvePurchaseOrder(@Param('id') id: string) {
-    return this.svc.approveReceipt(id);
+  @Roles('admin', 'manager')
+  approvePurchaseOrder(@Param('id') id: string, @Req() req: any) {
+    return this.svc.approveReceipt(id, req.user);
   }
 
   @Post('purchase-orders/:id/complete')
-  completePurchaseOrder(@Param('id') id: string) {
-    return this.svc.completeReceipt(id);
+  @Roles('admin', 'manager')
+  completePurchaseOrder(@Param('id') id: string, @Req() req: any) {
+    return this.svc.completeReceipt(id, req.user);
   }
 
   @Post('purchase-orders/:id/details')
-  addDetail(@Param('id') id: string, @Body() dto: AddDetailDto) {
-    return this.svc.addDetail(id, dto);
+  @Roles('admin', 'manager', 'staff')
+  addDetail(@Param('id') id: string, @Body() dto: AddDetailDto, @Req() req: any) {
+    return this.svc.addDetail(id, dto, req.user);
   }
 
   @Post('purchase-orders/details/:detailId/receive')
-  receive(@Param('detailId') detailId: string, @Body() dto: ReceiveDto) {
-    return this.svc.receive(detailId, dto);
+  @Roles('admin', 'manager', 'staff')
+  receive(@Param('detailId') detailId: string, @Body() dto: ReceiveDto, @Req() req: any) {
+    return this.svc.receive(detailId, dto, req.user);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.svc.findOne(id);
+  @Roles('admin', 'manager', 'staff', 'supplier')
+  findOne(@Param('id') id: string, @Req() req: any) {
+    return this.svc.findOne(id, req.user);
   }
 
   @Get()
-  findAll() {
-    return this.svc.findAll();
+  @Roles('admin', 'manager', 'staff', 'supplier')
+  findAll(@Req() req: any) {
+    return this.svc.findAll(req.user);
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: CreateAsnDto) {
-    return this.svc.updateReceipt(id, dto);
+  @Roles('admin', 'manager', 'supplier')
+  update(@Param('id') id: string, @Body() dto: CreateAsnDto, @Req() req: any) {
+    return this.svc.updateReceipt(id, dto, req.user);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.svc.removeReceipt(id);
+  @Roles('admin', 'manager')
+  remove(@Param('id') id: string, @Req() req: any) {
+    return this.svc.removeReceipt(id, req.user);
   }
 }
