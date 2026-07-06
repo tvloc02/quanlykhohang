@@ -33,7 +33,8 @@ import {
   Clock,
   AlertTriangle,
   Info,
-  AlertCircle
+  AlertCircle,
+  ScanLine,
 } from 'lucide-react';
 
 // --- SIDEBAR COMPONENT ---
@@ -48,6 +49,7 @@ const menuItems = [
   { icon: Layers, label: 'Danh mục', path: '/categories', badge: null },
   { icon: Package, label: 'Sản phẩm', path: '/products', badge: null },
   { icon: BarChart3, label: 'Báo cáo', path: '/reports', badge: null },
+  { icon: ScanLine, label: 'Quét mã vạch', path: '/scanner', badge: null },
   { 
     icon: TrendingDown, 
     label: 'Nhập kho', 
@@ -74,13 +76,8 @@ const menuItems = [
     ],
   },
   { icon: Truck, label: 'Luân chuyển', path: '/delivery', badge: null },
-  {
-    icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null,
-    children: [
-      { icon: Archive, label: 'Tồn kho hiện tại', path: '/inventory' },
-      { icon: ClipboardList, label: 'Kiểm kê', path: '/inventory/stocktake' },
-    ]
-  },
+  { icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null },
+  { icon: ClipboardList, label: 'Kiểm kê', path: '/stocktake', badge: null },
   { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null },
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null },
   { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null },
