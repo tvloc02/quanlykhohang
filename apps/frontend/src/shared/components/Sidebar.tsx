@@ -10,6 +10,7 @@ import {
   Layers,
   Package,
   Search,
+  Settings,
   TrendingDown,
   TrendingUp,
   Truck,
@@ -35,6 +36,7 @@ const menuItems = [
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null },
   { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null },
   { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null },
+  { icon: Settings, label: 'Cài đặt', path: '/settings', badge: null },
 ];
 
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {

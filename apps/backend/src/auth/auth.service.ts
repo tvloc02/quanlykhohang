@@ -1,8 +1,10 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { UsersService } from '../users/users.service';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuditLogService } from '../audit-log/audit-log.service';
+import { OAuth2Client } from 'google-auth-library';
 import * as bcrypt from 'bcryptjs';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AuthService {
@@ -10,6 +12,7 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private readonly auditLogService: AuditLogService,
+    private readonly configService: ConfigService,
   ) {}
 
   async register(createUserDto: any) {
@@ -47,7 +50,7 @@ export class AuthService {
   async login(user: any) {
     if (!user) throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     const supplierId = user.supplier?.id;
-    const userRole = Array.isArray(user.roles) ? user.roles[0]?.name : 'staff';
+    const userRole = Array.isArray(user.roles) ? user.roles[0]?.name : user.role || 'staff';
     const payload = { sub: user.id, email: user.email, role: userRole, supplierId };
     const token = await this.jwtService.signAsync(payload);
 
@@ -66,9 +69,37 @@ export class AuthService {
         id: user.id,
         email: user.email,
         fullName: user.fullName,
-        role: user.role,
+        role: userRole,
         supplierId,
       },
     };
+  }
+
+  async googleLogin(credential: string) {
+    if (!credential) {
+      throw new UnauthorizedException('Thiếu thông tin đăng nhập Google');
+    }
+
+    const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID') || '1079704717727-3c0hitge9b5sniqh619lassoc0pd9262.apps.googleusercontent.com';
+    const client = new OAuth2Client(clientId);
+    const ticket = await client.verifyIdToken({ idToken: credential, audience: clientId });
+    const payload = ticket.getPayload();
+
+    if (!payload?.email || !payload.email_verified) {
+      throw new UnauthorizedException('Xác thực Google không thành công');
+    }
+
+    const existingUser = await this.usersService.findByEmail(payload.email);
+    if (!existingUser) {
+      const createdUser = await this.usersService.create({
+        email: payload.email,
+        password: undefined,
+        fullName: payload.name || payload.email.split('@')[0],
+        role: 'staff',
+      });
+      return this.login({ ...createdUser, role: 'staff' });
+    }
+
+    return this.login(existingUser);
   }
 }
