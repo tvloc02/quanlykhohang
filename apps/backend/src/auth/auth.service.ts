@@ -39,6 +39,10 @@ export class AuthService {
       return null;
     }
 
+    if (user.status === 'inactive') {
+      throw new UnauthorizedException('Tài khoản đã bị vô hiệu hóa');
+    }
+
     const isPasswordValid = await bcrypt.compare(pass, user.password);
     if (user && isPasswordValid) {
       const { password, ...result } = user as any;
@@ -50,8 +54,9 @@ export class AuthService {
   async login(user: any) {
     if (!user) throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
     const supplierId = user.supplier?.id;
+    const customerId = user.customer?.id;
     const userRole = Array.isArray(user.roles) ? user.roles[0]?.name : user.role || 'staff';
-    const payload = { sub: user.id, email: user.email, role: userRole, supplierId };
+    const payload = { sub: user.id, email: user.email, role: userRole, supplierId, customerId };
     const token = await this.jwtService.signAsync(payload);
 
     await this.auditLogService.append({
@@ -71,6 +76,7 @@ export class AuthService {
         fullName: user.fullName,
         role: userRole,
         supplierId,
+        customerId,
       },
     };
   }

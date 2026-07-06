@@ -26,6 +26,7 @@ import {
   saveStoredWarehouses,
   type WarehouseRecord,
 } from '../../../shared/utils/warehouseAssignments';
+import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 
 type SupplierProduct = {
   id: string;
@@ -331,6 +332,13 @@ function Field({ label, value }: { label: string; value: string }) {
       <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
       <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
         {value || '-'}
+        {/* Tích hợp Barcode Scanner */}
+        <BarcodeScanner
+          isOpen={scannerOpen}
+          onClose={() => setScannerOpen(false)}
+          onProductFound={handleProductScanned}
+          title="Quét mã vạch nhập kho"
+        />
       </div>
     </div>
   );
@@ -378,7 +386,44 @@ function PurchaseOrdersPageContent() {
   const [deleteTarget, setDeleteTarget] = React.useState<PurchaseOrder | null>(null);
   const [receiveOpen, setReceiveOpen] = React.useState(false);
   const [receiveRows, setReceiveRows] = React.useState<Array<{ detailId: string; label: string; qty: string }>>([]);
+  const [scannerOpen, setScannerOpen] = React.useState(false);
   const currentUserId = React.useMemo(() => getCurrentUserId(), []);
+
+  const handleProductScanned = React.useCallback((product: ScannedProduct, qty: number) => {
+    setForm((current) => {
+      const newItems = [...current.items];
+      
+      // Nếu dòng cuối cùng đang trống (chưa chọn sản phẩm), thì ghi đè lên dòng đó
+      const lastIndex = newItems.length - 1;
+      if (lastIndex >= 0 && !newItems[lastIndex].productId && Number(newItems[lastIndex].expectedQty) === 1) {
+        newItems[lastIndex] = {
+          ...newItems[lastIndex],
+          productId: product.id,
+          expectedQty: qty.toString(),
+          warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : current.warehouseCode || 'KHO-NVL',
+        };
+      } else {
+        // Tìm xem sản phẩm đã có trong danh sách chưa, nếu có tăng số lượng
+        const existingIndex = newItems.findIndex((d) => d.productId === product.id);
+        if (existingIndex >= 0) {
+          const currentQty = Number(newItems[existingIndex].expectedQty) || 0;
+          newItems[existingIndex].expectedQty = (currentQty + qty).toString();
+        } else {
+          // Thêm dòng mới
+          newItems.push({
+            rowId: `${Date.now()}-${Math.random()}`,
+            productId: product.id,
+            expectedQty: qty.toString(),
+            receivedQty: '0',
+            unitPrice: '0',
+            warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : current.warehouseCode || 'KHO-NVL',
+          });
+        }
+      }
+      return { ...current, items: newItems };
+    });
+    setToast({ type: 'success', message: `Đã thêm ${product.name} (SL: ${qty})` });
+  }, []);
 
   React.useEffect(() => {
     if (!toast) return;
@@ -1483,14 +1528,17 @@ function PurchaseOrdersPageContent() {
                     <Package className="h-5 w-5 text-cyan-600" />
                     <h4 className="font-black text-slate-900">Hàng hóa</h4>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addRow}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
-                  >
-                    <PlusCircle className="h-4 w-4" />
-                    Thêm dòng
-                  </button>
+                  <div className="flex gap-2">
+                    <ScanBarcodeButton onClick={() => setScannerOpen(true)} />
+                    <button
+                      type="button"
+                      onClick={addRow}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      Thêm dòng
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-hidden rounded-xl border border-slate-200">
@@ -1662,6 +1710,14 @@ function PurchaseOrdersPageContent() {
           </div>
         </div>
       )}
+
+      {/* Tích hợp Barcode Scanner */}
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onProductFound={handleProductScanned}
+        title="Quét mã vạch nhập kho"
+      />
     </div>
   );
 }

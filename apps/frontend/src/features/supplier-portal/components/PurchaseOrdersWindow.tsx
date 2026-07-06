@@ -12,6 +12,7 @@ import {
   Settings2,
   ArrowUpRight,
   Truck,
+  X,
 } from 'lucide-react';
 import type { InboundReceipt } from '../types';
 
@@ -61,6 +62,13 @@ function receiptNumber(receipt: InboundReceipt, index: number) {
   const digits = rawId.replace(/\D/g, '');
   if (digits) return `DMH${digits.padStart(5, '0')}`;
   return `DMH${String(index + 1).padStart(5, '0')}`;
+}
+
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+  };
 }
 
 function inferOrderDate(receipt: InboundReceipt) {
@@ -249,6 +257,55 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
     () => filteredReceipts.find((receipt) => receipt.id === selectedId) || filteredReceipts[0] || null,
     [filteredReceipts, selectedId],
   );
+
+  const API_BASE_URL = 'http://localhost:3000/api';
+  const [isAsnModalOpen, setIsAsnModalOpen] = React.useState(false);
+  const [asnDate, setAsnDate] = React.useState('');
+  const [asnNote, setAsnNote] = React.useState('');
+  const [asnItems, setAsnItems] = React.useState<Array<{ id: string; expectedQty: number; name: string; sku: string }>>([]);
+
+  React.useEffect(() => {
+    if (selectedReceipt) {
+      setAsnDate(selectedReceipt.expectedDate ? selectedReceipt.expectedDate.split('T')[0] : '');
+      setAsnNote(selectedReceipt.description || '');
+      setAsnItems((selectedReceipt.details || []).map(d => ({
+        id: d.id,
+        expectedQty: d.expectedQty || 0,
+        name: d.product?.name || '',
+        sku: d.product?.internalSku || ''
+      })));
+    }
+  }, [selectedReceipt]);
+
+  const handleAsnSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedReceipt) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${selectedReceipt.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          expectedDate: asnDate,
+          description: asnNote,
+          status: 'IN_TRANSIT',
+          items: asnItems.map(item => ({
+            id: item.id,
+            expectedQty: item.expectedQty
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Lỗi khi gửi thông báo giao hàng');
+      }
+
+      setIsAsnModalOpen(false);
+      window.location.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Đã có lỗi xảy ra');
+    }
+  };
 
   const totalItems = filteredReceipts.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -737,6 +794,16 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
             </div>
 
             <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
+              {selectedReceipt.status === 'CREATED' && (
+                <button
+                  type="button"
+                  onClick={() => setIsAsnModalOpen(true)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+                >
+                  <Truck className="h-4 w-4" />
+                  Gửi thông báo giao hàng trước (ASN)
+                </button>
+              )}
               <button
                 type="button"
                 className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
@@ -751,6 +818,90 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                 Lập lệnh nhập kho
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isAsnModalOpen && selectedReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+              <h3 className="text-xl font-black text-slate-900">Gửi thông báo giao hàng trước (ASN)</h3>
+              <button
+                type="button"
+                onClick={() => setIsAsnModalOpen(false)}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAsnSubmit} className="mt-4 space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-bold text-slate-700">Ngày giao hàng dự kiến</label>
+                <input
+                  type="date"
+                  value={asnDate}
+                  onChange={(e) => setAsnDate(e.target.value)}
+                  className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-slate-700">Diễn giải / Ghi chú giao hàng</label>
+                <textarea
+                  value={asnNote}
+                  onChange={(e) => setAsnNote(e.target.value)}
+                  className="w-full rounded-xl border-2 border-slate-200 px-4 py-2 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                  rows={3}
+                  placeholder="Nhập thông tin biển số xe, người vận chuyển..."
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-slate-700">Chi tiết số lượng giao hàng</label>
+                <div className="max-h-48 overflow-y-auto space-y-2 border border-slate-200 rounded-xl p-3 bg-slate-50">
+                  {asnItems.map((item, idx) => (
+                    <div key={item.id} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">{item.sku} - {item.name}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400 font-semibold">Số lượng:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.expectedQty}
+                          onChange={(e) => {
+                            const newQty = Number(e.target.value);
+                            setAsnItems(prev => prev.map((it, i) => i === idx ? { ...it, expectedQty: newQty } : it));
+                          }}
+                          className="h-9 w-24 rounded-lg border border-slate-300 bg-white px-2 text-right text-sm font-bold outline-none focus:border-cyan-500"
+                          required
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setIsAsnModalOpen(false)}
+                  className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-cyan-700"
+                >
+                  Xác nhận gửi ASN
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

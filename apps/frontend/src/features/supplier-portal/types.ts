@@ -68,6 +68,7 @@ export type InboundReceipt = {
   id: string;
   expectedDate?: string;
   status?: string;
+  description?: string;
   supplier?: {
     id: string;
     supplierCode?: string;

@@ -1,7 +1,8 @@
-import { Column, Entity, JoinTable, ManyToMany, OneToOne } from 'typeorm';
+import { Column, CreateDateColumn, Entity, JoinTable, ManyToMany, OneToOne } from 'typeorm';
 import { BaseEntity } from './base.entity';
 import { Role } from './role.entity';
 import { Supplier } from './supplier.entity';
+import { Customer } from './customer.entity';
 
 @Entity('users')
 export class User extends BaseEntity {
@@ -17,6 +18,18 @@ export class User extends BaseEntity {
   @Column({ nullable: true })
   phone?: string;
 
+  @Column({ default: 'active' })
+  status: 'active' | 'inactive';
+
+  @Column({ nullable: true })
+  department?: string;
+
+  @Column({ nullable: true })
+  location?: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
   @ManyToMany(() => Role)
   @JoinTable({
     name: 'user_roles',
@@ -27,4 +40,7 @@ export class User extends BaseEntity {
 
   @OneToOne(() => Supplier, (supplier) => supplier.user)
   supplier?: Supplier;
+
+  @OneToOne(() => Customer, (customer) => customer.user)
+  customer?: Customer;
 }

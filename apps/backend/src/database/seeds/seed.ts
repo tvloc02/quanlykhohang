@@ -18,8 +18,8 @@ async function ensureWarehouseTable(dataSource: DataSource) {
       \`name\` varchar(255) NOT NULL,
       \`address\` varchar(500) NULL,
       \`status\` enum('active', 'inactive') NOT NULL DEFAULT 'active',
-      \`managerIds\` text NOT NULL,
-      \`staffIds\` text NOT NULL,
+      \`managerIds\` text NULL,
+      \`staffIds\` text NULL,
       \`createdAt\` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
       \`updatedAt\` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (\`id\`),
@@ -42,7 +42,7 @@ async function seed(): Promise<void> {
   const warehouseRepository = dataSource.getRepository(Warehouse);
 
   const roles = await Promise.all(
-    ['admin', 'manager', 'staff', 'supplier'].map(async (name) => {
+    ['admin', 'manager', 'staff', 'supplier', 'customer'].map(async (name) => {
       let role = await roleRepository.findOne({ where: { name } });
       if (!role) {
         role = roleRepository.create({ name });
@@ -71,11 +71,47 @@ async function seed(): Promise<void> {
     await userRepository.save(adminUser);
   }
 
+  const customerRole = roles.find((role) => role.name === 'customer');
+  const existingCustomerUser = await userRepository.findOne({
+    where: { email: 'customer@example.com' },
+    relations: ['roles'],
+  });
+
+  if (!existingCustomerUser && customerRole) {
+    const password = await bcrypt.hash('Customer@123', 10);
+    const customerUser = userRepository.create({
+      email: 'customer@example.com',
+      password,
+      fullName: 'Khách hàng VIP',
+      phone: '0987654321',
+      roles: [customerRole],
+    });
+    const savedCustomerUser = await userRepository.save(customerUser);
+
+    let customerProfile = await customerRepository.findOne({ where: { customerCode: 'KH001' } });
+    if (!customerProfile) {
+      customerProfile = customerRepository.create({
+        customerCode: 'KH001',
+        name: 'Công ty Cổ phần Mua Sắm VN',
+        email: 'customer@example.com',
+        phone: '0987654321',
+        address: '123 Đường Điện Biên Phủ, Quận Bình Thạnh, TP.HCM',
+        type: 'B2B',
+        status: 'active',
+        contactPerson: 'Anh Tuấn',
+        user: savedCustomerUser,
+      });
+      await customerRepository.save(customerProfile);
+    }
+  }
+
   const defaultCategory = await categoryRepository.findOne({ where: { name: 'General' } });
   const category =
     defaultCategory ||
     categoryRepository.create({
       name: 'General',
+      code: 'GENERAL',
+      type: 'item-group',
     });
   if (!defaultCategory) {
     await categoryRepository.save(category);
@@ -83,7 +119,7 @@ async function seed(): Promise<void> {
 
   const supplier =
     (await supplierRepository.findOne({ where: { name: 'Default Supplier' } })) ||
-    supplierRepository.create({ name: 'Default Supplier' });
+    supplierRepository.create({ name: 'Default Supplier', supplierCode: 'SUP-000' });
   if (!supplier.id) {
     await supplierRepository.save(supplier);
   }
@@ -91,8 +127,13 @@ async function seed(): Promise<void> {
   const customer =
     (await customerRepository.findOne({ where: { name: 'Default Customer' } })) ||
     customerRepository.create({
+      customerCode: 'KH-DEFAULT',
       name: 'Default Customer',
       phone: '0987654321',
+      email: 'default-customer@example.com',
+      address: 'System Generated',
+      type: 'B2C',
+      status: 'active'
     });
   if (!customer.id) {
     await customerRepository.save(customer);
@@ -150,8 +191,8 @@ async function seed(): Promise<void> {
         name: warehouseInput.name,
         address: warehouseInput.address,
         status: 'active',
-        managerIds: [],
-        staffIds: [],
+        managerIds: '[]',
+        staffIds: '[]',
       });
       await warehouseRepository.save(warehouse);
     }
