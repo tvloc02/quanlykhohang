@@ -18,7 +18,7 @@ export class UsersController {
   }
 
   @Post()
-  @Roles('admin')
+  @Roles('admin', 'manager')
   create(@Body() createUserDto: CreateUserDto, @Req() req: any) {
     return this.usersService.create(createUserDto, req.user);
   }
@@ -30,7 +30,7 @@ export class UsersController {
   }
 
   @Put(':id')
-  @Roles('admin')
+  @Roles('admin', 'manager')
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Req() req: any) {
     return this.usersService.update(id, updateUserDto, req.user);
   }

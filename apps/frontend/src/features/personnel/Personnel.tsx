@@ -82,10 +82,16 @@ function authHeaders() {
 
 function getPrimaryRole(user: PersonnelUser) {
   if (!Array.isArray(user.roles) || user.roles.length === 0) return 'staff';
-  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'admin')) return 'admin';
-  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'manager')) return 'manager';
-  if (user.roles.some((role) => String(role?.name).toLowerCase() === 'staff')) return 'staff';
-  return String(user.roles[0]?.name || 'staff');
+  const normalizedRoles = user.roles
+    .map((role) => String(role?.name || '').toLowerCase())
+    .filter(Boolean);
+
+  if (normalizedRoles.includes('admin')) return 'admin';
+  if (normalizedRoles.includes('manager')) return 'manager';
+  if (normalizedRoles.includes('staff')) return 'staff';
+  if (normalizedRoles.includes('supplier')) return 'supplier';
+  if (normalizedRoles.includes('customer')) return 'customer';
+  return normalizedRoles[0] || 'staff';
 }
 
 function formatRole(role: string) {
@@ -98,6 +104,11 @@ function formatRole(role: string) {
   };
 
   return roleMap[role] || role;
+}
+
+function isInternalPersonnel(user: PersonnelUser) {
+  const role = getPrimaryRole(user);
+  return role !== 'supplier' && role !== 'customer';
 }
 
 function getRoleByName(roleName: string) {
@@ -365,8 +376,9 @@ export default function PersonnelManagement() {
     status: user.status || profiles[user.id]?.status || 'active',
   });
 
-  const activeUsers = users.filter((user) => getProfile(user).status === 'active');
-  const inactiveUsers = users.filter((user) => getProfile(user).status === 'inactive');
+  const personnelUsers = users.filter(isInternalPersonnel);
+  const activeUsers = personnelUsers.filter((user) => getProfile(user).status === 'active');
+  const inactiveUsers = personnelUsers.filter((user) => getProfile(user).status === 'inactive');
   const listedUsers = personnelStatusFilter === 'active' ? activeUsers : inactiveUsers;
   const filteredUsers = listedUsers.filter((user) => {
     const role = getPrimaryRole(user);
@@ -392,9 +404,20 @@ export default function PersonnelManagement() {
   const startIndex = (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
 
+  const mergedRoles = [...roles];
+  DEFAULT_ROLES.forEach((defaultRole) => {
+    if (!mergedRoles.some((role) => role.name === defaultRole.name)) {
+      mergedRoles.push(defaultRole);
+    }
+  });
+
+  const internalRoleOptions = mergedRoles
+    .filter((role) => role.name !== 'supplier' && role.name !== 'customer')
+    .map((role) => ({ value: role.name, label: formatRole(role.name) }));
+
   const roleOptions = [
     { value: 'all', label: 'Vai trò: -- Chọn tất cả --' },
-    ...roles.map((role) => ({ value: role.name, label: formatRole(role.name) })),
+    ...internalRoleOptions,
   ];
   const genderOptions = [
     { value: '', label: '-- Chọn --' },
@@ -406,7 +429,7 @@ export default function PersonnelManagement() {
     { value: 'active', label: 'Đang hoạt động' },
     { value: 'inactive', label: 'Không hoạt động' },
   ];
-  const formRoleOptions = roles.map((role) => ({ value: role.name, label: formatRole(role.name) }));
+  const formRoleOptions = internalRoleOptions;
   const selectedWarehouseNames = warehouses
     .filter((warehouse) => form.warehouseIds.includes(warehouse.id))
     .map((warehouse) => warehouse.name);
