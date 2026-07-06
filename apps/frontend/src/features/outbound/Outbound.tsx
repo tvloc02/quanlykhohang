@@ -12,6 +12,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { outboundApi, OutboundOrder, OutboundCreatePayload } from './api/outboundApi';
+import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../shared/components/BarcodeScanner';
 
 // Tích hợp Toast nội bộ để không bị lỗi import
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
@@ -107,6 +108,43 @@ export default function Outbound() {
   const [form, setForm] = React.useState<OutboundForm>(buildEmptyForm());
   const [products, setProducts] = React.useState<ProductOption[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseOption[]>([]);
+  const [scannerOpen, setScannerOpen] = React.useState(false);
+
+  const handleProductScanned = React.useCallback((product: ScannedProduct, qty: number) => {
+    setForm((current) => {
+      const newDetails = [...current.details];
+      
+      // Nếu dòng cuối cùng đang trống (chưa chọn sản phẩm), thì ghi đè lên dòng đó
+      const lastIndex = newDetails.length - 1;
+      if (lastIndex >= 0 && !newDetails[lastIndex].productId && !newDetails[lastIndex].requiredQty) {
+        newDetails[lastIndex] = {
+          ...newDetails[lastIndex],
+          productId: product.id,
+          requiredQty: qty,
+          // Tự động chọn kho đầu tiên có tồn kho, nếu không có thì để trống
+          warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : '',
+        };
+      } else {
+        // Tìm xem sản phẩm đã có trong danh sách chưa, nếu có tăng số lượng
+        const existingIndex = newDetails.findIndex((d) => d.productId === product.id);
+        if (existingIndex >= 0) {
+          const currentQty = Number(newDetails[existingIndex].requiredQty) || 0;
+          newDetails[existingIndex].requiredQty = currentQty + qty;
+        } else {
+          // Thêm dòng mới
+          newDetails.push({
+            id: crypto.randomUUID(),
+            productId: product.id,
+            requiredQty: qty,
+            unitPrice: '',
+            warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : '',
+          });
+        }
+      }
+      return { ...current, details: newDetails };
+    });
+    setSuccess(`Đã thêm ${product.name} (SL: ${qty})`);
+  }, []);
 
   // Pagination states
   const [pageSize, setPageSize] = React.useState(20);
@@ -611,14 +649,17 @@ export default function Outbound() {
                       <p className="text-sm text-slate-500">Chọn sản phẩm, kho và số lượng cần đặt hàng xuất kho.</p>
                     </div>
                     {modalMode !== 'view' && (
-                      <button
-                        type="button"
-                        onClick={addDetailRow}
-                        className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-cyan-700"
-                      >
-                        <PlusCircle className="h-4 w-4" />
-                        Thêm dòng
-                      </button>
+                      <div className="flex gap-2">
+                        <ScanBarcodeButton onClick={() => setScannerOpen(true)} />
+                        <button
+                          type="button"
+                          onClick={addDetailRow}
+                          className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-cyan-700"
+                        >
+                          <PlusCircle className="h-4 w-4" />
+                          Thêm dòng
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -734,6 +775,14 @@ export default function Outbound() {
           </div>
         </div>
       )}
+
+      {/* Tích hợp Barcode Scanner */}
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onProductFound={handleProductScanned}
+        title="Quét mã vạch xuất kho"
+      />
     </div>
   );
 }

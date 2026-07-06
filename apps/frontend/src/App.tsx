@@ -30,6 +30,8 @@ import TaskAssignPage from './features/outbound/pages/TaskAssignPage';
 import Outbound from './features/outbound/Outbound';
 import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
 import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDetailPage';
+import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalPage';
+import ScannerPage from './features/scanner/ScannerPage';
 
 function getStoredUser() {
   try {
@@ -45,8 +47,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!token) {
     return <Navigate to="/login" replace />;
   }
-  if (getStoredUser().role === 'supplier') {
-    return <Navigate to="/supplier-portal" replace />;
+  if (getStoredUser().role === 'customer') {
+    return <Navigate to="/customer-portal" replace />;
   }
   return <>{children}</>;
 }
@@ -63,6 +65,18 @@ function SupplierRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function CustomerRoute({ children }: { children: React.ReactNode }) {
+  const token = localStorage.getItem('token');
+  const user = getStoredUser();
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  if (user.role !== 'customer') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
+
 function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
   const token = localStorage.getItem('token');
   const user = getStoredUser();
@@ -71,6 +85,9 @@ function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allo
   }
   if (user.role === 'supplier') {
     return <Navigate to="/supplier-portal" replace />;
+  }
+  if (user.role === 'customer') {
+    return <Navigate to="/customer-portal" replace />;
   }
   if (!allowedRoles.includes(user.role || '')) {
     return <Navigate to="/dashboard" replace />;
@@ -92,6 +109,14 @@ function App() {
             <SupplierRoute>
               <SupplierProfilePage />
             </SupplierRoute>
+          }
+        />
+        <Route
+          path="/customer-portal"
+          element={
+            <CustomerRoute>
+              <CustomerPortalPage />
+            </CustomerRoute>
           }
         />
 
@@ -321,7 +346,7 @@ function App() {
           }
         />
         <Route
-          path="/inventory/stocktake"
+          path="/stocktake"
           element={
             <ProtectedRoute>
               <MainLayout>
@@ -374,6 +399,16 @@ function App() {
           <Route path="mail" element={<MailSettings />} />
           <Route path="ai" element={<AiSettings />} />
         </Route>
+        <Route
+          path="/scanner"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ScannerPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>

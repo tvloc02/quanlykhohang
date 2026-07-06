@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   AlertTriangle,
 } from 'lucide-react';
+import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 
 // ─── TOAST ─────────────────────────────────────────────────────
 
@@ -586,13 +587,7 @@ function CreateStocktakeModal({
       .then((r) => r.json())
       .then((data) => setWarehouses(Array.isArray(data) ? data : data?.data || []))
       .catch(() => {});
-    // Try load branches if available
-    fetch(`${API_BASE}/branches`, { headers: authHeaders() })
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setWarehouses((prev) => prev.concat(data));
-      })
-      .catch(() => {});
+      
       
     fetch(`${API_BASE}/users`, { headers: authHeaders() })
       .then((r) => r.json())
@@ -868,6 +863,7 @@ function StocktakeDetailModal({
   const [products, setProducts] = React.useState<ProductOption[]>([]);
   const [selectedProductId, setSelectedProductId] = React.useState('');
   const [addingProduct, setAddingProduct] = React.useState(false);
+  const [scannerOpen, setScannerOpen] = React.useState(false);
 
   // Editable counts - local state keyed by detail id
   const [editCounts, setEditCounts] = React.useState<Record<string, string>>({});
@@ -909,6 +905,42 @@ function StocktakeDetailModal({
       onError(err instanceof Error ? err.message : 'Lỗi');
     } finally {
       setAddingProduct(false);
+    }
+  };
+
+  const handleProductScanned = async (product: ScannedProduct, qty: number) => {
+    if (!canEdit) {
+      onError('Phiên kiểm kê không ở trạng thái cho phép cập nhật số lượng.');
+      return;
+    }
+
+    const detail = stocktake.details.find((d) => d.product?.id === product.id);
+
+    if (detail) {
+      // Đã có trong danh sách -> cộng dồn vào ô đang nhập (hoặc số đang đếm)
+      const currentVal = editCounts[detail.id] !== undefined ? editCounts[detail.id] : (detail.countedQty?.toString() || '0');
+      const nextQty = Number(currentVal) + qty;
+      setEditCounts((prev) => ({ ...prev, [detail.id]: nextQty.toString() }));
+      onSuccess(`Đã cộng dồn ${qty} cho ${product.name}. (Bấm "Lưu" để cập nhật lên hệ thống)`);
+    } else {
+      // Chưa có trong danh sách -> Gọi API thêm vào trước
+      try {
+        const res = await fetch(`${API_BASE}/inventory/stocktakes/${stocktake.id}/details`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ productId: product.id }),
+        });
+        if (!res.ok) {
+          throw new Error('Không thể thêm sản phẩm mới từ máy quét');
+        }
+        
+        // Ta cần onRefresh() để lấy detail id mới sinh.
+        // Tạm thời, người dùng sẽ quét lại hoặc nhập tay số lượng sau khi nó xuất hiện.
+        onSuccess(`Đã thêm ${product.name} vào danh sách kiểm kê.`);
+        onRefresh();
+      } catch (err) {
+        onError(err instanceof Error ? err.message : 'Lỗi quét mã');
+      }
     }
   };
 
@@ -1100,6 +1132,7 @@ function StocktakeDetailModal({
           {/* Add product (only if editable) */}
           {canEdit && (
             <div className="flex items-end gap-3">
+              <ScanBarcodeButton onClick={() => setScannerOpen(true)} />
               <div className="flex-1">
                 <label className="block text-sm font-bold text-slate-700 mb-2">Thêm sản phẩm kiểm</label>
                 <select
@@ -1242,7 +1275,12 @@ function StocktakeDetailModal({
             {canFinish && (
               <button
                 onClick={handleFinishCounting}
-                className="rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg"
+                disabled={!stocktake.details || stocktake.details.length === 0}
+                className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition ${
+                  !stocktake.details || stocktake.details.length === 0
+                    ? 'opacity-50 cursor-not-allowed grayscale'
+                    : 'hover:shadow-lg'
+                }`}
                 style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}
               >
                 <span className="flex items-center gap-2">
@@ -1277,6 +1315,14 @@ function StocktakeDetailModal({
           </div>
         </div>
       </div>
+      
+      {/* Tích hợp Barcode Scanner */}
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onProductFound={handleProductScanned}
+        title="Quét mã vạch kiểm kê"
+      />
     </div>
   );
 }

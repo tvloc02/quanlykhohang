@@ -96,10 +96,11 @@ export default function Signup() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
+              <label htmlFor="signup-fullname" className="block text-sm font-medium text-gray-900 mb-2">
                 Tên đầy đủ
               </label>
               <input
+                id="signup-fullname"
                 type="text"
                 name="fullName"
                 value={formData.fullName}
@@ -111,10 +112,11 @@ export default function Signup() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
+              <label htmlFor="signup-email" className="block text-sm font-medium text-gray-900 mb-2">
                 Email
               </label>
               <input
+                id="signup-email"
                 type="email"
                 name="email"
                 value={formData.email}
@@ -126,10 +128,11 @@ export default function Signup() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
+              <label htmlFor="signup-password" className="block text-sm font-medium text-gray-900 mb-2">
                 Mật khẩu
               </label>
               <input
+                id="signup-password"
                 type="password"
                 name="password"
                 value={formData.password}
@@ -141,10 +144,11 @@ export default function Signup() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
+              <label htmlFor="signup-confirm-password" className="block text-sm font-medium text-gray-900 mb-2">
                 Xác nhận mật khẩu
               </label>
               <input
+                id="signup-confirm-password"
                 type="password"
                 name="confirmPassword"
                 value={formData.confirmPassword}
@@ -159,6 +163,7 @@ export default function Signup() {
               <input
                 type="checkbox"
                 id="terms"
+                name="terms"
                 className="w-4 h-4 text-primary rounded"
                 required
               />
