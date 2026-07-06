@@ -32,6 +32,7 @@ import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
 import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDetailPage';
 import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalPage';
 import ScannerPage from './features/scanner/ScannerPage';
+import SupplierProducts from './features/supplier-products/SupplierProducts';
 
 function getStoredUser() {
   try {
@@ -131,12 +132,23 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/products" element={<Navigate to="/products/main" replace />} />
         <Route
-          path="/products"
+          path="/products/main"
           element={
             <ProtectedRoute>
               <MainLayout>
                 <Products />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/products/supplier"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <SupplierProducts />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -350,7 +362,27 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <StocktakePage />
+                <StocktakePage viewMode="stocktake" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake/requests"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StocktakePage viewMode="requests" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake/create"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StocktakePage viewMode="create" />
               </MainLayout>
             </ProtectedRoute>
           }
