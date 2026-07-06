@@ -95,13 +95,8 @@ const menuItems = [
       { icon: Truck, label: 'Điều chuyển', path: '/delivery' },
     ],
   },
-  {
-    icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null,
-    children: [
-      { icon: Archive, label: 'Tồn kho hiện tại', path: '/inventory' },
-      { icon: ClipboardList, label: 'Kiểm kê', path: '/inventory/stocktake' },
-    ]
-  },
+  { icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null },
+  { icon: ClipboardList, label: 'Kiểm kê', path: '/stocktake', badge: null },
   { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null },
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null },
   { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null },
