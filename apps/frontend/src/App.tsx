@@ -23,6 +23,8 @@ import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSecti
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import StockInReceiptsPage from './features/inbound/pages/StockInReceiptsPage';
 import AssemblyPage from './features/inbound/pages/AssemblyPage';
+import ProductionPage from './features/inbound/pages/ProductionPage';
+import DistributionPage from './features/inbound/pages/DistributionPage';
 import StocktakePage from './features/inventory/pages/StocktakePage';
 import TaskAssignPage from './features/outbound/pages/TaskAssignPage';
 import Outbound from './features/outbound/Outbound';
@@ -196,8 +198,26 @@ function App() {
           path="/inbound/assembly"
           element={
             <ProtectedRoute>
+              <Navigate to="/inbound/production" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inbound/production"
+          element={
+            <ProtectedRoute>
               <MainLayout>
-                <AssemblyPage />
+                <ProductionPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inbound/distribution"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <DistributionPage />
               </MainLayout>
             </ProtectedRoute>
           }
