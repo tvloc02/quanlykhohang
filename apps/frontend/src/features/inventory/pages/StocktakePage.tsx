@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -125,7 +126,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── MAIN PAGE ─────────────────────────────────────────────────
 
-export default function StocktakePage() {
+export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: 'requests' | 'create' | 'stocktake' }) {
   const [stocktakes, setStocktakes] = React.useState<StocktakeItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
@@ -136,8 +137,22 @@ export default function StocktakePage() {
   const [currentPage, setCurrentPage] = React.useState(1);
 
   // Modals
-  const [showCreateModal, setShowCreateModal] = React.useState(false);
+  const [showCreateModal, setShowCreateModal] = React.useState(viewMode === 'create');
   const [showDetailModal, setShowDetailModal] = React.useState(false);
+
+  const isRequestsView = viewMode === 'requests';
+  const isCreateView = viewMode === 'create';
+  const pageTitle = isRequestsView ? 'Yêu cầu kiểm kê' : isCreateView ? 'Lập phiếu kiểm kê' : 'Kiểm kê kho hàng';
+  const pageSubtitle = isRequestsView
+    ? 'Danh sách yêu cầu kiểm kê cần tiếp nhận và xử lý.'
+    : isCreateView
+    ? 'Tạo mới một phiên kiểm kê để bắt đầu kiểm kê hàng hóa.'
+    : 'Tạo phiên kiểm kê, đếm thực tế, so sánh chênh lệch và cập nhật tồn kho.';
+  const defaultIsRequest = isRequestsView;
+
+  React.useEffect(() => {
+    setShowCreateModal(viewMode === 'create');
+  }, [viewMode]);
   const [selectedStocktake, setSelectedStocktake] = React.useState<StocktakeItem | null>(null);
 
   // ── Data Loading ────────────────────────────────────────────
@@ -177,9 +192,13 @@ export default function StocktakePage() {
     );
   });
 
-  const totalItems = filtered.length;
+  const displayedStocktakes = isRequestsView
+    ? filtered.filter((s) => s.status === 'REQUESTED')
+    : filtered;
+
+  const totalItems = displayedStocktakes.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginated = displayedStocktakes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const startIndex = (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
 
@@ -299,10 +318,8 @@ export default function StocktakePage() {
       {/* Header */}
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Kiểm kê kho hàng</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            Tạo phiên kiểm kê, đếm thực tế, so sánh chênh lệch và cập nhật tồn kho.
-          </p>
+          <h1 className="text-2xl font-black text-slate-900">{pageTitle}</h1>
+          <p className="mt-1 text-sm font-medium text-slate-500">{pageSubtitle}</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -313,14 +330,16 @@ export default function StocktakePage() {
             <PackageSearch className="h-4 w-4" />
             Làm mới
           </button>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
-          >
-            <Plus className="h-4 w-4" />
-            Tạo phiên kiểm kê
-          </button>
+          {!isCreateView && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg"
+              style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
+            >
+              <Plus className="h-4 w-4" />
+              {isRequestsView ? 'Tạo yêu cầu kiểm kê' : 'Tạo phiên kiểm kê'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -374,7 +393,7 @@ export default function StocktakePage() {
               ) : paginated.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có phiên kiểm kê nào.
+                    {isRequestsView ? 'Chưa có yêu cầu kiểm kê nào.' : 'Chưa có phiên kiểm kê nào.'}
                   </td>
                 </tr>
               ) : (

@@ -35,6 +35,7 @@ import {
   Info,
   AlertCircle,
   ScanLine,
+  ListChecks,
 } from 'lucide-react';
 
 // --- SIDEBAR COMPONENT ---
@@ -47,7 +48,16 @@ interface SidebarProps {
 const menuItems = [
   { icon: Home, label: 'Trang chủ', path: '/dashboard', badge: null },
   { icon: Layers, label: 'Danh mục', path: '/categories', badge: null },
-  { icon: Package, label: 'Sản phẩm', path: '/products', badge: null },
+  {
+    icon: Package,
+    label: 'Sản phẩm',
+    path: '/products',
+    badge: null,
+    children: [
+      { icon: Package, label: 'Sản phẩm chính', path: '/products/main' },
+      { icon: Truck, label: 'Sản phẩm NCC', path: '/products/supplier' },
+    ],
+  },
   { icon: BarChart3, label: 'Báo cáo', path: '/reports', badge: null },
   { icon: ScanLine, label: 'Quét mã vạch', path: '/scanner', badge: null },
   {
@@ -95,8 +105,26 @@ const menuItems = [
       { icon: Truck, label: 'Điều chuyển', path: '/delivery' },
     ],
   },
-  { icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null },
-  { icon: ClipboardList, label: 'Kiểm kê', path: '/stocktake', badge: null },
+  {
+    icon: Warehouse,
+    label: 'Tồn kho',
+    path: '/inventory',
+    badge: null,
+    children: [
+      { icon: Archive, label: 'Tồn kho hiện tại', path: '/inventory' },
+    ],
+  },
+  {
+    icon: ListChecks,
+    label: 'Kiểm kê',
+    path: '/inventory/stocktake',
+    badge: null,
+    children: [
+      { icon: ClipboardList, label: 'Yêu cầu kiểm kê', path: '/inventory/stocktake/requests' },
+      { icon: FileText, label: 'Lập phiếu kiểm kê', path: '/inventory/stocktake/create' },
+      { icon: Package, label: 'Kiểm kê', path: '/inventory/stocktake' },
+    ],
+  },
   { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null },
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null },
   { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null },
@@ -207,8 +235,8 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
           const hasChildren = item.children && item.children.length > 0;
-          const isExpanded = expandedItems.has(item.path);
           const isChildActive = hasChildren && item.children?.some(child => location.pathname === child.path);
+          const isExpanded = expandedItems.has(item.path) || isChildActive;
 
           if (hasChildren) {
             return (
