@@ -92,6 +92,7 @@ export default function BarcodeScanner({
 
     let scanner: any = null;
     let mounted = true;
+    let startPromise: Promise<any> | null = null;
 
     const initScanner = async () => {
       try {
@@ -110,7 +111,7 @@ export default function BarcodeScanner({
         scanner = new Html5Qrcode('barcode-scanner-viewport');
         scannerRef.current = scanner;
 
-        await scanner.start(
+        startPromise = scanner.start(
           { facingMode: 'environment' },
           {
             fps: 10,
@@ -126,6 +127,7 @@ export default function BarcodeScanner({
           () => { /* ignore scan failures */ }
         );
 
+        await startPromise;
         if (mounted) setCameraActive(true);
       } catch (err: any) {
         console.warn('Camera init failed:', err);
@@ -142,17 +144,20 @@ export default function BarcodeScanner({
     return () => {
       mounted = false;
       clearTimeout(timer);
-      if (scanner) {
-        try {
-          if (scanner.isScanning) {
-            scanner.stop().then(() => {
-              try { scanner.clear(); } catch(e) {}
-            }).catch(() => {});
-          } else {
-            try { scanner.clear(); } catch(e) {}
-          }
-        } catch(e) {}
-      }
+      const cleanupScanner = async () => {
+        if (startPromise) {
+          try { await startPromise; } catch (e) {}
+        }
+        if (scanner) {
+          try {
+            if (scanner.isScanning) {
+              await scanner.stop();
+            }
+            scanner.clear();
+          } catch (e) {}
+        }
+      };
+      cleanupScanner();
       scannerRef.current = null;
       setCameraActive(false);
     };
