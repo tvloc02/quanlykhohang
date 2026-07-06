@@ -159,7 +159,7 @@ export class UsersService {
 
   async changePassword(userId: string, currentPass: string, newPass: string): Promise<void> {
     const user = await this.repo.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user || !user.password) throw new NotFoundException('User not found or no password set');
     const isPasswordValid = await bcrypt.compare(currentPass, user.password);
     if (!isPasswordValid) {
       throw new BadRequestException('Mật khẩu hiện tại không chính xác');

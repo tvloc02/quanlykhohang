@@ -27,6 +27,7 @@ import Outbound from './features/outbound/Outbound';
 import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
 import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDetailPage';
 import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalPage';
+import ScannerPage from './features/scanner/ScannerPage';
 
 function getStoredUser() {
   try {
@@ -303,7 +304,7 @@ function App() {
           }
         />
         <Route
-          path="/inventory/stocktake"
+          path="/stocktake"
           element={
             <ProtectedRoute>
               <MainLayout>
@@ -356,6 +357,16 @@ function App() {
           <Route path="mail" element={<MailSettings />} />
           <Route path="ai" element={<AiSettings />} />
         </Route>
+        <Route
+          path="/scanner"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ScannerPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>
