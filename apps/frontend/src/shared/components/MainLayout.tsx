@@ -73,7 +73,17 @@ const menuItems = [
       { icon: Package, label: 'Phiếu xuất kho', path: '/outbound/shipping-notes' },
     ],
   },
-  { icon: Truck, label: 'Luân chuyển', path: '/delivery', badge: null },
+  {
+    icon: Truck,
+    label: 'Điều chuyển',
+    path: '/delivery',
+    badge: null,
+    children: [
+      { icon: FileText, label: 'Yêu cầu điều chuyển', path: '/delivery/transfer-requests' },
+      { icon: ClipboardList, label: 'Lập phiếu điều chuyển', path: '/delivery/create-transfer-order' },
+      { icon: Truck, label: 'Điều chuyển', path: '/delivery' },
+    ],
+  },
   {
     icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null,
     children: [

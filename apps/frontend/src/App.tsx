@@ -10,6 +10,8 @@ import Suppliers from './features/suppliers/Suppliers';
 import Personnel from './features/personnel/Personnel';
 import WarehouseManagement from './features/warehouses/WarehouseManagement';
 import Delivery from './features/delivery/Delivery';
+import TransferRequestsPage from './features/delivery/pages/TransferRequestsPage';
+import CreateTransferOrderPage from './features/delivery/pages/CreateTransferOrderPage';
 import Inventory from './features/inventory/Inventory';
 import Reports from './features/reports/Reports';
 import AuditLog from './features/audit-log/AuditLog';
@@ -264,6 +266,26 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <Delivery />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/delivery/transfer-requests"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <TransferRequestsPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/delivery/create-transfer-order"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <CreateTransferOrderPage />
               </MainLayout>
             </ProtectedRoute>
           }
