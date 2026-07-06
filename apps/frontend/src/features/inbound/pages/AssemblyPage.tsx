@@ -168,7 +168,7 @@ type Toast = {
   message: string;
 };
 
-export default function AssemblyPage() {
+export default function AssemblyPage({ mode: initialMode = 'production' }: { mode?: 'production' | 'distribution' }) {
   const [orders, setOrders] = React.useState<StockInOrder[]>([]);
   const [products, setProducts] = React.useState<Product[]>([]);
   const [selectedOrderId, setSelectedOrderId] = React.useState<string>('');
@@ -184,6 +184,7 @@ export default function AssemblyPage() {
   });
   const [recountQty, setRecountQty] = React.useState('0');
   const [search, setSearch] = React.useState('');
+  const mode = initialMode;
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [toast, setToast] = React.useState<Toast | null>(null);
@@ -257,12 +258,12 @@ export default function AssemblyPage() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách mẫu lắp ráp');
+        throw new Error(data?.message || 'Không tải được danh sách sản phẩm phân phối');
       }
       const data = (await response.json()) as Assembly[];
       setAssemblies(data);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tải dữ liệu lắp ráp' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tải dữ liệu phân phối' });
     }
   }, []);
 
@@ -313,13 +314,13 @@ export default function AssemblyPage() {
     if (!selectedOrder) return;
 
     if (!assemblyForm.assembledProductId) {
-      setToast({ type: 'error', message: 'Chọn sản phẩm lắp ráp' });
+      setToast({ type: 'error', message: mode === 'production' ? 'Chọn sản phẩm sản xuất' : 'Chọn sản phẩm phân phối' });
       return;
     }
 
     const quantity = parseNumber(assemblyForm.assembledQty);
     if (quantity <= 0) {
-      setToast({ type: 'error', message: 'Số lượng sản phẩm lắp ráp phải lớn hơn 0' });
+      setToast({ type: 'error', message: mode === 'production' ? 'Số lượng sản xuất phải lớn hơn 0' : 'Số lượng phân phối phải lớn hơn 0' });
       return;
     }
 
@@ -349,16 +350,16 @@ export default function AssemblyPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tạo được mẫu lắp ráp');
+        throw new Error(data?.message || 'Không tạo được sản phẩm phân phối');
       }
 
       const result = (await response.json()) as Assembly;
-      setToast({ type: 'success', message: `Đã tạo mẫu lắp ráp ${result.assemblyCode}` });
+      setToast({ type: 'success', message: `Đã tạo sản phẩm ${result.assemblyCode}` });
       setAssemblyForm({ assembledProductId: '', assembledQty: '0', barcode: '', warehouseCode: '', note: '', components: {} });
       await loadAssemblies(selectedOrder.id);
       setSelectedAssemblyId(result.id);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tạo mẫu lắp ráp' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tạo sản phẩm phân phối' });
     } finally {
       setSaving(false);
     }
@@ -375,7 +376,7 @@ export default function AssemblyPage() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không kiểm kê được lắp ráp');
+        throw new Error(data?.message || 'Không kiểm kê được sản phẩm phân phối');
       }
 
       const result = (await response.json()) as Assembly;
@@ -383,7 +384,7 @@ export default function AssemblyPage() {
       await loadAssemblies(selectedOrder?.id);
       setSelectedAssemblyId(result.id);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi kiểm kê lắp ráp' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi kiểm kê sản phẩm phân phối' });
     } finally {
       setSaving(false);
     }
@@ -403,24 +404,27 @@ export default function AssemblyPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900">Lắp ráp</h1>
-          <p className="mt-1 text-sm text-slate-500">Quản lý quy trình lắp ráp và kiểm kê thành phẩm sau khi nhập kho hoàn tất.</p>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900">
+              {mode === 'production' ? 'Sản xuất' : 'Phân phối'}
+            </h1>
+          </div>
+          <button
+            type="button"
+            onClick={loadData}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Làm mới
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={loadData}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Làm mới
-        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-black uppercase text-slate-500">Lệnh hoàn thành</p>
+          <p className="text-xs font-black uppercase text-slate-500">Đơn hoàn thành</p>
           <p className="mt-2 text-3xl font-black text-slate-900">{formatNumber(completedOrders.length)}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -428,7 +432,7 @@ export default function AssemblyPage() {
           <p className="mt-2 text-3xl font-black text-slate-900">{formatNumber(products.length)}</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-black uppercase text-slate-500">Mẫu lắp ráp</p>
+          <p className="text-xs font-black uppercase text-slate-500">{mode === 'production' ? 'Sản phẩm sản xuất' : 'Sản phẩm phân phối'}</p>
           <p className="mt-2 text-3xl font-black text-slate-900">{formatNumber(assemblies.length)}</p>
         </div>
       </div>
@@ -438,7 +442,7 @@ export default function AssemblyPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-slate-900">Đơn nhập kho hoàn thành</h2>
-              <p className="text-sm text-slate-500">Chọn lệnh để thao tác trên mẫu lắp ráp.</p>
+              <p className="text-sm text-slate-500">Chọn lệnh để thao tác trên sản xuất hoặc phân phối, tùy theo chế độ.</p>
             </div>
             <button
               type="button"
@@ -507,7 +511,7 @@ export default function AssemblyPage() {
                       {statusLabel(selectedOrder.status)}
                     </span>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-medium text-slate-500">
+                          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm font-medium text-slate-500">
                     <span>PO: {selectedOrder.sourcePurchaseOrder?.poNumber || selectedOrder.sourcePurchaseOrderNo || '-'}</span>
                     <span>•</span>
                     <span>{selectedOrder.sourcePurchaseOrder?.supplier?.name || 'Chưa có nhà cung cấp'}</span>
@@ -537,7 +541,7 @@ export default function AssemblyPage() {
 
               {selectedOrder.status !== 'COMPLETED' ? (
                 <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                  Chỉ có thể tạo mẫu lắp ráp khi lệnh nhập kho đã hoàn tất.
+                  Chỉ có thể tạo sản phẩm khi lệnh nhập kho đã hoàn tất.
                 </div>
               ) : (
                 <div className="mt-5 space-y-6">
@@ -580,7 +584,7 @@ export default function AssemblyPage() {
                         />
                       </div>
                       <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Kho lắp ráp</label>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Kho {mode === 'production' ? 'sản xuất' : 'phân phối'}</label>
                         <select
                           value={assemblyForm.warehouseCode}
                           onChange={(event) => setAssemblyForm((current) => ({ ...current, warehouseCode: event.target.value }))}
@@ -655,14 +659,14 @@ export default function AssemblyPage() {
                         disabled={saving}
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                       >
-                        Tạo mẫu lắp ráp
+                        {mode === 'production' ? 'Tạo sản phẩm' : 'Tạo phân phối'}
                       </button>
                     </div>
                   </div>
 
                   {assemblies.length > 0 && (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                      <h3 className="text-lg font-black text-slate-900">Mẫu lắp ráp đã tạo</h3>
+                      <h3 className="text-lg font-black text-slate-900">Sản phẩm đã tạo</h3>
                       <div className="mt-4 grid gap-3">
                         {assemblies.map((assembly) => {
                           const active = assembly.id === selectedAssembly?.id;
@@ -694,7 +698,7 @@ export default function AssemblyPage() {
                           <div className="rounded-2xl border border-slate-200 bg-white p-5">
                             <div className="mb-4 flex items-center justify-between gap-3">
                               <div>
-                                <div className="text-sm font-bold text-slate-700">Chi tiết lắp ráp</div>
+                                <div className="text-sm font-bold text-slate-700">Chi tiết sản phẩm</div>
                                 <div className="text-xs text-slate-500">{selectedAssembly.assemblyCode}</div>
                               </div>
                               <div className="text-sm font-black text-slate-900">Tổng: {formatNumber(selectedAssembly.quantity)}</div>
@@ -762,7 +766,7 @@ export default function AssemblyPage() {
             </>
           ) : (
             <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-              Chưa có lệnh nhập kho hoàn thành để tạo mẫu lắp ráp.
+              Chưa có lệnh nhập kho hoàn thành để tạo sản phẩm.
             </div>
           )}
         </div>
