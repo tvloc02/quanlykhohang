@@ -33,7 +33,8 @@ import {
   Clock,
   AlertTriangle,
   Info,
-  AlertCircle
+  AlertCircle,
+  ScanLine,
 } from 'lucide-react';
 
 // --- SIDEBAR COMPONENT ---
@@ -52,6 +53,11 @@ const menuItems = [
     icon: TrendingDown,
     label: 'Nhập kho',
     path: '/inbound',
+  { icon: ScanLine, label: 'Quét mã vạch', path: '/scanner', badge: null },
+  { 
+    icon: TrendingDown, 
+    label: 'Nhập kho', 
+    path: '/inbound', 
     badge: null,
     children: [
       { icon: FileText, label: 'Đơn mua hàng', path: '/inbound/purchase-orders' },
