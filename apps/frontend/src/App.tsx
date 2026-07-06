@@ -10,6 +10,8 @@ import Suppliers from './features/suppliers/Suppliers';
 import Personnel from './features/personnel/Personnel';
 import WarehouseManagement from './features/warehouses/WarehouseManagement';
 import Delivery from './features/delivery/Delivery';
+import TransferRequestsPage from './features/delivery/pages/TransferRequestsPage';
+import CreateTransferOrderPage from './features/delivery/pages/CreateTransferOrderPage';
 import Inventory from './features/inventory/Inventory';
 import Reports from './features/reports/Reports';
 import AuditLog from './features/audit-log/AuditLog';
@@ -21,6 +23,8 @@ import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSecti
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import StockInReceiptsPage from './features/inbound/pages/StockInReceiptsPage';
 import AssemblyPage from './features/inbound/pages/AssemblyPage';
+import ProductionPage from './features/inbound/pages/ProductionPage';
+import DistributionPage from './features/inbound/pages/DistributionPage';
 import StocktakePage from './features/inventory/pages/StocktakePage';
 import TaskAssignPage from './features/outbound/pages/TaskAssignPage';
 import Outbound from './features/outbound/Outbound';
@@ -218,8 +222,26 @@ function App() {
           path="/inbound/assembly"
           element={
             <ProtectedRoute>
+              <Navigate to="/inbound/production" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inbound/production"
+          element={
+            <ProtectedRoute>
               <MainLayout>
-                <AssemblyPage />
+                <ProductionPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inbound/distribution"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <DistributionPage />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -288,6 +310,26 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <Delivery />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/delivery/transfer-requests"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <TransferRequestsPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/delivery/create-transfer-order"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <CreateTransferOrderPage />
               </MainLayout>
             </ProtectedRoute>
           }

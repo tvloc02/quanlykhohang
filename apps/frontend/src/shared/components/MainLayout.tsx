@@ -48,10 +48,10 @@ const menuItems = [
   { icon: Layers, label: 'Danh mục', path: '/categories', badge: null },
   { icon: Package, label: 'Sản phẩm', path: '/products', badge: null },
   { icon: BarChart3, label: 'Báo cáo', path: '/reports', badge: null },
-  { 
-    icon: TrendingDown, 
-    label: 'Nhập kho', 
-    path: '/inbound', 
+  {
+    icon: TrendingDown,
+    label: 'Nhập kho',
+    path: '/inbound',
     badge: null,
     children: [
       { icon: FileText, label: 'Đơn mua hàng', path: '/inbound/purchase-orders' },
@@ -60,7 +60,16 @@ const menuItems = [
       { icon: Package, label: 'Nhập kho', path: '/inbound/stock-in' },
     ]
   },
-  { icon: Package, label: 'Lắp ráp', path: '/inbound/assembly', badge: null },
+  {
+    icon: Package,
+    label: 'Phân phối',
+    path: '/inbound/production',
+    badge: null,
+    children: [
+      { icon: Package, label: 'Sản xuất', path: '/inbound/production' },
+      { icon: Truck, label: 'Phân phối', path: '/inbound/distribution' },
+    ],
+  },
   {
     icon: TrendingUp,
     label: 'Xuất kho',
@@ -73,7 +82,17 @@ const menuItems = [
       { icon: Package, label: 'Phiếu xuất kho', path: '/outbound/shipping-notes' },
     ],
   },
-  { icon: Truck, label: 'Luân chuyển', path: '/delivery', badge: null },
+  {
+    icon: Truck,
+    label: 'Điều chuyển',
+    path: '/delivery',
+    badge: null,
+    children: [
+      { icon: FileText, label: 'Yêu cầu điều chuyển', path: '/delivery/transfer-requests' },
+      { icon: ClipboardList, label: 'Lập phiếu điều chuyển', path: '/delivery/create-transfer-order' },
+      { icon: Truck, label: 'Điều chuyển', path: '/delivery' },
+    ],
+  },
   {
     icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null,
     children: [
