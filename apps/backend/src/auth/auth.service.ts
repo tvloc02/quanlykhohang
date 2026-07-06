@@ -88,7 +88,13 @@ export class AuthService {
 
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID') || '1079704717727-3c0hitge9b5sniqh619lassoc0pd9262.apps.googleusercontent.com';
     const client = new OAuth2Client(clientId);
-    const ticket = await client.verifyIdToken({ idToken: credential, audience: clientId });
+    let ticket;
+    try {
+      ticket = await client.verifyIdToken({ idToken: credential, audience: clientId });
+    } catch (err) {
+      // Provide a clearer unauthorized error when verification fails
+      throw new UnauthorizedException('Xác thực Google thất bại: ' + (err instanceof Error ? err.message : 'invalid token'));
+    }
     const payload = ticket.getPayload();
 
     if (!payload?.email || !payload.email_verified) {

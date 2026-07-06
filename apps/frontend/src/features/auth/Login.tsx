@@ -53,9 +53,14 @@ export default function Login() {
   }, [toast]);
 
   React.useEffect(() => {
-    const clientId = '1079704717727-3c0hitge9b5sniqh619lassoc0pd9262.apps.googleusercontent.com';
+    const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '1079704717727-3c0hitge9b5sniqh619lassoc0pd9262.apps.googleusercontent.com';
 
     const initializeGoogle = () => {
+      if (!clientId) {
+        setToast({ type: 'error', title: 'Cấu hình Google', message: 'VITE_GOOGLE_CLIENT_ID chưa được thiết lập' });
+        return;
+      }
+
       if (!window.google?.accounts?.id) return;
 
       window.google.accounts.id.initialize({
