@@ -49,15 +49,11 @@ const menuItems = [
   { icon: Layers, label: 'Danh mục', path: '/categories', badge: null },
   { icon: Package, label: 'Sản phẩm', path: '/products', badge: null },
   { icon: BarChart3, label: 'Báo cáo', path: '/reports', badge: null },
+  { icon: ScanLine, label: 'Quét mã vạch', path: '/scanner', badge: null },
   {
     icon: TrendingDown,
     label: 'Nhập kho',
     path: '/inbound',
-  { icon: ScanLine, label: 'Quét mã vạch', path: '/scanner', badge: null },
-  { 
-    icon: TrendingDown, 
-    label: 'Nhập kho', 
-    path: '/inbound', 
     badge: null,
     children: [
       { icon: FileText, label: 'Đơn mua hàng', path: '/inbound/purchase-orders' },
@@ -155,9 +151,8 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
   return (
     <aside
-      className={`${
-        isOpen ? 'w-80' : 'w-20'
-      } fixed lg:relative z-40 bg-white dark:bg-slate-950 shadow-2xl transform transition-all duration-300 ease-in-out border-r-2 border-gray-200 dark:border-slate-800 flex flex-col h-screen`}
+      className={`${isOpen ? 'w-80' : 'w-20'
+        } fixed lg:relative z-40 bg-white dark:bg-slate-950 shadow-2xl transform transition-all duration-300 ease-in-out border-r-2 border-gray-200 dark:border-slate-800 flex flex-col h-screen`}
       style={{
         background: 'linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%)'
       }}
@@ -200,17 +195,17 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
       </div>
 
       {/* Main Menu */}
-      <nav 
+      <nav
         className="flex-1 px-3 space-y-2 overflow-y-auto pb-4"
         style={{
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#d5d8db #F1F5F9'
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#d5d8db #F1F5F9'
         }}
       >
         {filteredMenuItems.length === 0 && isOpen && (
-            <div className="text-center py-4 text-sm text-gray-500 dark:text-slate-400">
-                Không tìm thấy kết quả.
-            </div>
+          <div className="text-center py-4 text-sm text-gray-500 dark:text-slate-400">
+            Không tìm thấy kết quả.
+          </div>
         )}
 
         {filteredMenuItems.map((item) => {
@@ -225,58 +220,53 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
               <div key={item.path}>
                 <div
                   onClick={() => toggleExpanded(item.path)}
-                  className={`w-full flex items-center ${isOpen ? 'px-4' : 'justify-center'} py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group cursor-pointer ${
-                    isActive || isChildActive
+                  className={`w-full flex items-center ${isOpen ? 'px-4' : 'justify-center'} py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group cursor-pointer ${isActive || isChildActive
                       ? 'text-white'
                       : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
-                  }`}
+                    }`}
                   style={isActive || isChildActive ? {
-                      background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
-                      boxShadow: '0 4px 16px rgba(6, 182, 212, 0.4)'
+                    background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
+                    boxShadow: '0 4px 16px rgba(6, 182, 212, 0.4)'
                   } : {}}
                   title={!isOpen ? item.label : ''}
                 >
-                  <Icon 
-                    className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${
-                      isActive || isChildActive ? 'text-white' : 'text-cyan-600'
-                    }`} 
+                  <Icon
+                    className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${isActive || isChildActive ? 'text-white' : 'text-cyan-600'
+                      }`}
                   />
                   {isOpen && (
                     <span className="flex-1 text-left truncate">{item.label}</span>
                   )}
                   {isOpen && (
-                    <ChevronDown 
-                      className={`h-4 w-4 ml-2 transition-transform duration-200 ${
-                        isExpanded ? 'rotate-180' : ''
-                      }`} 
+                    <ChevronDown
+                      className={`h-4 w-4 ml-2 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''
+                        }`}
                     />
                   )}
                 </div>
-                
+
                 {isExpanded && isOpen && (
                   <div className="ml-4 mt-1 space-y-1">
                     {item.children?.map((child) => {
                       const ChildIcon = child.icon;
                       const isChildActiveState = location.pathname === child.path;
-                      
+
                       return (
                         <Link
                           key={child.path}
                           to={child.path}
-                          className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 group ${
-                            isChildActiveState
+                          className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 group ${isChildActiveState
                               ? 'text-white'
                               : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
-                          }`}
+                            }`}
                           style={isChildActiveState ? {
-                              background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
-                              boxShadow: '0 4px 16px rgba(6, 182, 212, 0.4)'
+                            background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
+                            boxShadow: '0 4px 16px rgba(6, 182, 212, 0.4)'
                           } : {}}
                         >
-                          <ChildIcon 
-                            className={`h-4 w-4 mr-3 flex-shrink-0 ${
-                              isChildActiveState ? 'text-white' : 'text-cyan-600'
-                            }`} 
+                          <ChildIcon
+                            className={`h-4 w-4 mr-3 flex-shrink-0 ${isChildActiveState ? 'text-white' : 'text-cyan-600'
+                              }`}
                           />
                           <span className="flex-1 text-left truncate">{child.label}</span>
                         </Link>
@@ -292,21 +282,19 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
             <Link
               key={item.path}
               to={item.path}
-              className={`w-full flex items-center ${isOpen ? 'px-4' : 'justify-center'} py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group ${
-                isActive
+              className={`w-full flex items-center ${isOpen ? 'px-4' : 'justify-center'} py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group ${isActive
                   ? 'text-white'
                   : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
-              }`}
+                }`}
               style={isActive ? {
-                  background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
-                  boxShadow: '0 4px 16px rgba(6, 182, 212, 0.4)'
+                background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
+                boxShadow: '0 4px 16px rgba(6, 182, 212, 0.4)'
               } : {}}
               title={!isOpen ? item.label : ''}
             >
-              <Icon 
-                className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${
-                  isActive ? 'text-white' : 'text-cyan-600'
-                }`} 
+              <Icon
+                className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${isActive ? 'text-white' : 'text-cyan-600'
+                  }`}
               />
               {isOpen && (
                 <span className="flex-1 text-left truncate">{item.label}</span>
@@ -319,18 +307,17 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
             </Link>
           );
         })}
-        
+
       </nav>
 
       {/* Toggle Button Area */}
       <div className="p-4 border-t-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800">
         <button
           onClick={onToggle}
-          className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${
-            !isOpen 
-                ? 'bg-cyan-50 dark:bg-slate-900' 
-                : 'bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900'
-          } hover:shadow-md text-cyan-600 dark:text-cyan-400`}
+          className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${!isOpen
+              ? 'bg-cyan-50 dark:bg-slate-900'
+              : 'bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900'
+            } hover:shadow-md text-cyan-600 dark:text-cyan-400`}
           title={!isOpen ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
         >
           {!isOpen ? (
@@ -371,7 +358,7 @@ export default function MainLayout({ children }: LayoutProps) {
   // States cho Header Dropdowns
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
-  
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   // Khởi tạo mảng thông báo rỗng (chờ ghép API thật)
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -419,11 +406,11 @@ export default function MainLayout({ children }: LayoutProps) {
 
       {/* Main Content Area */}
       <div className={`${sidebarOpen ? 'ml-80' : 'ml-20'} flex-1 flex flex-col overflow-hidden lg:ml-0 transition-all duration-300`}>
-        
+
         {/* Header */}
-        <header 
-            className="relative bg-white dark:bg-slate-950 border-b-2 border-gray-200 dark:border-slate-800 flex items-center justify-between px-6 z-10 transition-all duration-300 shadow-sm"
-            style={{ height: '80px' }}
+        <header
+          className="relative bg-white dark:bg-slate-950 border-b-2 border-gray-200 dark:border-slate-800 flex items-center justify-between px-6 z-10 transition-all duration-300 shadow-sm"
+          style={{ height: '80px' }}
         >
           {/* Left Section: Toggle & Clock */}
           <div className="flex items-center gap-4 flex-shrink-0">
@@ -434,9 +421,9 @@ export default function MainLayout({ children }: LayoutProps) {
               className="h-[3.5rem] w-[3.5rem] flex items-center justify-center bg-white dark:bg-slate-900 border-2 border-gray-200 dark:border-slate-700 hover:bg-cyan-50 dark:hover:bg-slate-800 rounded-xl transition-all group lg:hidden"
             >
               {sidebarOpen ? (
-                  <X size={20} className="text-gray-600 dark:text-slate-300 group-hover:text-cyan-600" />
+                <X size={20} className="text-gray-600 dark:text-slate-300 group-hover:text-cyan-600" />
               ) : (
-                  <Menu size={20} className="text-gray-600 dark:text-slate-300 group-hover:text-cyan-600" />
+                <Menu size={20} className="text-gray-600 dark:text-slate-300 group-hover:text-cyan-600" />
               )}
             </button>
 
@@ -498,7 +485,7 @@ export default function MainLayout({ children }: LayoutProps) {
                       </div>
                       <div className="flex items-center space-x-2">
                         {unreadCount > 0 && (
-                          <button onClick={() => setNotifications(notifications.map(n => ({...n, isUnread: false})))} className="text-xs font-medium text-cyan-600 dark:text-cyan-400" title="Đánh dấu tất cả đã đọc">
+                          <button onClick={() => setNotifications(notifications.map(n => ({ ...n, isUnread: false })))} className="text-xs font-medium text-cyan-600 dark:text-cyan-400" title="Đánh dấu tất cả đã đọc">
                             <CheckCheck className="h-4 w-4" />
                           </button>
                         )}
@@ -593,7 +580,7 @@ export default function MainLayout({ children }: LayoutProps) {
                   </button>
 
                   <div className="my-2 border-t-2 border-gray-200 dark:border-slate-700" />
-                  
+
                   <button onClick={handleLogout} className="flex items-center w-[calc(100%-1rem)] px-4 py-3 text-sm hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors rounded-lg mx-2 text-red-600 font-bold">
                     <LogOut className="h-4 w-4 mr-3" />
                     Đăng xuất
@@ -605,11 +592,11 @@ export default function MainLayout({ children }: LayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main 
-            className="flex-1 overflow-y-auto p-6"
-            style={{
-                background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
-            }}
+        <main
+          className="flex-1 overflow-y-auto p-6"
+          style={{
+            background: 'linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)',
+          }}
         >
           {children || (
             <div className="flex items-center justify-center h-full text-gray-400">
