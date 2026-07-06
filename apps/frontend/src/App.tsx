@@ -13,7 +13,7 @@ import Delivery from './features/delivery/Delivery';
 import Inventory from './features/inventory/Inventory';
 import Reports from './features/reports/Reports';
 import AuditLog from './features/audit-log/AuditLog';
-import Settings from './features/settings/Settings';
+import Settings, { MailSettings, AiSettings } from './features/settings/Settings';
 import ProfilePage from './features/user-management/pages/ProfilePage';
 import SupplierProfilePage from './features/supplier-portal/pages/SupplierProfilePage';
 import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
@@ -343,7 +343,7 @@ function App() {
           }
         />
         <Route
-          path="/settings"
+          path="/settings/*"
           element={
             <ProtectedRoute>
               <MainLayout>
@@ -351,7 +351,11 @@ function App() {
               </MainLayout>
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<Navigate to="mail" replace />} />
+          <Route path="mail" element={<MailSettings />} />
+          <Route path="ai" element={<AiSettings />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>
