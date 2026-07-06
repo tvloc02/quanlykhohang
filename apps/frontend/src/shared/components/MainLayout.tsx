@@ -8,6 +8,8 @@ import {
   Archive,
   FileText,
   Settings,
+  Mail,
+  Cpu,
   Home,
   Layers,
   Truck,
@@ -82,6 +84,16 @@ const menuItems = [
   { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null },
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null },
   { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null },
+  {
+    icon: Settings,
+    label: 'Cài đặt',
+    path: '/settings',
+    badge: null,
+    children: [
+      { icon: Mail, label: 'Cấu hình mail', path: '/settings/mail' },
+      { icon: Cpu, label: 'Cấu hình AI', path: '/settings/ai' },
+    ],
+  },
   { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null, allowedRoles: ['admin', 'manager'] },
 ];
 
