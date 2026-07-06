@@ -30,6 +30,7 @@ import TaskAssignPage from './features/outbound/pages/TaskAssignPage';
 import Outbound from './features/outbound/Outbound';
 import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
 import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDetailPage';
+import SupplierProducts from './features/supplier-products/SupplierProducts';
 
 function getStoredUser() {
   try {
@@ -106,12 +107,23 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/products" element={<Navigate to="/products/main" replace />} />
         <Route
-          path="/products"
+          path="/products/main"
           element={
             <ProtectedRoute>
               <MainLayout>
                 <Products />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/products/supplier"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <SupplierProducts />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -325,7 +337,27 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <StocktakePage />
+                <StocktakePage viewMode="stocktake" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake/requests"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StocktakePage viewMode="requests" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake/create"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StocktakePage viewMode="create" />
               </MainLayout>
             </ProtectedRoute>
           }
