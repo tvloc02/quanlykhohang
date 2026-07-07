@@ -68,7 +68,7 @@ export interface BarcodeScannerProps {
    */
   mode?: 'lookup' | 'scan';
   /** Called when a product is found after scanning/manual input (mode='lookup') */
-  onProductFound?: (product: ScannedProduct, qty: number) => void;
+  onProductFound?: (product: ScannedProduct, qty: number, price?: number) => void;
   /** Called when a barcode is decoded (mode='scan'). Returns raw barcode string. */
   onBarcodeScanned?: (barcode: string) => void;
   /** Whether to show qty dialog after scan. Default: true (only in 'lookup' mode) */
@@ -492,7 +492,7 @@ export default function BarcodeScanner({
         totalStock: 0
       };
 
-      onProductFound?.(finalProduct, qty);
+      onProductFound?.(finalProduct, qty, Number(quickAddPrice) || 0);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Có lỗi xảy ra khi tạo sản phẩm');
