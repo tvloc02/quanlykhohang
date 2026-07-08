@@ -39,16 +39,28 @@ export class ScanService {
 
     if (!product) {
       const externalData = await this.fetchExternalProductData(barcode);
-      return {
-        success: true,
-        data: {
-          is_external: true,
-          barcode: barcode,
-          name: externalData?.name || '',
-          supplier: externalData?.supplier || '',
-        },
-        meta: null,
-      };
+      
+      if (externalData) {
+        return {
+          success: true,
+          data: {
+            is_external: true,
+            barcode: barcode,
+            name: externalData.name,
+            supplier: externalData.supplier,
+          },
+          meta: null,
+        };
+      } else {
+        return {
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Không tìm thấy thông tin sản phẩm trong kho hay hệ thống bên ngoài.',
+            details: { scanned_code: barcode }
+          }
+        } as any;
+      }
     }
 
     // Lấy tồn kho tại tất cả các vị trí
@@ -111,7 +123,7 @@ export class ScanService {
 
   private async fetchExternalProductData(barcode: string): Promise<{ name: string; supplier: string } | null> {
     try {
-      // Check if it's an ISBN (starts with 978 or 979)
+      // 1. Nếu là sách (ISBN bắt đầu bằng 978 hoặc 979)
       if (barcode.startsWith('978') || barcode.startsWith('979')) {
         const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${barcode}`);
         if (response.ok) {
@@ -124,22 +136,38 @@ export class ScanService {
             };
           }
         }
-      } else {
-        // Try OpenFoodFacts for other barcodes
-        const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === 1 && data.product) {
-            return {
-              name: data.product.product_name || '',
-              supplier: data.product.brands || '',
-            };
-          }
+      } 
+      
+      // 2. Thử tìm trên hệ thống UPCitemDB (Hệ thống dữ liệu khổng lồ cho gia dụng, điện tử, thời trang, tạp hóa...)
+      // Dùng bản Trial (giới hạn ~100 request/ngày) không cần API Key
+      const upcResponse = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
+      if (upcResponse.ok) {
+        const upcData = await upcResponse.json();
+        if (upcData.code === 'OK' && upcData.items && upcData.items.length > 0) {
+          return {
+            name: upcData.items[0].title || '',
+            supplier: upcData.items[0].brand || '',
+          };
         }
       }
+
+      // 3. Fallback cuối cùng: OpenFoodFacts (dành cho thực phẩm, đồ uống)
+      const offResponse = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+      if (offResponse.ok) {
+        const offData = await offResponse.json();
+        if (offData.status === 1 && offData.product) {
+          return {
+            name: offData.product.product_name || '',
+            supplier: offData.product.brands || '',
+          };
+        }
+      }
+
     } catch (e) {
       // Ignore errors from external APIs
+      console.warn('Lỗi khi tra cứu external API:', e);
     }
     return null;
   }
 }
+
