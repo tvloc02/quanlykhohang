@@ -14,7 +14,12 @@ type SupplierProductsWindowProps = {
 };
 
 function formatMoney(value: string, currency: string) {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: currency || 'VND' }).format(Number(value || 0));
+  const amount = Number(value || 0);
+  try {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: currency || 'VND' }).format(amount);
+  } catch (error) {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  }
 }
 
 export default function SupplierProductsWindow({
