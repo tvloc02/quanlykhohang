@@ -21,14 +21,15 @@ export class WarehousesService {
     };
   }
 
-  private parseJsonArray(value: string | null | undefined): string[] {
+  private parseJsonArray(value: string | string[] | null | undefined): string[] {
     if (!value) return [];
+    if (Array.isArray(value)) return value;
     try {
-      const parsed = JSON.parse(value);
+      const parsed = JSON.parse(value as string);
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       // Handle legacy comma-separated format from simple-array
-      return value.split(',').map((s) => s.trim()).filter(Boolean);
+      return (value as string).split(',').map((s) => s.trim()).filter(Boolean);
     }
   }
 

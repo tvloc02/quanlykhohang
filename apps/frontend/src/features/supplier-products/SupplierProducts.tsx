@@ -13,7 +13,11 @@ function authHeaders() {
 
 function formatMoney(value: string, currency: string) {
   const amount = Number(value || 0);
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: currency || 'VND' }).format(amount);
+  try {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: currency || 'VND' }).format(amount);
+  } catch (error) {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  }
 }
 
 type ProductRow = SupplierProductLink & {
