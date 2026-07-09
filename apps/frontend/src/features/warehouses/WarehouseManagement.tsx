@@ -327,7 +327,7 @@ export default function WarehouseManagement() {
         setSuccess('Đã xóa kho hàng.');
         closeModal();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Kh?ng x?a ???c kho h?ng');
+        setError(err instanceof Error ? err.message : 'Không xóa được kho hàng');
       } finally {
         setSaving(false);
       }
@@ -465,8 +465,8 @@ export default function WarehouseManagement() {
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span
                         className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${warehouse.status === 'active'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-200 bg-slate-100 text-slate-600'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-slate-200 bg-slate-100 text-slate-600'
                           }`}
                       >
                         {warehouse.status === 'active' ? 'Đang hoạt động' : 'Không hoạt động'}
