@@ -141,7 +141,12 @@ export default function WarehouseManagement() {
       });
 
       if (warehousesToSync.length > 0) {
-        const syncedWarehouses = await Promise.all(warehousesToSync.map((warehouse) => upsertWarehouseToApi(warehouse)));
+        const syncedWarehouses = await Promise.all(
+          warehousesToSync.map((warehouse) => {
+            const isNew = !remoteById.has(String(warehouse.id));
+            return upsertWarehouseToApi(warehouse, isNew ? 'POST' : undefined);
+          }),
+        );
         const syncedById = new Map(syncedWarehouses.map((warehouse) => [warehouse.id, warehouse]));
         const mergedAfterSync = nextWarehouses.map(
           (warehouse) => syncedById.get(warehouse.id) || warehouse,
@@ -284,7 +289,7 @@ export default function WarehouseManagement() {
       setSaving(true);
       setError('');
       try {
-        await upsertWarehouseToApi(payload);
+        await upsertWarehouseToApi(payload, modalMode === 'create' ? 'POST' : undefined);
         await loadData();
         setSuccess(modalMode === 'edit' ? 'Đã cập nhật kho hàng.' : 'Đã thêm kho hàng mới.');
         closeModal();
@@ -310,11 +315,16 @@ export default function WarehouseManagement() {
 
         if (!response.ok && response.status !== 404) {
           const data = await response.json().catch(() => null);
-          throw new Error(data?.message || 'Kh?ng x?a ???c kho h?ng');
+          throw new Error(data?.message || 'Không xóa được kho hàng');
         }
 
+        // Remove from localStorage to prevent resurrection
+        const fallback = getStoredWarehouses();
+        const nextFallback = fallback.filter((w) => w.id !== selectedWarehouse.id);
+        saveStoredWarehouses(nextFallback);
+
         await loadData();
-        setSuccess('?? x?a kho h?ng.');
+        setSuccess('Đã xóa kho hàng.');
         closeModal();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Kh?ng x?a ???c kho h?ng');
@@ -454,11 +464,10 @@ export default function WarehouseManagement() {
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span
-                        className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${
-                          warehouse.status === 'active'
+                        className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${warehouse.status === 'active'
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                             : 'border-slate-200 bg-slate-100 text-slate-600'
-                        }`}
+                          }`}
                       >
                         {warehouse.status === 'active' ? 'Đang hoạt động' : 'Không hoạt động'}
                       </span>

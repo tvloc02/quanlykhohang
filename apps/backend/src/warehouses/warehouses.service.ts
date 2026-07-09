@@ -21,15 +21,23 @@ export class WarehousesService {
     };
   }
 
-  private parseJsonArray(value: string | string[] | null | undefined): string[] {
-    if (!value) return [];
-    if (Array.isArray(value)) return value;
+  private parseJsonArray(value: any): string[] {
     try {
-      const parsed = JSON.parse(value as string);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      // Handle legacy comma-separated format from simple-array
-      return (value as string).split(',').map((s) => s.trim()).filter(Boolean);
+      if (!value) return [];
+      if (Array.isArray(value)) return value.map(String);
+      if (typeof value === 'string') {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) return parsed.map(String);
+        } catch {
+          // not json
+        }
+        return value.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      return [];
+    } catch (e) {
+      console.error('Error parsing JSON array:', e);
+      return [];
     }
   }
 
@@ -62,7 +70,11 @@ export class WarehousesService {
     createWarehouseDto: CreateWarehouseDto,
     actor?: { id?: string; email?: string },
   ) {
-    const normalizedCode = createWarehouseDto.code.trim().toUpperCase();
+    const codeStr = createWarehouseDto.code || '';
+    if (!codeStr.trim()) {
+      throw new BadRequestException('Warehouse code is required');
+    }
+    const normalizedCode = codeStr.trim().toUpperCase();
     const existingCode = await this.findByCode(normalizedCode);
     if (existingCode) {
       throw new BadRequestException('Warehouse code already exists');
@@ -71,11 +83,11 @@ export class WarehousesService {
     const warehouse = this.repo.create({
       id: createWarehouseDto.id?.trim() || this.generateId(),
       code: normalizedCode,
-      name: createWarehouseDto.name.trim(),
-      address: createWarehouseDto.address?.trim() || '',
+      name: (createWarehouseDto.name || '').trim(),
+      address: (createWarehouseDto.address || '').trim(),
       status: createWarehouseDto.status || 'active',
-      managerIds: JSON.stringify(createWarehouseDto.managerIds || []),
-      staffIds: JSON.stringify(createWarehouseDto.staffIds || []),
+      managerIds: Array.isArray(createWarehouseDto.managerIds) ? createWarehouseDto.managerIds.join(',') : '',
+      staffIds: Array.isArray(createWarehouseDto.staffIds) ? createWarehouseDto.staffIds.join(',') : '',
     });
 
     const saved = await this.repo.save(warehouse);
@@ -100,7 +112,7 @@ export class WarehousesService {
     const warehouse = await this.findOneEntity(id);
 
     if (updateWarehouseDto.code && updateWarehouseDto.code !== warehouse.code) {
-      const normalizedCode = updateWarehouseDto.code.trim().toUpperCase();
+      const normalizedCode = (updateWarehouseDto.code || '').trim().toUpperCase();
       const existingCode = await this.findByCode(normalizedCode);
       if (existingCode) {
         throw new BadRequestException('Warehouse code already exists');
@@ -109,11 +121,11 @@ export class WarehousesService {
     }
 
     if (updateWarehouseDto.name !== undefined) {
-      warehouse.name = updateWarehouseDto.name.trim();
+      warehouse.name = (updateWarehouseDto.name || '').trim();
     }
 
     if (updateWarehouseDto.address !== undefined) {
-      warehouse.address = updateWarehouseDto.address.trim();
+      warehouse.address = (updateWarehouseDto.address || '').trim();
     }
 
     if (updateWarehouseDto.status !== undefined) {
@@ -121,11 +133,11 @@ export class WarehousesService {
     }
 
     if (updateWarehouseDto.managerIds !== undefined) {
-      warehouse.managerIds = JSON.stringify(updateWarehouseDto.managerIds || []);
+      warehouse.managerIds = Array.isArray(updateWarehouseDto.managerIds) ? updateWarehouseDto.managerIds.join(',') : '';
     }
 
     if (updateWarehouseDto.staffIds !== undefined) {
-      warehouse.staffIds = JSON.stringify(updateWarehouseDto.staffIds || []);
+      warehouse.staffIds = Array.isArray(updateWarehouseDto.staffIds) ? updateWarehouseDto.staffIds.join(',') : '';
     }
 
     const updated = await this.repo.save(warehouse);
