@@ -23,7 +23,7 @@ export class Product extends BaseEntity {
   @ManyToOne(() => Category, { nullable: true })
   category?: Category;
 
-  @ManyToOne(() => Supplier, { nullable: true })
+  @ManyToOne(() => Supplier, { nullable: true, onDelete: 'SET NULL' })
   supplier?: Supplier;
 
   @Column({ type: 'int', default: 0 })
