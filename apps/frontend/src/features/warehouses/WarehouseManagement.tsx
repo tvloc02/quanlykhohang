@@ -198,6 +198,17 @@ export default function WarehouseManagement() {
     setCurrentPage(1);
   }, [search, statusFilter]);
 
+  // Tự động tắt thông báo sau 5 giây
+  React.useEffect(() => {
+    if (error || success) {
+      const timer = setTimeout(() => {
+        setError('');
+        setSuccess('');
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, success]);
+
   const managers = users.filter((user) => ['admin', 'manager'].includes(getPrimaryRole(user)));
   const staff = users.filter((user) => getPrimaryRole(user) === 'staff');
   const activeCount = warehouses.filter((warehouse) => warehouse.status === 'active').length;
