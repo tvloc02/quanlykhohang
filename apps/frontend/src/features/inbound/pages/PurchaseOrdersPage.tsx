@@ -332,13 +332,6 @@ function Field({ label, value }: { label: string; value: string }) {
       <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
       <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
         {value || '-'}
-        {/* Tích hợp Barcode Scanner */}
-        <BarcodeScanner
-          isOpen={scannerOpen}
-          onClose={() => setScannerOpen(false)}
-          onProductFound={handleProductScanned}
-          title="Quét mã vạch nhập kho"
-        />
       </div>
     </div>
   );
@@ -384,14 +377,23 @@ function PurchaseOrdersPageContent() {
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [form, setForm] = React.useState<OrderForm>(() => buildEmptyForm());
   const [deleteTarget, setDeleteTarget] = React.useState<PurchaseOrder | null>(null);
+  const [scannedProducts, setScannedProducts] = React.useState<ScannedProduct[]>([]);
   const [receiveOpen, setReceiveOpen] = React.useState(false);
   const [receiveRows, setReceiveRows] = React.useState<Array<{ detailId: string; label: string; qty: string }>>([]);
   const [scannerOpen, setScannerOpen] = React.useState(false);
   const currentUserId = React.useMemo(() => getCurrentUserId(), []);
 
-  const handleProductScanned = React.useCallback((product: ScannedProduct, qty: number) => {
+  const handleProductScanned = React.useCallback((product: ScannedProduct, qty: number, price?: number) => {
+    setScannedProducts((prev) => {
+      if (!prev.some((p) => p.id === product.id)) {
+        return [...prev, product];
+      }
+      return prev;
+    });
+
     setForm((current) => {
       const newItems = [...current.items];
+      const defaultPrice = price !== undefined ? String(price) : '0';
       
       // Nếu dòng cuối cùng đang trống (chưa chọn sản phẩm), thì ghi đè lên dòng đó
       const lastIndex = newItems.length - 1;
@@ -415,7 +417,7 @@ function PurchaseOrdersPageContent() {
             productId: product.id,
             expectedQty: qty.toString(),
             receivedQty: '0',
-            unitPrice: '0',
+            unitPrice: defaultPrice,
             warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : current.warehouseCode || 'KHO-NVL',
           });
         }
@@ -658,8 +660,6 @@ function PurchaseOrdersPageContent() {
     setForm((current) => ({ ...current, creatorName, creatorPhone, warehouseCode: defaultWarehouse }));
     setModalMode('create');
   };
-
-  
 
   const openEdit = async (order: PurchaseOrder) => {
     setSelectedId(order.id);
@@ -1019,7 +1019,6 @@ function PurchaseOrdersPageContent() {
     <div className="space-y-6">
       {toast && (
         <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
-          {toast.type === 'error' ? <XCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
           <p className="text-sm font-bold">{toast.message}</p>
           <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
             <X className="h-4 w-4" />
@@ -1041,7 +1040,6 @@ function PurchaseOrdersPageContent() {
         </button>
       </div>
 
-      {/* TỔNG QUAN 4 THẺ MÀU CYAN ĐẬM */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
           <p className="text-lg font-bold text-white uppercase tracking-wide">{orders.length} Tổng PO</p>
@@ -1057,7 +1055,6 @@ function PurchaseOrdersPageContent() {
         </div>
       </div>
 
-      {/* THANH TÌM KIẾM & LỌC (Các ô tách rời) */}
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -1109,7 +1106,6 @@ function PurchaseOrdersPageContent() {
         </div>
       </div>
 
-      {/* TÌM KIẾM CHUYÊN SÂU */}
       {showAdvancedFilters && (
         <div className="grid grid-cols-1 gap-4 rounded-xl border border-cyan-200 bg-cyan-50/30 p-4 shadow-sm md:grid-cols-2 lg:grid-cols-4">
           <Input 
@@ -1158,7 +1154,6 @@ function PurchaseOrdersPageContent() {
         </div>
       )}
 
-      {/* BẢNG DỮ LIỆU CHÍNH */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1180px] border-collapse bg-white">
@@ -1271,28 +1266,11 @@ function PurchaseOrdersPageContent() {
               <option value={20}>20</option>
               <option value={50}>50</option>
             </select>
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                «
-              </button>
-              <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                ‹
-              </button>
-              <button type="button" className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-cyan-600 px-3 text-sm font-bold text-white">
-                {currentPage}
-              </button>
-              <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                ›
-              </button>
-              <button type="button" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                »
-              </button>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* POPUP XEM CHI TIẾT ĐƠN HÀNG */}
+      {/* POPUP XEM CHI TIẾT */}
       {modalMode === 'view' && selectedOrder && selectedOrderMetrics && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
           <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col">
@@ -1351,33 +1329,23 @@ function PurchaseOrdersPageContent() {
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Mã hàng</th>
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Tên hàng</th>
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Kho</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">ĐVT</th>
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL yêu cầu</th>
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL đã nhận</th>
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Đơn giá</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {(selectedOrder.details || []).length ? (
-                          (selectedOrder.details || []).map((detail, index) => (
-                            <tr key={detail.id} className="border-b border-slate-200 transition hover:bg-slate-50">
-                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
-                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.internalSku || '-'}</td>
-                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.name || '-'}</td>
-                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.warehouseCode || '-'}</td>
-                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.unit || '-'}</td>
-                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.expectedQty}</td>
-                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.receivedQty}</td>
-                              <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{formatMoney(detail.unitPrice)}</td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={8} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
-                              Đơn hàng này chưa có dòng hàng nào.
-                            </td>
+                        {(selectedOrder.details || []).map((detail, index) => (
+                          <tr key={detail.id} className="border-b border-slate-200 transition hover:bg-slate-50">
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.internalSku || '-'}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.name || '-'}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.warehouseCode || '-'}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.expectedQty}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.receivedQty}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{formatMoney(detail.unitPrice)}</td>
                           </tr>
-                        )}
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -1390,11 +1358,9 @@ function PurchaseOrdersPageContent() {
                 Lập lệnh nhập kho
               </button>
               <button type="button" onClick={() => { closeModal(); openReceive(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-5 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-60">
-                <Truck className="h-4 w-4" />
                 Nhận hàng
               </button>
               <button type="button" onClick={() => { closeModal(); completeOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
-                <CheckCircle2 className="h-4 w-4" />
                 Hoàn thành
               </button>
             </div>
@@ -1422,8 +1388,8 @@ function PurchaseOrdersPageContent() {
             </div>
 
             <div className="max-h-[calc(92vh-150px)] space-y-6 overflow-y-auto px-8 py-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                <Input label="Số đơn hàng" value={form.poNumber} onChange={(value) => setForm((current) => ({ ...current, poNumber: value }))} placeholder="Để trống để hệ thống tự sinh" />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Input label="Số đơn hàng" value={form.poNumber} onChange={(value) => setForm((current) => ({ ...current, poNumber: value }))} />
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">Nhà cung cấp</label>
                   <select
@@ -1441,85 +1407,6 @@ function PurchaseOrdersPageContent() {
                 </div>
                 <Input label="Ngày đơn hàng" type="date" value={form.orderDate} onChange={(value) => setForm((current) => ({ ...current, orderDate: value }))} />
                 <Input label="Ngày giao hàng" type="date" value={form.expectedDate} onChange={(value) => setForm((current) => ({ ...current, expectedDate: value }))} />
-                <Input label="Người tạo" value={form.creatorName || ''} onChange={(value) => setForm((current) => ({ ...current, creatorName: value }))} />
-                <Input label="SĐT người tạo" value={form.creatorPhone || ''} onChange={(value) => setForm((current) => ({ ...current, creatorPhone: value }))} />
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Kho mặc định</label>
-                  <select
-                    value={form.warehouseCode || ''}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        warehouseCode: event.target.value,
-                        approverId: '',
-                        items: current.items.map((item) => ({
-                          ...item,
-                          warehouseCode: event.target.value || item.warehouseCode,
-                        })),
-                      }))
-                    }
-                    className={modalSelectClass}
-                    disabled={warehouseOptions.length === 0}
-                  >
-                    <option value="">Chọn kho</option>
-                    {warehouseOptions.map((w) => (
-                      <option key={w.id} value={w.code}>
-                        {w.code} - {w.name}
-                      </option>
-                    ))}
-                  </select>
-                  {accessibleWarehouses.length === 0 && (
-                    <p className="mt-2 text-xs font-semibold text-amber-600">
-                      Bạn chưa được gán kho nào. Hãy nhờ quản lý kho phân quyền trước khi tạo đơn.
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Người duyệt</label>
-                  <select
-                    value={form.approverId || ''}
-                    onChange={(event) => setForm((current) => ({ ...current, approverId: event.target.value }))}
-                    className={modalSelectClass}
-                    disabled={approverOptions.length === 0 || !form.warehouseCode}
-                  >
-                    <option value="">Chọn người duyệt</option>
-                    {approverOptions.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.fullName || u.email}
-                        </option>
-                      ))}
-                  </select>
-                  {!form.warehouseCode ? (
-                    <p className="mt-2 text-xs font-semibold text-slate-500">Chọn kho trước để lọc người duyệt.</p>
-                  ) : approverOptions.length === 0 ? (
-                    <p className="mt-2 text-xs font-semibold text-amber-600">
-                      Kho này chưa có quản lý được gán. Hãy gán quản lý kho trong màn Nhân sự.
-                    </p>
-                  ) : null}
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái</label>
-                  <select
-                    value={form.status}
-                    onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as OrderStatus }))}
-                    className={modalSelectClass}
-                  >
-                    <option value="CREATED">Chờ duyệt</option>
-                    <option value="APPROVED">Đã duyệt</option>
-                    <option value="PARTIALLY_RECEIVED">Nhận một phần</option>
-                    <option value="RECEIVED">Hoàn thành</option>
-                    <option value="CANCELLED">Đã hủy</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2 xl:col-span-3">
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Diễn giải</label>
-                  <textarea
-                    value={form.description}
-                    onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                    className="min-h-24 w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                    placeholder="Ghi chú cho đơn mua hàng"
-                  />
-                </div>
               </div>
 
               <section>
@@ -1529,12 +1416,10 @@ function PurchaseOrdersPageContent() {
                     <h4 className="font-black text-slate-900">Hàng hóa</h4>
                   </div>
                   <div className="flex gap-2">
-                    <ScanBarcodeButton onClick={() => setScannerOpen(true)} />
-                    <button
-                      type="button"
-                      onClick={addRow}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
-                    >
+                    <button type="button" onClick={() => setScannerOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white hover:bg-slate-900">
+                      Quét Barcode
+                    </button>
+                    <button type="button" onClick={addRow} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100">
                       <PlusCircle className="h-4 w-4" />
                       Thêm dòng
                     </button>
@@ -1546,7 +1431,7 @@ function PurchaseOrdersPageContent() {
                     <table className="w-full min-w-[1100px] bg-white">
                       <thead className="bg-slate-50">
                         <tr>
-                          <th className="w-16 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">STT</th>
+                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">STT</th>
                           <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Mặt hàng</th>
                           <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL yêu cầu</th>
                           <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL đã nhận</th>
@@ -1557,7 +1442,6 @@ function PurchaseOrdersPageContent() {
                       </thead>
                       <tbody className="divide-y divide-slate-200 bg-white">
                         {form.items.map((item, index) => {
-                          const selectedProduct = supplierProducts.find((supplierProduct) => supplierProduct.product?.id === item.productId);
                           const expectedQty = parseMoney(item.expectedQty);
                           const unitPrice = parseMoney(item.unitPrice);
                           return (
@@ -1567,14 +1451,24 @@ function PurchaseOrdersPageContent() {
                                 <select
                                   value={item.productId}
                                   onChange={(event) => onProductChange(item.rowId, event.target.value)}
-                                  className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-4 pr-10 text-sm outline-none appearance-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                                  className={modalSelectClass}
                                 >
-                                  <option value="">Chọn mặt hàng</option>
+                                  <option value="">Chọn sản phẩm</option>
                                   {supplierProducts.map((supplierProduct) => (
                                     <option key={supplierProduct.id} value={supplierProduct.product?.id || ''}>
                                       {supplierProduct.product?.internalSku} - {supplierProduct.product?.name}
                                     </option>
                                   ))}
+                                  {scannedProducts.map((sp) => {
+                                    if (!supplierProducts.some(p => p.product?.id === sp.id)) {
+                                      return (
+                                        <option key={sp.id} value={sp.id}>
+                                          {sp.internalSku} - {sp.name} (Mới quét)
+                                        </option>
+                                      );
+                                    }
+                                    return null;
+                                  })}
                                 </select>
                               </td>
                               <td className="px-3 py-3">
