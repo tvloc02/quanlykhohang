@@ -69,8 +69,24 @@ export function warehouseListEquals(a: WarehouseRecord, b: WarehouseRecord) {
   );
 }
 
-export async function upsertWarehouseToApi(warehouse: WarehouseRecord): Promise<WarehouseRecord> {
+export async function upsertWarehouseToApi(warehouse: WarehouseRecord, forceMethod?: 'POST' | 'PUT'): Promise<WarehouseRecord> {
   const payload = normalizeWarehouseRecord(warehouse);
+
+  if (forceMethod === 'POST') {
+    const createResponse = await fetch(`${API_BASE_URL}/warehouses`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!createResponse.ok) {
+      const data = await createResponse.json().catch(() => null);
+      throw new Error(data?.message || 'Không tạo được kho hàng');
+    }
+
+    const created = (await createResponse.json()) as WarehouseRecord;
+    return normalizeWarehouseRecord(created);
+  }
 
   async function tryUpdate(id: string) {
     return fetch(`${API_BASE_URL}/warehouses/${encodeURIComponent(id)}`, {
