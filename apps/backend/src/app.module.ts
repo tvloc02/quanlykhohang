@@ -17,6 +17,7 @@ import { AuditLogModule } from './audit-log/audit-log.module';
 import { RolesModule } from './roles/roles.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
 import { CustomerPortalModule } from './customer-portal/customer-portal.module';
+import { ScanModule } from './scan/scan.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { CustomerPortalModule } from './customer-portal/customer-portal.module';
     ErpIntegrationModule,
     NotificationsModule,
     CustomerPortalModule,
+    ScanModule,
   ],
   controllers: [],
   providers: [],
