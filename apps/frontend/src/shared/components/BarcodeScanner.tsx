@@ -21,6 +21,7 @@ export interface ScanLookupData {
     shelf_code: string;
   } | null;
   unit?: string | null;
+  purchase_price?: number;
 }
 
 /** Cấu trúc response từ API scan */
@@ -46,6 +47,7 @@ export interface ScannedProduct {
   category: { id: string; name: string } | null;
   supplier: { id: string; name: string } | null;
   isExternal?: boolean;
+  purchasePrice?: number;
   stockBalances: Array<{
     id: string;
     locationCode: string;
@@ -138,6 +140,7 @@ async function lookupBarcode(code: string): Promise<ScannedProduct> {
     category: null,
     supplier: null,
     isExternal: false,
+    purchasePrice: d.purchase_price,
     stockBalances: d.location
       ? [
         {
@@ -459,25 +462,25 @@ export default function BarcodeScanner({
       });
       if (!res.ok) throw new Error('Lỗi tạo sản phẩm mới');
       const newProductData = await res.json();
-      
+
       // Đồng bộ local storage cho fallback
       try {
         const stored = JSON.parse(localStorage.getItem('smart-wms-products') || '[]');
         stored.push({
-           id: newProductData.id || crypto.randomUUID(),
-           sku: internalSku,
-           name: quickAddName,
-           category: '',
-           unit: '',
-           defaultWarehouse: '',
-           location: '',
-           managementType: '',
-           supplier: foundProduct?.supplier?.name || '',
-           price: Number(quickAddPrice) || 0,
-           stock: 0
+          id: newProductData.id || crypto.randomUUID(),
+          sku: internalSku,
+          name: quickAddName,
+          category: '',
+          unit: '',
+          defaultWarehouse: '',
+          location: '',
+          managementType: '',
+          supplier: foundProduct?.supplier?.name || '',
+          price: Number(quickAddPrice) || 0,
+          stock: 0
         });
         localStorage.setItem('smart-wms-products', JSON.stringify(stored));
-      } catch (e) {}
+      } catch (e) { }
 
       const finalProduct: ScannedProduct = {
         id: newProductData.id || 'NEW_PROD',
@@ -488,6 +491,7 @@ export default function BarcodeScanner({
         category: null,
         supplier: foundProduct?.supplier || null,
         isExternal: false,
+        purchasePrice: Number(quickAddPrice) || 0,
         stockBalances: [],
         totalStock: 0
       };
@@ -514,7 +518,7 @@ export default function BarcodeScanner({
 
   const handleConfirmQty = () => {
     if (foundProduct && qty > 0) {
-      onProductFound?.(foundProduct, qty);
+      onProductFound?.(foundProduct, qty, foundProduct.purchasePrice);
       // Reset for next scan
       setFoundProduct(null);
       setScannedBarcode('');
@@ -709,7 +713,7 @@ export default function BarcodeScanner({
               flexDirection: 'column',
               gap: '20px'
             }}>
-              
+
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -718,7 +722,7 @@ export default function BarcodeScanner({
                   </div>
                   <h4 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>Tạo sản phẩm mới nhanh</h4>
                 </div>
-                <button 
+                <button
                   onClick={handleCancelProduct}
                   style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
@@ -732,7 +736,7 @@ export default function BarcodeScanner({
                   <label style={{ fontSize: '14px', fontWeight: '600', display: 'block', marginBottom: '6px', color: '#334155' }}>Mã vạch</label>
                   <input type="text" disabled value={foundProduct.supplierBarcode || scannedBarcode || lastScannedRef.current} style={{ width: '100%', background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#475569', fontSize: '14px', fontWeight: '500' }} />
                 </div>
-                
+
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ fontSize: '14px', fontWeight: '600', display: 'block', marginBottom: '6px', color: '#334155' }}>Tên sản phẩm <span style={{ color: '#ef4444' }}>*</span></label>
                   <input type="text" value={quickAddName} onChange={(e) => setQuickAddName(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px', color: '#0f172a', fontWeight: '500', transition: 'border-color 0.2s' }} placeholder="Nhập tên sản phẩm..." onFocus={(e) => e.target.style.borderColor = '#06b6d4'} onBlur={(e) => e.target.style.borderColor = '#cbd5e1'} autoFocus />
@@ -742,7 +746,7 @@ export default function BarcodeScanner({
                   <label style={{ fontSize: '14px', fontWeight: '600', display: 'block', marginBottom: '6px', color: '#334155' }}>Nhà cung cấp</label>
                   <input type="text" disabled value={foundProduct.supplier?.name || ''} style={{ width: '100%', background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#475569', fontSize: '14px', fontWeight: '500' }} placeholder="Chưa có dữ liệu" />
                 </div>
-                
+
                 <div>
                   <label style={{ fontSize: '14px', fontWeight: '600', display: 'block', marginBottom: '6px', color: '#334155' }}>Giá nhập (VND)</label>
                   <input type="number" value={quickAddPrice} onChange={(e) => setQuickAddPrice(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px', color: '#0f172a', fontWeight: '500', transition: 'border-color 0.2s' }} placeholder="0" onFocus={(e) => e.target.style.borderColor = '#06b6d4'} onBlur={(e) => e.target.style.borderColor = '#cbd5e1'} />
@@ -751,7 +755,7 @@ export default function BarcodeScanner({
 
               {/* Footer */}
               <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                <button 
+                <button
                   style={{ padding: '8px 16px', borderRadius: '6px', background: '#ffffff', color: '#475569', fontWeight: '600', border: '1px solid #cbd5e1', cursor: 'pointer', transition: 'background 0.2s', fontSize: '14px' }}
                   onClick={handleCancelProduct}
                   disabled={loading}
@@ -760,7 +764,7 @@ export default function BarcodeScanner({
                 >
                   Hủy
                 </button>
-                <button 
+                <button
                   style={{ padding: '8px 20px', borderRadius: '6px', background: '#00a8a8', color: 'white', fontWeight: '600', border: 'none', cursor: 'pointer', transition: 'opacity 0.2s', fontSize: '14px' }}
                   onClick={handleCreateExternalProduct}
                   disabled={loading}

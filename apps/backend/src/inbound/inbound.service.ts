@@ -24,6 +24,7 @@ type SerializedPurchaseOrder = {
     supplierCode?: string;
     name: string;
   } | null;
+  supplierName?: string;
   details: Array<{
     id: string;
     warehouseCode?: string;
@@ -73,11 +74,10 @@ export class InboundService {
     }
     const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
     const supplier = supplierId ? await this.supplierRepo.findOneBy({ id: supplierId }) : null;
-    if (supplierId && !supplier) {
-      throw new NotFoundException('Supplier not found');
-    }
 
     const poNumber = await this.generatePoNumber(dto.poNumber || dto.shipmentNumber);
+    // Ưu tiên: supplier entity name > supplierName text > undefined
+    const supplierName = supplier?.name || dto.supplierName?.trim() || undefined;
     const receipt = this.receiptRepo.create({
       poNumber,
       orderDate: dto.orderDate ? new Date(dto.orderDate) : new Date(),
@@ -85,12 +85,13 @@ export class InboundService {
       status: dto.status || 'CREATED',
       description: dto.description?.trim() || undefined,
       supplier: supplier || undefined,
+      supplierName,
       totalAmount: '0',
     });
 
     const savedReceipt = await this.receiptRepo.save(receipt);
     const details = await this.persistDetails(savedReceipt, dto.items || []);
-    savedReceipt.totalAmount = details.reduce((sum, detail) => sum + parseNumber(detail.totalLineAmount), 0).toFixed(2);
+    savedReceipt.totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty)), 0).toFixed(2);
     await this.receiptRepo.save(savedReceipt);
 
     return this.serializeReceipt(await this.findReceiptEntity(savedReceipt.id, user));
@@ -110,8 +111,13 @@ export class InboundService {
     const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
     if (supplierId) {
       const supplier = await this.supplierRepo.findOneBy({ id: supplierId });
-      if (!supplier) throw new NotFoundException('Supplier not found');
-      receipt.supplier = supplier;
+      if (supplier) {
+        receipt.supplier = supplier;
+        receipt.supplierName = supplier.name;
+      }
+    }
+    if (dto.supplierName !== undefined) {
+      receipt.supplierName = dto.supplierName.trim() || receipt.supplierName;
     }
 
     const nextPoNumber = dto.poNumber || dto.shipmentNumber || receipt.poNumber;
@@ -386,7 +392,7 @@ export class InboundService {
       relations: ['inboundReceipt', 'product'],
     });
 
-    const totalAmount = details.reduce((sum, detail) => sum + parseNumber(detail.totalLineAmount), 0);
+    const totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty)), 0);
     await this.receiptRepo.update(receiptId, { totalAmount: totalAmount.toFixed(2) });
   }
 
@@ -420,6 +426,22 @@ export class InboundService {
   }
 
   private serializeReceipt(receipt: InboundReceipt): SerializedPurchaseOrder {
+    // Hiển thị NCC: ưu tiên supplier entity > supplierName text
+    const supplierDisplay = receipt.supplier
+      ? {
+          id: receipt.supplier.id,
+          supplierCode: receipt.supplier.supplierCode,
+          name: receipt.supplier.name,
+        }
+      : receipt.supplierName
+        ? { id: '', supplierCode: '', name: receipt.supplierName }
+        : null;
+
+    const details = receipt.details || [];
+    const computedTotal = details.length > 0 
+      ? details.reduce((sum, d) => sum + (parseNumber(d.unitPrice) * parseNumber(d.expectedQty)), 0)
+      : parseNumber(receipt.totalAmount);
+
     return {
       id: receipt.id,
       poNumber: receipt.poNumber || `DMH${String(receipt.id).padStart(5, '0')}`,
@@ -428,16 +450,11 @@ export class InboundService {
       expectedDate: toDateString(receipt.expectedDate),
       status: receipt.status,
       description: receipt.description,
-      totalAmount: parseNumber(receipt.totalAmount),
-      supplier: receipt.supplier
-        ? {
-            id: receipt.supplier.id,
-            supplierCode: receipt.supplier.supplierCode,
-            name: receipt.supplier.name,
-          }
-        : null,
-      details: (receipt.details || []).map((detail) => this.serializeDetail(detail)),
-      items: receipt.details?.length || 0,
+      totalAmount: computedTotal,
+      supplier: supplierDisplay,
+      supplierName: receipt.supplierName || receipt.supplier?.name || undefined,
+      details: details.map((detail) => this.serializeDetail(detail)),
+      items: details.length,
     };
   }
 
@@ -448,7 +465,7 @@ export class InboundService {
       expectedQty: parseNumber(detail.expectedQty),
       receivedQty: parseNumber(detail.receivedQty),
       unitPrice: parseNumber(detail.unitPrice),
-      totalLineAmount: parseNumber(detail.totalLineAmount),
+      totalLineAmount: parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty),
       product: detail.product
         ? {
             id: detail.product.id,

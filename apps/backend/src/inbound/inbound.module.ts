@@ -10,12 +10,14 @@ import { SupplierProduct } from '../entities/supplier-product.entity';
 import { StockBalance } from '../inventory/entities/stock-balance.entity';
 import { StockInOrdersModule } from './stock-in-orders/stock-in-orders.module';
 import { StockInReceiptsModule } from './stock-in-receipts/stock-in-receipts.module';
+import { ReturnRequestsModule } from './return-requests/return-requests.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([InboundReceipt, InboundDetail, Product, Supplier, SupplierProduct, StockBalance]),
     StockInOrdersModule,
     StockInReceiptsModule,
+    ReturnRequestsModule,
   ],
   providers: [InboundService],
   controllers: [InboundController],

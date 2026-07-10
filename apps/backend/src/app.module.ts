@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module';
 import { ProductsModule } from './products/products.module';
 import { CategoriesModule } from './categories/categories.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
+import { CustomersModule } from './customers/customers.module';
 import { InboundModule } from './inbound/inbound.module';
 import { OutboundModule } from './outbound/outbound.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -35,6 +36,7 @@ import { ScanModule } from './scan/scan.module';
     ProductsModule,
     CategoriesModule,
     SuppliersModule,
+    CustomersModule,
     WarehousesModule,
     InboundModule,
     OutboundModule,

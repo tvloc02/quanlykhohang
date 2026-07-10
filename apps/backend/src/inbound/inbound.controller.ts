@@ -12,12 +12,6 @@ import { Roles } from '../common/decorators/roles.decorator';
 export class InboundController {
   constructor(private svc: InboundService) {}
 
-  @Post()
-  @Roles('admin', 'manager', 'supplier')
-  create(@Body() dto: CreateAsnDto, @Req() req: any) {
-    return this.svc.createReceipt(dto, req.user);
-  }
-
   @Get('purchase-orders')
   @Roles('admin', 'manager', 'staff', 'supplier')
   findPurchaseOrders(@Req() req: any) {
@@ -72,10 +66,10 @@ export class InboundController {
     return this.svc.receive(detailId, dto, req.user);
   }
 
-  @Get(':id')
-  @Roles('admin', 'manager', 'staff', 'supplier')
-  findOne(@Param('id') id: string, @Req() req: any) {
-    return this.svc.findOne(id, req.user);
+  @Post()
+  @Roles('admin', 'manager', 'supplier')
+  create(@Body() dto: CreateAsnDto, @Req() req: any) {
+    return this.svc.createReceipt(dto, req.user);
   }
 
   @Get()
@@ -95,4 +89,11 @@ export class InboundController {
   remove(@Param('id') id: string, @Req() req: any) {
     return this.svc.removeReceipt(id, req.user);
   }
+
+  @Get(':id')
+  @Roles('admin', 'manager', 'staff', 'supplier')
+  findOne(@Param('id') id: string, @Req() req: any) {
+    return this.svc.findOne(id, req.user);
+  }
 }
+

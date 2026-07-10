@@ -89,6 +89,7 @@ type PurchaseOrder = {
     supplierCode?: string;
     name: string;
   } | null;
+  supplierName?: string;
   details?: PurchaseOrderLine[];
   items: number;
 };
@@ -351,12 +352,12 @@ function PurchaseOrdersPageContent() {
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
   const [users, setUsers] = React.useState<PurchaseOrderUser[]>([]);
-  
+
   // Filters
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<'all' | 'waiting' | 'approved' | 'partial' | 'done' | 'cancelled'>('all');
   const [timeFilter, setTimeFilter] = React.useState<TimeFilter>('this-month');
-  
+
   // Advanced Filters
   const [showAdvancedFilters, setShowAdvancedFilters] = React.useState(false);
   const [advancedFilters, setAdvancedFilters] = React.useState<AdvancedFilters>({
@@ -383,6 +384,13 @@ function PurchaseOrdersPageContent() {
   const [scannerOpen, setScannerOpen] = React.useState(false);
   const currentUserId = React.useMemo(() => getCurrentUserId(), []);
 
+  const supplierProducts = suppliers.find((supplier) => supplier.id === form.supplierId)?.products || [];
+
+  const selectedOrder = React.useMemo(
+    () => (selectedOrderDetails?.id === selectedId ? selectedOrderDetails : orders.find((order) => order.id === selectedId)) || null,
+    [orders, selectedId, selectedOrderDetails],
+  );
+
   const handleProductScanned = React.useCallback((product: ScannedProduct, qty: number, price?: number) => {
     setScannedProducts((prev) => {
       if (!prev.some((p) => p.id === product.id)) {
@@ -393,8 +401,23 @@ function PurchaseOrdersPageContent() {
 
     setForm((current) => {
       const newItems = [...current.items];
-      const defaultPrice = price !== undefined ? String(price) : '0';
-      
+
+      // Ưu tiên giá trị price truyền vào, nếu không có thì lấy purchasePrice từ product, nếu không thì mặc định là '0'
+      let defaultPrice = price !== undefined ? String(price) : (product.purchasePrice !== undefined ? String(product.purchasePrice) : '0');
+
+      // Nếu defaultPrice vẫn là 0, thử tìm trong supplierProducts hoặc existing order details
+      if (defaultPrice === '0') {
+        const selectedProduct = supplierProducts.find((item) => item.product?.id === product.id);
+        if (selectedProduct) {
+          defaultPrice = String(parseMoney(selectedProduct.purchasePrice));
+        } else {
+          const existingDetail = selectedOrder?.details?.find(d => d.product?.id === product.id);
+          if (existingDetail) {
+            defaultPrice = String(existingDetail.unitPrice || 0);
+          }
+        }
+      }
+
       // Nếu dòng cuối cùng đang trống (chưa chọn sản phẩm), thì ghi đè lên dòng đó
       const lastIndex = newItems.length - 1;
       if (lastIndex >= 0 && !newItems[lastIndex].productId && Number(newItems[lastIndex].expectedQty) === 1) {
@@ -402,6 +425,7 @@ function PurchaseOrdersPageContent() {
           ...newItems[lastIndex],
           productId: product.id,
           expectedQty: qty.toString(),
+          unitPrice: defaultPrice, // CHỈNH SỬA: Đảm bảo cập nhật đơn giá cho dòng ghi đè
           warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : current.warehouseCode || 'KHO-NVL',
         };
       } else {
@@ -410,6 +434,10 @@ function PurchaseOrdersPageContent() {
         if (existingIndex >= 0) {
           const currentQty = Number(newItems[existingIndex].expectedQty) || 0;
           newItems[existingIndex].expectedQty = (currentQty + qty).toString();
+          // Cập nhật giá luôn nếu có giá mới hoặc chưa có giá
+          if (price !== undefined || product.purchasePrice !== undefined || Number(newItems[existingIndex].unitPrice) === 0) {
+            newItems[existingIndex].unitPrice = defaultPrice;
+          }
         } else {
           // Thêm dòng mới
           newItems.push({
@@ -425,7 +453,7 @@ function PurchaseOrdersPageContent() {
       return { ...current, items: newItems };
     });
     setToast({ type: 'success', message: `Đã thêm ${product.name} (SL: ${qty})` });
-  }, []);
+  }, [supplierProducts, selectedOrder]);
 
   React.useEffect(() => {
     if (!toast) return;
@@ -458,14 +486,14 @@ function PurchaseOrdersPageContent() {
         const warehouseData = await warehousesResponse.json();
         const normalizedWarehouses: WarehouseRecord[] = Array.isArray(warehouseData)
           ? warehouseData.map((warehouse: any) => normalizeWarehouseRecord({
-              id: String(warehouse.id ?? warehouse.code ?? ''),
-              code: String(warehouse.code ?? warehouse.id ?? ''),
-              name: String(warehouse.name ?? warehouse.code ?? warehouse.id ?? ''),
-              address: String(warehouse.address ?? ''),
-              status: warehouse.status === 'inactive' ? 'inactive' : 'active',
-              managerIds: warehouse.managerIds,
-              staffIds: warehouse.staffIds,
-            }))
+            id: String(warehouse.id ?? warehouse.code ?? ''),
+            code: String(warehouse.code ?? warehouse.id ?? ''),
+            name: String(warehouse.name ?? warehouse.code ?? warehouse.id ?? ''),
+            address: String(warehouse.address ?? ''),
+            status: warehouse.status === 'inactive' ? 'inactive' : 'active',
+            managerIds: warehouse.managerIds,
+            staffIds: warehouse.staffIds,
+          }))
           : [];
         const fallbackWarehouses = getStoredWarehouses();
         const nextWarehouses = normalizedWarehouses.length > 0
@@ -481,13 +509,13 @@ function PurchaseOrdersPageContent() {
         setUsers(
           Array.isArray(usersData)
             ? usersData.map((user: any) => ({
-                id: String(user.id ?? user._id ?? ''),
-                email: String(user.email ?? ''),
-                fullName: String(user.fullName ?? user.name ?? ''),
-                roles: Array.isArray(user.roles)
-                  ? user.roles.map((role: any) => ({ name: String(role?.name ?? role ?? '') }))
-                  : [],
-              }))
+              id: String(user.id ?? user._id ?? ''),
+              email: String(user.email ?? ''),
+              fullName: String(user.fullName ?? user.name ?? ''),
+              roles: Array.isArray(user.roles)
+                ? user.roles.map((role: any) => ({ name: String(role?.name ?? role ?? '') }))
+                : [],
+            }))
             : [],
         );
       }
@@ -508,10 +536,7 @@ function PurchaseOrdersPageContent() {
     return () => window.removeEventListener('storage', syncWarehouses);
   }, []);
 
-  const selectedOrder = React.useMemo(
-    () => (selectedOrderDetails?.id === selectedId ? selectedOrderDetails : orders.find((order) => order.id === selectedId)) || null,
-    [orders, selectedId, selectedOrderDetails],
-  );
+  // selectedOrder moved to top
 
   React.useEffect(() => {
     setCurrentPage(1);
@@ -526,7 +551,7 @@ function PurchaseOrdersPageContent() {
       const matchesKeyword =
         !keyword ||
         order.poNumber.toLowerCase().includes(keyword) ||
-        order.supplier?.name.toLowerCase().includes(keyword) ||
+        (order.supplier?.name || order.supplierName || '').toLowerCase().includes(keyword) ||
         order.description?.toLowerCase().includes(keyword) ||
         (order.details || []).some((detail) => detail.product?.name.toLowerCase().includes(keyword));
 
@@ -536,7 +561,7 @@ function PurchaseOrdersPageContent() {
       // 3. Simple Time Filter
       let matchesTime = true;
       const orderDateObj = order.orderDate ? new Date(order.orderDate) : null;
-      
+
       if (timeFilter !== 'all') {
         if (!orderDateObj || Number.isNaN(orderDateObj.getTime())) {
           matchesTime = false;
@@ -643,8 +668,7 @@ function PurchaseOrdersPageContent() {
     }
   }, [approverOptions, form.approverId, form.warehouseCode, modalMode]);
 
-  const supplierProducts = suppliers.find((supplier) => supplier.id === form.supplierId)?.products || [];
-
+  // Moved supplierProducts and selectedOrder to top
   const openCreate = async () => {
     const fallbackSupplier = suppliers[0]?.id || '';
     const defaultWarehouse = accessibleWarehouses[0]?.code || accessibleWarehouses[0]?.id || '';
@@ -678,9 +702,30 @@ function PurchaseOrdersPageContent() {
       const full = (await response.json()) as PurchaseOrder;
       setSelectedOrderDetails(full);
 
+      // Đưa các sản phẩm từ order details vào scannedProducts
+      // để dropdown luôn hiển thị đúng (kể cả khi sản phẩm không thuộc NCC đã chọn)
+      const detailProducts: ScannedProduct[] = (full.details || [])
+        .filter((d) => d.product?.id)
+        .map((d) => ({
+          id: d.product!.id,
+          internalSku: d.product!.internalSku || '',
+          name: d.product!.name || '',
+          unit: d.product!.unit,
+          minimumStock: 0,
+          category: null,
+          supplier: full.supplier ? { id: full.supplier.id, name: full.supplier.name } : null,
+          stockBalances: [],
+          totalStock: 0,
+        }));
+      setScannedProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newProducts = detailProducts.filter((p) => !existingIds.has(p.id));
+        return [...prev, ...newProducts];
+      });
+
       setForm({
         poNumber: full.poNumber,
-        supplierId: full.supplier?.id || suppliers[0]?.id || '',
+        supplierId: full.supplier?.id || '',
         orderDate: full.orderDate ? full.orderDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
         expectedDate: full.expectedDate ? full.expectedDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
         status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
@@ -688,14 +733,14 @@ function PurchaseOrdersPageContent() {
         items:
           full.details?.length
             ? full.details.map((detail) => ({
-                id: detail.id,
-                rowId: `${detail.id}-${Date.now()}`,
-                productId: detail.product?.id || '',
-                warehouseCode: detail.warehouseCode || 'KHO-NVL',
-                expectedQty: String(detail.expectedQty || 0),
-                receivedQty: String(detail.receivedQty || 0),
-                unitPrice: String(detail.unitPrice || 0),
-              }))
+              id: detail.id,
+              rowId: `${detail.id}-${Date.now()}`,
+              productId: detail.product?.id || '',
+              warehouseCode: detail.warehouseCode || 'KHO-NVL',
+              expectedQty: String(detail.expectedQty || 0),
+              receivedQty: String(detail.receivedQty || 0),
+              unitPrice: String(detail.unitPrice || 0),
+            }))
             : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
         creatorName: (full as any).creatorName || '',
         creatorPhone: (full as any).creatorPhone || '',
@@ -769,8 +814,8 @@ function PurchaseOrdersPageContent() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!form.supplierId || form.items.length === 0) {
-      setToast({ type: 'error', message: 'Vui lòng chọn nhà cung cấp và ít nhất một dòng hàng.' });
+    if (form.items.length === 0) {
+      setToast({ type: 'error', message: 'Vui lòng thêm ít nhất một dòng hàng.' });
       return;
     }
 
@@ -940,10 +985,10 @@ function PurchaseOrdersPageContent() {
 
   const selectedOrderMetrics = selectedOrder
     ? {
-        lines: selectedOrder.details?.length || 0,
-        ordered: (selectedOrder.details || []).reduce((sum, line) => sum + Number(line.expectedQty || 0), 0),
-        received: (selectedOrder.details || []).reduce((sum, line) => sum + Number(line.receivedQty || 0), 0),
-      }
+      lines: selectedOrder.details?.length || 0,
+      ordered: (selectedOrder.details || []).reduce((sum, line) => sum + Number(line.expectedQty || 0), 0),
+      received: (selectedOrder.details || []).reduce((sum, line) => sum + Number(line.receivedQty || 0), 0),
+    }
     : null;
 
   const addRow = () => {
@@ -966,9 +1011,24 @@ function PurchaseOrdersPageContent() {
 
   const onProductChange = (rowId: string, productId: string) => {
     const selectedProduct = supplierProducts.find((item) => item.product?.id === productId);
+    let price = '0';
+    if (selectedProduct) {
+      price = String(parseMoney(selectedProduct.purchasePrice));
+    } else {
+      const scannedProduct = scannedProducts.find(p => p.id === productId);
+      if (scannedProduct && scannedProduct.purchasePrice !== undefined) {
+        price = String(scannedProduct.purchasePrice);
+      } else {
+        const existingDetail = selectedOrder?.details?.find(d => d.product?.id === productId);
+        if (existingDetail) {
+          price = String(existingDetail.unitPrice || 0);
+        }
+      }
+    }
+
     updateRow(rowId, {
       productId,
-      unitPrice: selectedProduct ? String(parseMoney(selectedProduct.purchasePrice)) : '0',
+      unitPrice: price,
     });
   };
 
@@ -1108,17 +1168,17 @@ function PurchaseOrdersPageContent() {
 
       {showAdvancedFilters && (
         <div className="grid grid-cols-1 gap-4 rounded-xl border border-cyan-200 bg-cyan-50/30 p-4 shadow-sm md:grid-cols-2 lg:grid-cols-4">
-          <Input 
-            label="Ngày bắt đầu" 
-            type="date" 
-            value={advancedFilters.startDate} 
-            onChange={(value) => setAdvancedFilters(cur => ({ ...cur, startDate: value }))} 
+          <Input
+            label="Ngày bắt đầu"
+            type="date"
+            value={advancedFilters.startDate}
+            onChange={(value) => setAdvancedFilters(cur => ({ ...cur, startDate: value }))}
           />
-          <Input 
-            label="Ngày kết thúc" 
-            type="date" 
-            value={advancedFilters.endDate} 
-            onChange={(value) => setAdvancedFilters(cur => ({ ...cur, endDate: value }))} 
+          <Input
+            label="Ngày kết thúc"
+            type="date"
+            value={advancedFilters.endDate}
+            onChange={(value) => setAdvancedFilters(cur => ({ ...cur, endDate: value }))}
           />
           <div>
             <label className="mb-2 block text-sm font-bold text-slate-700">Nhà cung cấp</label>
@@ -1133,20 +1193,20 @@ function PurchaseOrdersPageContent() {
           </div>
           <div className="flex gap-2">
             <div className="flex-1">
-              <Input 
-                label="Tổng tiền từ" 
-                type="number" 
-                value={advancedFilters.minAmount} 
-                onChange={(value) => setAdvancedFilters(cur => ({ ...cur, minAmount: value }))} 
+              <Input
+                label="Tổng tiền từ"
+                type="number"
+                value={advancedFilters.minAmount}
+                onChange={(value) => setAdvancedFilters(cur => ({ ...cur, minAmount: value }))}
                 placeholder="VD: 100000"
               />
             </div>
             <div className="flex-1">
-              <Input 
-                label="Tổng tiền đến" 
-                type="number" 
-                value={advancedFilters.maxAmount} 
-                onChange={(value) => setAdvancedFilters(cur => ({ ...cur, maxAmount: value }))} 
+              <Input
+                label="Tổng tiền đến"
+                type="number"
+                value={advancedFilters.maxAmount}
+                onChange={(value) => setAdvancedFilters(cur => ({ ...cur, maxAmount: value }))}
                 placeholder="VD: 5000000"
               />
             </div>
@@ -1199,7 +1259,7 @@ function PurchaseOrdersPageContent() {
                       </span>
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">
-                      {order.supplier?.name || order.supplier?.supplierCode || '-'}
+                      {order.supplier?.name || order.supplierName || order.supplier?.supplierCode || '-'}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{order.description || '-'}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{formatMoney(order.totalAmount)}</td>
@@ -1277,7 +1337,7 @@ function PurchaseOrdersPageContent() {
             <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 lg:flex-row lg:items-start lg:justify-between bg-slate-50">
               <div>
                 <p className="text-2xl font-black text-slate-900">Chi tiết đơn hàng {selectedOrder.poNumber}</p>
-                <p className="mt-1 text-sm font-medium text-slate-500">{selectedOrder.supplier?.name || '-'} · {formatDate(selectedOrder.orderDate)}</p>
+                <p className="mt-1 text-sm font-medium text-slate-500">{selectedOrder.supplier?.name || selectedOrder.supplierName || '-'} · {formatDate(selectedOrder.orderDate)}</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <span className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${statusClass(selectedOrder.status)}`}>{statusLabel(selectedOrder.status)}</span>
@@ -1293,7 +1353,7 @@ function PurchaseOrdersPageContent() {
                   <h4 className="mb-4 text-sm font-bold uppercase text-slate-500">Thông tin chung</h4>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Field label="Mã đơn hàng" value={selectedOrder.poNumber} />
-                    <Field label="Nhà cung cấp" value={selectedOrder.supplier?.name || selectedOrder.supplier?.supplierCode || '-'} />
+                    <Field label="Nhà cung cấp" value={selectedOrder.supplier?.name || selectedOrder.supplierName || selectedOrder.supplier?.supplierCode || '-'} />
                     <Field label="Ngày đơn hàng" value={formatDate(selectedOrder.orderDate)} />
                     <Field label="Ngày giao hàng" value={formatDate(selectedOrder.expectedDate)} />
                     <Field label="Diễn giải" value={selectedOrder.description || '-'} />
@@ -1332,6 +1392,7 @@ function PurchaseOrdersPageContent() {
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL yêu cầu</th>
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL đã nhận</th>
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Đơn giá</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Thành tiền</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1344,6 +1405,7 @@ function PurchaseOrdersPageContent() {
                             <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.expectedQty}</td>
                             <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.receivedQty}</td>
                             <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{formatMoney(detail.unitPrice)}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">{formatMoney((detail.expectedQty || 0) * (detail.unitPrice || 0))}</td>
                           </tr>
                         ))}
                       </tbody>
