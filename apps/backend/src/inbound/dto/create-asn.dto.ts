@@ -49,6 +49,10 @@ export class CreateAsnDto {
 
   @IsOptional()
   @IsString()
+  supplierName?: string;
+
+  @IsOptional()
+  @IsString()
   orderDate?: string;
 
   @IsOptional()

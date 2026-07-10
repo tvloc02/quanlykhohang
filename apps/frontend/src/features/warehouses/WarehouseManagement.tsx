@@ -198,7 +198,7 @@ export default function WarehouseManagement() {
     setCurrentPage(1);
   }, [search, statusFilter]);
 
-  // Tự động tắt thông báo sau 5 giây
+  // Tự động tắt thông báo sau 2 giây
   React.useEffect(() => {
     if (error || success) {
       const timer = setTimeout(() => {

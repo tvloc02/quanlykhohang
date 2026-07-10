@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../entities/product.entity';
 import { StockBalance } from '../inventory/entities/stock-balance.entity';
+import { SupplierProduct } from '../entities/supplier-product.entity';
 
 /**
  * Service tra cứu nhanh sản phẩm theo mã vạch (Scan-to-Identify).
@@ -13,6 +14,7 @@ export class ScanService {
   constructor(
     @InjectRepository(Product) private readonly productRepo: Repository<Product>,
     @InjectRepository(StockBalance) private readonly balanceRepo: Repository<StockBalance>,
+    @InjectRepository(SupplierProduct) private readonly supplierProductRepo: Repository<SupplierProduct>,
   ) {}
 
   /**
@@ -102,6 +104,14 @@ export class ScanService {
       }
     }
 
+    // Lấy giá mặc định từ SupplierProduct (ưu tiên primary)
+    const supplierProduct = await this.supplierProductRepo.findOne({
+      where: { product: { id: product.id } as any },
+      relations: ['product'],
+      order: { isPrimary: 'DESC' as const },
+    });
+    const defaultPrice = supplierProduct ? Number(supplierProduct.purchasePrice) : 0;
+
     return {
       success: true,
       data: {
@@ -116,6 +126,7 @@ export class ScanService {
         },
         location: bestLocation,
         unit: product.unit || null,
+        purchase_price: defaultPrice || undefined,
       },
       meta: null,
     };

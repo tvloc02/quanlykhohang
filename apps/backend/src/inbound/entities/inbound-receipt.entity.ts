@@ -8,6 +8,9 @@ export class InboundReceipt extends BaseEntity {
   @ManyToOne(() => Supplier, { nullable: true })
   supplier?: Supplier;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  supplierName?: string;
+
   @Column({ nullable: true, unique: true })
   poNumber?: string;
 

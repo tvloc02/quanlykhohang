@@ -207,14 +207,24 @@ export default function ScannerPage() {
     if (scannedItems.length === 0) return;
     setSubmitting(true);
     try {
-      const payload = {
+      // Lấy thông tin NCC từ sản phẩm đã quét (không cần có trong DB)
+      const firstSupplier = scannedItems.find((item) => item.product.supplier)?.product.supplier;
+      const payload: any = {
         items: scannedItems.map((item) => ({
           productId: item.product.id,
           expectedQty: item.qty,
           receivedQty: 0,
-          unitPrice: 0,
+          // Không truyền unitPrice để backend tự tra cứu giá từ bảng SupplierProduct
         })),
       };
+      // Truyền supplierName (tên NCC text) để hiển thị đúng trên đơn hàng
+      if (firstSupplier?.name) {
+        payload.supplierName = firstSupplier.name;
+      }
+      // Truyền supplierId nếu NCC đã có trong DB
+      if (firstSupplier?.id) {
+        payload.supplierId = firstSupplier.id;
+      }
       const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders`, {
         method: 'POST',
         headers: authHeaders(),
