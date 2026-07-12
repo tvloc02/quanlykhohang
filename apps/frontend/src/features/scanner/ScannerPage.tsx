@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../shared/components/BarcodeScanner';
+import GoodsReceiptModal from './GoodsReceiptModal';
 
 // ──── Types ────────────────────────────────────────────────────
 
 type ScanMode = 'inbound' | 'outbound' | 'stocktake';
 
-interface ScannedItem {
+export interface ScannedItem {
   product: ScannedProduct;
   qty: number;
   timestamp: Date;
@@ -158,6 +159,7 @@ export default function ScannerPage() {
   const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   const modeLabels: Record<ScanMode, { icon: string; label: string; desc: string }> = {
     inbound: { icon: '📥', label: 'Nhập kho', desc: 'Quét sản phẩm để tạo phiếu nhập kho' },
@@ -233,6 +235,7 @@ export default function ScannerPage() {
       if (!res.ok) throw new Error('Lỗi tạo phiếu nhập kho');
       showToast('success', `✓ Đã tạo phiếu nhập kho với ${scannedItems.length} sản phẩm`);
       setScannedItems([]);
+      setShowReceiptModal(false);
     } catch (err: any) {
       showToast('error', err.message || 'Lỗi tạo phiếu');
     } finally {
@@ -289,9 +292,13 @@ export default function ScannerPage() {
   };
 
   const handleSubmit = () => {
-    if (mode === 'inbound') submitInbound();
-    else if (mode === 'outbound') submitOutbound();
-    else submitStocktake();
+    if (mode === 'inbound') {
+      if (scannedItems.length > 0) setShowReceiptModal(true);
+    } else if (mode === 'outbound') {
+      submitOutbound();
+    } else {
+      submitStocktake();
+    }
   };
 
   const totalItems = scannedItems.reduce((sum, item) => sum + item.qty, 0);
@@ -460,6 +467,15 @@ export default function ScannerPage() {
           onClose={() => setScannerOpen(false)}
           onProductFound={handleProductFound}
           title={`Quét ${modeLabels[mode].label}`}
+        />
+
+        {/* Goods Receipt Preview Modal */}
+        <GoodsReceiptModal
+          isOpen={showReceiptModal}
+          onClose={() => setShowReceiptModal(false)}
+          onConfirm={submitInbound}
+          items={scannedItems}
+          isSubmitting={submitting}
         />
 
         {/* Toast */}
