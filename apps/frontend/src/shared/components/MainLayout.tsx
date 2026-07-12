@@ -70,6 +70,7 @@ const menuItems = [
       { icon: ClipboardList, label: 'Đề nghị nhập kho hàng trả lại', path: '/inbound/return-requests' },
       { icon: FileText, label: 'Lệnh nhập kho', path: '/inbound/stock-in-orders' },
       { icon: Package, label: 'Phiếu nhập kho', path: '/inbound/stock-in' },
+      { icon: CheckCheck, label: 'Phê duyệt phiếu nhập', path: '/inbound/approve', allowedRoles: ['admin', 'manager'] },
     ]
   },
   {
@@ -155,10 +156,22 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const storedUserRole = getStoredUserRole();
 
-  const filteredMenuItems = menuItems.filter((item) => {
-    const roleAllowed = !item.allowedRoles || item.allowedRoles.includes(storedUserRole || '');
-    return roleAllowed && item.label.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  const filteredMenuItems = menuItems
+    .filter((item) => {
+      const roleAllowed = !item.allowedRoles || item.allowedRoles.includes(storedUserRole || '');
+      return roleAllowed && item.label.toLowerCase().includes(searchQuery.toLowerCase());
+    })
+    .map((item) => {
+      if (item.children) {
+        return {
+          ...item,
+          children: item.children.filter(
+            (child: any) => !child.allowedRoles || child.allowedRoles.includes(storedUserRole || ''),
+          ),
+        };
+      }
+      return item;
+    });
 
   const toggleExpanded = (path: string) => {
     setExpandedItems(prev => {

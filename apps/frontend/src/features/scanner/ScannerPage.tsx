@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import GoodsReceiptModal from './GoodsReceiptModal';
+import { saveOfflineReceipt, getOfflineReceipts, deleteOfflineReceipt } from '../offline-sync/db/indexedDb';
 
 // ──── Types ────────────────────────────────────────────────────
 
@@ -205,25 +206,108 @@ export default function ScannerPage() {
 
   // ──── Submit to backend ────────────────────────────────────
 
+  const syncOfflineReceipts = useCallback(async () => {
+    try {
+      const receipts = await getOfflineReceipts();
+      if (receipts.length === 0) return;
+
+      let successCount = 0;
+      for (const receipt of receipts) {
+        let res;
+        if (receipt.type === 'inbound') {
+          res = await fetch(`${API_BASE_URL}/inbound/purchase-orders`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+              items: receipt.items,
+              supplierName: receipt.supplierName,
+              supplierId: receipt.supplierId
+            })
+          });
+        } else if (receipt.type === 'outbound') {
+          res = await fetch(`${API_BASE_URL}/outbounds`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+              details: receipt.items
+            })
+          });
+        } else if (receipt.type === 'stocktake') {
+          res = await fetch(`${API_BASE_URL}/inventory/stocktakes`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+              locationCode: receipt.locationCode || 'DEFAULT',
+              productIds: receipt.productIds
+            })
+          });
+        }
+
+        if (res && res.ok) {
+          if (receipt.id !== undefined) {
+            await deleteOfflineReceipt(receipt.id);
+            successCount++;
+          }
+        }
+      }
+
+      if (successCount > 0) {
+        showToast('success', `✓ Đã tự động đồng bộ ${successCount} phiếu lưu trữ ngoại tuyến lên hệ thống!`);
+      }
+    } catch (err) {
+      console.warn('Lỗi khi tự động đồng bộ offline receipts:', err);
+    }
+  }, [showToast]);
+
+  React.useEffect(() => {
+    if (navigator.onLine) {
+      syncOfflineReceipts();
+    }
+
+    const handleOnline = () => {
+      syncOfflineReceipts();
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [syncOfflineReceipts]);
+
   const submitInbound = async () => {
     if (scannedItems.length === 0) return;
     setSubmitting(true);
     try {
-      // Lấy thông tin NCC từ sản phẩm đã quét (không cần có trong DB)
       const firstSupplier = scannedItems.find((item) => item.product.supplier)?.product.supplier;
+
+      if (!navigator.onLine) {
+        await saveOfflineReceipt({
+          timestamp: Date.now(),
+          items: scannedItems.map((item) => ({
+            productId: item.product.id,
+            expectedQty: item.qty,
+            receivedQty: 0
+          })),
+          supplierName: firstSupplier?.name,
+          supplierId: firstSupplier?.id,
+          type: 'inbound'
+        });
+        showToast('success', '⚠️ Đang ngoại tuyến. Phiếu nhập kho đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
+        setScannedItems([]);
+        setShowReceiptModal(false);
+        return;
+      }
+
       const payload: any = {
         items: scannedItems.map((item) => ({
           productId: item.product.id,
           expectedQty: item.qty,
           receivedQty: 0,
-          // Không truyền unitPrice để backend tự tra cứu giá từ bảng SupplierProduct
         })),
       };
-      // Truyền supplierName (tên NCC text) để hiển thị đúng trên đơn hàng
       if (firstSupplier?.name) {
         payload.supplierName = firstSupplier.name;
       }
-      // Truyền supplierId nếu NCC đã có trong DB
       if (firstSupplier?.id) {
         payload.supplierId = firstSupplier.id;
       }
@@ -247,6 +331,20 @@ export default function ScannerPage() {
     if (scannedItems.length === 0) return;
     setSubmitting(true);
     try {
+      if (!navigator.onLine) {
+        await saveOfflineReceipt({
+          timestamp: Date.now(),
+          items: scannedItems.map((item) => ({
+            productId: item.product.id,
+            requiredQty: item.qty
+          })),
+          type: 'outbound'
+        });
+        showToast('success', '⚠️ Đang ngoại tuyến. Phiếu xuất kho đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
+        setScannedItems([]);
+        return;
+      }
+
       const payload = {
         details: scannedItems.map((item) => ({
           productId: item.product.id,
@@ -272,6 +370,19 @@ export default function ScannerPage() {
     if (scannedItems.length === 0) return;
     setSubmitting(true);
     try {
+      if (!navigator.onLine) {
+        await saveOfflineReceipt({
+          timestamp: Date.now(),
+          items: [],
+          productIds: scannedItems.map((item) => item.product.id),
+          locationCode: 'DEFAULT',
+          type: 'stocktake'
+        });
+        showToast('success', '⚠️ Đang ngoại tuyến. Phiếu kiểm kê đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
+        setScannedItems([]);
+        return;
+      }
+
       const payload = {
         locationCode: 'DEFAULT',
         productIds: scannedItems.map((item) => item.product.id),

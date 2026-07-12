@@ -11,16 +11,27 @@ import { StockBalance } from '../inventory/entities/stock-balance.entity';
 import { StockInOrdersModule } from './stock-in-orders/stock-in-orders.module';
 import { StockInReceiptsModule } from './stock-in-receipts/stock-in-receipts.module';
 import { ReturnRequestsModule } from './return-requests/return-requests.module';
+import { BarcodeMapping } from './barcode-mapping/entities/barcode-mapping.entity';
+import { BarcodeMappingService } from './barcode-mapping/barcode-mapping.service';
+import { BarcodeMappingController } from './barcode-mapping/barcode-mapping.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InboundReceipt, InboundDetail, Product, Supplier, SupplierProduct, StockBalance]),
+    TypeOrmModule.forFeature([
+      InboundReceipt,
+      InboundDetail,
+      Product,
+      Supplier,
+      SupplierProduct,
+      StockBalance,
+      BarcodeMapping,
+    ]),
     StockInOrdersModule,
     StockInReceiptsModule,
     ReturnRequestsModule,
   ],
-  providers: [InboundService],
-  controllers: [InboundController],
-  exports: [InboundService],
+  providers: [InboundService, BarcodeMappingService],
+  controllers: [InboundController, BarcodeMappingController],
+  exports: [InboundService, BarcodeMappingService],
 })
 export class InboundModule {}
