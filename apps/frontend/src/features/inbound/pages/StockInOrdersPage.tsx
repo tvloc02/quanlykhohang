@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
   Building2,
@@ -221,6 +222,10 @@ function statusToFilter(status?: string): 'all' | 'draft' | 'in_progress' | 'rea
   }
 }
 
+function isApprovedPurchaseOrder(order?: PurchaseOrder | null) {
+  return String(order?.status || '').toUpperCase() === 'SUPPLIER_APPROVED';
+}
+
 function makeDraft(order: StockInOrder | null): DraftState {
   return {
     currentStepUserEmail: order?.currentStepUserEmail || '',
@@ -262,6 +267,8 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 export default function StockInOrdersPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [orders, setOrders] = React.useState<StockInOrder[]>([]);
   const [purchaseOrders, setPurchaseOrders] = React.useState<PurchaseOrder[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
@@ -281,6 +288,7 @@ export default function StockInOrdersPage() {
   
   const [createForm, setCreateForm] = React.useState({ sourceId: '', currentStepUserEmail: '', note: '' });
   const [draft, setDraft] = React.useState<DraftState>(() => makeDraft(null));
+  const autoOpenSourcePurchaseOrderId = (location.state as { sourcePurchaseOrderId?: string } | null)?.sourcePurchaseOrderId;
 
   React.useEffect(() => {
     if (!toast) return;
@@ -298,7 +306,7 @@ export default function StockInOrdersPage() {
 
       if (!ordersResponse.ok) {
         const data = await ordersResponse.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách lệnh nhập kho');
+        throw new Error(data?.message || 'Không tải được danh sách phiếu nhập kho');
       }
       if (!purchaseOrdersResponse.ok) {
         const data = await purchaseOrdersResponse.json().catch(() => null);
@@ -311,7 +319,7 @@ export default function StockInOrdersPage() {
       setOrders(ordersData);
       setPurchaseOrders(purchaseOrdersData);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tải dữ liệu lệnh nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tải dữ liệu phiếu nhập kho' });
     } finally {
       setLoading(false);
     }
@@ -398,14 +406,39 @@ export default function StockInOrdersPage() {
   const inProgressCount = orders.filter((order) => statusToFilter(order.status) === 'in_progress').length;
   const completedCount = orders.filter((order) => statusToFilter(order.status) === 'completed').length;
 
-  const openCreate = () => {
+  React.useEffect(() => {
+    if (!autoOpenSourcePurchaseOrderId || modalMode === 'create' || purchaseOrders.length === 0) return;
+
+    const target = purchaseOrders.find(
+      (po) => po.id === autoOpenSourcePurchaseOrderId && isApprovedPurchaseOrder(po) && !usedPurchaseOrderIds.has(po.id),
+    );
+
+    if (target) {
+      openCreate(target.id);
+      navigate('/inbound/stock-in-orders', { replace: true });
+    }
+  }, [autoOpenSourcePurchaseOrderId, modalMode, navigate, purchaseOrders, usedPurchaseOrderIds]);
+
+  const openCreate = (sourceId?: string) => {
     setCreateForm({
-        sourceId: purchaseOrders.find(po => !usedPurchaseOrderIds.has(po.id))?.id || '',
+        sourceId: sourceId || purchaseOrders.find((po) => isApprovedPurchaseOrder(po) && !usedPurchaseOrderIds.has(po.id))?.id || '',
         currentStepUserEmail: '',
         note: ''
     });
     setModalMode('create');
   };
+
+  React.useEffect(() => {
+    if (modalMode === 'create' || !autoOpenSourcePurchaseOrderId) return;
+
+    const target = purchaseOrders.find(
+      (po) => po.id === autoOpenSourcePurchaseOrderId && isApprovedPurchaseOrder(po) && !usedPurchaseOrderIds.has(po.id),
+    );
+
+    if (target) {
+      openCreate(target.id);
+    }
+  }, [autoOpenSourcePurchaseOrderId, modalMode, purchaseOrders, usedPurchaseOrderIds]);
 
   const closeModal = () => {
     setModalMode(null);
@@ -416,7 +449,7 @@ export default function StockInOrdersPage() {
   const createFromPurchaseOrder = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!createForm.sourceId) {
-      setToast({ type: 'error', message: 'Hãy chọn một đơn mua hàng để lập lệnh nhập kho' });
+      setToast({ type: 'error', message: 'Hãy chọn một đơn mua hàng để tạo phiếu nhập kho' });
       return;
     }
 
@@ -433,16 +466,16 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tạo được lệnh nhập kho');
+        throw new Error(data?.message || 'Không tạo được phiếu nhập kho');
       }
 
       const created = (await response.json()) as StockInOrder;
-      setToast({ type: 'success', message: `Đã lập lệnh ${created.orderCode}` });
+      setToast({ type: 'success', message: `Đã tạo phiếu ${created.orderCode}` });
       closeModal();
       await loadData();
       setSelectedId(created.id);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi lập lệnh nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tạo phiếu nhập kho' });
     } finally {
       setSaving(false);
     }
@@ -489,13 +522,13 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không lưu được lệnh nhập kho');
+        throw new Error(data?.message || 'Không lưu được phiếu nhập kho');
       }
 
       setToast({ type: 'success', message: 'Đã lưu thay đổi' });
       await loadData();
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi lưu lệnh nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi lưu phiếu nhập kho' });
     } finally {
       setSaving(false);
     }
@@ -537,7 +570,7 @@ export default function StockInOrdersPage() {
       return actualQty !== requestedQty;
     });
 
-    if (hasDifference && !window.confirm('Có chênh lệch số lượng. Bạn vẫn muốn hoàn thành lệnh này?')) {
+    if (hasDifference && !window.confirm('Có chênh lệch số lượng. Bạn vẫn muốn hoàn thành phiếu này?')) {
       return;
     }
 
@@ -555,10 +588,10 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không hoàn thành được lệnh nhập kho');
+        throw new Error(data?.message || 'Không hoàn thành được phiếu nhập kho');
       }
 
-      setToast({ type: 'success', message: 'Đã hoàn thành lệnh nhập kho' });
+      setToast({ type: 'success', message: 'Đã hoàn thành phiếu nhập kho' });
       await loadData();
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi hoàn thành lệnh' });
@@ -577,9 +610,9 @@ export default function StockInOrdersPage() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không xóa được lệnh nhập kho');
+        throw new Error(data?.message || 'Không xóa được phiếu nhập kho');
       }
-      setToast({ type: 'success', message: 'Đã xóa lệnh nhập kho.' });
+      setToast({ type: 'success', message: 'Đã xóa phiếu nhập kho.' });
       closeModal();
       await loadData();
     } catch (error) {
@@ -612,21 +645,21 @@ export default function StockInOrdersPage() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Lệnh nhập kho</h1>
+          <h1 className="text-2xl font-black text-slate-900">Phiếu nhập kho</h1>
         </div>
         <button
           type="button"
-          onClick={openCreate}
+          onClick={() => openCreate()}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Lập lệnh nhập kho
+          Tạo phiếu nhập kho
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-black uppercase text-slate-500">Tổng Lệnh</p>
+          <p className="text-xs font-black uppercase text-slate-500">Tổng phiếu</p>
           <p className="mt-2 text-3xl font-black text-slate-900">{orders.length}</p>
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
@@ -651,7 +684,7 @@ export default function StockInOrdersPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-              placeholder="Tìm theo mã lệnh, nguồn, nhà cung cấp, diễn giải..."
+              placeholder="Tìm theo mã phiếu, nguồn, nhà cung cấp, diễn giải..."
             />
           </div>
           <select
@@ -706,7 +739,7 @@ export default function StockInOrdersPage() {
             <thead className="bg-slate-50">
               <tr className="border-b border-slate-200">
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">#</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Mã Lệnh</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Mã Phiếu</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày tạo</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Nguồn PO</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
@@ -721,13 +754,13 @@ export default function StockInOrdersPage() {
               {loading ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Đang tải danh sách lệnh nhập kho...
+                    Đang tải danh sách phiếu nhập kho...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có lệnh nhập kho phù hợp.
+                    Chưa có phiếu nhập kho phù hợp.
                   </td>
                 </tr>
               ) : (
@@ -839,7 +872,7 @@ export default function StockInOrdersPage() {
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-2xl font-black text-slate-900">Lệnh nhập kho {selectedOrder.orderCode}</p>
+              <p className="text-2xl font-black text-slate-900">Phiếu nhập kho {selectedOrder.orderCode}</p>
               <p className="mt-1 text-sm font-medium text-slate-500">
                 Nguồn: {selectedOrder.sourcePurchaseOrder?.poNumber || selectedOrder.sourcePurchaseOrderNo || '-'} · Tạo lúc {formatDateTime(selectedOrder.createdAt)}
               </p>
@@ -882,7 +915,7 @@ export default function StockInOrdersPage() {
                     value={draft.note}
                     onChange={(e) => setDraft(curr => ({...curr, note: e.target.value}))}
                     className="min-h-20 w-full rounded-xl border-2 border-slate-200 px-4 py-3 text-sm font-semibold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                    placeholder="Ghi chú lệnh nhập kho..."
+                    placeholder="Ghi chú phiếu nhập kho..."
                   />
                 </div>
               </div>
@@ -1032,8 +1065,8 @@ export default function StockInOrdersPage() {
                   <Workflow className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900">Lập lệnh nhập kho</h3>
-                  <p className="text-sm font-medium text-slate-500">Tạo lệnh mới từ đơn mua hàng.</p>
+                  <h3 className="text-lg font-black text-slate-900">Tạo phiếu nhập kho</h3>
+                  <p className="text-sm font-medium text-slate-500">Tạo phiếu mới từ đơn mua hàng đã được nhà cung cấp duyệt.</p>
                 </div>
               </div>
               <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
@@ -1051,8 +1084,12 @@ export default function StockInOrdersPage() {
                 >
                     <option value="">Chọn đơn mua hàng</option>
                     {purchaseOrders.map((po) => (
-                        <option key={po.id} value={po.id} disabled={usedPurchaseOrderIds.has(po.id)}>
-                            {po.poNumber} - {po.supplier?.name || 'Không có NCC'} {usedPurchaseOrderIds.has(po.id) ? '(đã lập lệnh)' : ''}
+                        <option
+                          key={po.id}
+                          value={po.id}
+                          disabled={usedPurchaseOrderIds.has(po.id) || !isApprovedPurchaseOrder(po)}
+                        >
+                            {po.poNumber} - {po.supplier?.name || 'Không có NCC'} {usedPurchaseOrderIds.has(po.id) ? '(đã tạo phiếu)' : !isApprovedPurchaseOrder(po) ? '(chưa NCC xác nhận)' : ''}
                         </option>
                     ))}
                 </select>
@@ -1073,7 +1110,7 @@ export default function StockInOrdersPage() {
                 <textarea
                     value={createForm.note}
                     onChange={(event) => setCreateForm((current) => ({ ...current, note: event.target.value }))}
-                    placeholder="Ghi chú lệnh"
+                    placeholder="Ghi chú phiếu"
                     className="min-h-24 w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
                 />
               </div>
@@ -1084,7 +1121,7 @@ export default function StockInOrdersPage() {
                 Hủy
               </button>
               <button type="submit" disabled={saving || !createForm.sourceId} className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-cyan-700 disabled:opacity-60">
-                {saving ? 'Đang tạo...' : 'Lập lệnh'}
+                {saving ? 'Đang tạo...' : 'Tạo phiếu'}
               </button>
             </div>
           </form>
@@ -1096,7 +1133,7 @@ export default function StockInOrdersPage() {
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div>
-                <h3 className="text-lg font-black text-slate-900">Xóa lệnh nhập kho</h3>
+                <h3 className="text-lg font-black text-slate-900">Xóa phiếu nhập kho</h3>
                 <p className="text-sm font-medium text-slate-500">Thao tác này không thể hoàn tác.</p>
               </div>
               <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
@@ -1105,14 +1142,14 @@ export default function StockInOrdersPage() {
             </div>
             <div className="px-6 py-5">
               <p className="text-sm text-slate-700">
-                Bạn có chắc muốn xóa lệnh nhập kho <span className="font-black text-slate-950">{deleteTarget.orderCode}</span> không?
+                Bạn có chắc muốn xóa phiếu nhập kho <span className="font-black text-slate-950">{deleteTarget.orderCode}</span> không?
               </p>
               <div className="mt-8 flex justify-end gap-3">
                 <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50">
                   Hủy
                 </button>
                 <button type="button" onClick={handleDelete} disabled={saving} className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-60">
-                  {saving ? 'Đang xóa...' : 'Xóa lệnh'}
+                  {saving ? 'Đang xóa...' : 'Xóa phiếu'}
                 </button>
               </div>
             </div>

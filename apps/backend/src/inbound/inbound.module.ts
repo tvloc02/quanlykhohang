@@ -11,6 +11,7 @@ import { StockBalance } from '../inventory/entities/stock-balance.entity';
 import { StockInOrdersModule } from './stock-in-orders/stock-in-orders.module';
 import { StockInReceiptsModule } from './stock-in-receipts/stock-in-receipts.module';
 import { ReturnRequestsModule } from './return-requests/return-requests.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ReturnRequestsModule } from './return-requests/return-requests.module';
     StockInOrdersModule,
     StockInReceiptsModule,
     ReturnRequestsModule,
+    NotificationsModule,
   ],
   providers: [InboundService],
   controllers: [InboundController],

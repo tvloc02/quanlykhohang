@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
   Building2,
@@ -27,6 +28,7 @@ import {
   type WarehouseRecord,
 } from '../../../shared/utils/warehouseAssignments';
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../../shared/components/BarcodeScanner';
+import { PurchaseOrderFormModal } from '../components/PurchaseOrderFormModal';
 
 type SupplierProduct = {
   id: string;
@@ -48,6 +50,8 @@ type Supplier = {
   status: 'active' | 'inactive';
   leadTimeDays: number;
   currency: string;
+  contactPerson?: string;
+  phone?: string;
   products?: SupplierProduct[];
 };
 
@@ -94,7 +98,7 @@ type PurchaseOrder = {
   items: number;
 };
 
-type OrderStatus = 'CREATED' | 'APPROVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
+type OrderStatus = 'CREATED' | 'APPROVED' | 'SUPPLIER_APPROVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
 type TimeFilter = 'this-month' | '7-days' | 'all';
 type ModalMode = 'create' | 'edit' | 'delete' | 'view' | null;
 
@@ -285,7 +289,9 @@ function parseMoney(value: string) {
 function statusLabel(status?: string) {
   switch ((status || 'CREATED').toUpperCase()) {
     case 'APPROVED':
-      return 'Đã duyệt';
+      return 'Chờ NCC xác nhận';
+    case 'SUPPLIER_APPROVED':
+      return 'NCC đã xác nhận';
     case 'PARTIALLY_RECEIVED':
       return 'Nhận một phần';
     case 'RECEIVED':
@@ -301,6 +307,8 @@ function statusClass(status?: string) {
   switch ((status || 'CREATED').toUpperCase()) {
     case 'APPROVED':
       return 'border-blue-200 bg-blue-50 text-blue-700';
+    case 'SUPPLIER_APPROVED':
+      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
     case 'PARTIALLY_RECEIVED':
       return 'border-cyan-200 bg-cyan-50 text-cyan-700';
     case 'RECEIVED':
@@ -315,6 +323,7 @@ function statusClass(status?: string) {
 function statusToFilter(status?: string): 'all' | 'waiting' | 'approved' | 'partial' | 'done' | 'cancelled' {
   switch ((status || 'CREATED').toUpperCase()) {
     case 'APPROVED':
+    case 'SUPPLIER_APPROVED':
       return 'approved';
     case 'PARTIALLY_RECEIVED':
       return 'partial';
@@ -348,6 +357,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 }
 
 function PurchaseOrdersPageContent() {
+  const navigate = useNavigate();
   const [orders, setOrders] = React.useState<PurchaseOrder[]>([]);
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
@@ -995,6 +1005,10 @@ function PurchaseOrdersPageContent() {
         received: 0,
       };
 
+  const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
+  const canManagerApprove = selectedOrderStatus === 'CREATED';
+  const canCreateStockIn = selectedOrderStatus === 'SUPPLIER_APPROVED';
+
   const addRow = () => {
     setForm((current) => ({ ...current, items: [...current.items, makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')] }));
   };
@@ -1427,180 +1441,48 @@ function PurchaseOrdersPageContent() {
             </div>
 
             <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60">
-                Lập lệnh nhập kho
-              </button>
-              <button type="button" onClick={() => { closeModal(); openReceive(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-5 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-60">
-                Nhận hàng
-              </button>
-              <button type="button" onClick={() => { closeModal(); completeOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
-                Hoàn thành
-              </button>
+              {canManagerApprove && (
+                <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60">
+                  Duyệt manager
+                </button>
+              )}
+              {canCreateStockIn && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeModal();
+                    navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: selectedOrder.id } });
+                  }}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                >
+                  Tạo phiếu nhập kho
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* POPUP TẠO / SỬA */}
-      {(modalMode === 'create' || modalMode === 'edit') && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <form onSubmit={handleSubmit} className="max-h-[92vh] w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4">
-              <div className="flex items-start gap-3">
-                <div className="rounded-xl bg-cyan-50 p-2 text-cyan-600">
-                  <Building2 className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900">{modalMode === 'edit' ? 'Sửa đơn mua hàng' : 'Tạo đơn mua hàng'}</h3>
-                  <p className="text-sm font-medium text-slate-500">Chọn nhà cung cấp, sản phẩm và số lượng cần mua.</p>
-                </div>
-              </div>
-              <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="max-h-[calc(92vh-150px)] space-y-6 overflow-y-auto px-8 py-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Input label="Số đơn hàng" value={form.poNumber} onChange={(value) => setForm((current) => ({ ...current, poNumber: value }))} />
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Nhà cung cấp</label>
-                  <select
-                    value={form.supplierId}
-                    onChange={(event) => setForm((current) => ({ ...current, supplierId: event.target.value, items: current.items.map((item) => ({ ...item, productId: '' })) }))}
-                    className={modalSelectClass}
-                  >
-                    <option value="">Chọn nhà cung cấp</option>
-                    {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.supplierCode} - {supplier.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <Input label="Ngày đơn hàng" type="date" value={form.orderDate} onChange={(value) => setForm((current) => ({ ...current, orderDate: value }))} />
-                <Input label="Ngày giao hàng" type="date" value={form.expectedDate} onChange={(value) => setForm((current) => ({ ...current, expectedDate: value }))} />
-              </div>
-
-              <section>
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-5 w-5 text-cyan-600" />
-                    <h4 className="font-black text-slate-900">Hàng hóa</h4>
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setScannerOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white hover:bg-slate-900">
-                      Quét Barcode
-                    </button>
-                    <button type="button" onClick={addRow} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100">
-                      <PlusCircle className="h-4 w-4" />
-                      Thêm dòng
-                    </button>
-                  </div>
-                </div>
-
-                <div className="overflow-hidden rounded-xl border border-slate-200">
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1100px] bg-white">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">STT</th>
-                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Mặt hàng</th>
-                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL yêu cầu</th>
-                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL đã nhận</th>
-                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Đơn giá</th>
-                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Thành tiền</th>
-                          <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Xóa</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200 bg-white">
-                        {form.items.map((item, index) => {
-                          const expectedQty = parseMoney(item.expectedQty);
-                          const unitPrice = parseMoney(item.unitPrice);
-                          return (
-                            <tr key={item.rowId}>
-                              <td className="px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
-                              <td className="px-3 py-3">
-                                <select
-                                  value={item.productId}
-                                  onChange={(event) => onProductChange(item.rowId, event.target.value)}
-                                  className={modalSelectClass}
-                                >
-                                  <option value="">Chọn sản phẩm</option>
-                                  {supplierProducts.map((supplierProduct) => (
-                                    <option key={supplierProduct.id} value={supplierProduct.product?.id || ''}>
-                                      {supplierProduct.product?.internalSku} - {supplierProduct.product?.name}
-                                    </option>
-                                  ))}
-                                  {scannedProducts.map((sp) => {
-                                    if (!supplierProducts.some(p => p.product?.id === sp.id)) {
-                                      return (
-                                        <option key={sp.id} value={sp.id}>
-                                          {sp.internalSku} - {sp.name} (Mới quét)
-                                        </option>
-                                      );
-                                    }
-                                    return null;
-                                  })}
-                                </select>
-                              </td>
-                              <td className="px-3 py-3">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={item.expectedQty}
-                                  onChange={(event) => updateRow(item.rowId, { expectedQty: event.target.value })}
-                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                                />
-                              </td>
-                              <td className="px-3 py-3">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={item.receivedQty}
-                                  onChange={(event) => updateRow(item.rowId, { receivedQty: event.target.value })}
-                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                                />
-                              </td>
-                              <td className="px-3 py-3">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={item.unitPrice}
-                                  onChange={(event) => updateRow(item.rowId, { unitPrice: event.target.value })}
-                                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                                />
-                              </td>
-                              <td className="px-3 py-3 text-center text-sm text-slate-600">{formatMoney(expectedQty * unitPrice)}</td>
-                              <td className="px-3 py-3 text-center">
-                                <button type="button" onClick={() => removeRow(item.rowId)} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100">
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
-              <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50">
-                Hủy
-              </button>
-              <button type="button" onClick={addDefaultProduct} className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-5 py-2.5 font-bold text-cyan-700 hover:bg-cyan-100">
-                Thêm dòng nhanh
-              </button>
-              <button type="submit" disabled={saving} className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-cyan-700 disabled:opacity-60">
-                {saving ? 'Đang lưu...' : modalMode === 'edit' ? 'Lưu thay đổi' : 'Tạo đơn mua hàng'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      {/* POPUP TẠO / SỬA - SỬ DỤNG COMPONENT MỚI */}
+      <PurchaseOrderFormModal
+        isOpen={modalMode === 'create' || modalMode === 'edit'}
+        mode={modalMode === 'create' ? 'create' : 'edit'}
+        form={form}
+        suppliers={suppliers}
+        warehouses={warehouses}
+        users={users}
+        scannedProducts={scannedProducts}
+        saving={saving}
+        onFormChange={setForm}
+        onSubmit={handleSubmit}
+        onClose={closeModal}
+        onAddRow={addRow}
+        onRemoveRow={removeRow}
+        onUpdateRow={updateRow}
+        onProductChange={onProductChange}
+        onScannerOpen={() => setScannerOpen(true)}
+      />
 
       {/* POPUP NHẬN HÀNG */}
       {receiveOpen && selectedOrder && (

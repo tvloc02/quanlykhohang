@@ -48,6 +48,12 @@ export class InboundController {
     return this.svc.approveReceipt(id, req.user);
   }
 
+  @Post('purchase-orders/:id/supplier-approve')
+  @Roles('supplier')
+  approvePurchaseOrderBySupplier(@Param('id') id: string, @Body() body: { expectedDate?: string; description?: string }, @Req() req: any) {
+    return this.svc.supplierApproveReceipt(id, body, req.user);
+  }
+
   @Post('purchase-orders/:id/complete')
   @Roles('admin', 'manager')
   completePurchaseOrder(@Param('id') id: string, @Req() req: any) {

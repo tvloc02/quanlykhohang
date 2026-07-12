@@ -9,6 +9,7 @@ import { Supplier } from '../entities/supplier.entity';
 import { Product } from '../entities/product.entity';
 import { SupplierProduct } from '../entities/supplier-product.entity';
 import { StockBalance } from '../inventory/entities/stock-balance.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type SerializedPurchaseOrder = {
   id: string;
@@ -17,6 +18,7 @@ type SerializedPurchaseOrder = {
   orderDate?: string;
   expectedDate?: string;
   status?: string;
+  approverId?: string;
   description?: string;
   totalAmount: number;
   supplier?: {
@@ -53,6 +55,27 @@ function toDateString(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+function normalizeStatus(value?: string) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function isEditablePurchaseOrderStatus(status?: string) {
+  return !status || normalizeStatus(status) === 'CREATED';
+}
+
+function isManagerApprovalReady(status?: string) {
+  return normalizeStatus(status) === 'CREATED';
+}
+
+function isSupplierApprovalReady(status?: string) {
+  return normalizeStatus(status) === 'APPROVED';
+}
+
+function isReceivingReady(status?: string) {
+  const normalized = normalizeStatus(status);
+  return normalized === 'SUPPLIER_APPROVED' || normalized === 'PARTIALLY_RECEIVED' || normalized === 'RECEIVED';
+}
+
 @Injectable()
 export class InboundService {
   constructor(
@@ -62,6 +85,7 @@ export class InboundService {
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(SupplierProduct) private supplierProductRepo: Repository<SupplierProduct>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async createReceipt(dto: CreateAsnDto, user?: any) {
@@ -82,7 +106,8 @@ export class InboundService {
       poNumber,
       orderDate: dto.orderDate ? new Date(dto.orderDate) : new Date(),
       expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
-      status: dto.status || 'CREATED',
+      status: 'CREATED',
+      approverId: dto.approverId?.trim() || undefined,
       description: dto.description?.trim() || undefined,
       supplier: supplier || undefined,
       supplierName,
@@ -93,6 +118,26 @@ export class InboundService {
     const details = await this.persistDetails(savedReceipt, dto.items || []);
     savedReceipt.totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty)), 0).toFixed(2);
     await this.receiptRepo.save(savedReceipt);
+
+    if (savedReceipt.approverId) {
+      await this.notificationsService.notifyUser(savedReceipt.approverId, {
+        title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
+        message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+        link: '/inbound/purchase-orders',
+        referenceType: 'purchase-order',
+        referenceId: savedReceipt.id,
+        priority: 'high',
+      });
+    } else {
+      await this.notificationsService.notifyRole('manager', {
+        title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
+        message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+        link: '/inbound/purchase-orders',
+        referenceType: 'purchase-order',
+        referenceId: savedReceipt.id,
+        priority: 'high',
+      });
+    }
 
     return this.serializeReceipt(await this.findReceiptEntity(savedReceipt.id, user));
   }
@@ -106,6 +151,10 @@ export class InboundService {
 
     if (user?.role === 'supplier' && user?.supplierId) {
       dto.supplierId = user.supplierId;
+    }
+
+    if (!isEditablePurchaseOrderStatus(receipt.status)) {
+      throw new BadRequestException('Only draft purchase orders can be updated');
     }
 
     const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
@@ -131,10 +180,13 @@ export class InboundService {
 
     if (dto.orderDate) receipt.orderDate = new Date(dto.orderDate);
     if (dto.expectedDate) receipt.expectedDate = new Date(dto.expectedDate);
-    if (dto.status) receipt.status = dto.status;
     if (dto.description !== undefined) receipt.description = dto.description.trim() || undefined;
+    if (dto.approverId !== undefined) receipt.approverId = dto.approverId.trim() || undefined;
 
     if (dto.items) {
+      if (!isEditablePurchaseOrderStatus(receipt.status)) {
+        throw new BadRequestException('Only draft purchase orders can be updated');
+      }
       console.log('[InboundService] updatePurchaseOrder received items:', JSON.stringify(dto.items));
       // Upsert details: update existing ones, create new ones, remove deleted ones
       const existingDetails = await this.detailRepo.find({
@@ -190,6 +242,9 @@ export class InboundService {
 
   async removeReceipt(id: string, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
+    if (!isEditablePurchaseOrderStatus(receipt.status)) {
+      throw new BadRequestException('Only draft purchase orders can be deleted');
+    }
     const details = await this.detailRepo.find({
       where: { inboundReceipt: { id } as any },
       relations: ['inboundReceipt', 'product'],
@@ -203,13 +258,72 @@ export class InboundService {
 
   async approveReceipt(id: string, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
+    if (!isManagerApprovalReady(receipt.status)) {
+      throw new BadRequestException('Purchase order is not waiting for manager approval');
+    }
     receipt.status = 'APPROVED';
     await this.receiptRepo.save(receipt);
+
+    if (receipt.supplier?.id) {
+      await this.notificationsService.notifySupplier(receipt.supplier.id, {
+        title: `Don mua hang ${receipt.poNumber} da duyet`,
+        message: `Manager da duyet don mua hang ${receipt.poNumber}. Vui long xac nhan de tiep tuc quy trinh.`,
+        link: '/supplier-portal',
+        referenceType: 'purchase-order',
+        referenceId: receipt.id,
+        priority: 'high',
+      });
+    }
+
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
+  }
+
+  async supplierApproveReceipt(id: string, dto: { expectedDate?: string; description?: string }, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
+
+    if (!isSupplierApprovalReady(receipt.status)) {
+      throw new BadRequestException('Purchase order must be approved by manager first');
+    }
+
+    if (user?.role === 'supplier' && user?.supplierId && receipt.supplier?.id && String(user.supplierId) !== String(receipt.supplier.id)) {
+      throw new BadRequestException('You do not have permission to approve this purchase order');
+    }
+
+    if (dto.expectedDate) receipt.expectedDate = new Date(dto.expectedDate);
+    if (dto.description !== undefined) receipt.description = dto.description.trim() || undefined;
+
+    receipt.status = 'SUPPLIER_APPROVED';
+    await this.receiptRepo.save(receipt);
+
+    const notifyTarget = receipt.approverId?.trim();
+    if (notifyTarget) {
+      await this.notificationsService.notifyUser(notifyTarget, {
+        title: `Don mua hang ${receipt.poNumber} da duoc NCC xac nhan`,
+        message: `Nha cung cap da xac nhan don mua hang ${receipt.poNumber}. Ban co the tiep tuc lap lenh nhap kho.`,
+        link: '/inbound/purchase-orders',
+        referenceType: 'purchase-order',
+        referenceId: receipt.id,
+        priority: 'high',
+      });
+    } else {
+      await this.notificationsService.notifyRole('manager', {
+        title: `Don mua hang ${receipt.poNumber} da duoc NCC xac nhan`,
+        message: `Nha cung cap da xac nhan don mua hang ${receipt.poNumber}. Ban co the tiep tuc lap lenh nhap kho.`,
+        link: '/inbound/purchase-orders',
+        referenceType: 'purchase-order',
+        referenceId: receipt.id,
+        priority: 'high',
+      });
+    }
+
     return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
   async completeReceipt(id: string, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
+    if (!isReceivingReady(receipt.status)) {
+      throw new BadRequestException('Purchase order must be approved by supplier before completion');
+    }
     const details = receipt.details || [];
 
     const hasMissing = details.some((detail) => parseNumber(detail.receivedQty) < parseNumber(detail.expectedQty));
@@ -224,6 +338,9 @@ export class InboundService {
 
   async addDetail(receiptId: string, dto: any, user?: any) {
     const receipt = await this.findReceiptEntity(receiptId, user);
+    if (!isEditablePurchaseOrderStatus(receipt.status)) {
+      throw new BadRequestException('Only draft purchase orders can add details');
+    }
     const detail = await this.buildDetail(receipt, dto);
     await this.detailRepo.save(detail);
     await this.recalculateTotalAmount(receipt.id);
@@ -253,6 +370,9 @@ export class InboundService {
     });
     if (!detail) throw new NotFoundException('Detail not found');
     if (qty <= 0) throw new BadRequestException('qty must be positive');
+    if (!isReceivingReady(detail.inboundReceipt?.status)) {
+      throw new BadRequestException('Purchase order must be approved by supplier before receiving goods');
+    }
 
     const nextReceived = parseNumber(detail.receivedQty) + qty;
     if (nextReceived > parseNumber(detail.expectedQty)) {
@@ -379,8 +499,8 @@ export class InboundService {
       receipt.status = 'RECEIVED';
     } else if (someReceived) {
       receipt.status = 'PARTIALLY_RECEIVED';
-    } else if (!receipt.status || receipt.status === 'APPROVED') {
-      receipt.status = 'CREATED';
+    } else if (!receipt.status || receipt.status === 'SUPPLIER_APPROVED') {
+      receipt.status = 'SUPPLIER_APPROVED';
     }
 
     await this.receiptRepo.save(receipt);
@@ -449,6 +569,7 @@ export class InboundService {
       orderDate: toDateString(receipt.orderDate),
       expectedDate: toDateString(receipt.expectedDate),
       status: receipt.status,
+      approverId: receipt.approverId,
       description: receipt.description,
       totalAmount: computedTotal,
       supplier: supplierDisplay,
