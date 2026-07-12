@@ -138,6 +138,13 @@ baseURL: http://localhost:3000/api
 
 Đảm bảo backend đang chạy trên cổng 3000.
 
+## Google Sign-In (Identity Services)
+
+- Thêm `VITE_GOOGLE_CLIENT_ID` vào file `.env` ở `apps/frontend` (xem `.env.example`).
+- Trong Google Cloud Console → Credentials → OAuth 2.0 Client IDs, thêm `http://localhost:5173` vào "Authorized JavaScript origins" cho client ID này.
+- Không cần API key chỉ để đăng nhập qua Google; OAuth Client ID là đủ. Nếu bạn dùng các API khác (Maps, etc.) thì cần API key riêng.
+- Sau khi thêm/đổi `.env`, khởi động lại dev server (`npm run dev`).
+
 ## 📄 License
 
 MIT
