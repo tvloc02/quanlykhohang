@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowRightLeft,
   CalendarDays,
@@ -81,17 +82,20 @@ function inferOrderDate(receipt: InboundReceipt) {
 function getStatusGroup(status?: string): StatusGroup {
   const normalized = (status || 'CREATED').toUpperCase();
   if (normalized === 'RECEIVED' || normalized === 'COMPLETED') return 'completed';
-  if (normalized === 'PARTIALLY_RECEIVED' || normalized === 'IN_TRANSIT' || normalized === 'DELIVERING') return 'in-transit';
+  if (normalized === 'SUPPLIER_APPROVED' || normalized === 'PARTIALLY_RECEIVED' || normalized === 'IN_TRANSIT' || normalized === 'DELIVERING') return 'in-transit';
   if (normalized === 'CANCELLED' || normalized === 'CANCELED') return 'cancelled';
   return 'waiting';
 }
 
 function statusLabel(status?: string) {
+  const normalized = (status || 'CREATED').toUpperCase();
   const group = getStatusGroup(status);
+  if (normalized === 'APPROVED') return 'Chờ NCC xác nhận';
+  if (normalized === 'SUPPLIER_APPROVED') return 'NCC đã xác nhận';
   if (group === 'completed') return 'Hoàn thành';
   if (group === 'in-transit') return 'Đang giao';
   if (group === 'cancelled') return 'Đã hủy';
-  return 'Chờ nhập kho';
+  return 'Chờ manager duyệt';
 }
 
 function statusClass(status?: string) {
@@ -184,6 +188,8 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
   const [pageSize, setPageSize] = React.useState(10);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [selectedId, setSelectedId] = React.useState<string | null>(receipts[0]?.id || null);
+  const [creatingStockIn, setCreatingStockIn] = React.useState(false);
+  const navigate = useNavigate();
 
   React.useEffect(() => {
     if (!selectedId && receipts[0]) {
@@ -263,41 +269,67 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
   const [asnDate, setAsnDate] = React.useState('');
   const [asnNote, setAsnNote] = React.useState('');
   const [asnItems, setAsnItems] = React.useState<Array<{ id: string; expectedQty: number; name: string; sku: string }>>([]);
+  const [loadedReceipt, setLoadedReceipt] = React.useState<InboundReceipt | null>(null);
+  const [loadingDetails, setLoadingDetails] = React.useState(false);
+
+  // Load full details when a receipt is selected
+  React.useEffect(() => {
+    if (!selectedReceipt) {
+      setLoadedReceipt(null);
+      return;
+    }
+
+    setLoadingDetails(true);
+    const loadDetails = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${selectedReceipt.id}`, {
+          headers: authHeaders(),
+        });
+        if (response.ok) {
+          const fullReceipt = await response.json() as InboundReceipt;
+          setLoadedReceipt(fullReceipt);
+        }
+      } catch (err) {
+        console.error('Failed to load receipt details:', err);
+        setLoadedReceipt(selectedReceipt);
+      } finally {
+        setLoadingDetails(false);
+      }
+    };
+    void loadDetails();
+  }, [selectedReceipt?.id]);
 
   React.useEffect(() => {
-    if (selectedReceipt) {
-      setAsnDate(selectedReceipt.expectedDate ? selectedReceipt.expectedDate.split('T')[0] : '');
-      setAsnNote(selectedReceipt.description || '');
-      setAsnItems((selectedReceipt.details || []).map(d => ({
+    const receipt = loadedReceipt || selectedReceipt;
+    if (receipt) {
+      setAsnDate(receipt.expectedDate ? receipt.expectedDate.split('T')[0] : '');
+      setAsnNote(receipt.description || '');
+      setAsnItems((receipt.details || []).map(d => ({
         id: d.id,
         expectedQty: d.expectedQty || 0,
         name: d.product?.name || '',
         sku: d.product?.internalSku || ''
       })));
     }
-  }, [selectedReceipt]);
+  }, [loadedReceipt, selectedReceipt]);
 
   const handleAsnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReceipt) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${selectedReceipt.id}`, {
-        method: 'PUT',
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${selectedReceipt.id}/supplier-approve`, {
+        method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
           expectedDate: asnDate,
           description: asnNote,
-          status: 'IN_TRANSIT',
-          items: asnItems.map(item => ({
-            id: item.id,
-            expectedQty: item.expectedQty
-          }))
         })
       });
 
       if (!response.ok) {
-        throw new Error('Lỗi khi gửi thông báo giao hàng');
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.message || 'Khong xac nhan duoc don mua hang');
       }
 
       setIsAsnModalOpen(false);
@@ -316,14 +348,15 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
   const waitingCount = receipts.filter((receipt) => getStatusGroup(receipt.status) === 'waiting').length;
   const transitCount = receipts.filter((receipt) => getStatusGroup(receipt.status) === 'in-transit').length;
   const completedCount = receipts.filter((receipt) => getStatusGroup(receipt.status) === 'completed').length;
-  const selectedExpected = selectedReceipt ? sumExpected(selectedReceipt) : 0;
-  const selectedReceived = selectedReceipt ? sumReceived(selectedReceipt) : 0;
+  const displayReceipt = loadedReceipt || selectedReceipt;
+  const selectedExpected = displayReceipt ? sumExpected(displayReceipt) : 0;
+  const selectedReceived = displayReceipt ? sumReceived(displayReceipt) : 0;
   const selectedRate = selectedExpected > 0 ? Math.min(100, Math.round((selectedReceived / selectedExpected) * 100)) : 0;
 
   const tabs: Array<{ id: TabId; label: string }> = [
     { id: 'purchase-orders', label: 'Đơn mua hàng' },
     { id: 'return-requests', label: 'Đề nghị nhập kho hàng trả lại' },
-    { id: 'stock-in-orders', label: 'Lệnh nhập kho' },
+    { id: 'stock-in-orders', label: 'Phiếu nhập kho' },
     { id: 'stock-in', label: 'Nhập kho' },
   ];
 
@@ -579,8 +612,8 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                             onClick={() => setSelectedId(receipt.id)}
                           />
                           <RowActionButton
-                            label="Lập lệnh nhập kho"
-                            title="Lập lệnh nhập kho"
+                            label="Mở chi tiết"
+                            title="Mở chi tiết"
                             icon={<ChevronRight className="h-4 w-4" />}
                             onClick={() => setSelectedId(receipt.id)}
                           />
@@ -673,14 +706,14 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
             <div>
-              <p className="text-2xl font-black text-slate-900">Đơn mua hàng {receiptNumber(selectedReceipt, 0)}</p>
+              <p className="text-2xl font-black text-slate-900">Đơn mua hàng {receiptNumber(displayReceipt || selectedReceipt, 0)}</p>
               <p className="mt-1 text-sm font-medium text-slate-500">
-                Dữ liệu đồng bộ từ nhà cung cấp {supplierLabel(selectedReceipt)}.
+                Dữ liệu đồng bộ từ nhà cung cấp {supplierLabel(displayReceipt || selectedReceipt)}.
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className={`rounded-lg border px-3 py-1 text-sm font-bold ${statusClass(selectedReceipt.status)}`}>
-                {statusLabel(selectedReceipt.status)}
+              <span className={`rounded-lg border px-3 py-1 text-sm font-bold ${statusClass(displayReceipt?.status)}`}>
+                {statusLabel(displayReceipt?.status)}
               </span>
               <button
                 type="button"
@@ -696,13 +729,13 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
           <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_280px]">
             <div className="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <Field label="Mã nhà cung cấp" value={supplierCode(selectedReceipt)} />
-                <Field label="Tên nhà cung cấp" value={supplierLabel(selectedReceipt)} />
-                <Field label="Số đơn hàng" value={receiptNumber(selectedReceipt, 0)} />
-                <Field label="Ngày đơn hàng" value={formatDate(inferOrderDate(selectedReceipt)?.toISOString())} />
-                <Field label="Ngày giao hàng" value={formatDate(selectedReceipt.expectedDate)} />
-                <Field label="Tình trạng nhập kho" value={statusLabel(selectedReceipt.status)} />
-                <Field label="Tình trạng nhận hàng" value={statusLabel(selectedReceipt.status)} />
+                <Field label="Mã nhà cung cấp" value={supplierCode(displayReceipt || selectedReceipt)} />
+                <Field label="Tên nhà cung cấp" value={supplierLabel(displayReceipt || selectedReceipt)} />
+                <Field label="Số đơn hàng" value={receiptNumber(displayReceipt || selectedReceipt, 0)} />
+                <Field label="Ngày đơn hàng" value={formatDate(inferOrderDate(displayReceipt || selectedReceipt)?.toISOString())} />
+                <Field label="Ngày giao hàng" value={formatDate((displayReceipt || selectedReceipt)?.expectedDate)} />
+                <Field label="Tình trạng nhập kho" value={statusLabel(displayReceipt?.status)} />
+                <Field label="Tình trạng nhập kho" value={statusLabel(displayReceipt?.status)} />
                 <Field label="Diễn giải" value="-" />
                 <Field label="Tham chiếu" value="LNK00055" />
               </div>
@@ -715,7 +748,7 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                   <p className="text-sm font-black uppercase text-slate-700">Tổng quan</p>
                 </div>
                 <div className="mt-4 space-y-3">
-                  <SummaryRow label="Số dòng hàng" value={`${selectedReceipt.details?.length || 0}`} />
+                  <SummaryRow label="Số dòng hàng" value={`${displayReceipt?.details?.length || 0}`} />
                   <SummaryRow label="SL yêu cầu" value={formatQuantity(selectedExpected)} />
                   <SummaryRow label="SL đã nhận" value={formatQuantity(selectedReceived)} />
                   <SummaryRow label="Tỷ lệ nhận" value={`${selectedRate}%`} />
@@ -745,8 +778,8 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                     </tr>
                   </thead>
                   <tbody>
-                    {(selectedReceipt.details || []).length ? (
-                      (selectedReceipt.details || []).map((detail, index) => (
+                    {(displayReceipt?.details || []).length ? (
+                      (displayReceipt?.details || []).map((detail, index) => (
                         <tr key={detail.id} className="border-b border-slate-200 transition hover:bg-cyan-50/40">
                           <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                             {index + 1}
@@ -794,29 +827,49 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
             </div>
 
             <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
-              {selectedReceipt.status === 'CREATED' && (
-                <button
-                  type="button"
-                  onClick={() => setIsAsnModalOpen(true)}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-                >
-                  <Truck className="h-4 w-4" />
-                  Gửi thông báo giao hàng trước (ASN)
-                </button>
-              )}
-              <button
-                type="button"
-                className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-              >
-                Hoàn thành
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-              >
-                <Truck className="h-4 w-4" />
-                Lập lệnh nhập kho
-              </button>
+                {displayReceipt?.status && displayReceipt.status.toUpperCase() === 'APPROVED' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAsnModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+                  >
+                    <Truck className="h-4 w-4" />
+                    Xác nhận đơn mua hàng
+                  </button>
+                )}
+                {displayReceipt?.status && displayReceipt.status.toUpperCase() === 'SUPPLIER_APPROVED' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!displayReceipt || creatingStockIn) return;
+                      try {
+                        setCreatingStockIn(true);
+                        const resp = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/from-purchase-orders/${displayReceipt.id}`, {
+                          method: 'POST',
+                          headers: authHeaders(),
+                        });
+                        if (!resp.ok) {
+                          const data = await resp.json().catch(() => ({}));
+                          throw new Error(data?.message || 'Không tạo được phiếu nhập kho');
+                        }
+                        const created = await resp.json();
+                        // Show success and navigate to phiếu nhập kho list
+                        window.alert(`Đã tạo phiếu nhập kho ${created.orderCode}`);
+                        navigate('/inbound/stock-in-orders');
+                      } catch (err) {
+                        const msg = err instanceof Error ? err.message : 'Lỗi khi tạo phiếu nhập kho';
+                        window.alert(msg);
+                      } finally {
+                        setCreatingStockIn(false);
+                      }
+                    }}
+                    disabled={creatingStockIn}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                  >
+                    <PackageCheck className="h-4 w-4" />
+                    {creatingStockIn ? 'Đang tạo...' : 'Tạo phiếu nhập kho'}
+                  </button>
+                )}
             </div>
           </div>
         </div>

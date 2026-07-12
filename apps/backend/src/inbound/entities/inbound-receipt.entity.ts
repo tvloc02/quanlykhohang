@@ -23,6 +23,9 @@ export class InboundReceipt extends BaseEntity {
   @Column({ nullable: true })
   status?: string;
 
+  @Column({ nullable: true })
+  approverId?: string;
+
   @Column({ type: 'text', nullable: true })
   description?: string;
 

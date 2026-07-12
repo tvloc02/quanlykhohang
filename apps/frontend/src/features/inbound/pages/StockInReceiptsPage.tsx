@@ -1212,7 +1212,7 @@ function ReturnRequestsPageContent() {
 
                         <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
                             <button type="button" onClick={() => approveRequest(selectedRequest)} disabled={saving} className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
-                                Lập lệnh nhập kho
+                                Tạo phiếu nhập kho
                             </button>
                             <button type="button" onClick={() => openReceive(selectedRequest)} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-5 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-60">
                                 <Truck className="h-4 w-4" />

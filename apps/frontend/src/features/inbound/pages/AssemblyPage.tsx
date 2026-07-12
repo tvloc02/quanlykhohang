@@ -206,7 +206,7 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
 
       if (!ordersResponse.ok) {
         const data = await ordersResponse.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách lệnh nhập kho');
+        throw new Error(data?.message || 'Không tải được danh sách phiếu nhập kho');
       }
       if (!productsResponse.ok) {
         const data = await productsResponse.json().catch(() => null);
@@ -466,7 +466,7 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
           <div className="mt-4 space-y-3">
             {loading && <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Đang tải dữ liệu...</div>}
             {!loading && filteredOrders.length === 0 && (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Không có lệnh nhập kho hoàn thành.</div>
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Không có phiếu nhập kho hoàn thành.</div>
             )}
             {filteredOrders.map((order) => {
               const active = order.id === selectedOrder?.id;
@@ -541,7 +541,7 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
 
               {selectedOrder.status !== 'COMPLETED' ? (
                 <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-                  Chỉ có thể tạo sản phẩm khi lệnh nhập kho đã hoàn tất.
+                  Chỉ có thể tạo sản phẩm khi phiếu nhập kho đã hoàn tất.
                 </div>
               ) : (
                 <div className="mt-5 space-y-6">
@@ -766,7 +766,7 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
             </>
           ) : (
             <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-              Chưa có lệnh nhập kho hoàn thành để tạo sản phẩm.
+              Chưa có phiếu nhập kho hoàn thành để tạo sản phẩm.
             </div>
           )}
         </div>

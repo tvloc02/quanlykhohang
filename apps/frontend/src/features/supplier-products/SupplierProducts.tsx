@@ -108,32 +108,12 @@ export default function SupplierProducts() {
 
   return (
     <div>
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-slate-900">Sản phẩm NCC</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            Danh sách sản phẩm được liên kết qua nhà cung cấp, gồm Supplier SKU, giá nhập và vai trò NCC.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="rounded-3xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-bold text-cyan-700">
-            <div className="flex items-center gap-2">
-              <Truck className="h-5 w-5" />
-              <span>{rows.length} sản phẩm</span>
-            </div>
-          </div>
-          <div className="rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              <span>{rows.filter((row) => row.isPrimary).length} NCC chính</span>
-            </div>
-          </div>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-black text-slate-900">Sản phẩm NCC</h1>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
-        <div className="relative">
+      <div className="mt-6 flex items-center gap-3">
+        <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
@@ -142,16 +122,12 @@ export default function SupplierProducts() {
             placeholder="Tìm kiếm theo NCC, mã nội bộ, tên sản phẩm..."
           />
         </div>
-        <div className="space-y-3">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-black uppercase text-slate-500">Tổng sản phẩm</p>
-            <p className="mt-2 text-3xl font-black text-slate-900">{totalItems}</p>
-          </div>
-          <div className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
-            <p className="text-xs font-black uppercase text-cyan-700">NCC chính</p>
-            <p className="mt-2 text-3xl font-black text-cyan-900">{rows.filter((row) => row.isPrimary).length}</p>
-          </div>
-        </div>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+        >
+          <span>Export</span>
+        </button>
       </div>
 
       <div className="mt-6 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
