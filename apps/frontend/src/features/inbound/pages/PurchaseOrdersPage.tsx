@@ -753,7 +753,7 @@ function PurchaseOrdersPageContent() {
   };
   const openView = async (order: PurchaseOrder) => {
     setSelectedId(order.id);
-    setSelectedOrderDetails(null);
+    setSelectedOrderDetails(order);
     setModalMode('view');
 
     try {
@@ -985,11 +985,15 @@ function PurchaseOrdersPageContent() {
 
   const selectedOrderMetrics = selectedOrder
     ? {
-      lines: selectedOrder.details?.length || 0,
-      ordered: (selectedOrder.details || []).reduce((sum, line) => sum + Number(line.expectedQty || 0), 0),
-      received: (selectedOrder.details || []).reduce((sum, line) => sum + Number(line.receivedQty || 0), 0),
-    }
-    : null;
+        lines: selectedOrder.details?.length || 0,
+        ordered: (selectedOrder.details || []).reduce((sum, line) => sum + Number(line.expectedQty || 0), 0),
+        received: (selectedOrder.details || []).reduce((sum, line) => sum + Number(line.receivedQty || 0), 0),
+      }
+    : {
+        lines: 0,
+        ordered: 0,
+        received: 0,
+      };
 
   const addRow = () => {
     setForm((current) => ({ ...current, items: [...current.items, makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')] }));
@@ -1272,27 +1276,34 @@ function PurchaseOrdersPageContent() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
-                          onClick={() => openView(order)}
-                          className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2 text-xs font-semibold text-cyan-700 transition-colors hover:bg-cyan-100"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openView(order);
+                          }}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          title="Xem"
                         >
-                          <ArrowUpRight className="h-3 w-3" />
-                          Xem
+                          <ArrowUpRight className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
-                          onClick={() => openEdit(order)}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openEdit(order);
+                          }}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
                           title="Sửa"
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation();
                             setDeleteTarget(order);
                             setModalMode('delete');
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
                           title="Xóa"
                         >
                           <Trash2 className="h-4 w-4" />

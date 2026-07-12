@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Product } from '../entities/product.entity';
 import { Role } from '../entities/role.entity';
@@ -142,6 +142,27 @@ export class SuppliersService {
       throw new BadRequestException('Product is already linked to this supplier');
     }
 
+    try {
+      const supplierProduct = this.supplierProductRepo.create({
+        supplier,
+        product,
+        supplierSku: dto.supplierSku?.trim(),
+        itemGroup: dto.itemGroup?.trim(),
+        managementType: dto.managementType?.trim(),
+        storagePosition: dto.storagePosition?.trim(),
+        purchasePrice: String(dto.purchasePrice ?? 0),
+        isPrimary: Boolean(dto.isPrimary),
+      });
+
+      return await this.supplierProductRepo.save(supplierProduct);
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        const message = (error as any)?.message || 'Database error while saving supplier product';
+        throw new BadRequestException(message);
+      }
+      throw error;
+    }
+
     const supplierProduct = this.supplierProductRepo.create({
       supplier,
       product,
@@ -204,10 +225,23 @@ export class SuppliersService {
     }
 
     const internalSku = dto.internalSku.trim().toUpperCase();
+    const normalizedSupplierBarcode = dto.supplierSku?.trim();
     let product = await this.productRepo.findOne({ where: { internalSku }, relations: ['supplier'] });
 
     if (product && product.id !== currentProductId) {
       return product;
+    }
+
+    if (normalizedSupplierBarcode) {
+      const duplicateBarcode = await this.productRepo.findOne({
+        where: {
+          supplier: { id: supplier.id },
+          supplierBarcode: normalizedSupplierBarcode,
+        },
+      });
+      if (duplicateBarcode && duplicateBarcode.id !== currentProductId && duplicateBarcode.id !== product?.id) {
+        throw new BadRequestException('Mã hàng theo NCC đã tồn tại cho sản phẩm khác');
+      }
     }
 
     if (!product) {
@@ -215,7 +249,7 @@ export class SuppliersService {
     }
 
     product.name = dto.productName.trim();
-    product.supplierBarcode = dto.supplierSku?.trim();
+    product.supplierBarcode = normalizedSupplierBarcode;
     product.unit = dto.unit?.trim();
     product.minimumStock = dto.minimumStock ?? 0;
     product.supplier = supplier;
