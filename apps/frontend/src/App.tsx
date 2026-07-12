@@ -23,6 +23,7 @@ import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSecti
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import StockInReceiptsPage from './features/inbound/pages/StockInReceiptsPage';
 import GoodsReceiptsPage from './features/inbound/pages/GoodsReceiptsPage';
+import ApproveReceiptPage from './features/inbound/pages/ApproveReceiptPage';
 import AssemblyPage from './features/inbound/pages/AssemblyPage';
 import ProductionPage from './features/inbound/pages/ProductionPage';
 import DistributionPage from './features/inbound/pages/DistributionPage';
@@ -268,6 +269,16 @@ function App() {
                 <GoodsReceiptsPage />
               </MainLayout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inbound/approve"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager']}>
+              <MainLayout>
+                <ApproveReceiptPage />
+              </MainLayout>
+            </RoleRoute>
           }
         />
         <Route

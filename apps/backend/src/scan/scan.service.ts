@@ -9,12 +9,15 @@ import { SupplierProduct } from '../entities/supplier-product.entity';
  * Service tra cứu nhanh sản phẩm theo mã vạch (Scan-to-Identify).
  * Tối ưu tốc độ — API phải phản hồi dưới 50ms.
  */
+import { BarcodeMappingService } from '../inbound/barcode-mapping/barcode-mapping.service';
+
 @Injectable()
 export class ScanService {
   constructor(
     @InjectRepository(Product) private readonly productRepo: Repository<Product>,
     @InjectRepository(StockBalance) private readonly balanceRepo: Repository<StockBalance>,
     @InjectRepository(SupplierProduct) private readonly supplierProductRepo: Repository<SupplierProduct>,
+    private readonly mappingService: BarcodeMappingService,
   ) {}
 
   /**
@@ -25,11 +28,24 @@ export class ScanService {
    * @param zoneCode - (Tùy chọn) Khu vực nhân viên đang đứng
    */
   async lookup(barcode: string, zoneCode?: string) {
+    // Kiểm tra trong bảng ánh xạ mã vạch ngoại lệ trước (US02.02)
+    const mapping = await this.mappingService.findByBarcode(barcode);
+    let product = null;
+
+    if (mapping?.product) {
+      product = await this.productRepo.findOne({
+        where: { id: mapping.product.id },
+        relations: ['category', 'supplier'],
+      });
+    }
+
     // Tìm theo supplierBarcode trước (ưu tiên barcode từ nhà cung cấp)
-    let product = await this.productRepo.findOne({
-      where: { supplierBarcode: barcode },
-      relations: ['category', 'supplier'],
-    });
+    if (!product) {
+      product = await this.productRepo.findOne({
+        where: { supplierBarcode: barcode },
+        relations: ['category', 'supplier'],
+      });
+    }
 
     // Nếu không tìm thấy, tìm theo internalSku
     if (!product) {

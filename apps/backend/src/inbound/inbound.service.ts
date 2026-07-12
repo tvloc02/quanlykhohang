@@ -53,6 +53,8 @@ function toDateString(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+import { DataSource, EntityManager } from 'typeorm';
+
 @Injectable()
 export class InboundService {
   constructor(
@@ -62,6 +64,7 @@ export class InboundService {
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(SupplierProduct) private supplierProductRepo: Repository<SupplierProduct>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
+    private dataSource: DataSource,
   ) {}
 
   async createReceipt(dto: CreateAsnDto, user?: any) {
@@ -203,9 +206,31 @@ export class InboundService {
 
   async approveReceipt(id: string, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
-    receipt.status = 'APPROVED';
-    await this.receiptRepo.save(receipt);
-    return this.serializeReceipt(await this.findReceiptEntity(id, user));
+
+    if (receipt.status === 'APPROVED') {
+      return this.serializeReceipt(receipt);
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      receipt.status = 'APPROVED';
+      await manager.save(InboundReceipt, receipt);
+
+      const details = receipt.details || [];
+      for (const detail of details) {
+        const receivedQty = parseNumber(detail.receivedQty);
+        if (receivedQty > 0 && detail.product) {
+          await this.adjustInventory(
+            detail.product.id,
+            detail.warehouseCode || 'DEFAULT',
+            receivedQty,
+            manager
+          );
+        }
+      }
+    });
+
+    const updatedReceipt = await this.findReceiptEntity(id, user);
+    return this.serializeReceipt(updatedReceipt);
   }
 
   async completeReceipt(id: string, user?: any) {
@@ -261,7 +286,6 @@ export class InboundService {
 
     detail.receivedQty = nextReceived;
     await this.detailRepo.save(detail);
-    await this.adjustInventory(detail.product.id, detail.warehouseCode || 'DEFAULT', qty);
     await this.syncReceiptStatus(detail.inboundReceipt.id);
     return this.serializeDetail(detail);
   }
@@ -396,13 +420,16 @@ export class InboundService {
     await this.receiptRepo.update(receiptId, { totalAmount: totalAmount.toFixed(2) });
   }
 
-  private async adjustInventory(productId: string, locationCode: string, qty: number) {
-    const product = await this.productRepo.findOneBy({ id: productId });
+  private async adjustInventory(productId: string, locationCode: string, qty: number, manager?: EntityManager) {
+    const activeProductRepo = manager ? manager.getRepository(Product) : this.productRepo;
+    const activeBalanceRepo = manager ? manager.getRepository(StockBalance) : this.balanceRepo;
+
+    const product = await activeProductRepo.findOneBy({ id: productId });
     if (!product) {
       throw new NotFoundException('Product not found');
     }
 
-    const existing = await this.balanceRepo.findOne({
+    const existing = await activeBalanceRepo.findOne({
       where: { product: { id: productId } as any, locationCode },
       relations: ['product'],
     });
@@ -410,11 +437,11 @@ export class InboundService {
     if (existing) {
       existing.totalPhysical += qty;
       existing.available = Math.max(existing.totalPhysical - existing.allocated, 0);
-      await this.balanceRepo.save(existing);
+      await activeBalanceRepo.save(existing);
       return existing;
     }
 
-    const balance = this.balanceRepo.create({
+    const balance = activeBalanceRepo.create({
       product,
       locationCode,
       totalPhysical: qty,
@@ -422,7 +449,7 @@ export class InboundService {
       available: qty,
     });
 
-    return this.balanceRepo.save(balance);
+    return activeBalanceRepo.save(balance);
   }
 
   private serializeReceipt(receipt: InboundReceipt): SerializedPurchaseOrder {

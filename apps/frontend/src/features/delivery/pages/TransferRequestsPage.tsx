@@ -11,6 +11,7 @@ import {
   Search,
   Trash2,
   X,
+  FileText,
 } from 'lucide-react';
 
 type TransferRequestLine = {

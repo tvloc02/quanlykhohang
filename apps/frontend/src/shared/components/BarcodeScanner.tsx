@@ -225,6 +225,11 @@ export default function BarcodeScanner({
   const [quickAddPrice, setQuickAddPrice] = useState('');
   const [quickAddCategory, setQuickAddCategory] = useState('');
 
+  // Barcode Exception Mapping State (US02.02)
+  const [isMappingMode, setIsMappingMode] = useState(false);
+  const [allProducts, setAllProducts] = useState<any[]>([]);
+  const [selectedMappingProductId, setSelectedMappingProductId] = useState('');
+
   const processingRef = useRef(false);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastScannedRef = useRef<string>('');
@@ -240,6 +245,9 @@ export default function BarcodeScanner({
       setQuickAddName('');
       setQuickAddPrice('');
       setQuickAddCategory('');
+      setIsMappingMode(false);
+      setSelectedMappingProductId('');
+      setAllProducts([]);
       processingRef.current = false;
       lastScannedRef.current = '';
     }
@@ -608,9 +616,45 @@ export default function BarcodeScanner({
 
         {/* Error */}
         {error && (
-          <div className="scanner-error">
-            <span className="error-icon">❌</span>
-            {error}
+          <div className="scanner-error" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="error-icon">❌</span>
+              <span>{error}</span>
+            </div>
+            {error.includes('Không tìm thấy') && lastScannedRef.current && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const res = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setAllProducts(data || []);
+                      setIsMappingMode(true);
+                    }
+                  } catch (err) {
+                    console.error(err);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                style={{
+                  marginTop: '4px',
+                  padding: '8px 16px',
+                  background: '#06b6d4',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 'bold',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(6,182,212,0.25)'
+                }}
+              >
+                🔗 Liên kết mã vạch ngoại lệ
+              </button>
+            )}
           </div>
         )}
 
@@ -772,6 +816,134 @@ export default function BarcodeScanner({
                   onMouseOut={(e) => e.currentTarget.style.opacity = '1'}
                 >
                   {loading ? 'Đang tạo...' : 'Lưu và Thêm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal ánh xạ mã vạch ngoại lệ */}
+        {isMappingMode && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            zIndex: 60,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            borderRadius: 'inherit'
+          }}>
+            <div style={{
+              width: '100%',
+              maxWidth: '480px',
+              textAlign: 'left',
+              background: '#ffffff',
+              padding: '24px',
+              borderRadius: '12px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}>
+              <div>
+                <h4 style={{ margin: 0, color: '#0f172a', fontSize: '18px', fontWeight: 700 }}>
+                  Liên kết mã vạch ngoại lệ
+                </h4>
+                <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '13px' }}>
+                  Ánh xạ mã vạch vừa quét với sản phẩm hiện có trong hệ thống
+                </p>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '14px', fontWeight: '600', display: 'block', marginBottom: '6px', color: '#334155' }}>
+                  Mã vạch lạ
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={lastScannedRef.current}
+                  style={{ width: '100%', background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', color: '#475569', fontSize: '14px', fontWeight: '500' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '14px', fontWeight: '600', display: 'block', marginBottom: '6px', color: '#334155' }}>
+                  Chọn sản phẩm liên kết <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <select
+                  value={selectedMappingProductId}
+                  onChange={(e) => setSelectedMappingProductId(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    outline: 'none',
+                    fontSize: '14px',
+                    color: '#0f172a',
+                    background: 'white'
+                  }}
+                >
+                  <option value="">-- Chọn sản phẩm hệ thống --</option>
+                  {allProducts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.internalSku} - {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  style={{ padding: '8px 16px', borderRadius: '6px', background: '#ffffff', color: '#475569', fontWeight: '600', border: '1px solid #cbd5e1', cursor: 'pointer', fontSize: '14px' }}
+                  onClick={() => setIsMappingMode(false)}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={loading || !selectedMappingProductId}
+                  style={{
+                    padding: '8px 20px',
+                    borderRadius: '6px',
+                    background: '#06b6d4',
+                    color: 'white',
+                    fontWeight: '600',
+                    border: 'none',
+                    cursor: selectedMappingProductId ? 'pointer' : 'not-allowed',
+                    opacity: selectedMappingProductId ? 1 : 0.6
+                  }}
+                  onClick={async () => {
+                    setLoading(true);
+                    setError('');
+                    try {
+                      const res = await fetch(`${API_BASE_URL}/inbound/barcode-mappings`, {
+                        method: 'POST',
+                        headers: authHeaders(),
+                        body: JSON.stringify({
+                          barcode: lastScannedRef.current,
+                          productId: selectedMappingProductId
+                        })
+                      });
+
+                      if (!res.ok) throw new Error('Lỗi tạo liên kết mã vạch');
+
+                      setIsMappingMode(false);
+                      handleScan(lastScannedRef.current);
+                    } catch (err: any) {
+                      setError(err.message || 'Lỗi liên kết mã vạch');
+                      setIsMappingMode(false);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                >
+                  {loading ? 'Đang liên kết...' : 'Liên kết & Thử lại'}
                 </button>
               </div>
             </div>
