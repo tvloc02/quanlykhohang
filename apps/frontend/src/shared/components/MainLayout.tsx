@@ -69,7 +69,7 @@ const menuItems = [
       { icon: FileText, label: 'Đơn mua hàng', path: '/inbound/purchase-orders' },
       { icon: ClipboardList, label: 'Đề nghị nhập kho hàng trả lại', path: '/inbound/return-requests' },
       { icon: FileText, label: 'Lệnh nhập kho', path: '/inbound/stock-in-orders' },
-      { icon: Package, label: 'Nhập kho', path: '/inbound/stock-in' },
+      { icon: Package, label: 'Phiếu nhập kho', path: '/inbound/stock-in' },
     ]
   },
   {

@@ -22,6 +22,7 @@ import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
 import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSectionPlaceholderPage';
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import StockInReceiptsPage from './features/inbound/pages/StockInReceiptsPage';
+import GoodsReceiptsPage from './features/inbound/pages/GoodsReceiptsPage';
 import AssemblyPage from './features/inbound/pages/AssemblyPage';
 import ProductionPage from './features/inbound/pages/ProductionPage';
 import DistributionPage from './features/inbound/pages/DistributionPage';
@@ -264,7 +265,7 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <StockInReceiptsPage />
+                <GoodsReceiptsPage />
               </MainLayout>
             </ProtectedRoute>
           }
