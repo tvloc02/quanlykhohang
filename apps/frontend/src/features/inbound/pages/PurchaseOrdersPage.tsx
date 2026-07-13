@@ -1007,7 +1007,8 @@ function PurchaseOrdersPageContent() {
 
   const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
   const canManagerApprove = selectedOrderStatus === 'CREATED';
-  const canCreateStockIn = selectedOrderStatus === 'SUPPLIER_APPROVED';
+  const canCreateStockIn = selectedOrderStatus === 'SUPPLIER_APPROVED' || selectedOrderStatus === 'PARTIALLY_RECEIVED' || selectedOrderStatus === 'RECEIVED';
+  const canReceiveGoods = selectedOrderStatus === 'SUPPLIER_APPROVED' || selectedOrderStatus === 'PARTIALLY_RECEIVED';
 
   const addRow = () => {
     setForm((current) => ({ ...current, items: [...current.items, makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')] }));
@@ -1444,6 +1445,16 @@ function PurchaseOrdersPageContent() {
               {canManagerApprove && (
                 <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60">
                   Duyệt manager
+                </button>
+              )}
+              {canReceiveGoods && (
+                <button
+                  type="button"
+                  onClick={() => openReceive(selectedOrder)}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  Đã nhận hàng
                 </button>
               )}
               {canCreateStockIn && (

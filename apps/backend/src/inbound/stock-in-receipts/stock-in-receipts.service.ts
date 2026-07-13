@@ -109,6 +109,8 @@ export class StockInReceiptsService {
         : sourceOrder.details.map((detail) => ({
             productId: detail.product.id,
             warehouseCode: detail.warehouseCode || sourceOrder.details[0]?.warehouseCode || 'DEFAULT',
+            orderedQty: toNumber(detail.requestedQty),
+            receivedQty: toNumber(detail.actualQty),
             quantity: toNumber(detail.actualQty || detail.requestedQty),
             unitPrice: toNumber(detail.unitPrice),
             note: `Kế thừa từ ${sourceOrder.orderCode}`,
@@ -123,8 +125,9 @@ export class StockInReceiptsService {
         sourceStockInOrderId,
         sourceReferenceNo: sourceOrder.orderCode,
         receiptDate: dto.receiptDate,
-        status: 'POSTED',
+        status: dto.status || 'POSTED',
         description: dto.description || `Sinh tự động từ lệnh ${sourceOrder.orderCode}`,
+        assignedStaffIds: dto.assignedStaffIds,
         items,
       },
       user,
@@ -228,6 +231,7 @@ export class StockInReceiptsService {
       receiptDate: dto.receiptDate ? new Date(dto.receiptDate) : new Date(),
       status: 'DRAFT',
       description: dto.description?.trim() || undefined,
+      assignedStaffIds: dto.assignedStaffIds || undefined,
       totalAmount: '0',
     });
   }
@@ -275,6 +279,10 @@ export class StockInReceiptsService {
       receipt.description = dto.description.trim() || undefined;
     }
 
+    if (dto.assignedStaffIds !== undefined) {
+      receipt.assignedStaffIds = dto.assignedStaffIds;
+    }
+
     return receipt;
   }
 
@@ -296,6 +304,8 @@ export class StockInReceiptsService {
         receipt: { id: receiptId } as StockInReceipt,
         product,
         warehouseCode: item.warehouseCode?.trim() || undefined,
+        orderedQty: toNumber(item.orderedQty || 0),
+        receivedQty: toNumber(item.receivedQty || 0),
         quantity,
         unitPrice: unitPrice.toFixed(2),
         totalLineAmount: (quantity * unitPrice).toFixed(2),
@@ -412,6 +422,7 @@ export class StockInReceiptsService {
       receiptDate: toIso(receipt.receiptDate),
       status: receipt.status,
       description: receipt.description,
+      assignedStaffIds: receipt.assignedStaffIds || [],
       totalAmount: toNumber(receipt.totalAmount),
       postedAt: toIso(receipt.postedAt),
       createdAt: toIso(receipt.createdAt),
@@ -419,6 +430,8 @@ export class StockInReceiptsService {
       details: (receipt.details || []).map((detail) => ({
         id: detail.id,
         warehouseCode: detail.warehouseCode,
+        orderedQty: toNumber(detail.orderedQty),
+        receivedQty: toNumber(detail.receivedQty),
         quantity: toNumber(detail.quantity),
         unitPrice: toNumber(detail.unitPrice),
         totalLineAmount: toNumber(detail.totalLineAmount),

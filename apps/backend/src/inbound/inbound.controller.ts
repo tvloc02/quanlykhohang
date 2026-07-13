@@ -84,19 +84,19 @@ export class InboundController {
     return this.svc.findAll(req.user);
   }
 
-  @Put(':id')
+  @Put('legacy/:id')
   @Roles('admin', 'manager', 'supplier')
   update(@Param('id') id: string, @Body() dto: CreateAsnDto, @Req() req: any) {
     return this.svc.updateReceipt(id, dto, req.user);
   }
 
-  @Delete(':id')
+  @Delete('legacy/:id')
   @Roles('admin', 'manager')
   remove(@Param('id') id: string, @Req() req: any) {
     return this.svc.removeReceipt(id, req.user);
   }
 
-  @Get(':id')
+  @Get('legacy/:id')
   @Roles('admin', 'manager', 'staff', 'supplier')
   findOne(@Param('id') id: string, @Req() req: any) {
     return this.svc.findOne(id, req.user);
