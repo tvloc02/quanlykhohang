@@ -1120,17 +1120,17 @@ function PurchaseOrdersPageContent() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
-          <p className="text-lg font-bold text-white uppercase tracking-wide">{orders.length} Tổng PO</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
+          <p className="text-lg font-bold text-white uppercase">{orders.length} TỔNG PO</p>
         </div>
-        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
-          <p className="text-lg font-bold text-white uppercase tracking-wide">{draftCount} Chờ duyệt</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
+          <p className="text-lg font-bold text-white uppercase">{draftCount} CHỜ DUYỆT</p>
         </div>
-        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
-          <p className="text-lg font-bold text-white uppercase tracking-wide">{approvedCount} Đã duyệt</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
+          <p className="text-lg font-bold text-white uppercase">{approvedCount} ĐÃ DUYỆT</p>
         </div>
-        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg flex items-center justify-center transition-transform hover:-translate-y-1">
-          <p className="text-lg font-bold text-white uppercase tracking-wide">{completedCount} Hoàn thành</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
+          <p className="text-lg font-bold text-white uppercase">{completedCount} HOÀN THÀNH</p>
         </div>
       </div>
 
