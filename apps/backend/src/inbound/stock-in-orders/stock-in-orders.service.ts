@@ -77,7 +77,8 @@ export class StockInOrdersService {
       throw new NotFoundException('Purchase order not found');
     }
 
-    if (String(purchaseOrder.status || '').toUpperCase() !== 'SUPPLIER_APPROVED') {
+    const status = String(purchaseOrder.status || '').toUpperCase();
+    if (status !== 'SUPPLIER_APPROVED' && status !== 'PARTIALLY_RECEIVED' && status !== 'RECEIVED') {
       throw new BadRequestException('Purchase order must be approved by supplier before creating stock in order');
     }
 

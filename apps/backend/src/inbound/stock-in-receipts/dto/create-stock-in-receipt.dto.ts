@@ -12,6 +12,16 @@ export class CreateStockInReceiptItemDto {
   warehouseCode?: string;
 
   @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  orderedQty?: number;
+
+  @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  receivedQty?: number;
+
+  @IsInt()
   @Type(() => Number)
   quantity: number;
 
@@ -59,6 +69,11 @@ export class CreateStockInReceiptDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  assignedStaffIds?: string[];
 
   @IsArray()
   @ValidateNested({ each: true })
