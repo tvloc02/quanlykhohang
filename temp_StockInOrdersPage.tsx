@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
@@ -20,8 +20,6 @@ import {
   FileText,
   Printer
 } from 'lucide-react';
-
-import { PrintableStockInReceipt } from '../components/PrintableStockInReceipt';
 
 export type WarehouseRecord = {
   id: string;
@@ -183,15 +181,15 @@ function parseNumber(value: string) {
 function statusLabel(status?: string) {
   switch ((status || 'DRAFT').toUpperCase()) {
     case 'IN_PROGRESS':
-      return 'Đang xử lý';
+      return 'Äang xá»­ lĂ½';
     case 'READY':
-      return 'Sẵn sàng';
+      return 'Sáºµn sĂ ng';
     case 'COMPLETED':
-      return 'Hoàn thành';
+      return 'HoĂ n thĂ nh';
     case 'CANCELLED':
-      return 'Đã hủy';
+      return 'ÄĂ£ há»§y';
     default:
-      return 'Nháp';
+      return 'NhĂ¡p';
   }
 }
 
@@ -290,7 +288,7 @@ export default function StockInOrdersPage() {
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<StockInOrder | null>(null);
   
-  const [users, setUsers] = React.useState<Array<{id: string; email: string; fullName?: string; roles?: any[]}>>([]);
+  const [users, setUsers] = React.useState<Array<{id: string; email: string; fullName?: string}>>([]);
   const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
   
   const [createForm, setCreateForm] = React.useState({ sourceId: '', currentStepUserEmail: '', note: '' });
@@ -314,11 +312,11 @@ export default function StockInOrdersPage() {
 
       if (!ordersResponse.ok) {
         const data = await ordersResponse.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách phiếu nhập kho');
+        throw new Error(data?.message || 'KhĂ´ng táº£i Ä‘Æ°á»£c danh sĂ¡ch phiáº¿u nháº­p kho');
       }
       if (!purchaseOrdersResponse.ok) {
         const data = await purchaseOrdersResponse.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách đơn mua hàng');
+        throw new Error(data?.message || 'KhĂ´ng táº£i Ä‘Æ°á»£c danh sĂ¡ch Ä‘Æ¡n mua hĂ ng');
       }
 
       const ordersData = (await ordersResponse.json()) as StockInOrder[];
@@ -329,7 +327,7 @@ export default function StockInOrdersPage() {
       setPurchaseOrders(purchaseOrdersData);
       setUsers(Array.isArray(usersData) ? usersData : usersData.data || []);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tải dữ liệu phiếu nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lá»—i táº£i dá»¯ liá»‡u phiáº¿u nháº­p kho' });
     } finally {
       setLoading(false);
     }
@@ -450,7 +448,7 @@ export default function StockInOrdersPage() {
   const createFromPurchaseOrder = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!createForm.sourceId) {
-      setToast({ type: 'error', message: 'Hãy chọn một đơn mua hàng để tạo phiếu nhập kho' });
+      setToast({ type: 'error', message: 'HĂ£y chá»n má»™t Ä‘Æ¡n mua hĂ ng Ä‘á»ƒ táº¡o phiáº¿u nháº­p kho' });
       return;
     }
 
@@ -468,16 +466,16 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tạo được phiếu nhập kho');
+        throw new Error(data?.message || 'KhĂ´ng táº¡o Ä‘Æ°á»£c phiáº¿u nháº­p kho');
       }
 
       const created = (await response.json()) as StockInOrder;
-      setToast({ type: 'success', message: `Đã tạo phiếu ${created.orderCode}` });
+      setToast({ type: 'success', message: `ÄĂ£ táº¡o phiáº¿u ${created.orderCode}` });
       closeModal();
       await loadData();
       setSelectedId(created.id);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tạo phiếu nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lá»—i khi táº¡o phiáº¿u nháº­p kho' });
     } finally {
       setSaving(false);
     }
@@ -524,13 +522,13 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không lưu được phiếu nhập kho');
+        throw new Error(data?.message || 'KhĂ´ng lÆ°u Ä‘Æ°á»£c phiáº¿u nháº­p kho');
       }
 
-      setToast({ type: 'success', message: 'Đã lưu thay đổi' });
+      setToast({ type: 'success', message: 'ÄĂ£ lÆ°u thay Ä‘á»•i' });
       await loadData();
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi lưu phiếu nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lá»—i khi lÆ°u phiáº¿u nháº­p kho' });
     } finally {
       setSaving(false);
     }
@@ -551,13 +549,13 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không chuyển bước được');
+        throw new Error(data?.message || 'KhĂ´ng chuyá»ƒn bÆ°á»›c Ä‘Æ°á»£c');
       }
 
-      setToast({ type: 'success', message: 'Đã chuyển bước xử lý' });
+      setToast({ type: 'success', message: 'ÄĂ£ chuyá»ƒn bÆ°á»›c xá»­ lĂ½' });
       await loadData();
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi chuyển bước' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lá»—i khi chuyá»ƒn bÆ°á»›c' });
     } finally {
       setSaving(false);
     }
@@ -572,7 +570,7 @@ export default function StockInOrdersPage() {
       return actualQty !== requestedQty;
     });
 
-    if (hasDifference && !window.confirm('Có chênh lệch số lượng. Bạn vẫn muốn hoàn thành phiếu này?')) {
+    if (hasDifference && !window.confirm('CĂ³ chĂªnh lá»‡ch sá»‘ lÆ°á»£ng. Báº¡n váº«n muá»‘n hoĂ n thĂ nh phiáº¿u nĂ y?')) {
       return;
     }
 
@@ -590,13 +588,13 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không hoàn thành được phiếu nhập kho');
+        throw new Error(data?.message || 'KhĂ´ng hoĂ n thĂ nh Ä‘Æ°á»£c phiáº¿u nháº­p kho');
       }
 
-      setToast({ type: 'success', message: 'Đã hoàn thành phiếu nhập kho' });
+      setToast({ type: 'success', message: 'ÄĂ£ hoĂ n thĂ nh phiáº¿u nháº­p kho' });
       await loadData();
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi hoàn thành lệnh' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lá»—i khi hoĂ n thĂ nh lá»‡nh' });
     } finally {
       setSaving(false);
     }
@@ -605,7 +603,7 @@ export default function StockInOrdersPage() {
   const createStockInReceipt = async () => {
     if (!selectedOrder) return;
     if (selectedStaffIds.length === 0) {
-      setToast({ type: 'error', message: 'Vui lòng chọn ít nhất một nhân viên tham gia.' });
+      setToast({ type: 'error', message: 'Vui lĂ²ng chá»n Ă­t nháº¥t má»™t nhĂ¢n viĂªn tham gia.' });
       return;
     }
     setSaving(true);
@@ -616,21 +614,19 @@ export default function StockInOrdersPage() {
         body: JSON.stringify({
           status: 'DRAFT',
           assignedStaffIds: selectedStaffIds,
-          receiptType: 'PURCHASE_GOODS',
-          warehouseCode: selectedOrder?.details?.[0]?.warehouseCode || 'KHO-NVL',
         }),
       });
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tạo được lệnh nhập kho');
+        throw new Error(data?.message || 'KhĂ´ng táº¡o Ä‘Æ°á»£c lá»‡nh nháº­p kho');
       }
 
-      setToast({ type: 'success', message: 'Đã tạo lệnh nhập kho thành công.' });
+      setToast({ type: 'success', message: 'ÄĂ£ táº¡o lá»‡nh nháº­p kho thĂ nh cĂ´ng.' });
       setModalMode(null);
       await loadData();
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tạo lệnh nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lá»—i khi táº¡o lá»‡nh nháº­p kho' });
     } finally {
       setSaving(false);
     }
@@ -646,13 +642,13 @@ export default function StockInOrdersPage() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không xóa được phiếu nhập kho');
+        throw new Error(data?.message || 'KhĂ´ng xĂ³a Ä‘Æ°á»£c phiáº¿u nháº­p kho');
       }
-      setToast({ type: 'success', message: 'Đã xóa phiếu nhập kho.' });
+      setToast({ type: 'success', message: 'ÄĂ£ xĂ³a phiáº¿u nháº­p kho.' });
       closeModal();
       await loadData();
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi xóa' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lá»—i khi xĂ³a' });
     } finally {
       setSaving(false);
     }
@@ -670,7 +666,7 @@ export default function StockInOrdersPage() {
   return (
     <div className="space-y-4">
       {toast && (
-        <div className={`fixed right-4 top-4 z-[9999] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
+        <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
           {toast.type === 'error' ? <XCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
           <p className="text-sm font-bold">{toast.message}</p>
           <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
@@ -681,7 +677,7 @@ export default function StockInOrdersPage() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Phiếu nhập kho</h1>
+          <h1 className="text-2xl font-black text-slate-900">Phiáº¿u nháº­p kho</h1>
         </div>
         <button
           type="button"
@@ -689,22 +685,22 @@ export default function StockInOrdersPage() {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Tạo phiếu nhập kho
+          Táº¡o phiáº¿u nháº­p kho
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{orders.length} TỔNG PHIẾU</p>
+          <p className="text-lg font-bold text-white uppercase">{orders.length} Tá»”NG PHIáº¾U</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{draftCount} NHÁP</p>
+          <p className="text-lg font-bold text-white uppercase">{draftCount} NHĂP</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{inProgressCount} ĐANG XỬ LÝ</p>
+          <p className="text-lg font-bold text-white uppercase">{inProgressCount} ÄANG Xá»¬ LĂ</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{completedCount} HOÀN THÀNH</p>
+          <p className="text-lg font-bold text-white uppercase">{completedCount} HOĂ€N THĂ€NH</p>
         </div>
       </div>
 
@@ -716,7 +712,7 @@ export default function StockInOrdersPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-              placeholder="Tìm theo mã phiếu, nguồn, nhà cung cấp, diễn giải..."
+              placeholder="TĂ¬m theo mĂ£ phiáº¿u, nguá»“n, nhĂ  cung cáº¥p, diá»…n giáº£i..."
             />
           </div>
           <select
@@ -724,21 +720,21 @@ export default function StockInOrdersPage() {
             onChange={(event) => setTimeFilter(event.target.value as TimeFilter)}
             className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
           >
-            <option value="this-month">Thời gian: Tháng này</option>
-            <option value="7-days">Thời gian: 7 ngày gần đây</option>
-            <option value="all">Thời gian: Tất cả</option>
+            <option value="this-month">Thá»i gian: ThĂ¡ng nĂ y</option>
+            <option value="7-days">Thá»i gian: 7 ngĂ y gáº§n Ä‘Ă¢y</option>
+            <option value="all">Thá»i gian: Táº¥t cáº£</option>
           </select>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
             className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
           >
-            <option value="all">Tình trạng: Tất cả</option>
-            <option value="draft">Tình trạng: Nháp</option>
-            <option value="in_progress">Tình trạng: Đang xử lý</option>
-            <option value="ready">Tình trạng: Sẵn sàng</option>
-            <option value="completed">Tình trạng: Hoàn thành</option>
-            <option value="cancelled">Tình trạng: Đã hủy</option>
+            <option value="all">TĂ¬nh tráº¡ng: Táº¥t cáº£</option>
+            <option value="draft">TĂ¬nh tráº¡ng: NhĂ¡p</option>
+            <option value="in_progress">TĂ¬nh tráº¡ng: Äang xá»­ lĂ½</option>
+            <option value="ready">TĂ¬nh tráº¡ng: Sáºµn sĂ ng</option>
+            <option value="completed">TĂ¬nh tráº¡ng: HoĂ n thĂ nh</option>
+            <option value="cancelled">TĂ¬nh tráº¡ng: ÄĂ£ há»§y</option>
           </select>
           <div className="flex items-center gap-2">
             <button
@@ -749,14 +745,14 @@ export default function StockInOrdersPage() {
                 setTimeFilter('this-month');
               }}
               className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              title="Đặt lại bộ lọc"
+              title="Äáº·t láº¡i bá»™ lá»c"
             >
               <RefreshCw className="h-4 w-4" />
             </button>
             <button
               type="button"
               className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              title="Cài đặt"
+              title="CĂ i Ä‘áº·t"
             >
               <Filter className="h-4 w-4" />
             </button>
@@ -771,14 +767,14 @@ export default function StockInOrdersPage() {
             <thead className="bg-slate-50">
               <tr className="border-b border-slate-200">
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">#</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Mã Phiếu</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày tạo</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Nguồn PO</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tổng SL</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tình trạng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">MĂ£ Phiáº¿u</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">NgĂ y táº¡o</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Nguá»“n PO</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">NhĂ  cung cáº¥p</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tá»•ng SL</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">TĂ¬nh tráº¡ng</th>
                 <th className="sticky right-0 w-32 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
-                  Thao tác
+                  Thao tĂ¡c
                 </th>
               </tr>
             </thead>
@@ -786,13 +782,13 @@ export default function StockInOrdersPage() {
               {loading ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Đang tải danh sách phiếu nhập kho...
+                    Äang táº£i danh sĂ¡ch phiáº¿u nháº­p kho...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có phiếu nhập kho phù hợp.
+                    ChÆ°a cĂ³ phiáº¿u nháº­p kho phĂ¹ há»£p.
                   </td>
                 </tr>
               ) : (
@@ -845,7 +841,7 @@ export default function StockInOrdersPage() {
                             setModalMode('delete');
                           }}
                           className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition-colors hover:bg-red-100"
-                          title="Xóa"
+                          title="XĂ³a"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -860,11 +856,11 @@ export default function StockInOrdersPage() {
 
         <div className="flex flex-col items-center justify-between gap-4 border-t border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
           <div className="text-sm text-slate-600">
-            Tổng số: <b>{totalItems}</b>
-            {totalItems > 0 && <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>}
+            Tá»•ng sá»‘: <b>{totalItems}</b>
+            {totalItems > 0 && <span className="ml-2">Hiá»ƒn thá»‹ {startIndex} - {endIndex}</span>}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-600">Số dòng/trang</span>
+            <span className="text-sm font-semibold text-slate-600">Sá»‘ dĂ²ng/trang</span>
             <select
               value={pageSize}
               onChange={(event) => {
@@ -880,19 +876,19 @@ export default function StockInOrdersPage() {
             </select>
             <div className="flex items-center gap-1">
               <button type="button" onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                «
+                Â«
               </button>
               <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                ‹
+                â€¹
               </button>
               <button type="button" className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-cyan-600 px-3 text-sm font-bold text-white">
                 {currentPage}
               </button>
               <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                ›
+                â€º
               </button>
               <button type="button" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                »
+                Â»
               </button>
             </div>
           </div>
@@ -900,15 +896,15 @@ export default function StockInOrdersPage() {
       </div>
 
       {}
-      {/* POPUP XEM CHI TIẾT VÀ SỬA */}
+      {/* POPUP XEM CHI TIáº¾T VĂ€ Sá»¬A */}
       {selectedOrder && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
           <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col">
             <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 lg:flex-row lg:items-start lg:justify-between bg-slate-50">
               <div>
-                <p className="text-2xl font-black text-slate-900">Chi tiết phiếu nhập kho {selectedOrder.orderCode}</p>
+                <p className="text-2xl font-black text-slate-900">Chi tiáº¿t phiáº¿u nháº­p kho {selectedOrder.orderCode}</p>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Từ đơn mua hàng: {selectedOrder.sourcePurchaseOrderNo || '-'} · {selectedOrder.sourcePurchaseOrder?.supplier?.name || '-'}
+                  Tá»« Ä‘Æ¡n mua hĂ ng: {selectedOrder.sourcePurchaseOrderNo || '-'} Â· {selectedOrder.sourcePurchaseOrder?.supplier?.name || '-'}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
@@ -919,7 +915,7 @@ export default function StockInOrdersPage() {
                   type="button" 
                   onClick={() => setSelectedId(null)} 
                   className="rounded-xl p-2 text-slate-400 bg-white border border-slate-200 transition hover:bg-slate-100 hover:text-slate-700" 
-                  title="Đóng"
+                  title="ÄĂ³ng"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -929,31 +925,27 @@ export default function StockInOrdersPage() {
             <div className="overflow-y-auto flex-1 p-6">
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] mb-6">
                 <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <h4 className="mb-4 text-sm font-bold uppercase text-slate-500">Thông tin chung</h4>
+                  <h4 className="mb-4 text-sm font-bold uppercase text-slate-500">ThĂ´ng tin chung</h4>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Mã phiếu nhập</label>
+                      <label className="block text-sm font-bold text-slate-700 mb-1.5">MĂ£ phiáº¿u nháº­p</label>
                       <p className="text-sm font-bold text-slate-900">{selectedOrder.orderCode}</p>
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Nhà cung cấp (Bên giao)</label>
-                      <p className="text-sm font-bold text-slate-900">{selectedOrder.sourcePurchaseOrder?.supplier?.name || '-'}</p>
+                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Kho nháº­p</label>
+                      <p className="text-sm font-bold text-slate-900">KHO-NVL (Máº·c Ä‘á»‹nh)</p>
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Người giao hàng</label>
+                      <label className="block text-sm font-bold text-slate-700 mb-1.5">NgÆ°á»i giao</label>
                       <input 
                         value={draft.currentStepUserEmail || ''} 
                         onChange={e => setDraft(curr => ({...curr, currentStepUserEmail: e.target.value}))} 
                         className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" 
-                        placeholder="Nhập tên người giao hàng"
+                        placeholder="Nháº­p ngÆ°á»i giao"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Kho nhập (Bên nhận)</label>
-                      <p className="text-sm font-bold text-slate-900">{selectedOrder.details?.[0]?.warehouseCode || 'KHO-NVL (Mặc định)'}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Ngày giờ nhận hàng</label>
+                      <label className="block text-sm font-bold text-slate-700 mb-1.5">NgĂ y nháº­p kho</label>
                       <input 
                         type="datetime-local" 
                         step="1" 
@@ -961,13 +953,13 @@ export default function StockInOrdersPage() {
                         className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" 
                       />
                     </div>
-                    <div className="md:col-span-1">
-                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Diễn giải</label>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-bold text-slate-700 mb-1.5">Diá»…n giáº£i</label>
                       <input 
                         value={draft.note || ''} 
                         onChange={e => setDraft(curr => ({...curr, note: e.target.value}))} 
                         className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" 
-                        placeholder="Thêm diễn giải..."
+                        placeholder="ThĂªm diá»…n giáº£i..."
                       />
                     </div>
                   </div>
@@ -976,62 +968,17 @@ export default function StockInOrdersPage() {
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
                   <div className="flex items-center gap-2 mb-4">
                     <Clock3 className="h-5 w-5 text-cyan-600" />
-                    <p className="text-sm font-bold uppercase text-slate-700">Tổng quan tình trạng</p>
+                    <p className="text-sm font-bold uppercase text-slate-700">Tá»•ng quan tĂ¬nh tráº¡ng</p>
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Tình trạng đồng bộ</span>
-                      <span className="font-bold text-slate-900">Chưa đồng bộ</span>
+                      <span className="text-slate-600">TĂ¬nh tráº¡ng Ä‘á»“ng bá»™</span>
+                      <span className="font-bold text-slate-900">ChÆ°a Ä‘á»“ng bá»™</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Số dòng hàng</span>
+                      <span className="text-slate-600">Sá»‘ dĂ²ng hĂ ng</span>
                       <span className="font-bold text-slate-900">{selectedOrder.details.length}</span>
                     </div>
-                  </div>
-                </div>
-                
-                {/* INLINE STAFF SELECTION */}
-                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-sm font-bold uppercase text-slate-700">Nhân viên kho tham gia</p>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer text-cyan-700 font-bold hover:text-cyan-800">
-                      <input 
-                        type="checkbox" 
-                        onChange={(e) => {
-                          const eligibleStaffs = users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name)));
-                          if (e.target.checked) setSelectedStaffIds(eligibleStaffs.map(u => u.id));
-                          else setSelectedStaffIds([]);
-                        }} 
-                        checked={
-                          selectedStaffIds.length > 0 && 
-                          selectedStaffIds.length === users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name))).length
-                        } 
-                        className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" 
-                      />
-                      Chọn tất cả
-                    </label>
-                  </div>
-                  <div className="space-y-2 max-h-[240px] overflow-y-auto pr-2">
-                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name))).length === 0 && (
-                      <p className="text-sm text-slate-500 italic">Không có nhân viên kho nào trong hệ thống.</p>
-                    )}
-                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name))).map((u) => (
-                      <label key={u.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-100 p-2 hover:bg-slate-50 transition">
-                        <input
-                          type="checkbox"
-                          checked={selectedStaffIds.includes(u.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
-                            else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
-                          }}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600"
-                        />
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
-                          {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
-                        </div>
-                      </label>
-                    ))}
                   </div>
                 </div>
               </div>
@@ -1039,7 +986,7 @@ export default function StockInOrdersPage() {
               <div>
                 <div className="mb-3 flex items-center gap-2">
                   <FileText className="h-5 w-5 text-cyan-600" />
-                  <h3 className="text-lg font-black text-slate-900">Danh sách Hàng hóa thực nhập</h3>
+                  <h3 className="text-lg font-black text-slate-900">Danh sĂ¡ch HĂ ng hĂ³a thá»±c nháº­p</h3>
                 </div>
                 <div className="overflow-hidden rounded-xl border border-slate-200">
                   <div className="overflow-x-auto">
@@ -1047,12 +994,12 @@ export default function StockInOrdersPage() {
                       <thead className="bg-slate-50">
                         <tr className="border-b border-slate-200">
                           <th className="w-14 border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">STT</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Mã hàng</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Tên hàng</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">MĂ£ hĂ ng</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">TĂªn hĂ ng</th>
                           <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Kho</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">ĐVT</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL nhập</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL theo ĐVT chính</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">ÄVT</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL nháº­p</th>
+                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL theo ÄVT chĂ­nh</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1078,7 +1025,7 @@ export default function StockInOrdersPage() {
                                       {warehouses.map((warehouse) => (
                                           <option key={warehouse.code} value={warehouse.code}>{warehouse.name}</option>
                                       ))}
-                                      {!warehouses.length && <option value="Kho công ty">Kho công ty</option>}
+                                      {!warehouses.length && <option value="Kho cĂ´ng ty">Kho cĂ´ng ty</option>}
                                   </select>
                                 </td>
                                 <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-700">{detail.product?.unit || '-'}</td>
@@ -1105,22 +1052,10 @@ export default function StockInOrdersPage() {
             <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
                <button 
                  type="button" 
-                 onClick={() => {
-                   setTimeout(() => {
-                     window.print();
-                   }, 100);
-                 }} 
-                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
-               >
-                 <Printer className="h-4 w-4" />
-                 In phiếu
-               </button>
-               <button 
-                 type="button" 
                  onClick={() => setSelectedId(null)} 
                  className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
                >
-                 Hủy
+                 Há»§y
                </button>
                <button 
                  type="button" 
@@ -1128,15 +1063,14 @@ export default function StockInOrdersPage() {
                  disabled={saving || selectedOrder.status === 'COMPLETED'} 
                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
                >
-                 Lưu và Thêm
+                 LÆ°u vĂ  ThĂªm
                </button>
                <button 
                  type="button" 
-                 onClick={createStockInReceipt} 
-                 disabled={saving || selectedStaffIds.length === 0} 
+                 onClick={() => setModalMode('staff-select')} 
                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
                >
-                 Tạo lệnh nhập kho
+                 Táº¡o lá»‡nh nháº­p kho
                </button>
                <button 
                  type="button" 
@@ -1147,7 +1081,7 @@ export default function StockInOrdersPage() {
                  disabled={saving || selectedOrder.status === 'COMPLETED'} 
                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                >
-                 Lưu & Hoàn Thành
+                 LÆ°u & HoĂ n ThĂ nh
                </button>
             </div>
           </div>
@@ -1177,10 +1111,10 @@ export default function StockInOrdersPage() {
                       </div>
                       <div>
                         <h3 className="text-lg font-black text-slate-900">
-                          Tạo phiếu nhập kho
+                          Táº¡o phiáº¿u nháº­p kho
                         </h3>
                         <p className="text-sm font-medium text-slate-500">
-                          Tạo phiếu mới từ đơn mua hàng đã được duyệt.
+                          Táº¡o phiáº¿u má»›i tá»« Ä‘Æ¡n mua hĂ ng Ä‘Ă£ Ä‘Æ°á»£c duyá»‡t.
                         </p>
                       </div>
                     </div>
@@ -1195,26 +1129,26 @@ export default function StockInOrdersPage() {
 
                   {/* BODY */}
                   <div className="max-h-[calc(94vh-160px)] overflow-y-auto flex-1 px-8 py-6 space-y-6">
-                    {/* THÔNG TIN CHUNG + TÍNH TRẠNG */}
+                    {/* THĂ”NG TIN CHUNG + TĂNH TRáº NG */}
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1.5fr]">
-                      {/* PHÍA TRÁI: THÔNG TIN CHUNG */}
+                      {/* PHĂA TRĂI: THĂ”NG TIN CHUNG */}
                       <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6">
-                        <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin chung</h4>
+                        <h4 className="mb-5 text-sm font-black uppercase text-slate-800">ThĂ´ng tin chung</h4>
 
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
                           <div className="md:col-span-2">
                             <label className="mb-2 block text-sm font-bold text-slate-700">
-                              Đơn mua hàng nguồn <span className="text-red-600">*</span>
+                              ÄÆ¡n mua hĂ ng nguá»“n <span className="text-red-600">*</span>
                             </label>
                             <select
                               value={createForm.sourceId}
                               onChange={(event) => setCreateForm((current) => ({ ...current, sourceId: event.target.value }))}
                               className="h-11 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 text-slate-700 font-medium"
                             >
-                              <option value="">Chọn đơn mua hàng</option>
+                              <option value="">Chá»n Ä‘Æ¡n mua hĂ ng</option>
                               {purchaseOrders.map((po) => (
                                 <option key={po.id} value={po.id} disabled={usedPurchaseOrderIds.has(po.id) || !isApprovedPurchaseOrder(po)}>
-                                  {po.poNumber} - {po.supplier?.name || 'Không có NCC'} {usedPurchaseOrderIds.has(po.id) ? '(đã tạo phiếu)' : !isApprovedPurchaseOrder(po) ? '(chưa NCC xác nhận)' : ''}
+                                  {po.poNumber} - {po.supplier?.name || 'KhĂ´ng cĂ³ NCC'} {usedPurchaseOrderIds.has(po.id) ? '(Ä‘Ă£ táº¡o phiáº¿u)' : !isApprovedPurchaseOrder(po) ? '(chÆ°a NCC xĂ¡c nháº­n)' : ''}
                                 </option>
                               ))}
                             </select>
@@ -1224,7 +1158,7 @@ export default function StockInOrdersPage() {
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
                           <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">
-                              Mã nhà cung cấp
+                              MĂ£ nhĂ  cung cáº¥p
                             </label>
                             <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
                               {selectedPO?.supplier?.supplierCode || selectedPO?.supplier?.id || '-'}
@@ -1232,7 +1166,7 @@ export default function StockInOrdersPage() {
                           </div>
                           <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">
-                              Tên nhà cung cấp
+                              TĂªn nhĂ  cung cáº¥p
                             </label>
                             <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
                               {selectedPO?.supplier?.name || '-'}
@@ -1243,7 +1177,7 @@ export default function StockInOrdersPage() {
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
                           <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">
-                              Ngày đơn hàng gốc
+                              NgĂ y Ä‘Æ¡n hĂ ng gá»‘c
                             </label>
                             <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
                               {formatDate(selectedPO?.orderDate)}
@@ -1251,87 +1185,87 @@ export default function StockInOrdersPage() {
                           </div>
                           <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">
-                              Kho nhận ngầm định
+                              Kho nháº­n ngáº§m Ä‘á»‹nh
                             </label>
                             <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
-                              KHO-NVL (Mặc định)
+                              KHO-NVL (Máº·c Ä‘á»‹nh)
                             </div>
                           </div>
                         </div>
 
                         <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Diễn giải</label>
+                          <label className="mb-2 block text-sm font-bold text-slate-700">Diá»…n giáº£i</label>
                           <textarea
                             value={createForm.note}
                             onChange={(event) => setCreateForm((current) => ({ ...current, note: event.target.value }))}
                             rows={3}
                             className="w-full rounded-2xl border-2 border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 resize-none font-medium text-slate-700"
-                            placeholder="Nhập ghi chú hoặc diễn giải..."
+                            placeholder="Nháº­p ghi chĂº hoáº·c diá»…n giáº£i..."
                           />
                         </div>
                       </div>
 
-                      {/* PHÍA PHẢI: TÍNH TRẠNG */}
+                      {/* PHĂA PHáº¢I: TĂNH TRáº NG */}
                       <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-cyan-50 to-white p-6">
-                        <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Tình trạng phiếu nhập</h4>
+                        <h4 className="mb-5 text-sm font-black uppercase text-slate-800">TĂ¬nh tráº¡ng phiáº¿u nháº­p</h4>
 
                         <div className="space-y-3">
                           <div>
                             <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
-                              Số phiếu nhập kho
+                              Sá»‘ phiáº¿u nháº­p kho
                             </label>
                             <div className="flex h-10 items-center rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-400 italic">
-                              (Tự động sinh)
+                              (Tá»± Ä‘á»™ng sinh)
                             </div>
                           </div>
 
                           <div>
                             <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
-                              Ngày tạo phiếu
+                              NgĂ y táº¡o phiáº¿u
                             </label>
                             <div className="flex h-10 items-center rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-400 italic">
-                              (Tự động sinh lúc lưu)
+                              (Tá»± Ä‘á»™ng sinh lĂºc lÆ°u)
                             </div>
                           </div>
 
                           <div>
                             <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
-                              Tình trạng đồng bộ
+                              TĂ¬nh tráº¡ng Ä‘á»“ng bá»™
                             </label>
                             <div className="flex h-10 items-center rounded-xl border-2 border-slate-200 bg-white px-3">
                               <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                                 <Clock3 className="h-3 w-3" />
-                                Chưa thực hiện
+                                ChÆ°a thá»±c hiá»‡n
                               </span>
                             </div>
                           </div>
 
                           <div>
                             <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
-                              Người đang xử lý
+                              NgÆ°á»i Ä‘ang xá»­ lĂ½
                             </label>
                             <input
                               value={createForm.currentStepUserEmail}
                               onChange={(event) => setCreateForm((current) => ({ ...current, currentStepUserEmail: event.target.value }))}
                               className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium text-slate-700"
-                              placeholder="Email người xử lý (tùy chọn)"
+                              placeholder="Email ngÆ°á»i xá»­ lĂ½ (tĂ¹y chá»n)"
                             />
                           </div>
 
                           <div className="mt-4 rounded-xl border-2 border-cyan-200 bg-cyan-50 p-3">
-                            <p className="text-xs font-bold uppercase text-cyan-700">Tổng tiền dự kiến</p>
+                            <p className="text-xs font-bold uppercase text-cyan-700">Tá»•ng tiá»n dá»± kiáº¿n</p>
                             <p className="mt-1 text-xl font-black text-cyan-900">{formatMoney(totalAmount)}</p>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* BẢNG HÀNG HÓA */}
+                    {/* Báº¢NG HĂ€NG HĂ“A */}
                     <section>
                       <div className="mb-4 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
                           <Package className="h-5 w-5 text-cyan-600" />
-                          <h4 className="font-black text-slate-900">Chi tiết hàng hóa dự kiến</h4>
+                          <h4 className="font-black text-slate-900">Chi tiáº¿t hĂ ng hĂ³a dá»± kiáº¿n</h4>
                         </div>
                       </div>
 
@@ -1344,19 +1278,19 @@ export default function StockInOrdersPage() {
                                   STT
                                 </th>
                                 <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                                  Mặt hàng
+                                  Máº·t hĂ ng
                                 </th>
                                 <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                                   Kho
                                 </th>
                                 <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                                  SL yêu cầu
+                                  SL yĂªu cáº§u
                                 </th>
                                 <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                                  Đơn giá
+                                  ÄÆ¡n giĂ¡
                                 </th>
                                 <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                                  Thành tiền
+                                  ThĂ nh tiá»n
                                 </th>
                               </tr>
                             </thead>
@@ -1389,7 +1323,7 @@ export default function StockInOrdersPage() {
                               ) : (
                                 <tr>
                                   <td colSpan={6} className="px-4 py-12 text-center text-sm font-medium text-slate-500">
-                                    Vui lòng chọn đơn mua hàng nguồn ở trên để xem chi tiết
+                                    Vui lĂ²ng chá»n Ä‘Æ¡n mua hĂ ng nguá»“n á»Ÿ trĂªn Ä‘á»ƒ xem chi tiáº¿t
                                   </td>
                                 </tr>
                               )}
@@ -1407,14 +1341,14 @@ export default function StockInOrdersPage() {
                       onClick={closeModal}
                       className="rounded-2xl border-2 border-slate-200 px-6 py-2.5 font-bold text-slate-700 hover:bg-slate-100 transition"
                     >
-                      Hủy
+                      Há»§y
                     </button>
                     <button
                       type="submit"
                       disabled={saving || !createForm.sourceId}
                       className="rounded-2xl bg-cyan-600 px-8 py-2.5 font-bold text-white shadow-lg hover:bg-cyan-700 disabled:opacity-60 transition"
                     >
-                      {saving ? 'Đang tạo...' : 'Tạo phiếu nhập kho'}
+                      {saving ? 'Äang táº¡o...' : 'Táº¡o phiáº¿u nháº­p kho'}
                     </button>
                   </div>
                 </>
@@ -1425,12 +1359,12 @@ export default function StockInOrdersPage() {
       )}
 
       {modalMode === 'delete' && deleteTarget && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div>
-                <h3 className="text-lg font-black text-slate-900">Xóa phiếu nhập kho</h3>
-                <p className="text-sm font-medium text-slate-500">Thao tác này không thể hoàn tác.</p>
+                <h3 className="text-lg font-black text-slate-900">XĂ³a phiáº¿u nháº­p kho</h3>
+                <p className="text-sm font-medium text-slate-500">Thao tĂ¡c nĂ y khĂ´ng thá»ƒ hoĂ n tĂ¡c.</p>
               </div>
               <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
                 <X className="h-5 w-5" />
@@ -1438,22 +1372,63 @@ export default function StockInOrdersPage() {
             </div>
             <div className="px-6 py-5">
               <p className="text-sm text-slate-700">
-                Bạn có chắc muốn xóa phiếu nhập kho <span className="font-black text-slate-950">{deleteTarget.orderCode}</span> không?
+                Báº¡n cĂ³ cháº¯c muá»‘n xĂ³a phiáº¿u nháº­p kho <span className="font-black text-slate-950">{deleteTarget.orderCode}</span> khĂ´ng?
               </p>
               <div className="mt-8 flex justify-end gap-3">
                 <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50">
-                  Hủy
+                  Há»§y
                 </button>
                 <button type="button" onClick={handleDelete} disabled={saving} className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-60">
-                  {saving ? 'Đang xóa...' : 'Xóa phiếu'}
+                  {saving ? 'Äang xĂ³a...' : 'XĂ³a phiáº¿u'}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
-      {selectedOrder && (
-        <PrintableStockInReceipt order={selectedOrder} />
+      {modalMode === 'staff-select' && selectedOrder && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Chá»n nhĂ¢n viĂªn tham gia nháº­p kho</h3>
+                <p className="text-sm font-medium text-slate-500">Chá»‰ Ä‘á»‹nh nhĂ¢n viĂªn thá»±c hiá»‡n kiá»ƒm Ä‘áº¿m vĂ  lÆ°u kho.</p>
+              </div>
+              <button type="button" onClick={() => setModalMode(null)} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
+              <div className="space-y-3">
+                {users.map((u) => (
+                  <label key={u.id} className="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-slate-200 p-3 hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={selectedStaffIds.includes(u.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
+                        else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
+                      }}
+                      className="h-5 w-5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
+                      {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
+              <button type="button" onClick={() => setModalMode(null)} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50">
+                Há»§y
+              </button>
+              <button type="button" onClick={createStockInReceipt} disabled={saving || selectedStaffIds.length === 0} className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-cyan-700 disabled:opacity-60">
+                {saving ? 'Äang táº¡o...' : 'XĂ¡c nháº­n táº¡o'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

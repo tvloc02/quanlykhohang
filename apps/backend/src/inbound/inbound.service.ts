@@ -319,6 +319,37 @@ export class InboundService {
     return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
+  async supplierRejectReceipt(id: string, dto: { reason?: string }, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
+
+    if (!isSupplierApprovalReady(receipt.status)) {
+      throw new BadRequestException('Purchase order must be approved by manager first');
+    }
+
+    if (user?.role === 'supplier' && user?.supplierId && receipt.supplier?.id && String(user.supplierId) !== String(receipt.supplier.id)) {
+      throw new BadRequestException('You do not have permission to reject this purchase order');
+    }
+
+    if (dto.reason) receipt.description = (receipt.description ? receipt.description + '\nLý do từ chối: ' : 'Lý do từ chối: ') + dto.reason.trim();
+
+    receipt.status = 'CANCELLED';
+    await this.receiptRepo.save(receipt);
+
+    const notifyTarget = receipt.approverId?.trim();
+    if (notifyTarget) {
+      await this.notificationsService.notifyUser(notifyTarget, {
+        title: `Don mua hang ${receipt.poNumber} da bi NCC tu choi`,
+        message: `Nha cung cap da tu choi don mua hang ${receipt.poNumber}.`,
+        link: '/inbound/purchase-orders',
+        referenceType: 'purchase-order',
+        referenceId: receipt.id,
+        priority: 'high',
+      });
+    }
+
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
+  }
+
   async completeReceipt(id: string, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
     if (!isReceivingReady(receipt.status)) {

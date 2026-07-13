@@ -777,27 +777,51 @@ export default function SupplierProfilePage() {
           </div>
         ) : activeConfig ? (
           <div className="grid h-full min-h-0 grid-cols-1 gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-            <aside className="order-2 grid min-h-0 grid-cols-3 gap-3 overflow-auto xl:order-1 xl:flex xl:flex-col">
-              {inactiveWindows.map((item, index) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveWindow(item.id)}
-                  className="min-h-[148px] overflow-hidden rounded-xl border-2 border-slate-200 bg-white text-left shadow-sm transition hover:border-cyan-300 hover:bg-cyan-50 xl:min-h-[0] xl:flex-1"
-                >
-                  <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">{index + 1}</span>
-                    <span className="truncate text-xs font-black uppercase text-slate-500">{item.eyebrow}</span>
-                  </div>
-                  <div className="p-3">
+            <aside className="order-2 flex gap-3 overflow-x-auto xl:order-1 xl:flex-col xl:overflow-y-auto xl:overflow-x-hidden">
+              {windows.map((item, index) => {
+                const isActive = item.id === activeWindow;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveWindow(item.id)}
+                    className={`flex min-w-[200px] shrink-0 flex-col rounded-xl border-2 p-3 text-left transition-colors xl:min-w-0 ${
+                      isActive
+                        ? 'border-cyan-600 bg-cyan-50 shadow-md'
+                        : 'border-slate-200 bg-white hover:border-cyan-300 hover:bg-slate-50'
+                    }`}
+                  >
                     <div className="mb-2 flex items-center gap-2">
-                      <span className="text-cyan-600">{item.icon}</span>
-                      <p className="truncate text-sm font-black text-slate-900">{item.title}</p>
+                      <span
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
+                          isActive ? 'bg-cyan-600 text-white' : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {index + 1}
+                      </span>
+                      <span
+                        className={`truncate text-[10px] font-black uppercase tracking-wider ${
+                          isActive ? 'text-cyan-700' : 'text-slate-500'
+                        }`}
+                      >
+                        {item.eyebrow}
+                      </span>
                     </div>
-                    <div className="scale-[0.88] origin-top-left">{renderWindowContent(item.id, true)}</div>
-                  </div>
-                </button>
-              ))}
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`rounded-lg p-1.5 ${
+                          isActive ? 'bg-white text-cyan-600 shadow-sm' : 'bg-slate-50 text-slate-400'
+                        }`}
+                      >
+                        {item.icon}
+                      </div>
+                      <span className={`text-sm ${isActive ? 'font-black text-cyan-950' : 'font-semibold text-slate-600'}`}>
+                        {item.title}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
             </aside>
 
             <div className="order-1 min-h-0 xl:order-2">
@@ -807,12 +831,7 @@ export default function SupplierProfilePage() {
                 icon={activeConfig.icon}
                 active
               >
-                <div className="mb-4 flex justify-end">
-                  <button type="button" onClick={() => setActiveWindow(null)} className="inline-flex items-center gap-2 rounded-xl border-2 border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
-                    <Minimize2 className="h-4 w-4" />
-                    Thu về toàn cảnh
-                  </button>
-                </div>
+
                 {renderWindowContent(activeConfig.id)}
               </PortalWindow>
             </div>
