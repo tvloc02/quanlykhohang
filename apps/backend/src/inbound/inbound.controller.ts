@@ -48,6 +48,18 @@ export class InboundController {
     return this.svc.approveReceipt(id, req.user);
   }
 
+  @Post('purchase-orders/:id/supplier-approve')
+  @Roles('supplier')
+  approvePurchaseOrderBySupplier(@Param('id') id: string, @Body() body: { expectedDate?: string; description?: string }, @Req() req: any) {
+    return this.svc.supplierApproveReceipt(id, body, req.user);
+  }
+
+  @Post('purchase-orders/:id/supplier-reject')
+  @Roles('supplier')
+  rejectPurchaseOrderBySupplier(@Param('id') id: string, @Body() body: { reason?: string }, @Req() req: any) {
+    return this.svc.supplierRejectReceipt(id, body, req.user);
+  }
+
   @Post('purchase-orders/:id/complete')
   @Roles('admin', 'manager')
   completePurchaseOrder(@Param('id') id: string, @Req() req: any) {
@@ -78,19 +90,19 @@ export class InboundController {
     return this.svc.findAll(req.user);
   }
 
-  @Put(':id')
+  @Put('legacy/:id')
   @Roles('admin', 'manager', 'supplier')
   update(@Param('id') id: string, @Body() dto: CreateAsnDto, @Req() req: any) {
     return this.svc.updateReceipt(id, dto, req.user);
   }
 
-  @Delete(':id')
+  @Delete('legacy/:id')
   @Roles('admin', 'manager')
   remove(@Param('id') id: string, @Req() req: any) {
     return this.svc.removeReceipt(id, req.user);
   }
 
-  @Get(':id')
+  @Get('legacy/:id')
   @Roles('admin', 'manager', 'staff', 'supplier')
   findOne(@Param('id') id: string, @Req() req: any) {
     return this.svc.findOne(id, req.user);

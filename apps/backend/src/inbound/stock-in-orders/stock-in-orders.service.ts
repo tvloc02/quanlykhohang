@@ -77,6 +77,11 @@ export class StockInOrdersService {
       throw new NotFoundException('Purchase order not found');
     }
 
+    const status = String(purchaseOrder.status || '').toUpperCase();
+    if (status !== 'SUPPLIER_APPROVED' && status !== 'PARTIALLY_RECEIVED' && status !== 'RECEIVED') {
+      throw new BadRequestException('Purchase order must be approved by supplier before creating stock in order');
+    }
+
     const orderCode = await this.generateOrderCode(dto.orderCode);
     const savedOrder = await this.orderRepo.save(
       this.orderRepo.create({

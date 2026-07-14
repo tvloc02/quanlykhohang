@@ -69,8 +69,7 @@ const menuItems = [
       { icon: FileText, label: 'Đơn mua hàng', path: '/inbound/purchase-orders' },
       { icon: ClipboardList, label: 'Đề nghị nhập kho hàng trả lại', path: '/inbound/return-requests' },
       { icon: FileText, label: 'Lệnh nhập kho', path: '/inbound/stock-in-orders' },
-      { icon: Package, label: 'Phiếu nhập kho', path: '/inbound/stock-in' },
-      { icon: CheckCheck, label: 'Phê duyệt phiếu nhập', path: '/inbound/approve', allowedRoles: ['admin', 'manager'] },
+      { icon: Package, label: 'Nhập kho', path: '/inbound/stock-in' },
     ]
   },
   {
@@ -257,8 +256,8 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
                 <div
                   onClick={() => toggleExpanded(item.path)}
                   className={`w-full flex items-center ${isOpen ? 'px-4' : 'justify-center'} py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group cursor-pointer ${isActive || isChildActive
-                      ? 'text-white'
-                      : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
+                    ? 'text-white'
+                    : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
                     }`}
                   style={isActive || isChildActive ? {
                     background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
@@ -292,8 +291,8 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
                           key={child.path}
                           to={child.path}
                           className={`w-full flex items-center px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 group ${isChildActiveState
-                              ? 'text-white'
-                              : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
+                            ? 'text-white'
+                            : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
                             }`}
                           style={isChildActiveState ? {
                             background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
@@ -319,8 +318,8 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
               key={item.path}
               to={item.path}
               className={`w-full flex items-center ${isOpen ? 'px-4' : 'justify-center'} py-3.5 text-sm font-bold rounded-xl transition-all duration-200 group ${isActive
-                  ? 'text-white'
-                  : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
+                ? 'text-white'
+                : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
                 }`}
               style={isActive ? {
                 background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
@@ -351,8 +350,8 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
         <button
           onClick={onToggle}
           className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${!isOpen
-              ? 'bg-cyan-50 dark:bg-slate-900'
-              : 'bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900'
+            ? 'bg-cyan-50 dark:bg-slate-900'
+            : 'bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900'
             } hover:shadow-md text-cyan-600 dark:text-cyan-400`}
           title={!isOpen ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
         >
@@ -400,6 +399,20 @@ export default function MainLayout({ children }: LayoutProps) {
   const [notifications, setNotifications] = useState<any[]>([]);
   const unreadCount = notifications.filter(n => n.isUnread).length;
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const loadNotifications = React.useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:3000/api/notifications', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      if (!response.ok) return;
+      const data = await response.json().catch(() => []);
+      setNotifications(Array.isArray(data) ? data : []);
+    } catch {
+      // Ignore transient errors and keep the current list.
+    }
+  }, []);
 
   // Lắng nghe sự kiện click ra ngoài để đóng các Dropdown
   useEffect(() => {
@@ -417,6 +430,14 @@ export default function MainLayout({ children }: LayoutProps) {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    void loadNotifications();
+    const timer = window.setInterval(() => {
+      void loadNotifications();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [loadNotifications]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -521,7 +542,23 @@ export default function MainLayout({ children }: LayoutProps) {
                       </div>
                       <div className="flex items-center space-x-2">
                         {unreadCount > 0 && (
-                          <button onClick={() => setNotifications(notifications.map(n => ({ ...n, isUnread: false })))} className="text-xs font-medium text-cyan-600 dark:text-cyan-400" title="Đánh dấu tất cả đã đọc">
+                          <button
+                            onClick={async () => {
+                              setNotifications(notifications.map((n) => ({ ...n, isUnread: false })));
+                              try {
+                                await fetch('http://localhost:3000/api/notifications/read-all', {
+                                  method: 'POST',
+                                  headers: {
+                                    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+                                  },
+                                });
+                              } catch {
+                                // Ignore background sync errors.
+                              }
+                            }}
+                            className="text-xs font-medium text-cyan-600 dark:text-cyan-400"
+                            title="Đánh dấu tất cả đã đọc"
+                          >
                             <CheckCheck className="h-4 w-4" />
                           </button>
                         )}
@@ -537,7 +574,30 @@ export default function MainLayout({ children }: LayoutProps) {
                       </div>
                     ) : (
                       notifications.map((notif) => (
-                        <div key={notif._id} className={`px-4 py-3 hover:bg-cyan-50 dark:hover:bg-slate-800 cursor-pointer border-b-2 border-gray-100 dark:border-slate-800 transition-colors ${notif.isUnread ? 'bg-cyan-50/50 dark:bg-slate-800/50' : ''}`}>
+                        <button
+                          key={notif.id || notif._id}
+                          type="button"
+                          onClick={async () => {
+                            setNotifications((current) =>
+                              current.map((item) => (item.id === notif.id || item._id === notif._id ? { ...item, isUnread: false } : item)),
+                            );
+                            try {
+                              await fetch(`http://localhost:3000/api/notifications/${notif.id || notif._id}/read`, {
+                                method: 'POST',
+                                headers: {
+                                  Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+                                },
+                              });
+                            } catch {
+                              // Ignore background sync errors.
+                            }
+                            if (notif.link) {
+                              navigate(notif.link);
+                              setNotificationDropdownOpen(false);
+                            }
+                          }}
+                          className={`w-full px-4 py-3 text-left hover:bg-cyan-50 dark:hover:bg-slate-800 cursor-pointer border-b-2 border-gray-100 dark:border-slate-800 transition-colors ${notif.isUnread ? 'bg-cyan-50/50 dark:bg-slate-800/50' : ''}`}
+                        >
                           <div className="flex items-start space-x-3">
                             <div className="flex-shrink-0 mt-1">
                               {notif.priority === 'urgent' ? <AlertCircle className="h-4 w-4 text-red-500" /> : notif.priority === 'high' ? <AlertTriangle className="h-4 w-4 text-orange-500" /> : <Info className="h-4 w-4 text-cyan-500" />}
@@ -549,11 +609,11 @@ export default function MainLayout({ children }: LayoutProps) {
                               </div>
                               <p className="text-xs mb-2 line-clamp-2 text-gray-600 dark:text-slate-400">{notif.message}</p>
                               <div className="flex items-center text-xs text-gray-500">
-                                <Clock className="h-3 w-3 mr-1" /> Vừa xong
+                                <Clock className="h-3 w-3 mr-1" /> {notif.createdAt ? new Date(notif.createdAt).toLocaleString('vi-VN') : 'Vừa xong'}
                               </div>
                             </div>
                           </div>
-                        </div>
+                        </button>
                       ))
                     )}
                   </div>

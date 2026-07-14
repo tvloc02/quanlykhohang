@@ -24,6 +24,9 @@ export class StockInReceipt extends BaseEntity {
   @Column({ nullable: true })
   sourceReferenceNo?: string;
 
+  @Column({ type: 'simple-array', nullable: true })
+  assignedStaffIds?: string[];
+
   @Column({ type: 'datetime' })
   receiptDate: Date;
 

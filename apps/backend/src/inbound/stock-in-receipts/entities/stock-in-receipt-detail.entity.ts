@@ -15,6 +15,12 @@ export class StockInReceiptDetail extends BaseEntity {
   warehouseCode?: string;
 
   @Column({ type: 'int', default: 0 })
+  orderedQty: number;
+
+  @Column({ type: 'int', default: 0 })
+  receivedQty: number;
+
+  @Column({ type: 'int', default: 0 })
   quantity: number;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
