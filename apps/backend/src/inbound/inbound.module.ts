@@ -11,6 +11,10 @@ import { StockBalance } from '../inventory/entities/stock-balance.entity';
 import { StockInOrdersModule } from './stock-in-orders/stock-in-orders.module';
 import { StockInReceiptsModule } from './stock-in-receipts/stock-in-receipts.module';
 import { ReturnRequestsModule } from './return-requests/return-requests.module';
+import { BarcodeMapping } from './barcode-mapping/entities/barcode-mapping.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { BarcodeMappingService } from './barcode-mapping/barcode-mapping.service';
+import { BarcodeMappingController } from './barcode-mapping/barcode-mapping.controller';
 
 @Module({
   imports: [

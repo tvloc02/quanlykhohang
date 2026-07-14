@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, EntityManager } from 'typeorm';
 import { InboundReceipt } from './entities/inbound-receipt.entity';
 import { InboundDetail } from './entities/inbound-detail.entity';
 import { CreateAsnDto, PurchaseOrderItemDto } from './dto/create-asn.dto';
@@ -55,6 +55,14 @@ function toDateString(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+export function isEditablePurchaseOrderStatus(status?: string) {
+  return !status || status === 'CREATED' || status === 'DRAFT';
+}
+
+export function isReceivingReady(status?: string) {
+  return status === 'SUPPLIER_APPROVED' || status === 'PARTIALLY_RECEIVED';
+}
+
 @Injectable()
 export class InboundService {
   constructor(
@@ -64,6 +72,7 @@ export class InboundService {
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(SupplierProduct) private supplierProductRepo: Repository<SupplierProduct>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
+    private notificationsService: NotificationsService,
   ) { }
 
   async createReceipt(dto: CreateAsnDto, user?: any) {
@@ -254,6 +263,29 @@ export class InboundService {
     }
 
     receipt.status = 'RECEIVED';
+    await this.receiptRepo.save(receipt);
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
+  }
+
+  async supplierApproveReceipt(id: string, body: { expectedDate?: string; description?: string }, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
+    if (receipt.status !== 'APPROVED') {
+      throw new BadRequestException('Only APPROVED receipts can be accepted by supplier');
+    }
+    receipt.status = 'SUPPLIER_APPROVED';
+    if (body.expectedDate) receipt.expectedDate = new Date(body.expectedDate);
+    if (body.description) receipt.description = body.description;
+    await this.receiptRepo.save(receipt);
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
+  }
+
+  async supplierRejectReceipt(id: string, body: { reason?: string }, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
+    if (receipt.status !== 'APPROVED') {
+      throw new BadRequestException('Only APPROVED receipts can be rejected by supplier');
+    }
+    receipt.status = 'REJECTED';
+    if (body.reason) receipt.description = (receipt.description ? receipt.description + '\n' : '') + `Rejected reason: ${body.reason}`;
     await this.receiptRepo.save(receipt);
     return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
