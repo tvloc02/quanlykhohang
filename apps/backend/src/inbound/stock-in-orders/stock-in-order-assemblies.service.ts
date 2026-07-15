@@ -8,7 +8,7 @@ import { StockInOrder } from './entities/stock-in-order.entity';
 import { StockInOrderDetail } from './entities/stock-in-order-detail.entity';
 import { Product } from '../../entities/product.entity';
 import { StockBalance } from '../../inventory/entities/stock-balance.entity';
-import { CreateAssemblyDto } from './dto/create-assembly.dto';
+import { CreateAssemblyDto, CreateStandaloneAssemblyDto } from './dto/create-assembly.dto';
 import { RecountAssemblyDto } from './dto/recount-assembly.dto';
 
 type UserContext = {
@@ -139,6 +139,76 @@ export class StockInOrderAssembliesService {
       action: 'assembly.create',
       resource: 'stock-in-order',
       resourceId: order.id,
+      metadata: {
+        assemblyCode: savedAssembly.assemblyCode,
+        assembledProductId: assembledProduct.id,
+        quantity: savedAssembly.quantity,
+        barcode: savedAssembly.barcode,
+      },
+    });
+
+    return this.serializeAssembly(await this.findAssemblyEntity(savedAssembly.id), true);
+  }
+
+  async createStandalone(dto: CreateStandaloneAssemblyDto, user?: UserContext) {
+    const assembledProduct = await this.productRepo.findOneBy({ id: dto.assembledProductId });
+    if (!assembledProduct) {
+      throw new NotFoundException('Sản phẩm lắp ráp không tồn tại');
+    }
+
+    const assemblyCode = await this.generateAssemblyCode();
+    const assembly = this.assemblyRepo.create({
+      assemblyCode,
+      assembledProduct,
+      warehouseCode: dto.warehouseCode?.trim() || 'DEFAULT',
+      quantity: Math.max(0, toNumber(dto.assembledQty)),
+      barcode: dto.barcode?.trim() || undefined,
+      note: dto.note?.trim() || undefined,
+      status: 'COMPLETED',
+      details: [],
+    });
+
+    if (assembly.quantity <= 0) {
+      throw new BadRequestException('Số lượng sản phẩm lắp ráp phải lớn hơn 0');
+    }
+
+    if (!dto.components?.length) {
+      throw new BadRequestException('Phải chọn ít nhất một thành phần để lắp ráp');
+    }
+
+    for (const component of dto.components) {
+      const product = await this.productRepo.findOneBy({ id: component.productId });
+      if (!product) {
+        throw new BadRequestException('Thành phần lắp ráp không hợp lệ');
+      }
+      const usedQty = Math.max(0, toNumber(component.usedQty));
+      if (usedQty <= 0) {
+        throw new BadRequestException('Số lượng thành phần phải lớn hơn 0');
+      }
+
+      assembly.details.push(
+        this.detailRepo.create({
+          assembly,
+          componentProduct: product,
+          usedQty,
+          warehouseCode: component.warehouseCode || undefined,
+        }),
+      );
+    }
+
+    const savedAssembly = await this.assemblyRepo.save(assembly);
+
+    for (const detail of savedAssembly.details) {
+      await this.adjustInventory(detail.componentProduct.id, detail.warehouseCode || savedAssembly.warehouseCode || 'DEFAULT', -detail.usedQty);
+    }
+    await this.adjustInventory(savedAssembly.assembledProduct.id, savedAssembly.warehouseCode || 'DEFAULT', savedAssembly.quantity);
+
+    await this.auditLogService.append({
+      actorId: user?.id,
+      actorEmail: user?.email,
+      action: 'assembly.create',
+      resource: 'standalone-assembly',
+      resourceId: savedAssembly.id,
       metadata: {
         assemblyCode: savedAssembly.assemblyCode,
         assembledProductId: assembledProduct.id,
