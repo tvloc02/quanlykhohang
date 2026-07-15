@@ -98,6 +98,71 @@ function AiSettings() {
   );
 }
 
+function StoreSettings() {
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Cấu hình bán hàng</h1>
+        <p className="mt-2 text-sm text-gray-600">Thiết lập cấu hình cho trang cửa hàng trực tuyến (Shop).</p>
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-sm">
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-900 mb-2">Trạng thái cửa hàng</label>
+            <div className="flex items-center gap-3">
+              <input type="checkbox" className="w-5 h-5 text-primary rounded" defaultChecked />
+              <span className="text-gray-600">Mở cửa hàng (Hiển thị công khai)</span>
+            </div>
+          </div>
+          
+          <div className="border-t border-slate-100 my-4 py-4">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Cấu hình Banner</h2>
+            {[
+              { label: 'URL Hình ảnh Banner', placeholder: 'https://...' },
+              { label: 'Tiêu đề Banner', placeholder: 'Khám phá sản phẩm của chúng tôi' },
+              { label: 'Phụ đề Banner', placeholder: 'Chất lượng hàng đầu' },
+            ].map((field, idx) => (
+              <div key={idx} className="mb-4">
+                <label className="block text-sm font-medium text-gray-900 mb-2">{field.label}</label>
+                <input
+                  type="text"
+                  placeholder={field.placeholder}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-slate-100 my-4 py-4">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Sản phẩm & Danh mục</h2>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-900 mb-2">Hiển thị danh mục</label>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" className="w-5 h-5 text-primary rounded" defaultChecked />
+                <span className="text-gray-600">Hiển thị thanh lọc theo danh mục</span>
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-900 mb-2">Sản phẩm nổi bật (Phân cách bằng dấu phẩy SKU)</label>
+              <textarea
+                rows={3}
+                placeholder="SKU-001, SKU-002"
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              ></textarea>
+            </div>
+          </div>
+
+          <Button className="flex items-center gap-2">
+            <Save size={18} />
+            Lưu cấu hình bán hàng
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   return (
     <div className="space-y-6 max-w-6xl">
@@ -113,4 +178,4 @@ export default function Settings() {
   );
 }
 
-export { MailSettings, AiSettings };
+export { MailSettings, AiSettings, StoreSettings };
