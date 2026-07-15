@@ -176,7 +176,7 @@ function App() {
         <Route
           path="/personnel"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin']}>
               <MainLayout>
                 <Personnel />
               </MainLayout>
@@ -400,7 +400,7 @@ function App() {
         <Route
           path="/audit-log"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin']}>
               <MainLayout>
                 <AuditLog />
               </MainLayout>
@@ -420,11 +420,11 @@ function App() {
         <Route
           path="/settings/*"
           element={
-            <ProtectedRoute>
+            <RoleRoute allowedRoles={['admin']}>
               <MainLayout>
                 <Settings />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         >
           <Route index element={<Navigate to="mail" replace />} />

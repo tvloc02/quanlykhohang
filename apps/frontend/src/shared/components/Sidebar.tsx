@@ -39,11 +39,30 @@ const menuItems = [
   { icon: Settings, label: 'Cài đặt', path: '/settings', badge: null },
 ];
 
+function getStoredRole() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return user.role?.toLowerCase() || 'staff';
+  } catch {
+    return 'staff';
+  }
+}
+
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
+  const userRole = getStoredRole();
 
-  const filteredMenuItems = menuItems.filter((item) =>
+  const allowedMenuItems = menuItems.filter((item) => {
+    // Admin: Chỉ Trang chủ, Nhân sự, Nhật ký hoạt động, Cài đặt
+    if (userRole === 'admin') {
+      return ['/dashboard', '/personnel', '/audit-log', '/settings'].includes(item.path);
+    }
+    // Manager & Staff: Tất cả NGOẠI TRỪ Nhân sự, Nhật ký hoạt động, Cài đặt
+    return !['/personnel', '/audit-log', '/settings'].includes(item.path);
+  });
+
+  const filteredMenuItems = allowedMenuItems.filter((item) =>
     item.label.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
