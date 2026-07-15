@@ -36,6 +36,8 @@ type Supplier = {
   currency: string;
   contactPerson?: string;
   phone?: string;
+  taxCode?: string;
+  address?: string;
   products?: SupplierProduct[];
 };
 
@@ -71,7 +73,7 @@ type OrderForm = {
   supplierId: string;
   orderDate: string;
   expectedDate: string;
-  status: 'CREATED' | 'APPROVED' | 'SUPPLIER_APPROVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
+  status: 'CREATED' | 'DRAFT' | 'APPROVED' | 'REJECTED' | 'RECEIVED' | 'CANCELLED' | 'SUPPLIER_APPROVED' | 'PARTIALLY_RECEIVED';
   description: string;
   items: FormLine[];
   creatorName?: string;
@@ -83,7 +85,8 @@ type OrderForm = {
 
 interface PurchaseOrderFormModalProps {
   isOpen: boolean;
-  mode: 'create' | 'edit';
+  mode: 'create' | 'edit' | 'view';
+  customActions?: React.ReactNode;
   form: OrderForm;
   suppliers: Supplier[];
   warehouses: WarehouseRecord[];
@@ -130,6 +133,7 @@ export function PurchaseOrderFormModal({
   users,
   scannedProducts,
   saving,
+  customActions,
   onFormChange,
   onSubmit,
   onClose,
@@ -139,6 +143,8 @@ export function PurchaseOrderFormModal({
   onProductChange,
   onScannerOpen,
 }: PurchaseOrderFormModalProps) {
+  const [selectedRows, setSelectedRows] = React.useState<string[]>([]);
+
   if (!isOpen) return null;
 
   const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
@@ -148,19 +154,24 @@ export function PurchaseOrderFormModal({
   );
   const approversForWarehouse = selectedWarehouse
     ? users.filter(
-        (user) =>
-          (selectedWarehouse.managerIds.includes(user.id) ||
-            selectedWarehouse.staffIds.includes(user.id)) &&
-          Array.isArray(user.roles) &&
-          user.roles.some((role) => String(role?.name).toLowerCase() === 'manager')
-      )
+      (user) =>
+        (selectedWarehouse.managerIds.includes(user.id) ||
+          selectedWarehouse.staffIds.includes(user.id)) &&
+        Array.isArray(user.roles) &&
+        user.roles.some((role) => String(role?.name).toLowerCase() === 'manager')
+    )
     : [];
 
-  const totalAmount = form.items.reduce((sum, item) => {
+  const validItems = form.items.filter(item => item.productId);
+
+  const totalAmount = validItems.reduce((sum, item) => {
     const expectedQty = parseMoney(item.expectedQty);
     const unitPrice = parseMoney(item.unitPrice);
     return sum + expectedQty * unitPrice;
   }, 0);
+
+  const totalProducts = validItems.length;
+  const totalQuantity = validItems.reduce((sum, item) => sum + parseMoney(item.expectedQty), 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
@@ -176,10 +187,10 @@ export function PurchaseOrderFormModal({
             </div>
             <div>
               <h3 className="text-lg font-black text-slate-900">
-                {mode === 'edit' ? 'Sửa đơn mua hàng' : 'Tạo đơn mua hàng'}
+                {mode === 'view' ? 'Xem đơn mua hàng' : mode === 'edit' ? 'Sửa đơn mua hàng' : 'Tạo đơn mua hàng'}
               </h3>
               <p className="text-sm font-medium text-slate-500">
-                Nhập thông tin nhà cung cấp, kho và sản phẩm cần mua.
+                {mode === 'view' ? 'Chi tiết thông tin nhà cung cấp, kho và sản phẩm.' : 'Nhập thông tin nhà cung cấp, kho và sản phẩm cần mua.'}
               </p>
             </div>
           </div>
@@ -193,148 +204,190 @@ export function PurchaseOrderFormModal({
         </div>
 
         {/* BODY */}
-        <div className="max-h-[calc(94vh-160px)] overflow-y-auto flex-1 px-8 py-6 space-y-6">
+        <fieldset disabled={mode === 'view'} className="max-h-[calc(94vh-160px)] overflow-y-auto flex-1 px-8 py-6 space-y-6">
           {/* THÔNG TIN CHUNG + TÍNH TRẠNG */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1.5fr]">
-            {/* PHÍA TRÁI: THÔNG TIN CHUNG */}
-            <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6">
-              <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin chung</h4>
-
-              {/* Row 1: Mã NCC */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Mã nhà cung cấp <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    value={form.supplierId}
-                    onChange={(event) => {
-                      onFormChange({
-                        ...form,
-                        supplierId: event.target.value,
-                      });
-                    }}
-                    className={modalSelectClass}
-                  >
-                    <option value="">Chọn nhà cung cấp</option>
-                    {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.supplierCode} - {supplier.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 2: NCC Info */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Tên nhà cung cấp
-                  </label>
-                  <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
-                    {selectedSupplier?.name || '-'}
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Người liên hệ
-                  </label>
-                  <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
-                    {selectedSupplier?.contactPerson || '-'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 3: Phone */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Số điện thoại
-                  </label>
-                  <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
-                    {selectedSupplier?.phone || '-'}
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Kho <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    value={form.warehouseCode}
-                    onChange={(event) => {
-                      onFormChange({ ...form, warehouseCode: event.target.value });
-                    }}
-                    className={modalSelectClass}
-                  >
-                    <option value="">Chọn kho</option>
-                    {warehouses.map((warehouse) => (
-                      <option key={warehouse.id} value={warehouse.code}>
-                        {warehouse.name} ({warehouse.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 4: Dates */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Ngày đơn hàng
-                  </label>
-                  <input
-                    type="date"
-                    value={form.orderDate}
-                    onChange={(event) =>
-                      onFormChange({ ...form, orderDate: event.target.value })
-                    }
-                    className={modalInputClass}
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">
-                    Ngày giao hàng
-                  </label>
-                  <input
-                    type="date"
-                    value={form.expectedDate}
-                    onChange={(event) =>
-                      onFormChange({ ...form, expectedDate: event.target.value })
-                    }
-                    className={modalInputClass}
-                  />
-                </div>
-              </div>
-
-              {/* Row 5: Diễn giải */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+            {/* PHÍA TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
+            <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
+              {/* KHỐI 1: THÔNG TIN NHÀ CUNG CẤP */}
               <div>
-                <label className="mb-2 block text-sm font-bold text-slate-700">Diễn giải</label>
-                <textarea
-                  value={form.description}
-                  onChange={(event) =>
-                    onFormChange({ ...form, description: event.target.value })
-                  }
-                  rows={3}
-                  className="w-full rounded-2xl border-2 border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 resize-none font-medium text-slate-700"
-                  placeholder="Nhập ghi chú hoặc yêu cầu đặc biệt..."
-                />
+                <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin nhà cung cấp</h4>
+
+                {/* Row 1: Nhà cung cấp & Mã số thuế */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Nhà cung cấp <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={form.supplierId}
+                      onChange={(event) => {
+                        onFormChange({
+                          ...form,
+                          supplierId: event.target.value,
+                        });
+                      }}
+                      className={modalSelectClass}
+                    >
+                      <option value="">Chọn nhà cung cấp</option>
+                      {suppliers.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Mã số thuế
+                    </label>
+                    <select
+                      value={form.supplierId}
+                      onChange={(event) => {
+                        onFormChange({
+                          ...form,
+                          supplierId: event.target.value,
+                        });
+                      }}
+                      className={modalSelectClass}
+                    >
+                      <option value="">Chọn theo mã số thuế</option>
+                      {suppliers.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.taxCode || 'Chưa cập nhật'} - {supplier.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 2: Người liên hệ & Số điện thoại */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Người liên hệ
+                    </label>
+                    <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
+                      {selectedSupplier?.contactPerson || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Số điện thoại
+                    </label>
+                    <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
+                      {selectedSupplier?.phone || '-'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* KHỐI 2: THÔNG TIN ĐẶT HÀNG */}
+              <div className="mt-6 border-t-2 border-slate-100 pt-6">
+                <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin đặt hàng</h4>
+
+                {/* Row 1: Người đặt hàng & SĐT */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Người đặt hàng
+                    </label>
+                    <input
+                      type="text"
+                      value={form.creatorName || ''}
+                      onChange={(e) => onFormChange({ ...form, creatorName: e.target.value })}
+                      className={modalInputClass}
+                      placeholder="Nhập tên người đặt..."
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      SĐT người đặt
+                    </label>
+                    <input
+                      type="text"
+                      value={form.creatorPhone || ''}
+                      onChange={(e) => onFormChange({ ...form, creatorPhone: e.target.value })}
+                      className={modalInputClass}
+                      placeholder="Nhập SĐT..."
+                    />
+                  </div>
+                </div>
+
+                {/* Row 2: Kho hàng & Quản lý */}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Kho hàng <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={form.warehouseCode}
+                      onChange={(event) => {
+                        onFormChange({ ...form, warehouseCode: event.target.value, approverId: '' });
+                      }}
+                      className={modalSelectClass}
+                    >
+                      <option value="">Chọn kho</option>
+                      {warehouses.map((warehouse) => (
+                        <option key={warehouse.id} value={warehouse.code}>
+                          {warehouse.name} ({warehouse.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      Quản lý (Người duyệt) <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={form.approverId}
+                      onChange={(event) =>
+                        onFormChange({ ...form, approverId: event.target.value })
+                      }
+                      className={modalSelectClass}
+                    >
+                      <option value="">Chọn quản lý</option>
+                      {approversForWarehouse.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.fullName || user.email}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 3: Ghi chú */}
+                <div className="flex-1 flex flex-col min-h-[120px]">
+                  <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú</label>
+                  <textarea
+                    value={form.description}
+                    onChange={(event) =>
+                      onFormChange({ ...form, description: event.target.value })
+                    }
+                    className="w-full flex-1 rounded-2xl border-2 border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 resize-none font-medium text-slate-700"
+                    placeholder="Nhập ghi chú hoặc yêu cầu đặc biệt..."
+                  />
+                </div>
               </div>
             </div>
 
-            {/* PHÍA PHẢI: TÍNH TRẠNG */}
-            <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-cyan-50 to-white p-6">
-              <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Tính trạng đơn hàng</h4>
+            {/* PHÍA PHẢI: THÔNG TIN ĐƠN HÀNG */}
+            <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
+              <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin đơn hàng</h4>
 
-              <div className="space-y-3">
-                {/* Số đơn hàng */}
+              <div className="grid grid-cols-1 gap-6">
+                {/* Mã đơn hàng */}
                 <div>
                   <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
-                    Số đơn hàng
+                    Mã đơn hàng
                   </label>
-                  <div className="flex h-10 items-center rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-bold text-slate-900">
-                    {form.poNumber || '(Tự động sinh)'}
-                  </div>
+                  <input
+                    type="text"
+                    value={form.poNumber || ''}
+                    onChange={(e) => onFormChange({ ...form, poNumber: e.target.value })}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                    placeholder="(Tự động sinh)"
+                  />
                 </div>
 
                 {/* Ngày tạo đơn */}
@@ -342,61 +395,67 @@ export function PurchaseOrderFormModal({
                   <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
                     Ngày tạo đơn
                   </label>
-                  <div className="flex h-10 items-center rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
-                    {formatDate(form.orderDate)}
-                  </div>
+                  <input
+                    type="datetime-local"
+                    value={form.orderDate ? form.orderDate.slice(0, 16) : ''}
+                    onChange={(e) => onFormChange({ ...form, orderDate: e.target.value })}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                  />
                 </div>
 
-                {/* Tình trạng nhập kho */}
+                {/* Ngày giao hàng */}
                 <div>
                   <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
-                    Tình trạng nhập kho
+                    Ngày giao hàng dự kiến
                   </label>
-                  <div className="flex h-10 items-center rounded-xl border-2 border-slate-200 bg-white px-3">
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                      <Clock className="h-3 w-3" />
-                      Chưa thực hiện
-                    </span>
-                  </div>
+                  <input
+                    type="datetime-local"
+                    value={form.expectedDate ? form.expectedDate.slice(0, 16) : ''}
+                    onChange={(e) => onFormChange({ ...form, expectedDate: e.target.value })}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                  />
                 </div>
 
-                {/* Tình trạng nhận hàng */}
+                {/* Trạng thái đơn hàng */}
                 <div>
                   <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
-                    Tình trạng nhận hàng
-                  </label>
-                  <div className="flex h-10 items-center rounded-xl border-2 border-slate-200 bg-white px-3">
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                      Chưa giao
-                    </span>
-                  </div>
-                </div>
-
-                {/* Người duyệt */}
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
-                    Người duyệt <span className="text-red-600">*</span>
+                    Trạng thái đơn hàng
                   </label>
                   <select
-                    value={form.approverId}
-                    onChange={(event) =>
-                      onFormChange({ ...form, approverId: event.target.value })
-                    }
-                    className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm outline-none appearance-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium text-slate-700"
+                    value={form.status || 'CREATED'}
+                    onChange={(e) => onFormChange({ ...form, status: e.target.value as any })}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
                   >
-                    <option value="">Chọn người duyệt</option>
-                    {approversForWarehouse.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.fullName || user.email}
-                      </option>
-                    ))}
+                    <option value="DRAFT">Nháp</option>
+                    <option value="CREATED">Tạo mới</option>
+                    <option value="APPROVED">Đã duyệt</option>
+                    <option value="REJECTED">Từ chối</option>
+                    <option value="RECEIVED">Hoàn thiện</option>
                   </select>
                 </div>
+              </div>
 
-                {/* Tổng tiền */}
-                <div className="mt-4 rounded-xl border-2 border-cyan-200 bg-cyan-50 p-3">
-                  <p className="text-xs font-bold uppercase text-cyan-700">Tổng tiền dự kiến</p>
-                  <p className="mt-1 text-xl font-black text-cyan-900">{formatMoney(totalAmount)}</p>
+              {/* Tổng kết */}
+              <div className="mt-auto pt-6">
+                <div className="space-y-4 rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-5">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-sm font-bold uppercase text-cyan-800">Tổng sản phẩm</p>
+                      <p className="mt-0.5 text-xs font-medium text-cyan-600/80">(Số lượng các mặt hàng khác nhau trong đơn)</p>
+                    </div>
+                    <p className="text-lg font-black text-cyan-900">{totalProducts}</p>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-sm font-bold uppercase text-cyan-800">Tổng số lượng</p>
+                      <p className="mt-0.5 text-xs font-medium text-cyan-600/80">(Tổng cộng tất cả các sản phẩm)</p>
+                    </div>
+                    <p className="text-lg font-black text-cyan-900">{totalQuantity}</p>
+                  </div>
+                  <div className="flex justify-between items-end border-t-2 border-cyan-200/60 pt-4 mt-2">
+                    <p className="text-sm font-bold uppercase text-cyan-800 mb-1">Tổng tiền</p>
+                    <p className="text-3xl font-black text-cyan-900 tracking-tight">{formatMoney(totalAmount)}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -410,21 +469,38 @@ export function PurchaseOrderFormModal({
                 <h4 className="font-black text-slate-900">Chi tiết hàng hóa</h4>
               </div>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={onScannerOpen}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white hover:bg-slate-900 transition"
-                >
-                  Quét Barcode
-                </button>
-                <button
-                  type="button"
-                  onClick={onAddRow}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
-                >
-                  <PlusCircle className="h-4 w-4" />
-                  Thêm dòng
-                </button>
+                {mode !== 'view' && selectedRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      selectedRows.forEach(id => onRemoveRow(id));
+                      setSelectedRows([]);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-600 transition hover:bg-red-100"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Xóa ({selectedRows.length})
+                  </button>
+                )}
+                {mode !== 'view' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={onScannerOpen}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white hover:bg-slate-900 transition"
+                    >
+                      Quét Barcode
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onAddRow}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                      Thêm dòng
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -433,27 +509,47 @@ export function PurchaseOrderFormModal({
                 <table className="w-full bg-white">
                   <thead className="bg-slate-50">
                     <tr className="border-b border-slate-200">
-                      <th className="w-12 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      {mode !== 'view' && (
+                        <th className="w-12 px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                            checked={form.items.length > 0 && selectedRows.length === form.items.length}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedRows(form.items.map(i => i.rowId));
+                              } else {
+                                setSelectedRows([]);
+                              }
+                            }}
+                          />
+                        </th>
+                      )}
+                      <th className="w-10 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         STT
                       </th>
-                      <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      <th className="w-[30%] px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Mặt hàng
                       </th>
                       <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         SL yêu cầu
                       </th>
-                      <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                        SL đã nhận
-                      </th>
-                      <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      {mode === 'view' && (
+                        <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                          SL đã nhận
+                        </th>
+                      )}
+                      <th className="w-40 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Đơn giá
                       </th>
-                      <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Thành tiền
                       </th>
-                      <th className="w-12 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                        Xóa
-                      </th>
+                      {mode !== 'view' && (
+                        <th className="w-12 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                          Xóa
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white">
@@ -462,6 +558,22 @@ export function PurchaseOrderFormModal({
                       const unitPrice = parseMoney(item.unitPrice);
                       return (
                         <tr key={item.rowId} className="hover:bg-slate-50 transition">
+                          {mode !== 'view' && (
+                            <td className="px-3 py-3 text-center">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                checked={selectedRows.includes(item.rowId)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedRows([...selectedRows, item.rowId]);
+                                  } else {
+                                    setSelectedRows(selectedRows.filter(id => id !== item.rowId));
+                                  }
+                                }}
+                              />
+                            </td>
+                          )}
                           <td className="px-3 py-3 text-center text-sm text-slate-600">
                             {index + 1}
                           </td>
@@ -509,22 +621,14 @@ export function PurchaseOrderFormModal({
                                   expectedQty: event.target.value,
                                 })
                               }
-                              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium"
+                              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium"
                             />
                           </td>
-                          <td className="px-3 py-3">
-                            <input
-                              type="number"
-                              min={0}
-                              value={item.receivedQty}
-                              onChange={(event) =>
-                                onUpdateRow(item.rowId, {
-                                  receivedQty: event.target.value,
-                                })
-                              }
-                              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium"
-                            />
-                          </td>
+                          {mode === 'view' && (
+                            <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                              {item.receivedQty}
+                            </td>
+                          )}
                           <td className="px-3 py-3">
                             <input
                               type="number"
@@ -535,21 +639,23 @@ export function PurchaseOrderFormModal({
                                   unitPrice: event.target.value,
                                 })
                               }
-                              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium"
+                              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium"
                             />
                           </td>
                           <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">
                             {formatMoney(expectedQty * unitPrice)}
                           </td>
-                          <td className="px-3 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => onRemoveRow(item.rowId)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 font-semibold"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </td>
+                          {mode !== 'view' && (
+                            <td className="px-3 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => onRemoveRow(item.rowId)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100 font-semibold"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -558,7 +664,7 @@ export function PurchaseOrderFormModal({
               </div>
             </div>
           </section>
-        </div>
+        </fieldset>
 
         {/* FOOTER */}
         <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
@@ -567,19 +673,23 @@ export function PurchaseOrderFormModal({
             onClick={onClose}
             className="rounded-2xl border-2 border-slate-200 px-6 py-2.5 font-bold text-slate-700 hover:bg-slate-100 transition"
           >
-            Hủy
+            Đóng
           </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-2xl bg-cyan-600 px-8 py-2.5 font-bold text-white shadow-lg hover:bg-cyan-700 disabled:opacity-60 transition"
-          >
-            {saving
-              ? 'Đang lưu...'
-              : mode === 'edit'
-                ? 'Lưu thay đổi'
-                : 'Tạo đơn mua hàng'}
-          </button>
+          {mode === 'view' ? (
+            customActions
+          ) : (
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-2xl bg-cyan-600 px-8 py-2.5 font-bold text-white shadow-lg hover:bg-cyan-700 disabled:opacity-60 transition"
+            >
+              {saving
+                ? 'Đang lưu...'
+                : mode === 'edit'
+                  ? 'Lưu thay đổi'
+                  : 'Tạo đơn mua hàng'}
+            </button>
+          )}
         </div>
       </form>
     </div>

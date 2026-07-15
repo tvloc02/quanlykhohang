@@ -14,6 +14,8 @@ import {
   XCircle,
   Clock3,
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { CreateStockInReceiptModal } from '../components/CreateStockInReceiptModal';
 
 export type WarehouseRecord = {
   id: string;
@@ -136,8 +138,20 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
   const [toast, setToast] = React.useState<Toast | null>(null);
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [modalMode, setModalMode] = React.useState<'view' | 'delete' | null>(null);
+  const [modalMode, setModalMode] = React.useState<'view' | 'delete' | 'create' | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<StockInReceipt | null>(null);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+  const state = location.state as { sourceStockInOrderId?: string; sourcePurchaseOrderId?: string } | null;
+
+  React.useEffect(() => {
+    if (state?.sourceStockInOrderId || state?.sourcePurchaseOrderId) {
+      setModalMode('create');
+      // Clear state so it doesn't reopen on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [state]);
 
   // Form editing
   const [editQuantities, setEditQuantities] = React.useState<Record<string, string>>({});
@@ -292,12 +306,15 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
         method: 'DELETE',
         headers: authHeaders(),
       });
-      if (!response.ok) throw new Error('Lỗi xóa phiếu');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.message || 'Lỗi xóa phiếu');
+      }
       setToast({ type: 'success', message: 'Xóa thành công' });
       closeModal();
       await loadData();
-    } catch (error) {
-      setToast({ type: 'error', message: 'Lỗi xóa phiếu' });
+    } catch (error: any) {
+      setToast({ type: 'error', message: error.message || 'Lỗi xóa phiếu' });
     } finally {
       setSaving(false);
     }
@@ -387,12 +404,14 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                         >
                           <Pencil className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => { setDeleteTarget(r); setModalMode('delete'); }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition hover:bg-red-100"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {r.status !== 'POSTED' && (
+                          <button
+                            onClick={() => { setDeleteTarget(r); setModalMode('delete'); }}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition hover:bg-red-100"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -520,6 +539,18 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
           </div>
         </div>
       )}
+
+      <CreateStockInReceiptModal 
+        isOpen={modalMode === 'create'}
+        onClose={closeModal}
+        onSuccess={() => {
+          closeModal();
+          setToast({ type: 'success', message: 'Lập lệnh nhập kho thành công' });
+          loadData();
+        }}
+        sourceStockInOrderId={state?.sourceStockInOrderId}
+        sourcePurchaseOrderId={state?.sourcePurchaseOrderId}
+      />
     </div>
   );
 }

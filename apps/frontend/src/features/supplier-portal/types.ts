@@ -70,13 +70,20 @@ export type InboundReceipt = {
   status?: string;
   description?: string;
   approverId?: string;
+  approverName?: string;
+  creatorName?: string;
+  creatorPhone?: string;
   supplier?: {
     id: string;
     supplierCode?: string;
     name: string;
+    taxCode?: string;
+    contactPerson?: string;
+    phone?: string;
   } | null;
   details?: Array<{
     id: string;
+    warehouseCode?: string;
     expectedQty: number;
     receivedQty: number;
     product?: ProductSummary | null;

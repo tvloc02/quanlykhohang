@@ -255,12 +255,27 @@ function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: Purc
 const modalSelectClass =
   'h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 pr-10 outline-none appearance-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10';
 
+function toLocalDatetimeString(dateObj: Date) {
+  const tzOffset = dateObj.getTimezoneOffset() * 60000;
+  return new Date(dateObj.getTime() - tzOffset).toISOString().slice(0, 16);
+}
+
+function parseDateForInput(dateString?: string) {
+  if (!dateString) return '';
+  const d = new Date(dateString);
+  if (Number.isNaN(d.getTime())) return '';
+  return toLocalDatetimeString(d);
+}
+
 function buildEmptyForm(supplierId = '', warehouseCode = ''): OrderForm {
+  const now = new Date();
+  const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
   return {
     poNumber: '',
     supplierId,
-    orderDate: new Date().toISOString().slice(0, 10),
-    expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    orderDate: toLocalDatetimeString(now),
+    expectedDate: toLocalDatetimeString(nextWeek),
     status: 'CREATED',
     description: '',
     items: [makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode)],
@@ -736,8 +751,8 @@ function PurchaseOrdersPageContent() {
       setForm({
         poNumber: full.poNumber,
         supplierId: full.supplier?.id || '',
-        orderDate: full.orderDate ? full.orderDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-        expectedDate: full.expectedDate ? full.expectedDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        orderDate: full.orderDate ? parseDateForInput(full.orderDate) : toLocalDatetimeString(new Date()),
+        expectedDate: full.expectedDate ? parseDateForInput(full.expectedDate) : toLocalDatetimeString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
         status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
         description: full.description || '',
         items:
@@ -763,18 +778,65 @@ function PurchaseOrdersPageContent() {
   };
   const openView = async (order: PurchaseOrder) => {
     setSelectedId(order.id);
-    setSelectedOrderDetails(order);
+    setSelectedOrderDetails(null);
     setModalMode('view');
 
     try {
       const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
         headers: authHeaders(),
       });
+
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         throw new Error(data?.message || 'Không tải được chi tiết đơn mua hàng');
       }
-      setSelectedOrderDetails((await response.json()) as PurchaseOrder);
+      const full = (await response.json()) as PurchaseOrder;
+      setSelectedOrderDetails(full);
+
+      // Đưa các sản phẩm từ order details vào scannedProducts
+      const detailProducts: ScannedProduct[] = (full.details || [])
+        .filter((d) => d.product?.id)
+        .map((d) => ({
+          id: d.product!.id,
+          internalSku: d.product!.internalSku || '',
+          name: d.product!.name || '',
+          unit: d.product!.unit,
+          minimumStock: 0,
+          category: null,
+          supplier: full.supplier ? { id: full.supplier.id, name: full.supplier.name } : null,
+          stockBalances: [],
+          totalStock: 0,
+        }));
+      setScannedProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newProducts = detailProducts.filter((p) => !existingIds.has(p.id));
+        return [...prev, ...newProducts];
+      });
+
+      setForm({
+        poNumber: full.poNumber,
+        supplierId: full.supplier?.id || '',
+        orderDate: full.orderDate ? parseDateForInput(full.orderDate) : toLocalDatetimeString(new Date()),
+        expectedDate: full.expectedDate ? parseDateForInput(full.expectedDate) : toLocalDatetimeString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
+        status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
+        description: full.description || '',
+        items:
+          full.details?.length
+            ? full.details.map((detail) => ({
+              id: detail.id,
+              rowId: `${detail.id}-${Date.now()}`,
+              productId: detail.product?.id || '',
+              warehouseCode: detail.warehouseCode || 'KHO-NVL',
+              expectedQty: String(detail.expectedQty || 0),
+              receivedQty: String(detail.receivedQty || 0),
+              unitPrice: String(detail.unitPrice || 0),
+            }))
+            : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
+        creatorName: (full as any).creatorName || '',
+        creatorPhone: (full as any).creatorPhone || '',
+        warehouseCode: (full as any).warehouseCode || accessibleWarehouses[0]?.code || '',
+        approverId: (full as any).approverId || '',
+      });
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tải chi tiết đơn hàng' });
     }
@@ -810,6 +872,7 @@ function PurchaseOrdersPageContent() {
       creatorPhone: form.creatorPhone || undefined,
       warehouseCode: form.warehouseCode || undefined,
       approverId: form.approverId || undefined,
+      approverName: users.find((u) => u.id === form.approverId)?.fullName || undefined,
     };
 
     // For create, always include items. For edit, include items only when there are valid lines to avoid wiping existing lines unintentionally.
@@ -1005,10 +1068,31 @@ function PurchaseOrdersPageContent() {
         received: 0,
       };
 
+  const token = localStorage.getItem('token') || '';
+  const payload = parseJwtPayload(token);
+  const storedUser = getStoredUser();
+  let currentUserIsManager = false;
+  if (storedUser) {
+    if (storedUser.role && String(storedUser.role).toLowerCase() === 'manager') {
+      currentUserIsManager = true;
+    } else if (Array.isArray(storedUser.roles)) {
+      currentUserIsManager = storedUser.roles.some((r: any) => String(r?.name || r).toLowerCase() === 'manager');
+    }
+  }
+
   const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
-  const canManagerApprove = selectedOrderStatus === 'CREATED';
+  const canManagerApprove = selectedOrderStatus === 'CREATED' && currentUserIsManager;
   const canCreateStockIn = selectedOrderStatus === 'SUPPLIER_APPROVED' || selectedOrderStatus === 'PARTIALLY_RECEIVED' || selectedOrderStatus === 'RECEIVED';
   const canReceiveGoods = selectedOrderStatus === 'SUPPLIER_APPROVED' || selectedOrderStatus === 'PARTIALLY_RECEIVED';
+
+  const canApproveRow = (order: PurchaseOrder) => {
+    return (order.status || 'CREATED').toUpperCase() === 'CREATED' && currentUserIsManager;
+  };
+
+  const canDelete = (order: PurchaseOrder) => {
+    const s = statusToFilter(order.status);
+    return s === 'waiting' || s === 'cancelled';
+  };
 
   const addRow = () => {
     setForm((current) => ({ ...current, items: [...current.items, makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')] }));
@@ -1235,17 +1319,21 @@ function PurchaseOrdersPageContent() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] border-collapse bg-white">
+          <table className="w-full min-w-[1280px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Số đơn hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Ngày đơn hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Nhà cung cấp</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Diễn giải</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Tổng tiền</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Tình trạng</th>
-                <th className="sticky right-0 w-40 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
+                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                </th>
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Số đơn hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Người đặt</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày tạo đơn</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Diễn giải</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tổng tiền</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tình trạng</th>
+                <th className="sticky right-0 w-40 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -1253,13 +1341,13 @@ function PurchaseOrdersPageContent() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Đang tải danh sách đơn mua hàng...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Chưa có đơn mua hàng phù hợp.
                   </td>
                 </tr>
@@ -1267,28 +1355,46 @@ function PurchaseOrdersPageContent() {
                 paginatedOrders.map((order, index) => (
                   <tr
                     key={order.id}
-                    className="group border-b border-slate-200 transition hover:bg-slate-50"
+                    className="group border-b border-slate-200 transition hover:bg-cyan-50/50"
                   >
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{startIndex + index}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{order.poNumber}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">
-                      <span className="inline-flex items-center gap-1">
-                        <CalendarDays className="h-4 w-4 text-slate-400" />
-                        {formatDate(order.orderDate)}
-                      </span>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{startIndex + index}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.poNumber}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                      {order.creatorName || '-'}
+                    </td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                      {new Date(order.createdAt || order.orderDate).toLocaleString('vi-VN')}
+                    </td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {order.supplier?.name || order.supplierName || order.supplier?.supplierCode || '-'}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{order.description || '-'}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{formatMoney(order.totalAmount)}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.description || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatMoney(order.totalAmount)}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(order.status)}`}>
                         {statusLabel(order.status)}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-slate-50">
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
                       <div className="flex items-center justify-center gap-2">
+                        {canApproveRow(order) && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (window.confirm('Bạn có chắc chắn muốn duyệt đơn hàng này?')) {
+                                approveOrder(order);
+                              }
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 transition-colors hover:bg-emerald-100 hover:text-emerald-700"
+                            title="Duyệt đơn hàng"
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(event) => {
@@ -1315,10 +1421,12 @@ function PurchaseOrdersPageContent() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
+                            if (!canDelete(order)) return;
                             setDeleteTarget(order);
                             setModalMode('delete');
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          disabled={!canDelete(order)}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${canDelete(order) ? 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100 hover:text-cyan-700' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
                           title="Xóa"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -1356,135 +1464,62 @@ function PurchaseOrdersPageContent() {
         </div>
       </div>
 
-      {/* POPUP XEM CHI TIẾT */}
-      {modalMode === 'view' && selectedOrder && selectedOrderMetrics && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col">
-            <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 lg:flex-row lg:items-start lg:justify-between bg-slate-50">
-              <div>
-                <p className="text-2xl font-black text-slate-900">Chi tiết đơn hàng {selectedOrder.poNumber}</p>
-                <p className="mt-1 text-sm font-medium text-slate-500">{selectedOrder.supplier?.name || selectedOrder.supplierName || '-'} · {formatDate(selectedOrder.orderDate)}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <span className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${statusClass(selectedOrder.status)}`}>{statusLabel(selectedOrder.status)}</span>
-                <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 bg-white border border-slate-200 transition hover:bg-slate-100 hover:text-slate-700" title="Đóng">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-6">
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] mb-6">
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <h4 className="mb-4 text-sm font-bold uppercase text-slate-500">Thông tin chung</h4>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Field label="Mã đơn hàng" value={selectedOrder.poNumber} />
-                    <Field label="Nhà cung cấp" value={selectedOrder.supplier?.name || selectedOrder.supplierName || selectedOrder.supplier?.supplierCode || '-'} />
-                    <Field label="Ngày đơn hàng" value={formatDate(selectedOrder.orderDate)} />
-                    <Field label="Ngày giao hàng" value={formatDate(selectedOrder.expectedDate)} />
-                    <Field label="Diễn giải" value={selectedOrder.description || '-'} />
-                    <Field label="Tổng tiền" value={formatMoney(selectedOrder.totalAmount)} />
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Clock3 className="h-5 w-5 text-cyan-600" />
-                    <p className="text-sm font-bold uppercase text-slate-700">Tổng quan số lượng</p>
-                  </div>
-                  <div className="space-y-3">
-                    <SummaryRow label="Số dòng hàng" value={`${selectedOrderMetrics.lines}`} />
-                    <SummaryRow label="SL yêu cầu" value={`${selectedOrderMetrics.ordered}`} />
-                    <SummaryRow label="SL đã nhận" value={`${selectedOrderMetrics.received}`} />
-                    <SummaryRow label="Tổng tiền" value={formatMoney(selectedOrder.totalAmount)} />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-cyan-600" />
-                  <h3 className="text-lg font-black text-slate-900">Danh sách Hàng hóa</h3>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-slate-200">
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[980px] border-collapse bg-white">
-                      <thead className="bg-slate-50">
-                        <tr className="border-b border-slate-200">
-                          <th className="w-14 border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">STT</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Mã hàng</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Tên hàng</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Kho</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL yêu cầu</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL đã nhận</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Đơn giá</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Thành tiền</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(selectedOrder.details || []).map((detail, index) => (
-                          <tr key={detail.id} className="border-b border-slate-200 transition hover:bg-slate-50">
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.internalSku || '-'}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.name || '-'}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.warehouseCode || '-'}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.expectedQty}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.receivedQty}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{formatMoney(detail.unitPrice)}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">{formatMoney((detail.expectedQty || 0) * (detail.unitPrice || 0))}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
-              {canManagerApprove && (
-                <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60">
-                  Duyệt manager
-                </button>
-              )}
-              {canReceiveGoods && (
-                <button
-                  type="button"
-                  onClick={() => openReceive(selectedOrder)}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
-                >
-                  Đã nhận hàng
-                </button>
-              )}
-              {canCreateStockIn && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    closeModal();
-                    navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: selectedOrder.id } });
-                  }}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
-                >
-                  Tạo phiếu nhập kho
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* POPUP TẠO / SỬA - SỬ DỤNG COMPONENT MỚI */}
+      {/* POPUP TẠO / SỬA / XEM */}
       <PurchaseOrderFormModal
-        isOpen={modalMode === 'create' || modalMode === 'edit'}
-        mode={modalMode === 'create' ? 'create' : 'edit'}
+        isOpen={modalMode === 'create' || modalMode === 'edit' || modalMode === 'view'}
+        mode={modalMode === 'create' ? 'create' : modalMode === 'view' ? 'view' : 'edit'}
         form={form}
         suppliers={suppliers}
         warehouses={warehouses}
         users={users}
         scannedProducts={scannedProducts}
         saving={saving}
+        customActions={
+          <div className="flex gap-3">
+            {canManagerApprove && (
+              <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder!); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-transparent bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:opacity-60">
+                <CheckCircle2 className="h-4 w-4" />
+                Duyệt đơn hàng
+              </button>
+            )}
+            {canReceiveGoods && (
+              <button
+                type="button"
+                onClick={() => openReceive(selectedOrder)}
+                disabled={saving}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+              >
+                Đã nhận hàng
+              </button>
+            )}
+            {canCreateStockIn && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeModal();
+                    navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: selectedOrder?.id } });
+                  }}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                >
+                  Tạo phiếu nhập kho
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeModal();
+                    navigate('/inbound/stock-in-receipts', { state: { sourcePurchaseOrderId: selectedOrder?.id } });
+                  }}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
+                >
+                  Tạo lệnh nhập kho
+                </button>
+              </>
+            )}
+          </div>
+        }
         onFormChange={setForm}
         onSubmit={handleSubmit}
         onClose={closeModal}
