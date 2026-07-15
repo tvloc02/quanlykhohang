@@ -65,6 +65,7 @@ type FormLine = {
   warehouseCode: string;
   expectedQty: string;
   receivedQty: string;
+  inventoryQty?: string;
   unitPrice: string;
 };
 
@@ -101,6 +102,8 @@ interface PurchaseOrderFormModalProps {
   onUpdateRow: (rowId: string, patch: Partial<FormLine>) => void;
   onProductChange: (rowId: string, productId: string) => void;
   onScannerOpen: () => void;
+  renderRightPanel?: React.ReactNode;
+  customWidthClass?: string;
 }
 
 const modalSelectClass =
@@ -142,6 +145,8 @@ export function PurchaseOrderFormModal({
   onUpdateRow,
   onProductChange,
   onScannerOpen,
+  renderRightPanel,
+  customWidthClass,
 }: PurchaseOrderFormModalProps) {
   const [selectedRows, setSelectedRows] = React.useState<string[]>([]);
 
@@ -177,7 +182,7 @@ export function PurchaseOrderFormModal({
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
       <form
         onSubmit={onSubmit}
-        className="max-h-[94vh] w-2/3 overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col"
+        className={`max-h-[94vh] ${customWidthClass || 'w-2/3'} overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col`}
       >
         {/* HEADER */}
         <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
@@ -204,8 +209,9 @@ export function PurchaseOrderFormModal({
         </div>
 
         {/* BODY */}
-        <fieldset disabled={mode === 'view'} className="max-h-[calc(94vh-160px)] overflow-y-auto flex-1 px-8 py-6 space-y-6">
-          {/* THÔNG TIN CHUNG + TÍNH TRẠNG */}
+        <div className="flex flex-1 overflow-hidden min-h-0">
+          <fieldset disabled={mode === 'view' || mode === 'create_order' as any} className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
+            {/* THÔNG TIN CHUNG + TÍNH TRẠNG */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
             {/* PHÍA TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
             <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
@@ -543,9 +549,14 @@ export function PurchaseOrderFormModal({
                       <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         SL yêu cầu
                       </th>
-                      {mode === 'view' && (
+                      {(mode === 'view' || mode === ('create_order' as any)) && (
                         <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                           SL đã nhận
+                        </th>
+                      )}
+                      {mode === ('create_order' as any) && (
+                        <th className="w-28 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                          SL kiểm kê
                         </th>
                       )}
                       <th className="w-40 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
@@ -630,12 +641,28 @@ export function PurchaseOrderFormModal({
                                   expectedQty: event.target.value,
                                 })
                               }
-                              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium"
+                              disabled={mode === ('create_order' as any)}
+                              className={`h-11 w-full rounded-xl border-2 border-slate-200 px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium ${mode === ('create_order' as any) ? 'bg-slate-50 cursor-not-allowed text-slate-500' : 'bg-white'}`}
                             />
                           </td>
-                          {mode === 'view' && (
+                          {(mode === 'view' || mode === ('create_order' as any)) && (
                             <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">
                               {item.receivedQty}
+                            </td>
+                          )}
+                          {mode === ('create_order' as any) && (
+                            <td className="px-3 py-3">
+                              <input
+                                type="number"
+                                min={0}
+                                value={item.inventoryQty ?? item.expectedQty}
+                                onChange={(event) =>
+                                  onUpdateRow(item.rowId, {
+                                    inventoryQty: event.target.value,
+                                  })
+                                }
+                                className="h-11 w-full rounded-xl border-2 border-emerald-200 bg-white px-3 text-center text-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 font-black text-emerald-700"
+                              />
                             </td>
                           )}
                           <td className="px-3 py-3">
@@ -674,6 +701,13 @@ export function PurchaseOrderFormModal({
             </div>
           </section>
         </fieldset>
+        
+        {renderRightPanel && (
+          <div className="w-[420px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto">
+            {renderRightPanel}
+          </div>
+        )}
+        </div>
 
         {/* FOOTER */}
         <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
@@ -684,7 +718,7 @@ export function PurchaseOrderFormModal({
           >
             Đóng
           </button>
-          {mode === 'view' ? (
+          {mode === 'view' || mode === ('create_order' as any) ? (
             customActions
           ) : (
             <button
