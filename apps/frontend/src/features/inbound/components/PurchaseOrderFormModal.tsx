@@ -104,7 +104,7 @@ interface PurchaseOrderFormModalProps {
 }
 
 const modalSelectClass =
-  'h-11 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 pr-10 outline-none appearance-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 text-slate-700 font-medium';
+  'h-11 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 pr-10 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 text-slate-700 font-medium';
 
 const modalInputClass =
   'h-11 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 text-slate-700 font-medium';
@@ -174,7 +174,7 @@ export function PurchaseOrderFormModal({
   const totalQuantity = validItems.reduce((sum, item) => sum + parseMoney(item.expectedQty), 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
       <form
         onSubmit={onSubmit}
         className="max-h-[94vh] w-2/3 overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col"
@@ -254,7 +254,7 @@ export function PurchaseOrderFormModal({
                       <option value="">Chọn theo mã số thuế</option>
                       {suppliers.map((supplier) => (
                         <option key={supplier.id} value={supplier.id}>
-                          {supplier.taxCode || 'Chưa cập nhật'} - {supplier.name}
+                          {supplier.taxCode || 'Chưa cập nhật'}
                         </option>
                       ))}
                     </select>
@@ -386,7 +386,7 @@ export function PurchaseOrderFormModal({
                     value={form.poNumber || ''}
                     onChange={(e) => onFormChange({ ...form, poNumber: e.target.value })}
                     className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                    placeholder="(Tự động sinh)"
+                    placeholder="Nhập mã đơn..."
                   />
                 </div>
 
@@ -424,13 +424,22 @@ export function PurchaseOrderFormModal({
                   <select
                     value={form.status || 'CREATED'}
                     onChange={(e) => onFormChange({ ...form, status: e.target.value as any })}
-                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                    className={modalSelectClass}
+                    disabled={mode === 'view'}
                   >
                     <option value="DRAFT">Nháp</option>
-                    <option value="CREATED">Tạo mới</option>
-                    <option value="APPROVED">Đã duyệt</option>
-                    <option value="REJECTED">Từ chối</option>
-                    <option value="RECEIVED">Hoàn thiện</option>
+                    <option value="CREATED">Tạo mới (Chờ duyệt)</option>
+                    {mode !== 'create' && (
+                      <>
+                        <option value="APPROVED">Chờ NCC xác nhận</option>
+                        <option value="SUPPLIER_APPROVED">NCC đã xác nhận</option>
+                        <option value="PARTIALLY_RECEIVED">Nhận một phần</option>
+                        <option value="RECEIVED">Hoàn thành</option>
+                        <option value="COMPLETED">Hoàn thành</option>
+                        <option value="REJECTED">Từ chối</option>
+                        <option value="CANCELLED">Đã hủy</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>

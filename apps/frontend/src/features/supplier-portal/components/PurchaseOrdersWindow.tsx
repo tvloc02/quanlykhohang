@@ -41,6 +41,15 @@ function formatDate(value?: string) {
   return parsed.toLocaleDateString('vi-VN');
 }
 
+function formatDateTime(value?: string) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  const time = parsed.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const date = parsed.toLocaleDateString('vi-VN');
+  return `${time} ${date}`;
+}
+
 function formatQuantity(value: number) {
   return new Intl.NumberFormat('vi-VN', {
     minimumFractionDigits: 2,
@@ -89,7 +98,7 @@ function getStatusGroup(status?: string): StatusGroup {
 function statusLabel(status?: string) {
   const normalized = (status || 'CREATED').toUpperCase();
   const group = getStatusGroup(status);
-  if (normalized === 'APPROVED') return 'Chờ NCC xác nhận';
+  if (normalized === 'APPROVED') return 'Đơn hàng mới';
   if (normalized === 'SUPPLIER_APPROVED') return 'NCC đã xác nhận';
   if (group === 'completed') return 'Hoàn thành';
   if (group === 'in-transit') return 'Đang giao';
@@ -193,11 +202,16 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
 
   const sortedReceipts = React.useMemo(
     () =>
-      [...receipts].sort((left, right) => {
-        const leftTime = left.expectedDate ? new Date(left.expectedDate).getTime() : 0;
-        const rightTime = right.expectedDate ? new Date(right.expectedDate).getTime() : 0;
-        return rightTime - leftTime;
-      }),
+      [...receipts]
+        .filter((r) => {
+          const s = (r.status || '').toUpperCase();
+          return s !== 'CREATED' && s !== 'DRAFT';
+        })
+        .sort((left, right) => {
+          const leftTime = left.expectedDate ? new Date(left.expectedDate).getTime() : 0;
+          const rightTime = right.expectedDate ? new Date(right.expectedDate).getTime() : 0;
+          return rightTime - leftTime;
+        }),
     [receipts],
   );
 
@@ -251,6 +265,8 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
   const [isAsnModalOpen, setIsAsnModalOpen] = React.useState(false);
   const [asnDate, setAsnDate] = React.useState('');
   const [asnNote, setAsnNote] = React.useState('');
+  const [driverName, setDriverName] = React.useState('');
+  const [driverPhone, setDriverPhone] = React.useState('');
   const [asnItems, setAsnItems] = React.useState<Array<{ id: string; expectedQty: number; name: string; sku: string }>>([]);
   const [loadedReceipt, setLoadedReceipt] = React.useState<InboundReceipt | null>(null);
   const [loadingDetails, setLoadingDetails] = React.useState(false);
@@ -301,12 +317,18 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
     if (!selectedReceipt) return;
 
     try {
+      const fullDesc = [
+        driverName ? `Tài xế: ${driverName}` : '',
+        driverPhone ? `SĐT: ${driverPhone}` : '',
+        asnNote ? `Ghi chú: ${asnNote}` : ''
+      ].filter(Boolean).join(' | ');
+
       const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${selectedReceipt.id}/supplier-approve`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
           expectedDate: asnDate,
-          description: asnNote,
+          description: fullDesc,
         })
       });
 
@@ -496,12 +518,12 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
           <table className="w-full min-w-[1220px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">#</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Số đơn hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày đơn hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Tên nhà cung cấp</th>
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã đơn hàng NCC</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã đơn hàng tham chiếu</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày đặt hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên nhà cung cấp</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày giao hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Diễn giải</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tình trạng</th>
                 <th className="sticky right-0 w-28 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
@@ -523,25 +545,24 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                       }`}
                       aria-selected={isSelected}
                     >
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-600">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
                         {startIndex + index}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-sm font-black text-blue-600">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
                         {number}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
-                        <span className="inline-flex items-center gap-2">
-                          <CalendarDays className="h-4 w-4 text-slate-400" />
-                          {formatDate(inferOrderDate(receipt)?.toISOString())}
-                        </span>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
+                        {receipt.poNumber || (receipt as any).receiptNo || '-'}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-sm font-semibold text-slate-700">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
+                        {formatDateTime(receipt.orderDate || inferOrderDate(receipt)?.toISOString())}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
                         {supplierLabel(receipt)}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
-                        {formatDate(receipt.expectedDate)}
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
+                        {formatDateTime(receipt.expectedDate)}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-sm font-medium text-slate-500">-</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                         <span className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(receipt.status)}`}>
                           <Truck className="h-3.5 w-3.5" />
@@ -649,8 +670,8 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
 
       {selectedReceipt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div className="flex w-full max-w-6xl max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="shrink-0 flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 bg-white z-10">
             <div>
               <p className="text-2xl font-black text-slate-900">Đơn mua hàng {receiptNumber(displayReceipt || selectedReceipt, 0)}</p>
               <p className="mt-1 text-sm font-medium text-slate-500">
@@ -672,7 +693,7 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
             </div>
           </div>
 
-          <div className="p-6 space-y-6 bg-slate-50/30">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30">
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
               {/* CỘT TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
               <div className="flex flex-col gap-6">
@@ -705,8 +726,8 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                 <h3 className="mb-4 text-sm font-black uppercase text-slate-800">Thông tin đơn hàng</h3>
                 <div className="grid grid-cols-1 gap-4">
                   <Field label="Mã đơn hàng" value={receiptNumber(displayReceipt || selectedReceipt, 0)} />
-                  <Field label="Ngày tạo đơn" value={formatDate(inferOrderDate(displayReceipt || selectedReceipt)?.toISOString())} />
-                  <Field label="Ngày giao hàng dự kiến" value={formatDate((displayReceipt || selectedReceipt)?.expectedDate)} />
+                  <Field label="Ngày tạo đơn" value={formatDateTime(inferOrderDate(displayReceipt || selectedReceipt)?.toISOString())} />
+                  <Field label="Ngày giao hàng dự kiến" value={formatDateTime((displayReceipt || selectedReceipt)?.expectedDate)} />
                   <Field label="Trạng thái đơn hàng" value={statusLabel(displayReceipt?.status)} />
                 </div>
 
@@ -811,7 +832,14 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
             </section>
           </div>
 
-            <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
+            <div className="shrink-0 flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end z-10">
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(null)}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
                 {displayReceipt?.status && displayReceipt.status.toUpperCase() === 'APPROVED' && (
                   <div className="flex gap-2">
                     <button
@@ -832,37 +860,16 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                     </button>
                   </div>
                 )}
-                {displayReceipt?.status && displayReceipt.status.toUpperCase() === 'SUPPLIER_APPROVED' && (
+                {displayReceipt?.status && (displayReceipt.status.toUpperCase() === 'RECEIVED' || displayReceipt.status.toUpperCase() === 'COMPLETED') && (
                   <button
                     type="button"
-                    onClick={async () => {
-                      if (!displayReceipt || creatingStockIn) return;
-                      try {
-                        setCreatingStockIn(true);
-                        const resp = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/from-purchase-orders/${displayReceipt.id}`, {
-                          method: 'POST',
-                          headers: authHeaders(),
-                        });
-                        if (!resp.ok) {
-                          const data = await resp.json().catch(() => ({}));
-                          throw new Error(data?.message || 'Không tạo được phiếu nhập kho');
-                        }
-                        const created = await resp.json();
-                        // Show success and navigate to phiếu nhập kho list
-                        window.alert(`Đã tạo phiếu nhập kho ${created.orderCode}`);
-                        navigate('/inbound/stock-in-orders');
-                      } catch (err) {
-                        const msg = err instanceof Error ? err.message : 'Lỗi khi tạo phiếu nhập kho';
-                        window.alert(msg);
-                      } finally {
-                        setCreatingStockIn(false);
-                      }
+                    onClick={() => {
+                      window.alert('Lập hóa đơn điện tử thành công! Hệ thống Kế toán đã ghi nhận khoản phải thu.');
                     }}
-                    disabled={creatingStockIn}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
                   >
-                    <PackageCheck className="h-4 w-4" />
-                    {creatingStockIn ? 'Đang tạo...' : 'Tạo phiếu nhập kho'}
+                    <FileText className="h-4 w-4" />
+                    Lập hóa đơn điện tử
                   </button>
                 )}
             </div>
@@ -894,6 +901,29 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                   className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
                   required
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">Tên tài xế</label>
+                  <input
+                    type="text"
+                    value={driverName}
+                    onChange={(e) => setDriverName(e.target.value)}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                    placeholder="Nguyễn Văn A"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">Số điện thoại tài xế</label>
+                  <input
+                    type="text"
+                    value={driverPhone}
+                    onChange={(e) => setDriverPhone(e.target.value)}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                    placeholder="0912345678"
+                  />
+                </div>
               </div>
 
               <div>

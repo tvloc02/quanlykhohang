@@ -63,7 +63,8 @@ function normalizeStatus(value?: string) {
 }
 
 function isEditablePurchaseOrderStatus(status?: string) {
-  return !status || normalizeStatus(status) === 'CREATED';
+  const norm = normalizeStatus(status);
+  return !status || norm === 'CREATED' || norm === 'DRAFT';
 }
 
 function isManagerApprovalReady(status?: string) {
@@ -109,7 +110,7 @@ export class InboundService {
       poNumber,
       orderDate: dto.orderDate ? new Date(dto.orderDate) : new Date(),
       expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
-      status: 'CREATED',
+      status: dto.status || 'CREATED',
       approverId: dto.approverId?.trim() || undefined,
       approverName: dto.approverName?.trim() || undefined,
       creatorName: dto.creatorName?.trim() || undefined,
@@ -125,24 +126,26 @@ export class InboundService {
     savedReceipt.totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty)), 0).toFixed(2);
     await this.receiptRepo.save(savedReceipt);
 
-    if (savedReceipt.approverId) {
-      await this.notificationsService.notifyUser(savedReceipt.approverId, {
-        title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
-        message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
-        link: '/inbound/purchase-orders',
-        referenceType: 'purchase-order',
-        referenceId: savedReceipt.id,
-        priority: 'high',
-      });
-    } else {
-      await this.notificationsService.notifyRole('manager', {
-        title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
-        message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
-        link: '/inbound/purchase-orders',
-        referenceType: 'purchase-order',
-        referenceId: savedReceipt.id,
-        priority: 'high',
-      });
+    if (savedReceipt.status !== 'DRAFT') {
+      if (savedReceipt.approverId) {
+        await this.notificationsService.notifyUser(savedReceipt.approverId, {
+          title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
+          message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+          link: '/inbound/purchase-orders',
+          referenceType: 'purchase-order',
+          referenceId: savedReceipt.id,
+          priority: 'high',
+        });
+      } else {
+        await this.notificationsService.notifyRole('manager', {
+          title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
+          message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+          link: '/inbound/purchase-orders',
+          referenceType: 'purchase-order',
+          referenceId: savedReceipt.id,
+          priority: 'high',
+        });
+      }
     }
 
     return this.serializeReceipt(await this.findReceiptEntity(savedReceipt.id, user));
@@ -186,11 +189,16 @@ export class InboundService {
 
     if (dto.orderDate) receipt.orderDate = new Date(dto.orderDate);
     if (dto.expectedDate) receipt.expectedDate = new Date(dto.expectedDate);
-    if (dto.description !== undefined) receipt.description = dto.description.trim() || undefined;
-    if (dto.approverId !== undefined) receipt.approverId = dto.approverId.trim() || undefined;
-    if (dto.approverName !== undefined) receipt.approverName = dto.approverName.trim() || undefined;
-    if (dto.creatorName !== undefined) receipt.creatorName = dto.creatorName.trim() || undefined;
-    if (dto.creatorPhone !== undefined) receipt.creatorPhone = dto.creatorPhone.trim() || undefined;
+    if (dto.description !== undefined) receipt.description = dto.description ? dto.description.trim() : undefined;
+    if (dto.approverId !== undefined) receipt.approverId = dto.approverId ? dto.approverId.trim() : undefined;
+    if (dto.approverName !== undefined) receipt.approverName = dto.approverName ? dto.approverName.trim() : undefined;
+    if (dto.creatorName !== undefined) receipt.creatorName = dto.creatorName ? dto.creatorName.trim() : undefined;
+    if (dto.creatorPhone !== undefined) receipt.creatorPhone = dto.creatorPhone ? dto.creatorPhone.trim() : undefined;
+
+    const oldStatus = receipt.status;
+    if (dto.status !== undefined) {
+      receipt.status = dto.status;
+    }
 
     if (dto.items) {
       if (!isEditablePurchaseOrderStatus(receipt.status)) {
@@ -246,6 +254,28 @@ export class InboundService {
 
     await this.recalculateTotalAmount(receipt.id);
     await this.receiptRepo.save(receipt);
+
+    if (oldStatus === 'DRAFT' && receipt.status === 'CREATED') {
+      if (receipt.approverId) {
+        await this.notificationsService.notifyUser(receipt.approverId, {
+          title: `Don mua hang ${receipt.poNumber} can duyet`,
+          message: `Don mua hang ${receipt.poNumber} vua duoc gui duyet. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+          link: '/inbound/purchase-orders',
+          referenceType: 'purchase-order',
+          referenceId: receipt.id,
+          priority: 'high',
+        });
+      } else {
+        await this.notificationsService.notifyRole('manager', {
+          title: `Don mua hang ${receipt.poNumber} can duyet`,
+          message: `Don mua hang ${receipt.poNumber} vua duoc gui duyet. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+          link: '/inbound/purchase-orders',
+          referenceType: 'purchase-order',
+          referenceId: receipt.id,
+          priority: 'high',
+        });
+      }
+    }
     return this.serializeReceipt(await this.findReceiptEntity(receipt.id));
   }
 
