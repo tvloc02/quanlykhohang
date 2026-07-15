@@ -19,6 +19,9 @@ type SerializedPurchaseOrder = {
   expectedDate?: string;
   status?: string;
   approverId?: string;
+  approverName?: string;
+  creatorName?: string;
+  creatorPhone?: string;
   description?: string;
   totalAmount: number;
   supplier?: {
@@ -108,6 +111,9 @@ export class InboundService {
       expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
       status: 'CREATED',
       approverId: dto.approverId?.trim() || undefined,
+      approverName: dto.approverName?.trim() || undefined,
+      creatorName: dto.creatorName?.trim() || undefined,
+      creatorPhone: dto.creatorPhone?.trim() || undefined,
       description: dto.description?.trim() || undefined,
       supplier: supplier || undefined,
       supplierName,
@@ -182,6 +188,9 @@ export class InboundService {
     if (dto.expectedDate) receipt.expectedDate = new Date(dto.expectedDate);
     if (dto.description !== undefined) receipt.description = dto.description.trim() || undefined;
     if (dto.approverId !== undefined) receipt.approverId = dto.approverId.trim() || undefined;
+    if (dto.approverName !== undefined) receipt.approverName = dto.approverName.trim() || undefined;
+    if (dto.creatorName !== undefined) receipt.creatorName = dto.creatorName.trim() || undefined;
+    if (dto.creatorPhone !== undefined) receipt.creatorPhone = dto.creatorPhone.trim() || undefined;
 
     if (dto.items) {
       if (!isEditablePurchaseOrderStatus(receipt.status)) {
@@ -583,6 +592,9 @@ export class InboundService {
           id: receipt.supplier.id,
           supplierCode: receipt.supplier.supplierCode,
           name: receipt.supplier.name,
+          taxCode: receipt.supplier.taxCode,
+          contactPerson: receipt.supplier.contactPerson,
+          phone: receipt.supplier.phone,
         }
       : receipt.supplierName
         ? { id: '', supplierCode: '', name: receipt.supplierName }
@@ -601,9 +613,12 @@ export class InboundService {
       expectedDate: toDateString(receipt.expectedDate),
       status: receipt.status,
       approverId: receipt.approverId,
+      approverName: receipt.approverName,
+      creatorName: receipt.creatorName,
+      creatorPhone: receipt.creatorPhone,
       description: receipt.description,
       totalAmount: computedTotal,
-      supplier: supplierDisplay,
+      supplier: supplierDisplay as any,
       supplierName: receipt.supplierName || receipt.supplier?.name || undefined,
       details: details.map((detail) => this.serializeDetail(detail)),
       items: details.length,
