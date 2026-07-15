@@ -226,10 +226,10 @@ export function CreateStockInReceiptModal({
             </div>
             <div>
               <h3 className="text-lg font-black text-slate-900">
-                {mode === 'create' ? 'Tạo lệnh nhập kho' : mode === 'edit' ? 'Sửa lệnh nhập kho' : 'Xem lệnh nhập kho'}
+                {mode === 'create' ? 'Tạo Phiếu Nhập Kho' : mode === 'edit' ? 'Sửa Phiếu Nhập Kho' : 'Xem Phiếu Nhập Kho'}
               </h3>
               <p className="text-sm font-medium text-slate-500">
-                {mode === 'create' ? 'Lập lệnh kiểm kê và nhận hàng vào kho từ đơn mua hàng.' : 'Chi tiết lệnh kiểm kê và nhận hàng.'}
+                {mode === 'create' ? 'Ghi nhận hàng hóa đã nhận vào kho.' : 'Chi tiết hàng hóa đã nhận vào kho.'}
               </p>
             </div>
           </div>
@@ -397,16 +397,16 @@ export function CreateStockInReceiptModal({
 
           <div className="w-[420px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto flex flex-col">
             <div className="flex flex-col h-full p-6">
-              <h3 className="text-lg font-black text-slate-900 mb-6">Tạo Lệnh Nhập Kho</h3>
+              <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Phiếu Nhập Kho</h3>
               
               <div className="space-y-6 flex-1">
                 <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Mã lệnh nhập kho</label>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">Mã phiếu nhập kho</label>
                   <input type="text" value={receiptCode} onChange={(e) => setReceiptCode(e.target.value)} placeholder="Để trống để tự động tạo..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
                 </div>
                 
                 <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái yêu cầu</label>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái phiếu</label>
                   <select value={status} onChange={(e) => setStatus(e.target.value as any)} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500">
                     <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
                     <option value="CREATED">Tạo mới (Gửi yêu cầu ngay)</option>
@@ -416,7 +416,7 @@ export function CreateStockInReceiptModal({
                 <div>
                   <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
                     <Calendar className="h-4 w-4 text-cyan-600" />
-                    Thời gian nhập kho (Dự kiến)
+                    Thời gian nhập kho
                   </label>
                   <input type="datetime-local" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} required className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
                 </div>
@@ -424,47 +424,6 @@ export function CreateStockInReceiptModal({
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
                   <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ví dụ: Kiểm tra kỹ tem mác..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-                  <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                    <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
-                      <UserIcon className="h-4 w-4 text-indigo-600" />
-                      Nhân viên kho
-                    </p>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer text-indigo-700 font-bold hover:text-indigo-800">
-                      <input 
-                        type="checkbox" 
-                        onChange={(e) => {
-                          const eligible = users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff'));
-                          if (e.target.checked) setSelectedStaffIds(eligible.map(u => u.id));
-                          else setSelectedStaffIds([]);
-                        }} 
-                        checked={selectedStaffIds.length > 0 && selectedStaffIds.length === users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length} 
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600" 
-                      />
-                      Chọn tất cả
-                    </label>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2">
-                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u) => (
-                      <label key={u.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 hover:border-indigo-400 transition">
-                        <input
-                          type="checkbox"
-                          checked={selectedStaffIds.includes(u.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
-                            else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
-                          }}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
-                        />
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
-                          {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
