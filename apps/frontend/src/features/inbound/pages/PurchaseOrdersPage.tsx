@@ -18,6 +18,8 @@ import {
   Truck,
   X,
   XCircle,
+  MoreHorizontal,
+  Send,
 } from 'lucide-react';
 import InboundSectionPlaceholderPage from './InboundSectionPlaceholderPage';
 import {
@@ -52,6 +54,7 @@ type Supplier = {
   currency: string;
   contactPerson?: string;
   phone?: string;
+  taxCode?: string;
   products?: SupplierProduct[];
 };
 
@@ -270,9 +273,10 @@ function parseDateForInput(dateString?: string) {
 function buildEmptyForm(supplierId = '', warehouseCode = ''): OrderForm {
   const now = new Date();
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const randomId = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
 
   return {
-    poNumber: '',
+    poNumber: `PO-${randomId}`,
     supplierId,
     orderDate: toLocalDatetimeString(now),
     expectedDate: toLocalDatetimeString(nextWeek),
@@ -303,6 +307,8 @@ function parseMoney(value: string) {
 
 function statusLabel(status?: string) {
   switch ((status || 'CREATED').toUpperCase()) {
+    case 'DRAFT':
+      return 'Nháp';
     case 'APPROVED':
       return 'Chờ NCC xác nhận';
     case 'SUPPLIER_APPROVED':
@@ -320,6 +326,8 @@ function statusLabel(status?: string) {
 
 function statusClass(status?: string) {
   switch ((status || 'CREATED').toUpperCase()) {
+    case 'DRAFT':
+      return 'border-slate-300 bg-slate-100 text-slate-600';
     case 'APPROVED':
       return 'border-blue-200 bg-blue-50 text-blue-700';
     case 'SUPPLIER_APPROVED':
@@ -407,6 +415,13 @@ function PurchaseOrdersPageContent() {
   const [receiveOpen, setReceiveOpen] = React.useState(false);
   const [receiveRows, setReceiveRows] = React.useState<Array<{ detailId: string; label: string; qty: string }>>([]);
   const [scannerOpen, setScannerOpen] = React.useState(false);
+  const [activeDropdown, setActiveDropdown] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = () => setActiveDropdown(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
   const currentUserId = React.useMemo(() => getCurrentUserId(), []);
 
   const supplierProducts = suppliers.find((supplier) => supplier.id === form.supplierId)?.products || [];
@@ -625,6 +640,14 @@ function PurchaseOrdersPageContent() {
       }
 
       return matchesKeyword && matchesStatus && matchesTime && matchesAdvStartDate && matchesAdvEndDate && matchesAdvSupplier && matchesAdvMinAmt && matchesAdvMaxAmt;
+    }).sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.orderDate || 0).getTime();
+      const dateB = new Date(b.createdAt || b.orderDate || 0).getTime();
+      // Secondary sort by ID desc if dates are identical
+      if (dateB === dateA) {
+        return (b.id || '').localeCompare(a.id || '');
+      }
+      return dateB - dateA;
     });
   }, [orders, search, statusFilter, timeFilter, advancedFilters]);
 
@@ -704,7 +727,20 @@ function PurchaseOrdersPageContent() {
     const token = localStorage.getItem('token') || '';
     const payload = parseJwtPayload(token);
     const creatorName = getUserDisplayName(payload);
-    const creatorPhone = getUserPhone(payload);
+    let creatorPhone = getUserPhone(payload);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/profile`, { headers: authHeaders() });
+      if (response.ok) {
+        const profile = await response.json();
+        if (profile?.phone) {
+          creatorPhone = profile.phone;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch profile', e);
+    }
+    
     setForm(buildEmptyForm(fallbackSupplier, defaultWarehouse));
     setForm((current) => ({ ...current, creatorName, creatorPhone, warehouseCode: defaultWarehouse }));
     setModalMode('create');
@@ -1007,6 +1043,64 @@ function PurchaseOrdersPageContent() {
     }
   };
 
+  const submitDraftOrder = async (order: PurchaseOrder) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        headers: authHeaders(),
+      });
+      if (!response.ok) throw new Error('Không tải được chi tiết đơn hàng');
+      const full = await response.json();
+      
+      const payload: any = {
+        poNumber: full.poNumber,
+        supplierId: full.supplier?.id,
+        orderDate: full.orderDate,
+        expectedDate: full.expectedDate,
+        status: 'CREATED',
+        description: full.description,
+        creatorName: (full as any).creatorName,
+        creatorPhone: (full as any).creatorPhone,
+        warehouseCode: (full as any).warehouseCode,
+        approverId: (full as any).approverId,
+      };
+
+      if (full.details?.length > 0) {
+        payload.items = full.details.map((item: any) => ({
+          id: item.id,
+          productId: item.product?.id,
+          warehouseCode: item.warehouseCode || 'KHO-NVL',
+          expectedQty: item.expectedQty,
+          receivedQty: item.receivedQty,
+          unitPrice: item.unitPrice,
+        }));
+      } else {
+        payload.items = [];
+      }
+
+      const putRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(payload)
+      });
+
+      if (!putRes.ok) {
+        const errData = await putRes.json().catch(() => null);
+        let msg = 'Không thể gửi duyệt đơn hàng';
+        if (errData && errData.message) {
+          msg = Array.isArray(errData.message) ? errData.message.join(', ') : errData.message;
+        }
+        throw new Error(msg);
+      }
+      setToast({ type: 'success', message: 'Đã tạo mới/gửi duyệt đơn hàng thành công.' });
+      await loadData();
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi gửi duyệt' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const openReceive = (order: PurchaseOrder) => {
     setSelectedId(order.id);
     setReceiveRows(
@@ -1082,8 +1176,10 @@ function PurchaseOrdersPageContent() {
 
   const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
   const canManagerApprove = selectedOrderStatus === 'CREATED' && currentUserIsManager;
-  const canCreateStockIn = selectedOrderStatus === 'SUPPLIER_APPROVED' || selectedOrderStatus === 'PARTIALLY_RECEIVED' || selectedOrderStatus === 'RECEIVED';
-  const canReceiveGoods = selectedOrderStatus === 'SUPPLIER_APPROVED' || selectedOrderStatus === 'PARTIALLY_RECEIVED';
+  
+  const canReceiveRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
+  const canCreateOrderRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
+  const canCreateReceiptRow = (order: PurchaseOrder) => ['PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
 
   const canApproveRow = (order: PurchaseOrder) => {
     return (order.status || 'CREATED').toUpperCase() === 'CREATED' && currentUserIsManager;
@@ -1378,23 +1474,8 @@ function PurchaseOrdersPageContent() {
                         {statusLabel(order.status)}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                    <td className={`sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeDropdown === order.id ? 'z-[60]' : 'z-10'}`}>
                       <div className="flex items-center justify-center gap-2">
-                        {canApproveRow(order) && (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (window.confirm('Bạn có chắc chắn muốn duyệt đơn hàng này?')) {
-                                approveOrder(order);
-                              }
-                            }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 transition-colors hover:bg-emerald-100 hover:text-emerald-700"
-                            title="Duyệt đơn hàng"
-                          >
-                            <CheckCircle2 className="h-4 w-4" />
-                          </button>
-                        )}
                         <button
                           type="button"
                           onClick={(event) => {
@@ -1410,9 +1491,11 @@ function PurchaseOrdersPageContent() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
+                            if (order.status !== 'DRAFT') return;
                             openEdit(order);
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          disabled={order.status !== 'DRAFT'}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${order.status === 'DRAFT' ? 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100 hover:text-cyan-700' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
                           title="Sửa"
                         >
                           <Pencil className="h-4 w-4" />
@@ -1426,11 +1509,83 @@ function PurchaseOrdersPageContent() {
                             setModalMode('delete');
                           }}
                           disabled={!canDelete(order)}
-                          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${canDelete(order) ? 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100 hover:text-cyan-700' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${canDelete(order) ? 'bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
                           title="Xóa"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                        <div className="relative" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveDropdown(activeDropdown === order.id ? null : order.id)}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                            title="Thao tác khác"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                          {activeDropdown === order.id && (
+                            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left">
+                              <button
+                                type="button"
+                                disabled={order.status !== 'DRAFT'}
+                                onClick={() => { submitDraftOrder(order); setActiveDropdown(null); }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <Send className="h-4 w-4" />
+                                Gửi duyệt (Tạo mới)
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canApproveRow(order)}
+                                onClick={() => { 
+                                  if (window.confirm('Bạn có chắc chắn muốn duyệt đơn hàng này?')) {
+                                    approveOrder(order); 
+                                  }
+                                  setActiveDropdown(null); 
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                Duyệt đơn hàng
+                              </button>
+                              <div className="my-1 border-t border-slate-100"></div>
+                              <button
+                                type="button"
+                                disabled={!canReceiveRow(order)}
+                                onClick={() => { 
+                                  openReceive(order);
+                                  setActiveDropdown(null); 
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <Package className="h-4 w-4" />
+                                Đã nhận hàng
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canCreateReceiptRow(order)}
+                                onClick={() => { 
+                                  navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <FileText className="h-4 w-4" />
+                                Tạo phiếu nhập kho
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canCreateOrderRow(order)}
+                                onClick={() => { 
+                                  navigate('/inbound/stock-in-receipts', { state: { sourcePurchaseOrderId: order.id } });
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <Clock3 className="h-4 w-4" />
+                                Tạo lệnh nhập kho
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -1482,41 +1637,44 @@ function PurchaseOrdersPageContent() {
                 Duyệt đơn hàng
               </button>
             )}
-            {canReceiveGoods && (
+            {selectedOrder && canReceiveRow(selectedOrder) && (
               <button
                 type="button"
                 onClick={() => openReceive(selectedOrder)}
                 disabled={saving}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
               >
+                <Package className="h-4 w-4" />
                 Đã nhận hàng
               </button>
             )}
-            {canCreateStockIn && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    closeModal();
-                    navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: selectedOrder?.id } });
-                  }}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
-                >
-                  Tạo phiếu nhập kho
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    closeModal();
-                    navigate('/inbound/stock-in-receipts', { state: { sourcePurchaseOrderId: selectedOrder?.id } });
-                  }}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
-                >
-                  Tạo lệnh nhập kho
-                </button>
-              </>
+            {selectedOrder && canCreateReceiptRow(selectedOrder) && (
+              <button
+                type="button"
+                onClick={() => {
+                  closeModal();
+                  navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: selectedOrder.id } });
+                }}
+                disabled={saving}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+              >
+                <FileText className="h-4 w-4" />
+                Tạo phiếu nhập kho
+              </button>
+            )}
+            {selectedOrder && canCreateOrderRow(selectedOrder) && (
+              <button
+                type="button"
+                onClick={() => {
+                  closeModal();
+                  navigate('/inbound/stock-in-receipts', { state: { sourcePurchaseOrderId: selectedOrder.id } });
+                }}
+                disabled={saving}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
+              >
+                <Clock3 className="h-4 w-4" />
+                Tạo lệnh nhập kho
+              </button>
             )}
           </div>
         }

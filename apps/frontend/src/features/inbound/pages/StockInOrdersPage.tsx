@@ -90,6 +90,9 @@ type Supplier = {
   id: string;
   supplierCode?: string;
   name: string;
+  taxCode?: string;
+  contactPerson?: string;
+  phone?: string;
 };
 
 type PurchaseOrderDetail = {
