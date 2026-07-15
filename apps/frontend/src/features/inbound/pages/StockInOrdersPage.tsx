@@ -834,7 +834,7 @@ export default function StockInOrdersPage() {
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                         <span className="inline-flex items-center justify-center gap-2">
                           <CalendarDays className="h-4 w-4 text-slate-400" />
-                          {new Date(order.createdAt).toLocaleString('vi-VN')}
+                          {new Date((order as any).createdAt || 0).toLocaleString('vi-VN')}
                         </span>
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
@@ -1004,13 +1004,13 @@ export default function StockInOrdersPage() {
                       <div>
                         <label className="mb-2 block text-sm font-bold text-slate-700">Người tạo phiếu</label>
                         <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 truncate">
-                          {selectedOrder.creatorName || '-'}
+                          {(selectedOrder as any).creatorName || '-'}
                         </div>
                       </div>
                       <div>
                         <label className="mb-2 block text-sm font-bold text-slate-700">SĐT người tạo</label>
                         <div className="flex h-11 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
-                          {selectedOrder.creatorPhone || '-'}
+                          {(selectedOrder as any).creatorPhone || '-'}
                         </div>
                       </div>
                       <div>
@@ -1065,7 +1065,7 @@ export default function StockInOrdersPage() {
                       <div>
                         <label className="mb-2 block text-xs font-bold uppercase text-slate-500">Ngày đặt hàng (Gốc)</label>
                         <div className="flex h-10 items-center rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700">
-                          {selectedOrder.sourcePurchaseOrder?.orderDate ? formatDate(selectedOrder.sourcePurchaseOrder.orderDate) : '-'}
+                          {(selectedOrder.sourcePurchaseOrder as any)?.orderDate ? formatDate((selectedOrder.sourcePurchaseOrder as any).orderDate) : '-'}
                         </div>
                       </div>
 

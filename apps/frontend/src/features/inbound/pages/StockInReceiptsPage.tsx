@@ -7,6 +7,7 @@ import {
   Filter,
   Package,
   Pencil,
+  PlusCircle,
   RefreshCw,
   Search,
   Trash2,
@@ -130,6 +131,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
 
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<'all' | 'DRAFT' | 'POSTED'>('all');
+  const [timeFilter, setTimeFilter] = React.useState<'all' | 'this-month' | '7-days'>('this-month');
   const [pageSize, setPageSize] = React.useState(10);
   const [currentPage, setCurrentPage] = React.useState(1);
 
@@ -145,9 +147,14 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
   const navigate = useNavigate();
   const state = location.state as { sourceStockInOrderId?: string; sourcePurchaseOrderId?: string } | null;
 
+  const [sourcePOId, setSourcePOId] = React.useState<string | null>(null);
+  const [sourceSOId, setSourceSOId] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     if (state?.sourceStockInOrderId || state?.sourcePurchaseOrderId) {
       setModalMode('create');
+      setSourcePOId(state.sourcePurchaseOrderId || null);
+      setSourceSOId(state.sourceStockInOrderId || null);
       // Clear state so it doesn't reopen on refresh
       window.history.replaceState({}, document.title);
     }
@@ -194,6 +201,16 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
 
   const filteredReceipts = React.useMemo(() => {
     const keyword = search.trim().toLowerCase();
+    
+    // Calculate date filter limits
+    const now = new Date();
+    let startDate: Date | null = null;
+    if (timeFilter === 'this-month') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (timeFilter === '7-days') {
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    }
+    
     return receipts.filter((r) => {
       const matchesKeyword =
         !keyword ||
@@ -203,9 +220,19 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
 
       const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
       const matchesType = !receiptTypeFilter || r.receiptType === receiptTypeFilter;
-      return matchesKeyword && matchesStatus && matchesType;
+      
+      let matchesTime = true;
+      if (startDate) {
+        const receiptDate = new Date(r.receiptDate || 0);
+        matchesTime = receiptDate >= startDate;
+      }
+      
+      return matchesKeyword && matchesStatus && matchesType && matchesTime;
     });
-  }, [receipts, search, statusFilter, receiptTypeFilter]);
+  }, [receipts, search, statusFilter, receiptTypeFilter, timeFilter]);
+
+  const draftCount = receipts.filter(r => r.status === 'DRAFT').length;
+  const postedCount = receipts.filter(r => r.status === 'POSTED').length;
 
   const totalItems = filteredReceipts.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -337,23 +364,55 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
           <h1 className="text-2xl font-black text-slate-900">Biên Bản Nhập Kho & Kiểm Kê</h1>
           <p className="mt-1 text-sm font-medium text-slate-500">Quản lý việc kiểm đếm và ghi sổ hàng hóa</p>
         </div>
+        <button
+          type="button"
+          onClick={() => setModalMode('create')}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+        >
+          <PlusCircle className="h-4 w-4" />
+          Tạo biên bản nhập kho
+        </button>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_0.9fr_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500"
-              placeholder="Tìm theo mã, nguồn..."
-            />
-          </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
+          <p className="text-lg font-bold text-white uppercase">{receipts.length} TỔNG BIÊN BẢN</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-amber-500 px-4 shadow-sm">
+          <p className="text-lg font-bold text-white uppercase">{draftCount} CHƯA CHỐT (NHÁP)</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-emerald-500 px-4 shadow-sm">
+          <p className="text-lg font-bold text-white uppercase">{postedCount} ĐÃ CHỐT (GHI SỔ)</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-indigo-500 px-4 shadow-sm">
+          <p className="text-lg font-bold text-white uppercase">{users.filter(u => (u as any).roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF'].includes(r.name))).length} NV KHO</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            placeholder="Tìm theo mã biên bản, nguồn, diễn giải..."
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={timeFilter}
+            onChange={(event) => setTimeFilter(event.target.value as 'all' | 'this-month' | '7-days')}
+            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+          >
+            <option value="this-month">Thời gian: Tháng này</option>
+            <option value="7-days">Thời gian: 7 ngày gần đây</option>
+            <option value="all">Thời gian: Tất cả</option>
+          </select>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
+            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           >
             <option value="all">Tình trạng: Tất cả</option>
             <option value="DRAFT">Tình trạng: Chưa chốt (Nháp)</option>
@@ -444,27 +503,61 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
               </div>
             </div>
 
-            <div className="overflow-y-auto flex-1 p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-xs font-bold uppercase text-slate-500 mb-2">Nhân viên tham gia kiểm đếm</p>
-                  <p className="font-semibold text-slate-800">
-                    {selectedReceipt.assignedStaffIds && selectedReceipt.assignedStaffIds.length > 0
-                      ? selectedReceipt.assignedStaffIds.map(id => {
-                          const u = users.find(u => u.id === id);
-                          return u ? u.fullName || u.email : id;
-                        }).join(', ')
-                      : 'Không có thông tin'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-xs font-bold uppercase text-slate-500 mb-2">Ghi chú chung</p>
-                  <p className="font-semibold text-slate-800">{selectedReceipt.description || 'Không có ghi chú'}</p>
-                </div>
-              </div>
+            <div className="flex flex-1 overflow-hidden min-h-0">
+              <div className="overflow-y-auto flex-1 p-6 space-y-8 bg-white">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Cột 1: Thông tin nhà cung cấp & Nguồn */}
+                  <div className="space-y-6">
+                    <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 h-full">
+                      <h4 className="mb-4 text-sm font-black uppercase text-slate-800">Thông tin nhà cung cấp & Nguồn</h4>
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Nhà cung cấp</label>
+                          <p className="font-semibold text-slate-900">{selectedReceipt.supplier?.name || '-'}</p>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Mã nhà cung cấp</label>
+                          <p className="font-semibold text-slate-900">{selectedReceipt.supplier?.supplierCode || '-'}</p>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Từ lệnh / Nguồn</label>
+                          <p className="font-semibold text-slate-900">{selectedReceipt.sourceReferenceNo || '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-              <div>
-                <h4 className="font-black text-slate-900 mb-3">Kết Quả Kiểm Đếm</h4>
+                  {/* Cột 2: Thông tin biên bản */}
+                  <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 h-full">
+                    <h4 className="mb-4 text-sm font-black uppercase text-slate-800">Thông tin biên bản</h4>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Mã biên bản</label>
+                        <p className="font-bold text-slate-900">{selectedReceipt.receiptCode}</p>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Ngày tạo biên bản</label>
+                        <p className="font-semibold text-slate-900">{formatDate(selectedReceipt.receiptDate)}</p>
+                      </div>
+                      <div className="mt-2 rounded-xl bg-cyan-50 p-4 border border-cyan-100">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-bold uppercase text-cyan-800">Tổng sản phẩm</span>
+                          <span className="font-black text-cyan-900">{selectedReceipt.details?.length || 0}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold uppercase text-cyan-800">Tổng số lượng</span>
+                          <span className="font-black text-cyan-900">{formatNumber(selectedReceipt.totalQuantity)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Package className="h-5 w-5 text-cyan-600" />
+                    <h4 className="font-black text-slate-900">Chi tiết hàng hóa</h4>
+                  </div>
                 <div className="overflow-hidden rounded-xl border border-slate-200">
                   <table className="w-full bg-white text-left">
                     <thead className="bg-slate-50 border-b border-slate-200">
@@ -503,6 +596,28 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            </div>
+
+              <div className="w-[380px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto p-6 flex flex-col">
+                <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin giao việc</h3>
+                <div className="space-y-6 flex-1">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase text-slate-500 mb-2">Nhân viên tham gia kiểm đếm</p>
+                    <p className="font-semibold text-slate-800">
+                      {selectedReceipt.assignedStaffIds && selectedReceipt.assignedStaffIds.length > 0
+                        ? selectedReceipt.assignedStaffIds.map(id => {
+                            const u = users.find(u => u.id === id);
+                            return u ? u.fullName || u.email : id;
+                          }).join(', ')
+                        : 'Không có thông tin'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase text-slate-500 mb-2">Ghi chú chung</p>
+                    <p className="font-semibold text-slate-800">{selectedReceipt.description || 'Không có ghi chú'}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -548,8 +663,8 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
           setToast({ type: 'success', message: 'Lập lệnh nhập kho thành công' });
           loadData();
         }}
-        sourceStockInOrderId={state?.sourceStockInOrderId}
-        sourcePurchaseOrderId={state?.sourcePurchaseOrderId}
+        sourceStockInOrderId={sourceSOId}
+        sourcePurchaseOrderId={sourcePOId}
       />
     </div>
   );
