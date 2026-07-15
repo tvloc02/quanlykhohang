@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { AuditLogService } from '../../audit-log/audit-log.service';
 import { Product } from '../../entities/product.entity';
 import { Supplier } from '../../entities/supplier.entity';
@@ -48,6 +48,7 @@ export class StockInReceiptsService {
     @InjectRepository(StockBalance) private readonly balanceRepo: Repository<StockBalance>,
     @InjectRepository(StockInOrder) private readonly stockInOrderRepo: Repository<StockInOrder>,
     private readonly auditLogService: AuditLogService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll() {
@@ -399,6 +400,15 @@ export class StockInReceiptsService {
   private async serializeReceipt(receipt: StockInReceipt, includeLogs = false) {
     const logs = includeLogs ? await this.auditLogService.findByResource('stock-in-receipt', receipt.id) : [];
 
+    let poFields: any = null;
+    if (receipt.sourceReferenceNo && receipt.sourceReferenceNo.startsWith('PO-')) {
+      poFields = await this.dataSource.query(
+        'SELECT poNumber, orderDate, expectedDate, creatorName, creatorPhone, approverName, status, description FROM inbound_receipts WHERE poNumber = ? LIMIT 1',
+        [receipt.sourceReferenceNo]
+      );
+      poFields = poFields?.[0] || null;
+    }
+
     return {
       id: receipt.id,
       receiptCode: receipt.receiptCode,
@@ -410,13 +420,29 @@ export class StockInReceiptsService {
         ? {
             id: receipt.sourceStockInOrder.id,
             orderCode: receipt.sourceStockInOrder.orderCode,
+            orderDate: toIso((receipt.sourceStockInOrder as any).sourcePurchaseOrder?.orderDate),
+            expectedDate: toIso((receipt.sourceStockInOrder as any).sourcePurchaseOrder?.expectedDate),
+            creatorName: (receipt.sourceStockInOrder as any).sourcePurchaseOrder?.creatorName,
           }
         : null,
+      poNumber: poFields?.poNumber || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.poNumber || receipt.sourceReferenceNo,
+      orderDate: toIso(poFields?.orderDate || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.orderDate),
+      expectedDate: toIso(poFields?.expectedDate || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.expectedDate),
+      creatorName: poFields?.creatorName || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.creatorName,
+      creatorPhone: poFields?.creatorPhone || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.creatorPhone,
+      approver: {
+        fullName: poFields?.approverName || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.approverName,
+      },
+      orderStatus: poFields?.status || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.status,
+      orderDescription: poFields?.description || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.description,
       supplier: receipt.supplier
         ? {
             id: receipt.supplier.id,
             supplierCode: receipt.supplier.supplierCode,
             name: receipt.supplier.name,
+            taxCode: receipt.supplier.taxCode,
+            contactPerson: receipt.supplier.contactPerson,
+            phone: receipt.supplier.phone,
           }
         : null,
       receiptDate: toIso(receipt.receiptDate),

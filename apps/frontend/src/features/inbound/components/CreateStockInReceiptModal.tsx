@@ -24,12 +24,16 @@ export function CreateStockInReceiptModal({
   onSuccess,
   sourceStockInOrderId,
   sourcePurchaseOrderId,
+  mode = 'create',
+  receiptId,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   sourceStockInOrderId?: string | null;
   sourcePurchaseOrderId?: string | null;
+  mode?: 'create' | 'edit' | 'view';
+  receiptId?: string | null;
 }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -66,27 +70,52 @@ export function CreateStockInReceiptModal({
         }
 
         let data = null;
-        if (sourceStockInOrderId) {
-          const res = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${sourceStockInOrderId}`, { headers: authHeaders() });
-          if (res.ok) data = await res.json();
-        } else if (sourcePurchaseOrderId) {
-          const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${sourcePurchaseOrderId}`, { headers: authHeaders() });
-          if (res.ok) data = await res.json();
-        }
+        if (receiptId && (mode === 'edit' || mode === 'view')) {
+          const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts/${receiptId}`, { headers: authHeaders() });
+          if (res.ok) {
+            data = await res.json();
+            setSourceData(data);
+            setReceiptCode(data.receiptCode || '');
+            if (data.receiptDate) setReceiptDate(new Date(data.receiptDate).toISOString().slice(0, 16));
+            setDescription(data.description || '');
+            setStatus(data.status || 'DRAFT');
+            setSelectedStaffIds(data.assignedStaffIds || data.staffs?.map((s: any) => s.id) || []);
+            
+            const mappedItems = (data.details || []).map((d: any) => ({
+              id: d.id,
+              productId: d.product?.id,
+              product: d.product,
+              warehouseCode: d.warehouseCode || 'KHO-NVL',
+              expectedQty: String(d.orderedQty || 0),
+              receivedQty: String(d.receivedQty || 0),
+              inventoryQty: String(d.quantity || 0),
+              unitPrice: String(d.unitPrice || 0),
+            }));
+            setItems(mappedItems);
+          }
+        } else {
+          if (sourceStockInOrderId) {
+            const res = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${sourceStockInOrderId}`, { headers: authHeaders() });
+            if (res.ok) data = await res.json();
+          } else if (sourcePurchaseOrderId) {
+            const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${sourcePurchaseOrderId}`, { headers: authHeaders() });
+            if (res.ok) data = await res.json();
+          }
 
-        if (data) {
-          setSourceData(data);
-          const mappedItems = (data.details || []).map((d: any) => ({
-            id: d.id,
-            productId: d.product?.id,
-            product: d.product,
-            warehouseCode: d.warehouseCode || 'KHO-NVL',
-            expectedQty: String(d.expectedQty || d.orderedQty || 0),
-            receivedQty: String(d.receivedQty || 0),
-            inventoryQty: String(d.expectedQty || d.orderedQty || 0),
-            unitPrice: String(d.unitPrice || 0),
-          }));
-          setItems(mappedItems);
+          if (data) {
+            setSourceData(data);
+            const mappedItems = (data.details || []).map((d: any) => ({
+              id: d.id,
+              productId: d.product?.id,
+              product: d.product,
+              warehouseCode: d.warehouseCode || 'KHO-NVL',
+              expectedQty: String(d.expectedQty || d.orderedQty || 0),
+              receivedQty: String(d.receivedQty || 0),
+              inventoryQty: String(d.expectedQty || d.orderedQty || 0),
+              unitPrice: String(d.unitPrice || 0),
+            }));
+            setItems(mappedItems);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -95,7 +124,7 @@ export function CreateStockInReceiptModal({
       }
     };
     load();
-  }, [isOpen, sourceStockInOrderId, sourcePurchaseOrderId]);
+  }, [isOpen, sourceStockInOrderId, sourcePurchaseOrderId, mode, receiptId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,12 +156,20 @@ export function CreateStockInReceiptModal({
         warehouseCode: items[0]?.warehouseCode || 'KHO-NVL',
       };
 
-      const endpoint = sourceStockInOrderId 
-        ? `${API_BASE_URL}/inbound/stock-in-receipts/from-stock-in-orders/${sourceStockInOrderId}`
-        : `${API_BASE_URL}/inbound/stock-in-receipts`;
+      let endpoint = '';
+      let method = 'POST';
+
+      if (mode === 'edit' && receiptId) {
+        endpoint = `${API_BASE_URL}/inbound/stock-in-receipts/${receiptId}`;
+        method = 'PUT';
+      } else {
+        endpoint = sourceStockInOrderId 
+          ? `${API_BASE_URL}/inbound/stock-in-receipts/from-stock-in-orders/${sourceStockInOrderId}`
+          : `${API_BASE_URL}/inbound/stock-in-receipts`;
+      }
 
       const res = await fetch(endpoint, {
-        method: 'POST',
+        method,
         headers: authHeaders(),
         body: JSON.stringify(body),
       });
@@ -188,8 +225,12 @@ export function CreateStockInReceiptModal({
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-900">Tạo lệnh nhập kho</h3>
-              <p className="text-sm font-medium text-slate-500">Lập lệnh kiểm kê và nhận hàng vào kho từ đơn mua hàng.</p>
+              <h3 className="text-lg font-black text-slate-900">
+                {mode === 'create' ? 'Tạo lệnh nhập kho' : mode === 'edit' ? 'Sửa lệnh nhập kho' : 'Xem lệnh nhập kho'}
+              </h3>
+              <p className="text-sm font-medium text-slate-500">
+                {mode === 'create' ? 'Lập lệnh kiểm kê và nhận hàng vào kho từ đơn mua hàng.' : 'Chi tiết lệnh kiểm kê và nhận hàng.'}
+              </p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
@@ -254,7 +295,7 @@ export function CreateStockInReceiptModal({
                       </div>
                       <div className="flex-1 flex flex-col min-h-[100px]">
                         <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú (Đơn hàng)</label>
-                        <textarea value={sourceData?.description || '-'} disabled className="w-full flex-1 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 cursor-not-allowed resize-none" />
+                        <textarea value={sourceData?.orderDescription || (mode === 'create' ? sourceData?.description : '') || '-'} disabled className="w-full flex-1 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 cursor-not-allowed resize-none" />
                       </div>
                     </div>
                   </div>
@@ -277,7 +318,7 @@ export function CreateStockInReceiptModal({
                       </div>
                       <div>
                         <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Trạng thái đơn hàng</label>
-                        <input type="text" value={poStatusMap[sourceData?.status] || sourceData?.status || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                        <input type="text" value={poStatusMap[sourceData?.orderStatus || sourceData?.status] || sourceData?.orderStatus || sourceData?.status || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
                       </div>
 
                       <div className="mt-2 rounded-2xl bg-cyan-50 p-5 border border-cyan-100 flex-1 flex flex-col justify-center">
@@ -327,8 +368,15 @@ export function CreateStockInReceiptModal({
                                 <input type="number" min={0} value={item.expectedQty} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-center text-sm font-medium text-slate-500 cursor-not-allowed" />
                               </td>
                               <td className="px-3 py-3 text-center text-sm font-bold text-slate-700">{item.receivedQty}</td>
-                              <td className="px-3 py-3">
-                                <input type="number" min={0} value={item.inventoryQty} onChange={(e) => updateItem(index, { inventoryQty: e.target.value })} className="h-11 w-full rounded-xl border-2 border-emerald-200 bg-white px-3 text-center text-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 font-black text-emerald-700" />
+                              <td className="px-3 py-3 text-center">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={item.inventoryQty}
+                                  onChange={(e) => updateItem(index, { inventoryQty: e.target.value })}
+                                  disabled={mode === 'view'}
+                                  className="w-24 text-center rounded-lg border-2 border-slate-200 px-2 py-1 font-black text-emerald-700 outline-none transition focus:border-emerald-500"
+                                />
                               </td>
                               <td className="px-3 py-3">
                                 <input type="text" value={formatMoney(item.unitPrice)} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-right text-sm font-medium text-slate-500 cursor-not-allowed" />
@@ -422,16 +470,48 @@ export function CreateStockInReceiptModal({
             </div>
 
             <div className="border-t border-slate-200 p-6 flex flex-col gap-3 bg-white">
-              <button type="submit" onClick={() => setStatus('DRAFT')} form="create-receipt-form" disabled={saving || loading || selectedStaffIds.length === 0} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-6 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
+            {mode !== 'view' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('DRAFT');
+                  setTimeout(() => {
+                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                    if (form) form.requestSubmit();
+                  }, 50);
+                }}
+                disabled={saving}
+                className="w-full inline-flex items-center justify-center rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
+              >
                 Lưu Nháp
               </button>
-              <button type="submit" onClick={() => setStatus('CREATED')} form="create-receipt-form" disabled={saving || loading || selectedStaffIds.length === 0} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60">
+            )}
+            
+            {mode !== 'view' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('CREATED');
+                  setTimeout(() => {
+                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                    if (form) form.requestSubmit();
+                  }, 50);
+                }}
+                disabled={saving}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a165] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b08e56] disabled:opacity-60"
+              >
                 <Clock3 className="h-4 w-4" />
-                {saving ? 'Đang xử lý...' : 'Tạo mới & Giao Việc'}
+                {mode === 'create' ? 'Tạo mới & Giao Việc' : 'Cập nhật & Giao Việc'}
               </button>
-              <button type="button" onClick={onClose} className="mt-2 w-full rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
-                Đóng
-              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              Đóng
+            </button>
             </div>
           </div>
         </div>
