@@ -415,10 +415,11 @@ function PurchaseOrdersPageContent() {
   const [deleteTarget, setDeleteTarget] = React.useState<PurchaseOrder | null>(null);
   const [scannedProducts, setScannedProducts] = React.useState<ScannedProduct[]>([]);
   const [receiveOpen, setReceiveOpen] = React.useState(false);
-  const [receiveRows, setReceiveRows] = React.useState<Array<{ detailId: string; label: string; qty: string }>>([]);
+  const [receiveRows, setReceiveRows] = React.useState<Array<{ detailId: string; label: string; sku: string; expectedQty: number; receivedQty: number; unitPrice: number; qty: string }>>([]);
   const [scannerOpen, setScannerOpen] = React.useState(false);
   const [activeDropdown, setActiveDropdown] = React.useState<string | null>(null);
 
+  const [receiptCode, setReceiptCode] = React.useState('');
   const [receiptDate, setReceiptDate] = React.useState(new Date().toISOString().slice(0, 16));
   const [stockInNote, setStockInNote] = React.useState('');
   const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
@@ -1128,6 +1129,7 @@ function PurchaseOrdersPageContent() {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
+          poNumber: receiptCode || undefined,
           status: status,
           receiptType: 'PURCHASE_GOODS',
           warehouseCode: form.warehouseCode || 'KHO-NVL',
@@ -1154,8 +1156,25 @@ function PurchaseOrdersPageContent() {
   };
 
   const openCreateStockIn = async (order: PurchaseOrder) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data.data || [];
+        const matching = list.filter((o: any) => o.sourcePurchaseOrderId === order.id || (o.sourcePurchaseOrderNo && o.sourcePurchaseOrderNo === order.poNumber));
+        if (matching.length > 0) {
+          if (!window.confirm(`Đơn mua hàng này đã có ${matching.length} lệnh nhập kho trước đó.\nBạn có chắc chắn muốn tạo thêm lệnh mới không?`)) {
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
     setSelectedId(order.id);
     setSelectedOrderDetails(null);
+    setReceiptCode('');
     setSaving(true);
     try {
       const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
@@ -1226,8 +1245,12 @@ function PurchaseOrdersPageContent() {
     setReceiveRows(
       (order.details || []).map((detail) => ({
         detailId: detail.id,
-        label: `${detail.product?.internalSku || '-'} · ${detail.product?.name || '-'}`,
-        qty: String(Math.max(detail.expectedQty - detail.receivedQty, 0)),
+        sku: detail.product?.internalSku || '-',
+        label: detail.product?.name || '-',
+        expectedQty: detail.expectedQty || 0,
+        receivedQty: detail.receivedQty || 0,
+        unitPrice: detail.unitPrice || 0,
+        qty: String(Math.max((detail.expectedQty || 0) - (detail.receivedQty || 0), 0)),
       })),
     );
     setReceiveOpen(true);
@@ -1568,7 +1591,8 @@ function PurchaseOrdersPageContent() {
                   </td>
                 </tr>
               ) : (
-                paginatedOrders.map((order, index) => (
+                <>
+                  {paginatedOrders.map((order, index) => (
                   <tr
                     key={order.id}
                     className="group border-b border-slate-200 transition hover:bg-cyan-50/50"
@@ -1710,7 +1734,14 @@ function PurchaseOrdersPageContent() {
                       </div>
                     </td>
                   </tr>
-                ))
+                ))}
+                {/* Spacer row to prevent overflow clipping of the dropdown */}
+                {activeDropdown && (
+                  <tr>
+                    <td colSpan={10} className="p-0" style={{ height: '220px' }}></td>
+                  </tr>
+                )}
+                </>
               )}
             </tbody>
           </table>
@@ -1807,10 +1838,7 @@ function PurchaseOrdersPageContent() {
               {selectedOrder && canCreateOrderRow(selectedOrder) && (
                 <button
                   type="button"
-                  onClick={() => {
-                    closeModal();
-                    navigate('/inbound/stock-in', { state: { sourcePurchaseOrderId: selectedOrder.id } });
-                  }}
+                  onClick={() => openCreateStockIn(selectedOrder)}
                   disabled={saving}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
                 >
@@ -1827,6 +1855,20 @@ function PurchaseOrdersPageContent() {
               <h3 className="text-lg font-black text-slate-900 mb-6">Tạo Lệnh Nhập Kho</h3>
               
               <div className="space-y-6 flex-1">
+                <div>
+                  <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <FileText className="h-4 w-4 text-cyan-600" />
+                    Mã lệnh nhập kho (Tùy chọn)
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptCode}
+                    onChange={(e) => setReceiptCode(e.target.value)}
+                    placeholder="Bỏ trống để tự động tạo..."
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
+                  />
+                </div>
+
                 <div>
                   <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
                     <Calendar className="h-4 w-4 text-cyan-600" />
@@ -1911,8 +1953,8 @@ function PurchaseOrdersPageContent() {
 
       {/* POPUP NHẬN HÀNG */}
       {receiveOpen && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-5xl rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Nhận hàng cho {selectedOrder.poNumber}</h3>
@@ -1924,22 +1966,44 @@ function PurchaseOrdersPageContent() {
             </div>
 
             <div className="max-h-[calc(92vh-140px)] overflow-y-auto px-6 py-5">
-              <div className="space-y-3">
-                {receiveRows.map((row, index) => (
-                  <div key={row.detailId} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-[1.8fr_0.6fr]">
-                    <div>
-                      <p className="text-sm font-black text-slate-900">{index + 1}. {row.label}</p>
-                      <p className="text-xs font-medium text-slate-500">Nhập số lượng muốn ghi nhận nhận kho.</p>
-                    </div>
-                    <input
-                      type="number"
-                      min={0}
-                      value={row.qty}
-                      onChange={(event) => setReceiveRows((current) => current.map((item) => (item.detailId === row.detailId ? { ...item, qty: event.target.value } : item)))}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                    />
-                  </div>
-                ))}
+              <div className="overflow-hidden rounded-xl border-2 border-slate-200">
+                <table className="w-full text-left text-sm text-slate-600 border-collapse">
+                  <thead className="bg-slate-50 uppercase text-slate-500 border-b-2 border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 font-black text-center w-12 border-r-2 border-slate-200">STT</th>
+                      <th className="px-4 py-3 font-black border-r-2 border-slate-200">Sản phẩm</th>
+                      <th className="px-4 py-3 font-black text-center w-28 border-r-2 border-slate-200">SL Đặt</th>
+                      <th className="px-4 py-3 font-black text-center w-28 border-r-2 border-slate-200">Đã nhận</th>
+                      <th className="px-4 py-3 font-black text-right w-40 border-r-2 border-slate-200">Đơn giá</th>
+                      <th className="px-4 py-3 font-black text-center w-40">Nhận đợt này</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y-2 divide-slate-200">
+                    {receiveRows.map((row, index) => (
+                      <tr key={row.detailId} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 text-center font-bold text-slate-400 border-r-2 border-slate-200">{index + 1}</td>
+                        <td className="px-4 py-3 border-r-2 border-slate-200">
+                          <p className="font-bold text-slate-900 line-clamp-2" title={row.label}>{row.label}</p>
+                          <p className="text-xs font-semibold text-slate-500 mt-0.5">{row.sku}</p>
+                        </td>
+                        <td className="px-4 py-3 text-center font-bold text-slate-700 border-r-2 border-slate-200">{Number(row.expectedQty) || 0}</td>
+                        <td className="px-4 py-3 text-center font-bold text-emerald-600 border-r-2 border-slate-200">{Number(row.receivedQty) || 0}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-600 border-r-2 border-slate-200">
+                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(row.unitPrice) || 0)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min={0}
+                            value={row.qty}
+                            onChange={(event) => setReceiveRows((current) => current.map((item) => (item.detailId === row.detailId ? { ...item, qty: event.target.value } : item)))}
+                            className="h-10 w-full rounded-xl border-2 border-slate-200 px-3 text-center text-sm font-bold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 

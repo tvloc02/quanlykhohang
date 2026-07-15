@@ -552,10 +552,10 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                         {number}
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
-                        {receipt.poNumber || (receipt as any).receiptNo || '-'}
+                        {(receipt as any).poNumber || (receipt as any).receiptNo || '-'}
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
-                        {formatDateTime(receipt.orderDate || inferOrderDate(receipt)?.toISOString())}
+                        {formatDateTime((receipt as any).orderDate || inferOrderDate(receipt)?.toISOString())}
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
                         {supplierLabel(receipt)}
