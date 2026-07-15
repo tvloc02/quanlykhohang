@@ -91,6 +91,38 @@ export class ProductsService {
     });
   }
 
+  async findAllWithBalances() {
+    const products = await this.productRepo.find({
+      relations: ['category', 'supplier'],
+    });
+
+    const balances = await this.balanceRepo.find({
+      relations: ['product'],
+    });
+
+    return products.map((product) => {
+      const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
+      return {
+        id: product.id,
+        internalSku: product.internalSku,
+        supplierBarcode: product.supplierBarcode,
+        name: product.name,
+        unit: product.unit,
+        minimumStock: product.minimumStock,
+        category: product.category ? { id: product.category.id, name: product.category.name } : null,
+        supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
+        stockBalances: productBalances.map((b) => ({
+          id: b.id,
+          locationCode: b.locationCode,
+          totalPhysical: b.totalPhysical,
+          allocated: b.allocated,
+          available: b.available,
+        })),
+        totalStock: productBalances.reduce((sum, b) => sum + b.available, 0),
+      };
+    });
+  }
+
   async findOne(id: string) {
     const p = await this.productRepo.findOne({
       where: { id, supplier: IsNull() },

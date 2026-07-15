@@ -17,6 +17,11 @@ export class ProductsController {
     return this.service.findAll();
   }
 
+  @Get('with-balances')
+  async findAllWithBalances() {
+    return this.service.findAllWithBalances();
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.service.findOne(id);
