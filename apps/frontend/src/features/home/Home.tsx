@@ -132,6 +132,7 @@ export default function Home() {
                         </h1>
                     </div>
                     <div className="hidden md:flex gap-6 items-center">
+                        <span onClick={() => navigate('/shop')} className="text-sm font-medium text-slate-600 hover:text-cyan-600 transition cursor-pointer">Bán hàng</span>
                         <a href="#" className="text-sm font-medium text-slate-600 hover:text-cyan-600 transition">Giải pháp</a>
                         <a href="#" className="text-sm font-medium text-slate-600 hover:text-cyan-600 transition">Tính năng</a>
                         <a href="#" className="text-sm font-medium text-slate-600 hover:text-cyan-600 transition">Tài liệu API</a>

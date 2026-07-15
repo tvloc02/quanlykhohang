@@ -47,24 +47,26 @@ interface SidebarProps {
 
 const menuItems = [
   { icon: Home, label: 'Trang chủ', path: '/dashboard', badge: null },
-  { icon: Layers, label: 'Danh mục', path: '/categories', badge: null },
+  { icon: Layers, label: 'Danh mục', path: '/categories', badge: null, allowedRoles: ['manager', 'staff'] },
   {
     icon: Package,
     label: 'Sản phẩm',
     path: '/products',
     badge: null,
+    allowedRoles: ['manager', 'staff'],
     children: [
       { icon: Package, label: 'Sản phẩm chính', path: '/products/main' },
       { icon: Truck, label: 'Sản phẩm NCC', path: '/products/supplier' },
     ],
   },
-  { icon: BarChart3, label: 'Báo cáo', path: '/reports', badge: null },
-  { icon: ScanLine, label: 'Quét mã vạch', path: '/scanner', badge: null },
+  { icon: BarChart3, label: 'Báo cáo', path: '/reports', badge: null, allowedRoles: ['manager', 'staff'] },
+  { icon: ScanLine, label: 'Quét mã vạch', path: '/scanner', badge: null, allowedRoles: ['manager', 'staff'] },
   {
     icon: TrendingDown,
     label: 'Nhập kho',
     path: '/inbound',
     badge: null,
+    allowedRoles: ['manager', 'staff'],
     children: [
       { icon: FileText, label: 'Đơn mua hàng', path: '/inbound/purchase-orders' },
       { icon: ClipboardList, label: 'Đề nghị nhập kho hàng trả lại', path: '/inbound/return-requests' },
@@ -77,6 +79,7 @@ const menuItems = [
     label: 'Phân phối',
     path: '/inbound/production',
     badge: null,
+    allowedRoles: ['manager', 'staff'],
     children: [
       { icon: Package, label: 'Sản xuất', path: '/inbound/production' },
       { icon: Truck, label: 'Phân phối', path: '/inbound/distribution' },
@@ -87,6 +90,7 @@ const menuItems = [
     label: 'Xuất kho',
     path: '/outbound',
     badge: null,
+    allowedRoles: ['manager', 'staff'],
     children: [
       { icon: FileText, label: 'Đơn đặt hàng', path: '/outbound/orders' },
       { icon: ClipboardList, label: 'Phân công công việc', path: '/outbound/task-assign' },
@@ -99,6 +103,7 @@ const menuItems = [
     label: 'Điều chuyển',
     path: '/delivery',
     badge: null,
+    allowedRoles: ['manager', 'staff'],
     children: [
       { icon: FileText, label: 'Yêu cầu điều chuyển', path: '/delivery/transfer-requests' },
       { icon: ClipboardList, label: 'Lập phiếu điều chuyển', path: '/delivery/create-transfer-order' },
@@ -110,6 +115,7 @@ const menuItems = [
     label: 'Tồn kho',
     path: '/inventory',
     badge: null,
+    allowedRoles: ['manager', 'staff'],
     children: [
       { icon: Archive, label: 'Tồn kho hiện tại', path: '/inventory' },
     ],
@@ -119,26 +125,29 @@ const menuItems = [
     label: 'Kiểm kê',
     path: '/inventory/stocktake',
     badge: null,
+    allowedRoles: ['manager', 'staff'],
     children: [
       { icon: ClipboardList, label: 'Yêu cầu kiểm kê', path: '/inventory/stocktake/requests' },
       { icon: FileText, label: 'Lập phiếu kiểm kê', path: '/inventory/stocktake/create' },
       { icon: Package, label: 'Kiểm kê', path: '/inventory/stocktake' },
     ],
   },
-  { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null },
-  { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null },
-  { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null },
+  { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null, allowedRoles: ['manager', 'staff'] },
+  { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null, allowedRoles: ['admin'] },
+  { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null, allowedRoles: ['manager', 'staff'] },
   {
     icon: Settings,
     label: 'Cài đặt',
     path: '/settings',
     badge: null,
+    allowedRoles: ['admin'],
     children: [
       { icon: Mail, label: 'Cấu hình mail', path: '/settings/mail' },
       { icon: Cpu, label: 'Cấu hình AI', path: '/settings/ai' },
+      { icon: Package, label: 'Cấu hình bán hàng', path: '/settings/store' },
     ],
   },
-  { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null, allowedRoles: ['admin', 'manager'] },
+  { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null, allowedRoles: ['admin'] },
 ];
 
 function getStoredUserRole() {
