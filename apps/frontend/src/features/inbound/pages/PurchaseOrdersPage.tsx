@@ -1291,6 +1291,14 @@ function PurchaseOrdersPageContent() {
       setToast({ type: 'success', message: 'Đã cập nhật số lượng nhận hàng.' });
       setReceiveOpen(false);
       await loadData();
+      if (selectedId) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${selectedId}`, { headers: authHeaders() });
+          if (res.ok) setSelectedOrderDetails(await res.json());
+        } catch (e) {
+          console.error(e);
+        }
+      }
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi nhận hàng' });
     } finally {
