@@ -17,7 +17,7 @@ import {
 } from '../../shared/utils/catalogCategories';
 import { getStoredWarehouses } from '../../shared/utils/warehouseAssignments';
 
-// Tích hợp Toast nội bộ để không bị lỗi import
+// TĂ­ch há»£p Toast ná»™i bá»™ Ä‘á»ƒ khĂ´ng bá»‹ lá»—i import
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
   React.useEffect(() => {
     if (message) {
@@ -191,7 +191,7 @@ export default function Products() {
       const response = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách sản phẩm');
+        throw new Error(data?.message || 'KhĂ´ng táº£i Ä‘Æ°á»£c danh sĂ¡ch sáº£n pháº©m');
       }
 
       const data = (await response.json()) as RawProduct[];
@@ -339,7 +339,7 @@ export default function Products() {
 
     setProducts(nextProducts);
     saveStoredProducts(nextProducts);
-    setSuccess(isEdit ? 'Đã cập nhật sản phẩm.' : 'Đã thêm sản phẩm mới.');
+    setSuccess(isEdit ? 'ÄĂ£ cáº­p nháº­t sáº£n pháº©m.' : 'ÄĂ£ thĂªm sáº£n pháº©m má»›i.');
     closeModal();
   };
 
@@ -356,12 +356,12 @@ export default function Products() {
       form.price === '' ||
       form.stock === ''
     ) {
-      setError('Vui lòng nhập đầy đủ các trường bắt buộc.');
+      setError('Vui lĂ²ng nháº­p Ä‘áº§y Ä‘á»§ cĂ¡c trÆ°á»ng báº¯t buá»™c.');
       return;
     }
 
     if (categoryOptions.length === 0) {
-      setError('Vui lòng tạo danh mục loại "Nhóm hàng vật tư hàng hóa" trước khi thêm sản phẩm.');
+      setError('Vui lĂ²ng táº¡o danh má»¥c loáº¡i "NhĂ³m hĂ ng váº­t tÆ° hĂ ng hĂ³a" trÆ°á»›c khi thĂªm sáº£n pháº©m.');
       return;
     }
 
@@ -394,7 +394,7 @@ export default function Products() {
         return;
       }
 
-      setSuccess(isEdit ? 'Đã cập nhật sản phẩm.' : 'Đã thêm sản phẩm mới.');
+      setSuccess(isEdit ? 'ÄĂ£ cáº­p nháº­t sáº£n pháº©m.' : 'ÄĂ£ thĂªm sáº£n pháº©m má»›i.');
       closeModal();
       await loadData();
     } catch (err) {
@@ -419,19 +419,19 @@ export default function Products() {
         const nextProducts = products.filter((product) => product.id !== selectedProduct.id);
         setProducts(nextProducts);
         saveStoredProducts(nextProducts);
-        setSuccess('Đã xóa sản phẩm.');
+        setSuccess('ÄĂ£ xĂ³a sáº£n pháº©m.');
         closeModal();
         return;
       }
 
-      setSuccess('Đã xóa sản phẩm.');
+      setSuccess('ÄĂ£ xĂ³a sáº£n pháº©m.');
       closeModal();
       await loadData();
     } catch (err) {
       const nextProducts = products.filter((product) => product.id !== selectedProduct.id);
       setProducts(nextProducts);
       saveStoredProducts(nextProducts);
-      setSuccess('Đã xóa sản phẩm.');
+      setSuccess('ÄĂ£ xĂ³a sáº£n pháº©m.');
       closeModal();
     } finally {
       setSaving(false);
@@ -440,12 +440,12 @@ export default function Products() {
 
   const modalTitle =
     modalMode === 'create'
-      ? 'Thêm sản phẩm'
+      ? 'ThĂªm sáº£n pháº©m'
       : modalMode === 'view'
-        ? 'Chi tiết sản phẩm'
+        ? 'Chi tiáº¿t sáº£n pháº©m'
         : modalMode === 'edit'
-          ? 'Sửa sản phẩm'
-          : 'Xóa sản phẩm';
+          ? 'Sá»­a sáº£n pháº©m'
+          : 'XĂ³a sáº£n pháº©m';
 
   return (
     <div>
@@ -460,9 +460,9 @@ export default function Products() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Quản lý sản phẩm</h1>
+          <h1 className="text-2xl font-black text-slate-900">Quáº£n lĂ½ sáº£n pháº©m</h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Quản lý danh sách sản phẩm, giá bán và tồn kho.
+            Quáº£n lĂ½ danh sĂ¡ch sáº£n pháº©m, giĂ¡ bĂ¡n vĂ  tá»“n kho.
           </p>
         </div>
 
@@ -472,7 +472,7 @@ export default function Products() {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Thêm sản phẩm
+          ThĂªm sáº£n pháº©m
         </button>
       </div>
 
@@ -484,36 +484,36 @@ export default function Products() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-            placeholder="Tìm kiếm sản phẩm theo tên, SKU, danh mục..."
+            placeholder="TĂ¬m kiáº¿m sáº£n pháº©m theo tĂªn, SKU, danh má»¥c..."
           />
         </div>
         <div className="flex justify-start xl:justify-end">
           <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
             <Filter size={18} className="text-slate-500" />
-            Lọc
+            Lá»c
           </button>
         </div>
       </div>
 
-      {/* Wrapper chứa bảng + phân trang dính liền nhau */}
+      {/* Wrapper chá»©a báº£ng + phĂ¢n trang dĂ­nh liá»n nhau */}
       <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1560px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b-2 border-slate-200">
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã hàng (SKU)</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên hàng hóa</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">ĐVT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhóm hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Kho ngầm định</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Vị trí</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Thuộc tính quản lý</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Giá</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tồn kho</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">MĂ£ hĂ ng (SKU)</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">TĂªn hĂ ng hĂ³a</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">ÄVT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">NhĂ³m hĂ ng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Kho ngáº§m Ä‘á»‹nh</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Vá»‹ trĂ­</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Thuá»™c tĂ­nh quáº£n lĂ½</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">NhĂ  cung cáº¥p</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">GiĂ¡</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tá»“n kho</th>
                 <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
-                  Thao tác
+                  Thao tĂ¡c
                 </th>
               </tr>
             </thead>
@@ -521,13 +521,13 @@ export default function Products() {
               {loading ? (
                 <tr>
                   <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Đang tải dữ liệu sản phẩm...
+                    Äang táº£i dá»¯ liá»‡u sáº£n pháº©m...
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
                   <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có sản phẩm phù hợp.
+                    ChÆ°a cĂ³ sáº£n pháº©m phĂ¹ há»£p.
                   </td>
                 </tr>
               ) : (
@@ -561,7 +561,7 @@ export default function Products() {
                       {product.supplier || '-'}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-800">
-                      {product.price.toLocaleString('vi-VN')} ₫
+                      {product.price.toLocaleString('vi-VN')} â‚«
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span className="inline-flex rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
@@ -573,8 +573,8 @@ export default function Products() {
                         <button
                           type="button"
                           className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          aria-label="Xem chi tiết"
-                          title="Xem chi tiết"
+                          aria-label="Xem chi tiáº¿t"
+                          title="Xem chi tiáº¿t"
                           onClick={() => openProductModal('view', product)}
                         >
                           <Eye size={18} strokeWidth={2} />
@@ -582,8 +582,8 @@ export default function Products() {
                         <button
                           type="button"
                           className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          aria-label="Sửa sản phẩm"
-                          title="Sửa sản phẩm"
+                          aria-label="Sá»­a sáº£n pháº©m"
+                          title="Sá»­a sáº£n pháº©m"
                           onClick={() => openProductModal('edit', product)}
                         >
                           <Pencil size={18} strokeWidth={2} />
@@ -591,8 +591,8 @@ export default function Products() {
                         <button
                           type="button"
                           className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          aria-label="Xóa sản phẩm"
-                          title="Xóa sản phẩm"
+                          aria-label="XĂ³a sáº£n pháº©m"
+                          title="XĂ³a sáº£n pháº©m"
                           onClick={() => openProductModal('delete', product)}
                         >
                           <Trash2 size={18} strokeWidth={2} />
@@ -606,11 +606,11 @@ export default function Products() {
           </table>
         </div>
 
-        {/* Phân trang */}
+        {/* PhĂ¢n trang */}
         {!loading && totalItems > 0 && (
           <div className="flex flex-col items-center justify-between border-t border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
             <div className="text-sm text-slate-600">
-              Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
+              Tá»•ng sá»‘: <b>{totalItems}</b> <span className="ml-2">Hiá»ƒn thá»‹ {startIndex} - {endIndex}</span>
             </div>
             <div className="mt-4 flex items-center gap-2 sm:mt-0">
               <select
@@ -633,14 +633,14 @@ export default function Products() {
                   disabled={currentPage === 1}
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  «
+                  Â«
                 </button>
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  ‹
+                  â€¹
                 </button>
                 <button className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-600 text-sm font-bold text-white">
                   {currentPage}
@@ -650,14 +650,14 @@ export default function Products() {
                   disabled={currentPage === totalPages}
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  ›
+                  â€º
                 </button>
                 <button
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={currentPage === totalPages}
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
                 >
-                  »
+                  Â»
                 </button>
               </div>
             </div>
@@ -668,7 +668,7 @@ export default function Products() {
       {/* Modals */}
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
-          <div className="w-full max-w-5xl rounded-2xl bg-white shadow-2xl">
+          <div className="w-full max-w-6xl rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="rounded-xl bg-cyan-50 p-2 text-cyan-600">
@@ -677,7 +677,7 @@ export default function Products() {
                 <div>
                   <h2 className="text-xl font-black text-slate-800">{modalTitle}</h2>
                   <p className="text-sm font-medium text-slate-500">
-                    {modalMode === 'view' ? 'Thông tin chỉ xem' : 'Khai báo SKU, ĐVT, nhóm hàng, kho, vị trí và thuộc tính quản lý'}
+                    {modalMode === 'view' ? 'ThĂ´ng tin sáº£n pháº©m chi tiáº¿t' : 'Khai bĂ¡o thĂ´ng tin sáº£n pháº©m vĂ  phĂ¢n bá»• kho'}
                   </p>
                 </div>
               </div>
@@ -689,13 +689,13 @@ export default function Products() {
             {modalMode === 'delete' ? (
               <div className="px-6 py-5">
                 <p className="text-base text-slate-700">
-                  Bạn có chắc muốn xóa sản phẩm{' '}
-                  <span className="font-black text-slate-950">{selectedProduct?.name}</span> (SKU: {selectedProduct?.sku}) không?
+                  Báº¡n cĂ³ cháº¯c muá»‘n xĂ³a sáº£n pháº©m{' '}
+                  <span className="font-black text-slate-950">{selectedProduct?.name}</span> (SKU: {selectedProduct?.sku}) khĂ´ng?
                 </p>
-                <p className="mt-2 text-sm text-red-500 font-medium">Hành động này không thể hoàn tác.</p>
+                <p className="mt-2 text-sm text-red-500 font-medium">HĂ nh Ä‘á»™ng nĂ y khĂ´ng thá»ƒ hoĂ n tĂ¡c.</p>
                 <div className="mt-8 flex justify-end gap-3">
                   <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
-                    Hủy
+                    Há»§y
                   </button>
                   <button 
                     type="button" 
@@ -703,215 +703,129 @@ export default function Products() {
                     disabled={saving}
                     className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
                   >
-                    {saving ? 'Đang xóa...' : 'Xóa sản phẩm'}
+                    {saving ? 'Äang xĂ³a...' : 'XĂ³a sáº£n pháº©m'}
                   </button>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="px-6 py-5">
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  {/* Cột trái: Thông tin cơ bản */}
-                  <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h3 className="text-base font-black text-slate-800 border-b-2 border-slate-100 pb-3">Thông tin cơ bản</h3>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="col-span-2">
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Tên hàng hóa <span className="text-red-500">*</span></label>
-                        <input
-                          value={form.name}
-                          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                          readOnly={modalMode === 'view'}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                          placeholder="Nhập tên sản phẩm..."
-                          required
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Mã hàng (SKU) <span className="text-red-500">*</span></label>
-                        <input
-                          value={form.sku}
-                          onChange={(event) => setForm((current) => ({ ...current, sku: event.target.value }))}
-                          readOnly={modalMode === 'view'}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                          placeholder="Nhập mã sản phẩm..."
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Giá bán (₫) <span className="text-red-500">*</span></label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={form.price}
-                          onChange={(event) => setForm((current) => ({ ...current, price: event.target.value ? Number(event.target.value) : '' }))}
-                          readOnly={modalMode === 'view'}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                          placeholder="0"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Nhóm hàng <span className="text-red-500">*</span></label>
-                        <select
-                          value={form.category}
-                          onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                          disabled={modalMode === 'view' || productCategoryOptions.length === 0}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                          required
-                        >
-                          {productCategoryOptions.length === 0 ? (
-                            <option value="">Chưa có danh mục</option>
-                          ) : (
-                            productCategoryOptions.map((category) => (
-                              <option key={category.value} value={category.value}>{category.label}</option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Đơn vị tính (ĐVT) <span className="text-red-500">*</span></label>
-                        <select
-                          value={form.unit}
-                          onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
-                          disabled={modalMode === 'view' || productUnitOptions.length === 0}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                          required
-                        >
-                          {productUnitOptions.length === 0 ? (
-                            <option value="">Chưa có danh mục</option>
-                          ) : (
-                            productUnitOptions.map((unit) => (
-                              <option key={unit.value} value={unit.value}>{unit.label}</option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Thuộc tính <span className="text-red-500">*</span></label>
-                        <select
-                          value={form.managementType}
-                          onChange={(event) => setForm((current) => ({ ...current, managementType: event.target.value }))}
-                          disabled={modalMode === 'view' || productManagementTypeOptions.length === 0}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                          required
-                        >
-                          {productManagementTypeOptions.length === 0 ? (
-                            <option value="">Chưa có danh mục</option>
-                          ) : (
-                            productManagementTypeOptions.map((type) => (
-                              <option key={type.value} value={type.value}>{type.label}</option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Nhà cung cấp</label>
-                        <input
-                          value={form.supplier}
-                          onChange={(event) => setForm((current) => ({ ...current, supplier: event.target.value }))}
-                          readOnly={modalMode === 'view'}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                          placeholder="Nhập nhà cung cấp..."
-                        />
-                      </div>
+              <form onSubmit={handleSubmit}>
+                <div className="flex divide-x divide-slate-100">
+                  {/* === TRĂI: ThĂ´ng tin sáº£n pháº©m === */}
+                  <div className="w-64 shrink-0 space-y-4 p-5">
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-400">ThĂ´ng tin sáº£n pháº©m</p>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">MĂ£ sáº£n pháº©m <span className="text-red-500">*</span></label>
+                      <input value={form.sku} onChange={(e) => setForm((c) => ({ ...c, sku: e.target.value }))} readOnly={modalMode === 'view'} className="h-9 w-full rounded-lg border-2 border-slate-200 px-3 text-sm uppercase outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="VD: SP001" required />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">TĂªn sáº£n pháº©m <span className="text-red-500">*</span></label>
+                      <input value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} readOnly={modalMode === 'view'} className="h-9 w-full rounded-lg border-2 border-slate-200 px-3 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="Nháº­p tĂªn sáº£n pháº©m..." required />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Danh má»¥c</label>
+                      <select value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} disabled={modalMode === 'view' || productCategoryOptions.length === 0} className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 disabled:bg-slate-50">
+                        {productCategoryOptions.length === 0 ? <option value="">ChÆ°a cĂ³ danh má»¥c</option> : productCategoryOptions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Giá»›i thiá»‡u</label>
+                      <textarea value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} readOnly={modalMode === 'view'} rows={4} className="w-full resize-none rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="MĂ´ táº£ ngáº¯n..." />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">GiĂ¡ bĂ¡n (â‚«) <span className="text-red-500">*</span></label>
+                      <input type="number" min="0" value={form.price} onChange={(e) => setForm((c) => ({ ...c, price: e.target.value ? Number(e.target.value) : '' }))} readOnly={modalMode === 'view'} className="h-9 w-full rounded-lg border-2 border-slate-200 px-3 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="0" required />
                     </div>
                   </div>
 
-                  {/* Cột phải: Lưu trữ & Thống kê */}
-                  <div className="space-y-5 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
-                    <h3 className="text-base font-black text-slate-800 border-b-2 border-slate-200 pb-3">Lưu trữ & Thống kê</h3>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Kho ngầm định <span className="text-red-500">*</span></label>
-                        <select
-                          value={form.defaultWarehouse}
-                          onChange={(event) => setForm((current) => ({ ...current, defaultWarehouse: event.target.value }))}
-                          disabled={modalMode === 'view' || warehouseOptions.length === 0}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-100"
-                          required
-                        >
-                          {warehouseOptions.length === 0 ? (
-                            <option value="">Chưa có kho hàng</option>
-                          ) : (
-                            warehouseOptions.map((warehouse) => (
-                              <option key={warehouse.value} value={warehouse.value}>{warehouse.label}</option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Vị trí lưu trữ <span className="text-red-500">*</span></label>
-                        <select
-                          value={form.location}
-                          onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
-                          disabled={modalMode === 'view' || productLocationOptions.length === 0}
-                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-100"
-                          required
-                        >
-                          {productLocationOptions.length === 0 ? (
-                            <option value="">Chưa có vị trí</option>
-                          ) : (
-                            productLocationOptions.map((location) => (
-                              <option key={location.value} value={location.value}>{location.label}</option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-
-                      <div className="col-span-2">
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Số lượng tồn ban đầu (nhập kho) <span className="text-red-500">*</span></label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={form.stock}
-                          onChange={(event) => setForm((current) => ({ ...current, stock: event.target.value ? Number(event.target.value) : '' }))}
-                          readOnly={modalMode === 'view'}
-                          className="h-11 w-full rounded-xl border-2 border-cyan-400 bg-cyan-50 px-4 font-bold text-cyan-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/20 read-only:bg-slate-100 read-only:border-slate-200 read-only:text-slate-700"
-                          placeholder="0"
-                          required
-                        />
-                      </div>
+                  {/* === PHáº¢I: Ma tráº­n kho Ă— thuá»™c tĂ­nh === */}
+                  <div className="min-w-0 flex-1 p-5">
+                    <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-400">PhĂ¢n bá»• theo kho</p>
+                    <div className="overflow-auto rounded-xl border border-slate-200">
+                      <table className="w-full border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200">
+                            <th className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-left font-black text-slate-600 border-r border-slate-200 min-w-[130px]">Kho</th>
+                            <th className="px-3 py-2 text-center font-black text-slate-600 border-r border-slate-200 min-w-[80px]">ÄVT</th>
+                            <th className="px-3 py-2 text-center font-black text-cyan-700 bg-cyan-50/70 border-r border-slate-200 min-w-[85px]">Tá»“n kho</th>
+                            <th className="px-3 py-2 text-center font-black text-slate-500 border-r border-slate-200 min-w-[75px]">ÄĂ£ bĂ¡n</th>
+                            <th className="px-3 py-2 text-center font-black text-emerald-700 bg-emerald-50/70 border-r border-slate-200 min-w-[70px]">Nháº­p (+)</th>
+                            <th className="px-3 py-2 text-center font-black text-red-600 bg-red-50/70 border-r border-slate-200 min-w-[70px]">Xuáº¥t (âˆ’)</th>
+                            <th className="px-3 py-2 text-center font-black text-slate-600 border-r border-slate-200 min-w-[90px]">Vá»‹ trĂ­</th>
+                            <th className="px-3 py-2 text-center font-black text-slate-600 min-w-[90px]">Ngáº§m Ä‘á»‹nh</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {warehouses.length === 0 ? (
+                            <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">ChÆ°a cĂ³ kho nĂ o.</td></tr>
+                          ) : warehouses.map((wh) => {
+                            const isDef = form.defaultWarehouse === wh.name;
+                            return (
+                              <tr key={wh.id || wh.name} className={`border-b border-slate-100 transition hover:bg-slate-50/80 ${isDef ? 'bg-cyan-50/50' : ''}`}>
+                                <td className="sticky left-0 z-10 bg-inherit border-r border-slate-100 px-3 py-2">
+                                  <div className="flex items-center gap-1.5">
+                                    {isDef && <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 shrink-0" />}
+                                    <span className="font-semibold text-slate-700">{wh.name}</span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400">{wh.code}</span>
+                                </td>
+                                <td className="border-r border-slate-100 px-2 py-1.5 text-center">
+                                  <select value={isDef ? form.unit : ''} onChange={(e) => isDef && setForm((c) => ({ ...c, unit: e.target.value }))} disabled={!isDef || modalMode === 'view'} className="w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-xs outline-none focus:border-cyan-400 disabled:bg-transparent disabled:border-transparent disabled:text-slate-300 text-center">
+                                    {productUnitOptions.length === 0 ? <option value="">-</option> : productUnitOptions.map((u) => <option key={u.value} value={u.value}>{u.value}</option>)}
+                                  </select>
+                                </td>
+                                <td className="border-r border-slate-100 bg-cyan-50/30 px-2 py-1.5 text-center">
+                                  {isDef ? (
+                                    <input type="number" min="0" value={form.stock} onChange={(e) => setForm((c) => ({ ...c, stock: e.target.value ? Number(e.target.value) : '' }))} readOnly={modalMode === 'view'} className="w-full rounded border border-cyan-300 bg-white px-1 py-0.5 text-center text-xs font-bold text-cyan-800 outline-none focus:border-cyan-500 read-only:border-transparent read-only:bg-transparent" placeholder="0" required />
+                                  ) : <span className="text-slate-300">â€”</span>}
+                                </td>
+                                <td className="border-r border-slate-100 px-2 py-1.5 text-center text-slate-300">â€”</td>
+                                <td className="border-r border-slate-100 bg-emerald-50/30 px-2 py-1.5 text-center text-emerald-500 font-semibold">â€”</td>
+                                <td className="border-r border-slate-100 bg-red-50/30 px-2 py-1.5 text-center text-red-400 font-semibold">â€”</td>
+                                <td className="border-r border-slate-100 px-2 py-1.5 text-center">
+                                  <select value={isDef ? form.location : ''} onChange={(e) => isDef && setForm((c) => ({ ...c, location: e.target.value }))} disabled={!isDef || modalMode === 'view'} className="w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-xs outline-none focus:border-cyan-400 disabled:bg-transparent disabled:border-transparent disabled:text-slate-300 text-center">
+                                    {productLocationOptions.length === 0 ? <option value="">-</option> : productLocationOptions.map((l) => <option key={l.value} value={l.value}>{l.value}</option>)}
+                                  </select>
+                                </td>
+                                <td className="px-2 py-1.5 text-center">
+                                  {modalMode !== 'view' ? (
+                                    <button type="button" onClick={() => setForm((c) => ({ ...c, defaultWarehouse: wh.name }))} className={`mx-auto flex h-5 w-5 items-center justify-center rounded-full border-2 transition ${isDef ? 'border-cyan-500 bg-cyan-500' : 'border-slate-300 hover:border-cyan-400'}`}>
+                                      {isDef && <span className="h-2 w-2 rounded-full bg-white" />}
+                                    </button>
+                                  ) : isDef ? (
+                                    <span className="mx-auto flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500"><span className="h-2 w-2 rounded-full bg-white" /></span>
+                                  ) : <span className="text-slate-300">â€”</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-slate-50 border-t-2 border-slate-200">
+                            <td className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-xs font-black text-slate-600 border-r border-slate-200">Tá»•ng</td>
+                            <td className="border-r border-slate-200 px-2 py-2" />
+                            <td className="border-r border-slate-200 bg-cyan-50 px-2 py-2 text-center text-xs font-black text-cyan-700">{Number(form.stock) || 0}</td>
+                            <td className="border-r border-slate-200 px-2 py-2 text-center text-xs font-bold text-slate-400">0</td>
+                            <td className="border-r border-slate-200 px-2 py-2" />
+                            <td className="border-r border-slate-200 px-2 py-2" />
+                            <td className="border-r border-slate-200 px-2 py-2" />
+                            <td className="px-2 py-2" />
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-                        <p className="text-xs font-bold uppercase text-slate-500">Tổng số lượng tồn</p>
-                        <p className="mt-1 text-2xl font-black text-slate-800">{form.stock || 0}</p>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
-                        <p className="text-xs font-bold uppercase text-slate-500">Đã bán</p>
-                        <p className="mt-1 text-2xl font-black text-slate-800">0</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 space-y-3">
-                      <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                        <span className="text-sm font-bold text-emerald-800">Lần nhập kho gần nhất (+)</span>
-                        <span className="text-sm font-bold text-emerald-600">-</span>
-                      </div>
-                      <div className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                        <span className="text-sm font-bold text-red-800">Lần xuất kho gần nhất (-)</span>
-                        <span className="text-sm font-bold text-red-600">-</span>
-                      </div>
-                      <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                        <span className="text-sm font-bold text-amber-800">Lần luân chuyển gần nhất (±)</span>
-                        <span className="text-sm font-bold text-amber-600">-</span>
-                      </div>
+                    <div className="mt-4">
+                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Thuá»™c tĂ­nh quáº£n lĂ½</label>
+                      <select value={form.managementType} onChange={(e) => setForm((c) => ({ ...c, managementType: e.target.value }))} disabled={modalMode === 'view' || productManagementTypeOptions.length === 0} className="h-9 w-full max-w-xs rounded-lg border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 disabled:bg-slate-50">
+                        {productManagementTypeOptions.length === 0 ? <option value="">ChÆ°a cĂ³ danh má»¥c</option> : productManagementTypeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
                     </div>
                   </div>
+
                 </div>
 
-                <div className="mt-8 flex justify-end gap-3 border-t-2 border-slate-100 pt-5">
+                <div className="flex justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
                   <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
-                    {modalMode === 'view' ? 'Đóng' : 'Hủy bỏ'}
+                    {modalMode === 'view' ? 'ÄĂ³ng' : 'Há»§y bá»'}
                   </button>
                   {modalMode !== 'view' && (
                     <button 
@@ -919,7 +833,7 @@ export default function Products() {
                       disabled={saving}
                       className="rounded-xl bg-cyan-600 px-8 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                     >
-                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo sản phẩm' : 'Lưu thay đổi'}
+                      {saving ? 'Äang lÆ°u...' : modalMode === 'create' ? 'Táº¡o sáº£n pháº©m' : 'LÆ°u thay Ä‘á»•i'}
                     </button>
                   )}
                 </div>
