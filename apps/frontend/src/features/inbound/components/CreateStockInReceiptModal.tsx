@@ -361,47 +361,40 @@ export function CreateStockInReceiptModal({
                       <table className="w-full min-w-[800px] bg-white">
                         <thead className="bg-slate-50">
                           <tr className="border-b border-slate-200">
-                            <th className="w-10 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">STT</th>
-                            <th className="w-[30%] px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Mặt hàng</th>
-                            <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL yêu cầu</th>
-                            <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL đã nhận</th>
-                            <th className="w-28 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL kiểm kê</th>
-                            <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-indigo-700 bg-indigo-50/50">Sau kiểm kê (Tổng)</th>
-                            <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Đơn giá</th>
-                            <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Thành tiền</th>
+                            <th className="w-10 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">STT</th>
+                            <th className="w-[30%] border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Mặt hàng</th>
+                            <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL yêu cầu</th>
+                            <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL đã nhận</th>
+                            <th className="w-28 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL kiểm kê</th>
+                            <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-indigo-700 bg-indigo-50/50">Sau kiểm kê (Tổng)</th>
+                            <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Đơn giá</th>
+                            <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Thành tiền</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 bg-white">
                           {items.map((item, index) => (
                             <tr key={item.id || index} className="hover:bg-slate-50 transition">
-                              <td className="px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
-                              <td className="px-3 py-3">
+                              <td className="border border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
+                              <td className="border border-slate-200 px-3 py-3">
                                 <p className="font-bold text-slate-900">{item.product?.internalSku}</p>
                                 <p className="text-sm text-slate-600">{item.product?.name}</p>
                               </td>
-                              <td className="px-3 py-3">
-                                <input type="number" min={0} value={item.expectedQty} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-center text-sm font-medium text-slate-500 cursor-not-allowed" />
+                              <td className="border border-slate-200 px-3 py-3 text-center text-sm font-medium text-slate-700">
+                                {item.expectedQty}
                               </td>
-                              <td className="px-3 py-3 text-center text-sm font-bold text-slate-700">{item.receivedQty}</td>
-                              <td className="px-3 py-3 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  value={item.inventoryQty}
-                                  onChange={(e) => updateItem(index, { inventoryQty: e.target.value })}
-                                  disabled={status === 'POSTED'}
-                                  className="w-24 text-center rounded-lg border-2 border-slate-200 px-2 py-1 font-black text-emerald-700 outline-none transition focus:border-emerald-500 disabled:bg-slate-50 disabled:cursor-not-allowed"
-                                />
+                              <td className="border border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-700">{item.receivedQty}</td>
+                              <td className="border border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-700">
+                                {item.receivedQty}
                               </td>
-                              <td className="px-3 py-3 text-center bg-indigo-50/20">
+                              <td className="border border-slate-200 px-3 py-3 text-center bg-indigo-50/20">
                                 <span className="font-black text-indigo-600 text-lg">
                                   {formatNumber(Object.values(staffCounts).reduce<number>((a, b) => a + (Number(b) || 0), 0))}
                                 </span>
                               </td>
-                              <td className="px-3 py-3">
-                                <input type="text" value={formatMoney(item.unitPrice)} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-right text-sm font-medium text-slate-500 cursor-not-allowed" />
+                              <td className="border border-slate-200 px-3 py-3 text-right text-sm font-medium text-slate-700">
+                                {formatMoney(item.unitPrice)}
                               </td>
-                              <td className="px-3 py-3 text-right text-sm font-black text-cyan-700">
+                              <td className="border border-slate-200 px-3 py-3 text-right text-sm font-black text-cyan-700">
                                 {formatMoney(parseMoney(item.expectedQty) * parseMoney(item.unitPrice))}
                               </td>
                             </tr>
