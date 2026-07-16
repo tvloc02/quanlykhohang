@@ -4,6 +4,7 @@ import { InboundService } from './inbound.service';
 import { InboundController } from './inbound.controller';
 import { InboundReceipt } from './entities/inbound-receipt.entity';
 import { InboundDetail } from './entities/inbound-detail.entity';
+import { StockInReceiptDetail } from './stock-in-receipts/entities/stock-in-receipt-detail.entity';
 import { Product } from '../entities/product.entity';
 import { Supplier } from '../entities/supplier.entity';
 import { SupplierProduct } from '../entities/supplier-product.entity';
@@ -15,7 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InboundReceipt, InboundDetail, Product, Supplier, SupplierProduct, StockBalance]),
+    TypeOrmModule.forFeature([InboundReceipt, InboundDetail, StockInReceiptDetail, Product, Supplier, SupplierProduct, StockBalance]),
     StockInOrdersModule,
     StockInReceiptsModule,
     ReturnRequestsModule,

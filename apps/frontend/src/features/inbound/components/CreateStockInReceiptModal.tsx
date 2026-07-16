@@ -489,7 +489,7 @@ export function CreateStockInReceiptModal({
                             type="number"
                             min="0"
                             placeholder="Số lượng..."
-                            disabled={status === 'POSTED'}
+                            disabled={status === 'POSTED' || (mode === 'view' && !items.some(d => (Number(d.receivedQty) || 0) > 0))}
                             onClick={(e) => e.stopPropagation()}
                             value={staffCounts[u.id] || ''}
                             onChange={(e) => {
@@ -539,21 +539,28 @@ export function CreateStockInReceiptModal({
             )}
 
             {mode === 'view' && status === 'ASSIGNED' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatus('CHECKED');
-                  setTimeout(() => {
-                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
-                    if (form) form.requestSubmit();
-                  }, 50);
-                }}
-                disabled={saving}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Hoàn thành kiểm kê
-              </button>
+              items.some(d => (Number(d.receivedQty) || 0) > 0) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatus('CHECKED');
+                    setTimeout(() => {
+                      const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                      if (form) form.requestSubmit();
+                    }, 50);
+                  }}
+                  disabled={saving}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Hoàn thành kiểm kê
+                </button>
+              ) : (
+                <div className="w-full rounded-xl border-2 border-amber-200 bg-amber-50 p-3 text-center">
+                  <p className="text-sm font-bold text-amber-700">Chưa nhận hàng</p>
+                  <p className="text-xs text-amber-600 mt-0.5">Phải nhận hàng trước mới có thể nhập số liệu kiểm kê.</p>
+                </div>
+              )
             )}
 
             {mode === 'view' && status === 'CHECKED' && (

@@ -5,6 +5,7 @@ import { InboundReceipt } from './entities/inbound-receipt.entity';
 import { InboundDetail } from './entities/inbound-detail.entity';
 import { CreateAsnDto, PurchaseOrderItemDto } from './dto/create-asn.dto';
 import { ReceiveDto } from './dto/receive.dto';
+import { StockInReceiptDetail } from './stock-in-receipts/entities/stock-in-receipt-detail.entity';
 import { Supplier } from '../entities/supplier.entity';
 import { Product } from '../entities/product.entity';
 import { SupplierProduct } from '../entities/supplier-product.entity';
@@ -89,6 +90,7 @@ export class InboundService {
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(SupplierProduct) private supplierProductRepo: Repository<SupplierProduct>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
+    @InjectRepository(StockInReceiptDetail) private stockInReceiptDetailRepo: Repository<StockInReceiptDetail>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -453,6 +455,18 @@ export class InboundService {
     await this.detailRepo.save(detail);
     await this.adjustInventory(detail.product.id, detail.warehouseCode || 'DEFAULT', qty);
     await this.syncReceiptStatus(detail.inboundReceipt.id);
+    
+    // Sync to corresponding StockInReceiptDetail if exists
+    if (detail.inboundReceipt.poNumber) {
+      await this.stockInReceiptDetailRepo
+        .createQueryBuilder()
+        .update(StockInReceiptDetail)
+        .set({ receivedQty: nextReceived })
+        .where('product.id = :productId', { productId: detail.product.id })
+        .andWhere('receipt.id IN (SELECT id FROM stock_in_receipts WHERE sourceReferenceNo = :poNumber)', { poNumber: detail.inboundReceipt.poNumber })
+        .execute();
+    }
+
     return this.serializeDetail(detail);
   }
 
