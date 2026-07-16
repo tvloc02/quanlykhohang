@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, User as UserIcon, Building2, Clock3 } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Building2, Clock3, CheckCircle2 } from 'lucide-react';
 const API_BASE_URL = 'http://localhost:3000/api';
 
 function authHeaders() {
