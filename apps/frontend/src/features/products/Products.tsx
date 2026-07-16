@@ -709,187 +709,217 @@ export default function Products() {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="px-6 py-5">
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Mã hàng (SKU) <span className="text-red-500">*</span></label>
-                    <input
-                      value={form.sku}
-                      onChange={(event) => setForm((current) => ({ ...current, sku: event.target.value }))}
-                      readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                      placeholder="Nhập mã sản phẩm..."
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Tên hàng hóa <span className="text-red-500">*</span></label>
-                    <input
-                      value={form.name}
-                      onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                      readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                      placeholder="Nhập tên sản phẩm..."
-                      required
-                    />
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  {/* Cột trái: Thông tin cơ bản */}
+                  <div className="space-y-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <h3 className="text-base font-black text-slate-800 border-b-2 border-slate-100 pb-3">Thông tin cơ bản</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2">
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Tên hàng hóa <span className="text-red-500">*</span></label>
+                        <input
+                          value={form.name}
+                          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                          readOnly={modalMode === 'view'}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                          placeholder="Nhập tên sản phẩm..."
+                          required
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Mã hàng (SKU) <span className="text-red-500">*</span></label>
+                        <input
+                          value={form.sku}
+                          onChange={(event) => setForm((current) => ({ ...current, sku: event.target.value }))}
+                          readOnly={modalMode === 'view'}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                          placeholder="Nhập mã sản phẩm..."
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Giá bán (₫) <span className="text-red-500">*</span></label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={form.price}
+                          onChange={(event) => setForm((current) => ({ ...current, price: event.target.value ? Number(event.target.value) : '' }))}
+                          readOnly={modalMode === 'view'}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                          placeholder="0"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Nhóm hàng <span className="text-red-500">*</span></label>
+                        <select
+                          value={form.category}
+                          onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
+                          disabled={modalMode === 'view' || productCategoryOptions.length === 0}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
+                          required
+                        >
+                          {productCategoryOptions.length === 0 ? (
+                            <option value="">Chưa có danh mục</option>
+                          ) : (
+                            productCategoryOptions.map((category) => (
+                              <option key={category.value} value={category.value}>{category.label}</option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Đơn vị tính (ĐVT) <span className="text-red-500">*</span></label>
+                        <select
+                          value={form.unit}
+                          onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
+                          disabled={modalMode === 'view' || productUnitOptions.length === 0}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
+                          required
+                        >
+                          {productUnitOptions.length === 0 ? (
+                            <option value="">Chưa có danh mục</option>
+                          ) : (
+                            productUnitOptions.map((unit) => (
+                              <option key={unit.value} value={unit.value}>{unit.label}</option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Thuộc tính <span className="text-red-500">*</span></label>
+                        <select
+                          value={form.managementType}
+                          onChange={(event) => setForm((current) => ({ ...current, managementType: event.target.value }))}
+                          disabled={modalMode === 'view' || productManagementTypeOptions.length === 0}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
+                          required
+                        >
+                          {productManagementTypeOptions.length === 0 ? (
+                            <option value="">Chưa có danh mục</option>
+                          ) : (
+                            productManagementTypeOptions.map((type) => (
+                              <option key={type.value} value={type.value}>{type.label}</option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Nhà cung cấp</label>
+                        <input
+                          value={form.supplier}
+                          onChange={(event) => setForm((current) => ({ ...current, supplier: event.target.value }))}
+                          readOnly={modalMode === 'view'}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                          placeholder="Nhập nhà cung cấp..."
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Nhóm hàng <span className="text-red-500">*</span></label>
-                    <select
-                      value={form.category}
-                      onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}
-                      disabled={modalMode === 'view' || productCategoryOptions.length === 0}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                      required
-                    >
-                      {productCategoryOptions.length === 0 ? (
-                        <option value="">Chưa có danh mục nhóm hàng</option>
-                      ) : (
-                        productCategoryOptions.map((category) => (
-                          <option key={category.value} value={category.value}>
-                            {category.label}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
+                  {/* Cột phải: Lưu trữ & Thống kê */}
+                  <div className="space-y-5 rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                    <h3 className="text-base font-black text-slate-800 border-b-2 border-slate-200 pb-3">Lưu trữ & Thống kê</h3>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Kho ngầm định <span className="text-red-500">*</span></label>
+                        <select
+                          value={form.defaultWarehouse}
+                          onChange={(event) => setForm((current) => ({ ...current, defaultWarehouse: event.target.value }))}
+                          disabled={modalMode === 'view' || warehouseOptions.length === 0}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-100"
+                          required
+                        >
+                          {warehouseOptions.length === 0 ? (
+                            <option value="">Chưa có kho hàng</option>
+                          ) : (
+                            warehouseOptions.map((warehouse) => (
+                              <option key={warehouse.value} value={warehouse.value}>{warehouse.label}</option>
+                            ))
+                          )}
+                        </select>
+                      </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Đơn vị tính (ĐVT) <span className="text-red-500">*</span></label>
-                    <select
-                      value={form.unit}
-                      onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))}
-                      disabled={modalMode === 'view' || productUnitOptions.length === 0}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                      required
-                    >
-                      {productUnitOptions.length === 0 ? (
-                        <option value="">Chưa có danh mục ĐVT</option>
-                      ) : (
-                        productUnitOptions.map((unit) => (
-                          <option key={unit.value} value={unit.value}>
-                            {unit.label}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Vị trí lưu trữ <span className="text-red-500">*</span></label>
+                        <select
+                          value={form.location}
+                          onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
+                          disabled={modalMode === 'view' || productLocationOptions.length === 0}
+                          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-100"
+                          required
+                        >
+                          {productLocationOptions.length === 0 ? (
+                            <option value="">Chưa có vị trí</option>
+                          ) : (
+                            productLocationOptions.map((location) => (
+                              <option key={location.value} value={location.value}>{location.label}</option>
+                            ))
+                          )}
+                        </select>
+                      </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Kho ngầm định <span className="text-red-500">*</span></label>
-                    <select
-                      value={form.defaultWarehouse}
-                      onChange={(event) => setForm((current) => ({ ...current, defaultWarehouse: event.target.value }))}
-                      disabled={modalMode === 'view' || warehouseOptions.length === 0}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                      required
-                    >
-                      {warehouseOptions.length === 0 ? (
-                        <option value="">Chưa có kho hàng</option>
-                      ) : (
-                        warehouseOptions.map((warehouse) => (
-                          <option key={warehouse.value} value={warehouse.value}>
-                            {warehouse.label}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
+                      <div className="col-span-2">
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Số lượng tồn ban đầu (nhập kho) <span className="text-red-500">*</span></label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={form.stock}
+                          onChange={(event) => setForm((current) => ({ ...current, stock: event.target.value ? Number(event.target.value) : '' }))}
+                          readOnly={modalMode === 'view'}
+                          className="h-11 w-full rounded-xl border-2 border-cyan-400 bg-cyan-50 px-4 font-bold text-cyan-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/20 read-only:bg-slate-100 read-only:border-slate-200 read-only:text-slate-700"
+                          placeholder="0"
+                          required
+                        />
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Vị trí <span className="text-red-500">*</span></label>
-                    <select
-                      value={form.location}
-                      onChange={(event) => setForm((current) => ({ ...current, location: event.target.value }))}
-                      disabled={modalMode === 'view' || productLocationOptions.length === 0}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                      required
-                    >
-                      {productLocationOptions.length === 0 ? (
-                        <option value="">Chưa có danh mục vị trí</option>
-                      ) : (
-                        productLocationOptions.map((location) => (
-                          <option key={location.value} value={location.value}>
-                            {location.label}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
+                    <div className="mt-4 grid grid-cols-2 gap-4">
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
+                        <p className="text-xs font-bold uppercase text-slate-500">Tổng số lượng tồn</p>
+                        <p className="mt-1 text-2xl font-black text-slate-800">{form.stock || 0}</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 text-center">
+                        <p className="text-xs font-bold uppercase text-slate-500">Đã bán</p>
+                        <p className="mt-1 text-2xl font-black text-slate-800">0</p>
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Thuộc tính quản lý <span className="text-red-500">*</span></label>
-                    <select
-                      value={form.managementType}
-                      onChange={(event) => setForm((current) => ({ ...current, managementType: event.target.value }))}
-                      disabled={modalMode === 'view' || productManagementTypeOptions.length === 0}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                      required
-                    >
-                      {productManagementTypeOptions.length === 0 ? (
-                        <option value="">Chưa có danh mục thuộc tính</option>
-                      ) : (
-                        productManagementTypeOptions.map((type) => (
-                          <option key={type.value} value={type.value}>
-                            {type.label}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Nhà cung cấp</label>
-                    <input
-                      value={form.supplier}
-                      onChange={(event) => setForm((current) => ({ ...current, supplier: event.target.value }))}
-                      readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                      placeholder="Nhập nhà cung cấp..."
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Giá bán (₫) <span className="text-red-500">*</span></label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={form.price}
-                      onChange={(event) => setForm((current) => ({ ...current, price: event.target.value ? Number(event.target.value) : '' }))}
-                      readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                      placeholder="0"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Tồn kho <span className="text-red-500">*</span></label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={form.stock}
-                      onChange={(event) => setForm((current) => ({ ...current, stock: event.target.value ? Number(event.target.value) : '' }))}
-                      readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                      placeholder="0"
-                      required
-                    />
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <span className="text-sm font-bold text-emerald-800">Lần nhập kho gần nhất (+)</span>
+                        <span className="text-sm font-bold text-emerald-600">-</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                        <span className="text-sm font-bold text-red-800">Lần xuất kho gần nhất (-)</span>
+                        <span className="text-sm font-bold text-red-600">-</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                        <span className="text-sm font-bold text-amber-800">Lần luân chuyển gần nhất (±)</span>
+                        <span className="text-sm font-bold text-amber-600">-</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="mt-8 flex justify-end gap-3">
-                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
-                    {modalMode === 'view' ? 'Đóng' : 'Hủy'}
+                <div className="mt-8 flex justify-end gap-3 border-t-2 border-slate-100 pt-5">
+                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
+                    {modalMode === 'view' ? 'Đóng' : 'Hủy bỏ'}
                   </button>
                   {modalMode !== 'view' && (
                     <button 
                       type="submit" 
                       disabled={saving}
-                      className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                      className="rounded-xl bg-cyan-600 px-8 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                     >
-                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Thêm sản phẩm' : 'Lưu thay đổi'}
+                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo sản phẩm' : 'Lưu thay đổi'}
                     </button>
                   )}
                 </div>
