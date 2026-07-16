@@ -22,6 +22,7 @@ import {
   Clock3,
   MoreHorizontal,
   Bell,
+  ClipboardCheck,
 } from 'lucide-react';
 
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -70,7 +71,7 @@ type StockInReceipt = {
   warehouseCode?: string;
   sourceReferenceNo?: string;
   receiptDate?: string;
-  status: 'DRAFT' | 'POSTED';
+  status: 'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED';
   description?: string;
   totalAmount: number;
   assignedStaffIds?: string[];
@@ -115,23 +116,23 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat('vi-VN').format(value || 0);
 }
 
-function statusLabel(status?: string) {
+const statusLabel = (status: string) => {
   switch ((status || 'DRAFT').toUpperCase()) {
-    case 'POSTED':
-      return 'Đã chốt (Ghi sổ)';
-    default:
-      return 'Chưa chốt (Nháp)';
+    case 'POSTED': return 'Đã chốt (Ghi sổ)';
+    case 'CHECKED': return 'Đã kiểm kê';
+    case 'ASSIGNED': return 'Đang giao việc';
+    default: return 'Chưa chốt (Nháp)';
   }
-}
+};
 
-function statusClass(status?: string) {
+const statusClass = (status: string) => {
   switch ((status || 'DRAFT').toUpperCase()) {
-    case 'POSTED':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    default:
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'POSTED': return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'CHECKED': return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+    case 'ASSIGNED': return 'border-blue-200 bg-blue-50 text-blue-700';
+    default: return 'border-amber-200 bg-amber-50 text-amber-700';
   }
-}
+};
 
 export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptTypeFilter?: string }) {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -501,6 +502,15 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                           >
                             <Eye className="h-4 w-4" />
                           </button>
+                          {(r.status === 'ASSIGNED' || r.status === 'CHECKED' || r.status === 'DRAFT') && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); setModalMode('view'); }}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition hover:bg-indigo-100 hover:text-indigo-700"
+                              title="Nhập số liệu kiểm kê"
+                            >
+                              <ClipboardCheck className="h-4 w-4" />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); setModalMode('edit'); }}
                             disabled={r.status === 'POSTED'}
@@ -527,10 +537,21 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                                 <button
                                   type="button"
                                   disabled={r.status === 'POSTED'}
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (window.confirm('Bạn có chắc chắn muốn duyệt biên bản này?')) {
-                                      // mock action for duyệt
-                                      alert('Đã duyệt biên bản!');
+                                      try {
+                                        const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts/${r.id}/post`, {
+                                          method: 'POST',
+                                          headers: authHeaders(),
+                                        });
+                                        if (!res.ok) {
+                                          const errData = await res.json().catch(()=>null);
+                                          throw new Error(errData?.message || 'Có lỗi xảy ra khi duyệt biên bản');
+                                        }
+                                        await loadData();
+                                      } catch(err: any) {
+                                        alert(err.message || 'Lỗi khi duyệt');
+                                      }
                                     }
                                     setActiveDropdown(null);
                                   }}

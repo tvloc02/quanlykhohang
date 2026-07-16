@@ -217,11 +217,7 @@ export class StockInOrdersService {
       throw new BadRequestException('Co chenh lech so luong. Hay xac nhan chenh lech truoc khi hoan thanh.');
     }
 
-    for (const detail of order.details) {
-      const qty = toNumber(detail.actualQty);
-      if (qty <= 0) continue;
-      await this.adjustInventory(detail.product.id, detail.warehouseCode || 'DEFAULT', qty);
-    }
+    // Inventory adjustment is now handled by StockInReceipt when POSTED
 
     order.status = 'COMPLETED';
     order.completedAt = new Date();
@@ -234,7 +230,7 @@ export class StockInOrdersService {
     }
 
     try {
-      await this.stockInReceiptsService.createFromStockInOrder(order.id, { status: 'POSTED' }, user);
+      await this.stockInReceiptsService.createFromStockInOrder(order.id, { status: 'ASSIGNED' }, user);
     } catch {
       // Phiếu có thể đã được tạo thủ công; không chặn hoàn thành lệnh.
     }
