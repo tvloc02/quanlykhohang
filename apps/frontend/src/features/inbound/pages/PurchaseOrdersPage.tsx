@@ -1147,7 +1147,7 @@ function PurchaseOrdersPageContent() {
         const data = await res.json().catch(() => null);
         throw new Error(data?.message || 'Không tạo được lệnh nhập kho');
       }
-      setToast({ type: 'success', message: 'Đã tạo lệnh nhập kho thành công.' });
+      setToast({ type: 'success', message: status === 'DRAFT' ? 'Đã lưu nháp lệnh nhập kho thành công.' : 'Đã tạo lệnh nhập kho và giao việc thành công.' });
       closeModal();
       await loadData();
     } catch (error) {
