@@ -47,14 +47,7 @@ const statusOptions = [
     { value: 'inactive', label: 'Ngừng dùng' },
 ];
 
-const categorySheetNames: Record<CatalogCategoryType, string> = {
-    'item-group': 'Nhom hang',
-    unit: 'Don vi tinh',
-    'management-attribute': 'Thuoc tinh quan ly',
-    'storage-position': 'Vi tri luu tru',
-};
-
-const excelHeaders = ['Mã danh mục', 'Tên danh mục', 'Ý nghĩa & Vai trò', 'Trạng thái'];
+const excelHeaders = ['STT', 'Mã danh mục', 'Tên danh mục', 'Ghi chú', 'Trạng thái'];
 const API_BASE_URL = 'http://localhost:3000/api';
 
 function escapeXml(value: unknown) {
@@ -205,15 +198,12 @@ function getStatusClass(status: CatalogCategoryStatus) {
 export default function CategoryManagement() {
     const [categories, setCategories] = React.useState<CatalogCategory[]>(() => getStoredCatalogCategories());
     const [search, setSearch] = React.useState('');
-    const [typeFilter, setTypeFilter] = React.useState<'all' | CatalogCategoryType>('all');
     const [statusFilter, setStatusFilter] = React.useState<'all' | CatalogCategoryStatus>('all');
 
     // Custom dropdown states
-    const [isTypeOpen, setIsTypeOpen] = React.useState(false);
     const [isStatusOpen, setIsStatusOpen] = React.useState(false);
 
     // Refs for click outside
-    const typeDropdownRef = React.useRef<HTMLDivElement>(null);
     const statusDropdownRef = React.useRef<HTMLDivElement>(null);
 
     // Selection states
@@ -270,14 +260,11 @@ export default function CategoryManagement() {
     React.useEffect(() => {
         setCurrentPage(1);
         setSelectedIds([]); // Clear selection when filters change
-    }, [search, typeFilter, statusFilter]);
+    }, [search, statusFilter]);
 
     // Click outside listener for dropdowns
     React.useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (typeDropdownRef.current && !typeDropdownRef.current.contains(event.target as Node)) {
-                setIsTypeOpen(false);
-            }
             if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
                 setIsStatusOpen(false);
             }
@@ -295,12 +282,10 @@ export default function CategoryManagement() {
             !keyword ||
             category.code.toLowerCase().includes(keyword) ||
             category.name.toLowerCase().includes(keyword) ||
-            category.description.toLowerCase().includes(keyword) ||
-            getCatalogCategoryTypeLabel(category.type).toLowerCase().includes(keyword);
-        const matchesType = typeFilter === 'all' || category.type === typeFilter;
+            category.description.toLowerCase().includes(keyword);
         const matchesStatus = statusFilter === 'all' || category.status === statusFilter;
 
-        return matchesKeyword && matchesType && matchesStatus;
+        return matchesKeyword && matchesStatus;
     });
 
     const totalItems = filteredCategories.length;
@@ -353,36 +338,31 @@ export default function CategoryManagement() {
             .map((category) => [category.code, category.name, category.description, getStatusLabel(category.status)]),
     ];
 
-    const downloadImportTemplate = () => {
-        const sheets = CATALOG_CATEGORY_TYPES.map((type) => ({
-            name: categorySheetNames[type.value],
-            rows: [excelHeaders, ['', '', type.description, 'Đang dùng']],
-        }));
+    const buildRows = () => [
+        excelHeaders,
+        ...filteredCategories.map((category, index) => [
+            String(index + 1),
+            category.code,
+            category.name,
+            category.description,
+            getStatusLabel(category.status)
+        ]),
+    ];
 
-        downloadExcelFile('mau-import-danh-muc-4-sheet.xls', buildExcelWorkbook(sheets));
+    const downloadImportTemplate = () => {
+        const sheets = [{
+            name: 'Danh muc',
+            rows: [excelHeaders, ['1', '', '', '', 'Đang dùng']],
+        }];
+        downloadExcelFile('mau-import-danh-muc.xls', buildExcelWorkbook(sheets));
     };
 
     const handleExport = () => {
-        if (exportMode === 'rows') {
-            const rows = [
-                ['Loại danh mục', ...excelHeaders],
-                ...filteredCategories.map((category) => [
-                    getCatalogCategoryTypeLabel(category.type),
-                    category.code,
-                    category.name,
-                    category.description,
-                    getStatusLabel(category.status),
-                ]),
-            ];
-            downloadExcelFile('danh-muc-theo-dong.xls', buildExcelWorkbook([{ name: 'Tat ca danh muc', rows }]));
-        } else {
-            const sheets = CATALOG_CATEGORY_TYPES.map((type) => ({
-                name: categorySheetNames[type.value],
-                rows: buildRowsByType(type.value),
-            }));
-            downloadExcelFile('danh-muc-4-sheet.xls', buildExcelWorkbook(sheets));
-        }
-
+        const sheets = [{
+            name: 'Danh muc',
+            rows: buildRows(),
+        }];
+        downloadExcelFile('danh-muc.xls', buildExcelWorkbook(sheets));
         setSuccess('Đã xuất file danh mục.');
         closeModal();
     };
@@ -411,39 +391,23 @@ export default function CategoryManagement() {
                 return;
             }
 
-            CATALOG_CATEGORY_TYPES.forEach((type) => {
-                let sheetName = workbook.SheetNames.find(
-                    (name) => name.trim().toLowerCase() === categorySheetNames[type.value].toLowerCase()
-                );
-
-                // If 1-sheet file and name doesn't match perfectly, assume it's item-group
-                if (!sheetName && workbook.SheetNames.length === 1 && type.value === 'item-group') {
-                    sheetName = workbook.SheetNames[0];
-                }
-
-                if (!sheetName) {
-                    if (workbook.SheetNames.length > 1) {
-                        failedCount += 1;
-                        details.push(`Thiếu sheet "${categorySheetNames[type.value]}".`);
-                    }
-                    return;
-                }
-
-                const sheet = workbook.Sheets[sheetName];
-                const rawRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
-                if (rawRows.length === 0) return;
-
+            // Always take the first sheet for simplicity
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            const rawRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+            
+            if (rawRows.length > 0) {
                 // Find header row dynamically
-                const headerRowIndex = rawRows.findIndex(r => r && r.length > 0 && String(r[0] || '').toLowerCase().includes('mã'));
+                const headerRowIndex = rawRows.findIndex(r => r && r.length > 0 && String(r[0] || '').toLowerCase().includes('mã') || String(r[1] || '').toLowerCase().includes('mã'));
                 const headerRow = headerRowIndex >= 0 ? rawRows[headerRowIndex] : rawRows[0];
                 const actualRows = headerRowIndex >= 0 ? rawRows.slice(headerRowIndex + 1) : rawRows.slice(1);
 
-                let codeIdx = 0, nameIdx = 1, descIdx = 2, statusIdx = 3;
+                let codeIdx = 1, nameIdx = 2, descIdx = 3, statusIdx = 4;
                 if (headerRow) {
                     const headers = headerRow.map((h: any) => String(h || '').trim().toLowerCase());
                     const cIdx = headers.findIndex((h: string) => h.includes('mã'));
                     const nIdx = headers.findIndex((h: string) => h.includes('tên'));
-                    const dIdx = headers.findIndex((h: string) => h.includes('ý nghĩa') || h.includes('mô tả') || h.includes('vai trò'));
+                    const dIdx = headers.findIndex((h: string) => h.includes('ghi chú') || h.includes('ý nghĩa') || h.includes('mô tả'));
                     const sIdx = headers.findIndex((h: string) => h.includes('trạng thái'));
                     
                     if (cIdx >= 0) codeIdx = cIdx;
@@ -467,24 +431,24 @@ export default function CategoryManagement() {
 
                     if (!code || !name) {
                         failedCount += 1;
-                        details.push(`Sheet "${sheetName}" dòng ${rowNumber}: thiếu mã hoặc tên danh mục.`);
+                        details.push(`Dòng ${rowNumber}: thiếu mã hoặc tên danh mục.`);
                         return;
                     }
 
                     const normalizedCode = code.toUpperCase();
                     const duplicateCode = nextCategories.some(
-                        (category) => category.type === type.value && category.code.toUpperCase() === normalizedCode,
+                        (category) => category.code.toUpperCase() === normalizedCode,
                     );
 
                     if (duplicateCode) {
                         failedCount += 1;
-                        details.push(`Sheet "${sheetName}" dòng ${rowNumber}: mã "${normalizedCode}" đã tồn tại.`);
+                        details.push(`Dòng ${rowNumber}: mã "${normalizedCode}" đã tồn tại.`);
                         return;
                     }
 
                     nextCategories.unshift({
                         id: crypto.randomUUID(),
-                        type: type.value,
+                        type: 'item-group',
                         code: normalizedCode,
                         name,
                         description,
@@ -493,7 +457,7 @@ export default function CategoryManagement() {
                     });
                     successCount += 1;
                 });
-            });
+            }
 
             setCategories(nextCategories);
             const summary = { successCount, failedCount, details };
@@ -577,9 +541,9 @@ export default function CategoryManagement() {
 
     const modalDescription =
         modalMode === 'import'
-            ? 'Import file Excel mẫu gồm 4 sheet, mỗi sheet tương ứng một loại danh mục'
+            ? 'Import file Excel theo mẫu, chỉ bao gồm 1 sheet dữ liệu'
             : modalMode === 'export'
-                ? 'Chọn cách xuất danh mục theo một sheet tổng hoặc tách 4 sheet riêng'
+                ? 'Xuất toàn bộ danh mục thành file Excel'
                 : modalMode === 'import-result'
                     ? 'Tổng hợp số dòng import thành công và thất bại'
                     : modalMode === 'mass-delete'
@@ -681,53 +645,6 @@ export default function CategoryManagement() {
                         </div>
                     </div>
 
-                    <div className="relative" ref={typeDropdownRef}>
-                        <label className="mb-1.5 block text-sm font-bold text-slate-700">Loại danh mục</label>
-                        <button
-                            type="button"
-                            onClick={() => setIsTypeOpen(!isTypeOpen)}
-                            className="relative z-20 flex h-11 w-full items-center justify-between rounded-xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition hover:bg-slate-100 focus:border-cyan-500"
-                        >
-              <span>
-                {typeFilter === 'all'
-                    ? 'Tất cả'
-                    : CATALOG_CATEGORY_TYPES.find((t) => t.value === typeFilter)?.label || 'Tất cả'}
-              </span>
-                            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isTypeOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                        {isTypeOpen && (
-                            <ul className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-xl border-2 border-slate-100 bg-white p-2 shadow-xl">
-                                <li
-                                    onClick={() => {
-                                        setTypeFilter('all');
-                                        setIsTypeOpen(false);
-                                    }}
-                                    className={`flex cursor-pointer items-center justify-between rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors hover:bg-cyan-50 ${
-                                        typeFilter === 'all' ? 'bg-cyan-50 text-cyan-700' : 'text-slate-700'
-                                    }`}
-                                >
-                                    Tất cả
-                                    {typeFilter === 'all' && <Check className="h-4 w-4 text-cyan-600" />}
-                                </li>
-                                {CATALOG_CATEGORY_TYPES.map((type) => (
-                                    <li
-                                        key={type.value}
-                                        onClick={() => {
-                                            setTypeFilter(type.value);
-                                            setIsTypeOpen(false);
-                                        }}
-                                        className={`flex cursor-pointer items-center justify-between rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors hover:bg-cyan-50 ${
-                                            typeFilter === type.value ? 'bg-cyan-50 text-cyan-700' : 'text-slate-700'
-                                        }`}
-                                    >
-                                        {type.label}
-                                        {typeFilter === type.value && <Check className="h-4 w-4 text-cyan-600" />}
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-
                     <div className="relative" ref={statusDropdownRef}>
                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Trạng thái</label>
                         <button
@@ -799,10 +716,10 @@ export default function CategoryManagement() {
                                 />
                             </th>
                             <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                            <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Loại danh mục</th>
                             <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã danh mục</th>
                             <th className="w-56 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên danh mục</th>
-                            <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ý nghĩa & Vai trò</th>
+                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Số lượng SP</th>
+                            <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ghi chú</th>
                             <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Trạng thái</th>
                             <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                                 Thao tác
@@ -836,14 +753,14 @@ export default function CategoryManagement() {
                                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
                                         {startIndex + index}
                                     </td>
-                                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
-                                        {getCatalogCategoryTypeLabel(category.type)}
-                                    </td>
                                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-800">
                                         {category.code}
                                     </td>
                                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
                                         {category.name}
+                                    </td>
+                                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-600">
+                                        0
                                     </td>
                                     <td className="border-x border-slate-200 px-3 py-4 text-sm leading-6 text-slate-600">
                                         {category.description || '-'}
@@ -933,21 +850,10 @@ export default function CategoryManagement() {
                                 <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                                     <p className="font-black">Lưu ý trước khi import</p>
                                     <ul className="mt-3 list-disc space-y-2 pl-5 font-semibold">
-                                        <li>File import phải dùng mẫu hệ thống và có đủ 4 sheet.</li>
-                                        <li>Mỗi sheet tương ứng một loại danh mục: Nhóm hàng, Đơn vị tính, Thuộc tính quản lý, Vị trí lưu trữ.</li>
                                         <li>Cột bắt buộc: Mã danh mục và Tên danh mục.</li>
-                                        <li>Mã danh mục không được trùng trong cùng một loại danh mục.</li>
+                                        <li>Mã danh mục không được trùng lặp.</li>
                                         <li>Trạng thái hợp lệ: Đang dùng hoặc Ngừng dùng.</li>
                                     </ul>
-                                </div>
-
-                                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-                                    {CATALOG_CATEGORY_TYPES.map((type) => (
-                                        <div key={type.value} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                            <p className="font-black text-slate-800">{categorySheetNames[type.value]}</p>
-                                            <p className="mt-1 text-sm font-medium leading-6 text-slate-500">{type.description}</p>
-                                        </div>
-                                    ))}
                                 </div>
 
                                 <div className="mt-8 flex flex-col justify-end gap-3 sm:flex-row">
@@ -974,43 +880,11 @@ export default function CategoryManagement() {
                             </div>
                         ) : modalMode === 'export' ? (
                             <div className="px-6 py-5">
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <label
-                                        className={`cursor-pointer rounded-2xl border-2 p-5 transition ${
-                                            exportMode === 'rows' ? 'border-cyan-500 bg-cyan-50' : 'border-slate-200 bg-white hover:bg-slate-50'
-                                        }`}
-                                    >
-                                        <input
-                                            type="radio"
-                                            name="exportMode"
-                                            value="rows"
-                                            checked={exportMode === 'rows'}
-                                            onChange={() => setExportMode('rows')}
-                                            className="sr-only"
-                                        />
-                                        <p className="font-black text-slate-900">Export theo dòng</p>
-                                        <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
-                                            Xuất toàn bộ danh mục vào một sheet tổng, mỗi dòng có cột Loại danh mục.
-                                        </p>
-                                    </label>
-                                    <label
-                                        className={`cursor-pointer rounded-2xl border-2 p-5 transition ${
-                                            exportMode === 'sheets' ? 'border-cyan-500 bg-cyan-50' : 'border-slate-200 bg-white hover:bg-slate-50'
-                                        }`}
-                                    >
-                                        <input
-                                            type="radio"
-                                            name="exportMode"
-                                            value="sheets"
-                                            checked={exportMode === 'sheets'}
-                                            onChange={() => setExportMode('sheets')}
-                                            className="sr-only"
-                                        />
-                                        <p className="font-black text-slate-900">Export theo sheet riêng</p>
-                                        <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
-                                            Xuất file có 4 sheet riêng: Nhóm hàng, Đơn vị tính, Thuộc tính quản lý, Vị trí lưu trữ.
-                                        </p>
-                                    </label>
+                                <div className="rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-5">
+                                    <p className="font-black text-cyan-900">Xác nhận xuất Excel</p>
+                                    <p className="mt-2 text-sm font-medium leading-6 text-cyan-800">
+                                        Hệ thống sẽ tải xuống file Excel chứa danh sách danh mục đang được hiển thị trên bảng.
+                                    </p>
                                 </div>
 
                                 <div className="mt-8 flex justify-end gap-3">
@@ -1089,40 +963,13 @@ export default function CategoryManagement() {
                             <form onSubmit={handleSubmit} className="px-6 py-5">
                                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                                     <div>
-                                        <label className="mb-2 block text-sm font-bold text-slate-700">Loại danh mục</label>
-                                        <select
-                                            value={form.type}
-                                            onChange={(event) => setForm((current) => ({ ...current, type: event.target.value as CatalogCategoryType }))}
-                                            disabled={modalMode === 'view'}
-                                            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                                        >
-                                            {CATALOG_CATEGORY_TYPES.map((type) => (
-                                                <option key={type.value} value={type.value}>
-                                                    {type.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái</label>
-                                        <select
-                                            value={form.status}
-                                            onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as CatalogCategoryStatus }))}
-                                            disabled={modalMode === 'view'}
-                                            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
-                                        >
-                                            <option value="active">Đang dùng</option>
-                                            <option value="inactive">Ngừng dùng</option>
-                                        </select>
-                                    </div>
-                                    <div>
                                         <label className="mb-2 block text-sm font-bold text-slate-700">Mã danh mục <span className="text-red-500">*</span></label>
                                         <input
                                             value={form.code}
                                             onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
                                             readOnly={modalMode === 'view'}
                                             className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                                            placeholder="VD: HH, NVL, CCDC"
+                                            placeholder="VD: QUAN_AO, ĐIEN_THOAI"
                                             required
                                         />
                                     </div>
@@ -1133,20 +980,32 @@ export default function CategoryManagement() {
                                             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                                             readOnly={modalMode === 'view'}
                                             className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                                            placeholder="VD: Hàng hóa, Nguyên vật liệu"
+                                            placeholder="VD: Quần áo, Điện thoại"
                                             required
                                         />
                                     </div>
                                     <div className="md:col-span-2">
-                                        <label className="mb-2 block text-sm font-bold text-slate-700">Ý nghĩa & Vai trò</label>
+                                        <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú</label>
                                         <textarea
                                             value={form.description}
                                             onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                                             readOnly={modalMode === 'view'}
-                                            rows={4}
+                                            rows={2}
                                             className="w-full resize-none rounded-xl border-2 border-slate-200 px-4 py-3 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                                            placeholder={CATALOG_CATEGORY_TYPES.find((type) => type.value === form.type)?.description}
+                                            placeholder="Thông tin thêm (nếu có)"
                                         />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái</label>
+                                        <select
+                                            value={form.status}
+                                            onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as CatalogCategoryStatus }))}
+                                            disabled={modalMode === 'view'}
+                                            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
+                                        >
+                                            <option value="active">Đang dùng</option>
+                                            <option value="inactive">Ngừng dùng</option>
+                                        </select>
                                     </div>
                                 </div>
 
