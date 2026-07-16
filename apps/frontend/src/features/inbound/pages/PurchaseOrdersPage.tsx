@@ -1225,6 +1225,7 @@ function PurchaseOrdersPageContent() {
               warehouseCode: detail.warehouseCode || 'KHO-NVL',
               expectedQty: String(detail.expectedQty || 0),
               receivedQty: String(detail.receivedQty || 0),
+              inventoryQty: String(Math.max((detail.expectedQty || 0) - (detail.receivedQty || 0), 0)),
               unitPrice: String(detail.unitPrice || 0),
             }))
           : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
