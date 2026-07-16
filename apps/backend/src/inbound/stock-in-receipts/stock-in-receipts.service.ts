@@ -10,6 +10,7 @@ import { StockInReceiptDetail } from './entities/stock-in-receipt-detail.entity'
 import { StockInReceipt } from './entities/stock-in-receipt.entity';
 import { CreateStockInReceiptDto, StockInReceiptType } from './dto/create-stock-in-receipt.dto';
 import { UpdateStockInReceiptDto } from './dto/update-stock-in-receipt.dto';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 type UserContext = {
   id?: string;
@@ -48,6 +49,7 @@ export class StockInReceiptsService {
     @InjectRepository(StockBalance) private readonly balanceRepo: Repository<StockBalance>,
     @InjectRepository(StockInOrder) private readonly stockInOrderRepo: Repository<StockInOrder>,
     private readonly auditLogService: AuditLogService,
+    private readonly notificationsService: NotificationsService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -77,6 +79,10 @@ export class StockInReceiptsService {
       warehouseCode: reloaded.warehouseCode,
       sourceReferenceNo: reloaded.sourceReferenceNo,
     });
+
+    if (reloaded.status === 'ASSIGNED') {
+      await this.notifyAssignedStaff(reloaded);
+    }
 
     if (shouldPost) {
       return this.post(saved.id, user);
@@ -161,6 +167,10 @@ export class StockInReceiptsService {
       receiptType: next.receiptType,
       warehouseCode: next.warehouseCode,
     });
+
+    if (next.status === 'ASSIGNED') {
+      await this.notifyAssignedStaff(next);
+    }
 
     if (shouldPost) {
       return this.post(id, user);
@@ -488,5 +498,25 @@ export class StockInReceiptsService {
         actorId: log.actorId,
       })),
     };
+  }
+
+  private async notifyAssignedStaff(receipt: StockInReceipt) {
+    if (!receipt.assignedStaffIds || receipt.assignedStaffIds.length === 0) return;
+    const title = `Phân công kiểm kê: ${receipt.receiptCode}`;
+    const message = `Bạn đã được phân công kiểm kê lệnh nhập kho ${receipt.receiptCode}. Vui lòng kiểm tra và thực hiện kiểm kê.`;
+    const link = `/inbound/stock-in-receipts`;
+    
+    await Promise.all(
+      receipt.assignedStaffIds.map((staffId) =>
+        this.notificationsService.notifyUser(staffId, {
+          title,
+          message,
+          link,
+          priority: 'high',
+          referenceType: 'STOCK_IN_RECEIPT',
+          referenceId: receipt.id,
+        })
+      )
+    );
   }
 }
