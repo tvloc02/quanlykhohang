@@ -509,7 +509,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          {r.status === 'ASSIGNED' && (
+                          {r.status === 'ASSIGNED' && r.details?.some(d => (Number(d.receivedQty) || 0) > 0) && (
                             <button
                               onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); setModalMode('view'); }}
                               className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition hover:bg-indigo-100 hover:text-indigo-700"
