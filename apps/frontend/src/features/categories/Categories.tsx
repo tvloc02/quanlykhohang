@@ -108,61 +108,13 @@ async function syncCategoriesToBackend(categories: CatalogCategory[]) {
     }
 }
 
-function buildWorksheet(name: string, rows: string[][]) {
-    return `
-    <Worksheet ss:Name="${escapeXml(name)}">
-      <Table>
-        ${rows
-        .map(
-            (row, rowIndex) => `
-              <Row ss:Height="${rowIndex === 0 ? 26 : 22}">
-                ${row
-                .map(
-                    (cell) => `
-                      <Cell${rowIndex === 0 ? ' ss:StyleID="Header"' : ''}>
-                        <Data ss:Type="String">${escapeXml(cell)}</Data>
-                      </Cell>
-                    `,
-                )
-                .join('')}
-              </Row>
-            `,
-        )
-        .join('')}
-      </Table>
-    </Worksheet>
-  `;
-}
-
-function buildExcelWorkbook(sheets: Array<{ name: string; rows: string[][] }>) {
-    return `<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:o="urn:schemas-microsoft-com:office:office"
-  xmlns:x="urn:schemas-microsoft-com:office:excel"
-  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:html="http://www.w3.org/TR/REC-html40">
-  <Styles>
-    <Style ss:ID="Header">
-      <Font ss:Bold="1" ss:Color="#0F172A"/>
-      <Interior ss:Color="#CCFBF1" ss:Pattern="Solid"/>
-      <Borders>
-        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
-      </Borders>
-    </Style>
-  </Styles>
-  ${sheets.map((sheet) => buildWorksheet(sheet.name, sheet.rows)).join('')}
-</Workbook>`;
-}
-
-function downloadExcelFile(fileName: string, content: string) {
-    const blob = new Blob([content], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(url);
+function generateExcelFile(fileName: string, sheets: Array<{ name: string; rows: any[][] }>) {
+    const wb = XLSX.utils.book_new();
+    sheets.forEach(sheet => {
+        const ws = XLSX.utils.aoa_to_sheet(sheet.rows);
+        XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+    });
+    XLSX.writeFile(wb, fileName);
 }
 
 function buildEmptyForm(): CategoryForm {
@@ -354,7 +306,7 @@ export default function CategoryManagement() {
             name: 'Danh muc',
             rows: [excelHeaders, ['1', '', '', '', 'Đang dùng']],
         }];
-        downloadExcelFile('mau-import-danh-muc.xls', buildExcelWorkbook(sheets));
+        generateExcelFile('mau-import-danh-muc.xlsx', sheets);
     };
 
     const handleExport = () => {
@@ -362,7 +314,7 @@ export default function CategoryManagement() {
             name: 'Danh muc',
             rows: buildRows(),
         }];
-        downloadExcelFile('danh-muc.xls', buildExcelWorkbook(sheets));
+        generateExcelFile('danh-muc.xlsx', sheets);
         setSuccess('Đã xuất file danh mục.');
         closeModal();
     };
