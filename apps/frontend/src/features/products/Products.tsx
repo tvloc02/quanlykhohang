@@ -317,6 +317,7 @@ export default function Products() {
       supplier: product.supplier,
       price: product.price,
       stock: product.stock,
+      images: [],
     });
     setModalMode(mode);
   };
@@ -350,15 +351,9 @@ export default function Products() {
     if (
       !form.sku.trim() ||
       !form.name.trim() ||
-      !form.category.trim() ||
-      !form.unit.trim() ||
-      !form.defaultWarehouse.trim() ||
-      !form.location.trim() ||
-      !form.managementType.trim() ||
-      form.price === '' ||
-      form.stock === ''
+      form.price === ''
     ) {
-      setError('Vui lòng nhập đầy đủ các trường bắt buộc.');
+      setError('Vui lòng nhập Mã sản phẩm, Tên sản phẩm và Giá bán.');
       return;
     }
 
