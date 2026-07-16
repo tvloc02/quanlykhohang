@@ -95,6 +95,7 @@ type ProductForm = {
   supplier: string;
   price: number | '';
   stock: number | '';
+  images: string[];
 };
 
 type ModalMode = 'create' | 'view' | 'edit' | 'delete' | null;
@@ -121,6 +122,7 @@ function buildEmptyForm(): ProductForm {
     supplier: '',
     price: '',
     stock: '',
+    images: [],
   };
 }
 
@@ -667,8 +669,8 @@ export default function Products() {
 
       {/* Modals */}
       {modalMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="flex w-full max-w-6xl flex-col max-h-[90vh] rounded-2xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm">
+          <div className="flex w-full max-w-[95vw] flex-col" style={{ height: '92vh', borderRadius: '1rem', background: '#fff', boxShadow: '0 25px 60px rgba(0,0,0,0.18)' }}>
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div className="flex items-center gap-3">
@@ -703,10 +705,52 @@ export default function Products() {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                {/* Body — scrollable */}
+                {/* Body */}
                 <div className="flex min-h-0 flex-1 divide-x divide-slate-100 overflow-hidden">
-                  {/* TRÁI: Thông tin sản phẩm */}
-                  <div className="w-72 shrink-0 space-y-4 overflow-y-auto p-6">
+
+                  {/* CỘT 1: Ảnh sản phẩm */}
+                  <div className="w-44 shrink-0 flex flex-col gap-2 overflow-y-auto p-4 bg-slate-50/60">
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-400 mb-1">Ảnh sản phẩm</p>
+                    {/* Ảnh chính */}
+                    <div className="relative">
+                      {form.images[0] ? (
+                        <div className="group relative">
+                          <img src={form.images[0]} alt="Ảnh chính" className="w-full aspect-square object-cover rounded-xl border-2 border-cyan-400" />
+                          <span className="absolute top-1 left-1 rounded-md bg-cyan-500 px-1.5 py-0.5 text-[10px] font-bold text-white">Chính</span>
+                          {modalMode !== 'view' && (
+                            <button type="button" onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== 0) }))} className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs">×</button>
+                          )}
+                        </div>
+                      ) : modalMode !== 'view' && (
+                        <label className="flex flex-col items-center justify-center w-full aspect-square rounded-xl border-2 border-dashed border-slate-300 bg-white cursor-pointer hover:border-cyan-400 transition">
+                          <span className="text-2xl text-slate-300">+</span>
+                          <span className="text-[10px] text-slate-400 mt-1">Ảnh chính</span>
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const url = URL.createObjectURL(f); setForm((c) => { const imgs = [...c.images]; imgs[0] = url; return { ...c, images: imgs }; }); }} />
+                        </label>
+                      )}
+                    </div>
+                    {/* Ảnh phụ */}
+                    {[1, 2, 3].map((idx) => (
+                      <div key={idx} className="relative">
+                        {form.images[idx] ? (
+                          <div className="group relative">
+                            <img src={form.images[idx]} alt={`Ảnh ${idx + 1}`} className="w-full aspect-square object-cover rounded-xl border border-slate-200" />
+                            {modalMode !== 'view' && (
+                              <button type="button" onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== idx) }))} className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs">×</button>
+                            )}
+                          </div>
+                        ) : modalMode !== 'view' && (
+                          <label className="flex flex-col items-center justify-center w-full aspect-square rounded-xl border border-dashed border-slate-200 bg-white cursor-pointer hover:border-cyan-400 transition">
+                            <span className="text-xl text-slate-300">+</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const url = URL.createObjectURL(f); setForm((c) => { const imgs = [...c.images]; while (imgs.length <= idx) imgs.push(''); imgs[idx] = url; return { ...c, images: imgs }; }); }} />
+                          </label>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* CỘT 2: Thông tin sản phẩm */}
+                  <div className="w-64 shrink-0 space-y-4 overflow-y-auto p-6">
                     <p className="text-xs font-black uppercase tracking-wider text-slate-400">Thông tin sản phẩm</p>
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-slate-600">Mã sản phẩm <span className="text-red-500">*</span></label>
