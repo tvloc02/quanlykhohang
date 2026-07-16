@@ -88,7 +88,7 @@ export class StockInOrdersService {
         orderCode,
         sourcePurchaseOrder: purchaseOrder,
         sourcePurchaseOrderNo: purchaseOrder.poNumber,
-        status: 'DRAFT',
+        status: dto.status || 'DRAFT',
         currentStepUserEmail: dto.currentStepUserEmail?.trim() || user?.email,
         note: dto.note?.trim() || undefined,
       }),

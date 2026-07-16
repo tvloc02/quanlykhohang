@@ -17,6 +17,9 @@ function parseMoney(value: string | number) {
 function formatMoney(value: number) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value || 0);
 }
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('vi-VN').format(value || 0);
+}
 
 export function CreateStockInReceiptModal({
   isOpen,
@@ -51,8 +54,9 @@ export function CreateStockInReceiptModal({
   const [receiptCode, setReceiptCode] = useState('');
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 16));
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<'DRAFT' | 'CREATED'>('DRAFT');
+  const [status, setStatus] = useState<'DRAFT' | 'CREATED' | 'POSTED'>('DRAFT');
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [staffCounts, setStaffCounts] = useState<Record<string, number>>({});
   const [items, setItems] = useState<any[]>([]);
 
   useEffect(() => {
@@ -63,6 +67,7 @@ export function CreateStockInReceiptModal({
       setDescription('');
       setStatus('DRAFT');
       setSelectedStaffIds([]);
+      setStaffCounts({});
       setItems([]);
       return;
     }
@@ -166,7 +171,7 @@ export function CreateStockInReceiptModal({
       let endpoint = '';
       let method = 'POST';
 
-      if (mode === 'edit' && receiptId) {
+      if ((mode === 'edit' || mode === 'view') && receiptId) {
         endpoint = `${API_BASE_URL}/inbound/stock-in-receipts/${receiptId}`;
         method = 'PUT';
       } else {
@@ -361,7 +366,8 @@ export function CreateStockInReceiptModal({
                             <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL yêu cầu</th>
                             <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL đã nhận</th>
                             <th className="w-28 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL kiểm kê</th>
-                            <th className="w-40 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Đơn giá</th>
+                            <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-indigo-700 bg-indigo-50/50">Sau kiểm kê (Tổng)</th>
+                            <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Đơn giá</th>
                             <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Thành tiền</th>
                           </tr>
                         </thead>
@@ -383,9 +389,14 @@ export function CreateStockInReceiptModal({
                                   min={0}
                                   value={item.inventoryQty}
                                   onChange={(e) => updateItem(index, { inventoryQty: e.target.value })}
-                                  disabled={mode === 'view'}
-                                  className="w-24 text-center rounded-lg border-2 border-slate-200 px-2 py-1 font-black text-emerald-700 outline-none transition focus:border-emerald-500"
+                                  disabled={status === 'POSTED'}
+                                  className="w-24 text-center rounded-lg border-2 border-slate-200 px-2 py-1 font-black text-emerald-700 outline-none transition focus:border-emerald-500 disabled:bg-slate-50 disabled:cursor-not-allowed"
                                 />
+                              </td>
+                              <td className="px-3 py-3 text-center bg-indigo-50/20">
+                                <span className="font-black text-indigo-600 text-lg">
+                                  {formatNumber(Object.values(staffCounts).reduce<number>((a, b) => a + (Number(b) || 0), 0))}
+                                </span>
                               </td>
                               <td className="px-3 py-3">
                                 <input type="text" value={formatMoney(item.unitPrice)} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-right text-sm font-medium text-slate-500 cursor-not-allowed" />
@@ -463,22 +474,47 @@ export function CreateStockInReceiptModal({
                   </div>
                   <div className="grid grid-cols-1 gap-2 flex-1 overflow-y-auto pr-2">
                     {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u) => (
-                      <label key={u.id} className={`flex ${mode !== 'view' ? 'cursor-pointer hover:border-indigo-400' : 'cursor-default'} items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 transition shadow-sm`}>
+                      <label key={u.id} className={`flex ${mode !== 'view' ? 'cursor-pointer hover:border-indigo-400' : 'cursor-default'} items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 transition shadow-sm`}>
                         <input
                           type="checkbox"
                           checked={selectedStaffIds.includes(u.id)}
                           onChange={(e) => {
-                            if (mode === 'view') return;
+                            if (status === 'POSTED') return;
                             if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
                             else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
                           }}
-                          onClick={(e) => mode === 'view' && e.preventDefault()}
-                          className={`mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 ${mode === 'view' ? 'pointer-events-none' : ''}`}
+                          onClick={(e) => status === 'POSTED' && e.preventDefault()}
+                          className={`h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 ${status === 'POSTED' ? 'pointer-events-none' : ''}`}
                         />
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
                           {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
                         </div>
+                        {selectedStaffIds.includes(u.id) && (
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="Số lượng..."
+                            disabled={status === 'POSTED'}
+                            onClick={(e) => e.stopPropagation()}
+                            value={staffCounts[u.id] || ''}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setStaffCounts(prev => {
+                                const next = { ...prev, [u.id]: val };
+                                // Automatically sync total to item 0's inventoryQty for convenience
+                                if (items.length > 0) {
+                                  const total = Object.values(next).reduce<number>((a, b) => a + (Number(b) || 0), 0);
+                                  const newItems = [...items];
+                                  newItems[0].inventoryQty = String(total);
+                                  setItems(newItems);
+                                }
+                                return next;
+                              });
+                            }}
+                            className="ml-auto w-24 rounded-lg border-2 border-indigo-200 bg-indigo-50 px-2 py-1 text-center text-sm font-bold text-indigo-700 outline-none transition focus:border-indigo-500 disabled:bg-slate-50 disabled:cursor-not-allowed"
+                          />
+                        )}
                       </label>
                     ))}
                     {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length === 0 && (
@@ -490,6 +526,23 @@ export function CreateStockInReceiptModal({
             </div>
 
             <div className="border-t border-slate-200 p-6 flex flex-col gap-3 bg-white">
+            {mode === 'view' && status !== 'POSTED' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTimeout(() => {
+                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                    if (form) form.requestSubmit();
+                  }, 50);
+                }}
+                disabled={saving}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+              >
+                <Clock3 className="h-4 w-4" />
+                Hoàn thành kiểm kê
+              </button>
+            )}
+
             {mode !== 'view' && (
               <button
                 type="button"
