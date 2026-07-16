@@ -40,6 +40,13 @@ export function CreateStockInReceiptModal({
   
   const [users, setUsers] = useState<any[]>([]);
   const [sourceData, setSourceData] = useState<any>(null);
+  const warehouses = React.useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('warehouses') || '[]');
+    } catch {
+      return [];
+    }
+  }, []);
   
   const [receiptCode, setReceiptCode] = useState('');
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 16));
@@ -199,7 +206,6 @@ export function CreateStockInReceiptModal({
   const totalQuantity = items.reduce((sum, item) => sum + parseMoney(item.expectedQty), 0);
   const supplier = sourceData?.supplier || {};
   
-  // Status mapping for PO
   const poStatusMap: Record<string, string> = {
     'DRAFT': 'Nháp',
     'CREATED': 'Tạo mới (Chờ duyệt)',
@@ -211,6 +217,9 @@ export function CreateStockInReceiptModal({
     'REJECTED': 'Từ chối',
     'CANCELLED': 'Đã hủy',
   };
+
+  const warehouseObj = warehouses.find((w: any) => w.code === sourceData?.warehouseCode || w.id === sourceData?.warehouseCode);
+  const warehouseName = warehouseObj ? `${warehouseObj.code} - ${warehouseObj.name}` : sourceData?.warehouseCode || '-';
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
@@ -286,7 +295,7 @@ export function CreateStockInReceiptModal({
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
                         <div>
                           <label className="mb-2 block text-sm font-bold text-slate-700">Kho hàng</label>
-                          <input type="text" value={sourceData?.warehouseCode || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                          <input type="text" value={warehouseName} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
                         </div>
                         <div>
                           <label className="mb-2 block text-sm font-bold text-slate-700">Quản lý (Người duyệt)</label>
@@ -402,14 +411,15 @@ export function CreateStockInReceiptModal({
               <div className="space-y-6 flex-1">
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">Mã phiếu nhập kho</label>
-                  <input type="text" value={receiptCode} onChange={(e) => setReceiptCode(e.target.value)} placeholder="Để trống để tự động tạo..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
+                  <input type="text" value={receiptCode} onChange={(e) => setReceiptCode(e.target.value)} disabled={mode === 'view'} placeholder="Để trống để tự động tạo..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
                 </div>
                 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái phiếu</label>
-                  <select value={status} onChange={(e) => setStatus(e.target.value as any)} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500">
+                  <select value={status} onChange={(e) => setStatus(e.target.value as any)} disabled={mode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed">
                     <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
                     <option value="CREATED">Tạo mới (Gửi yêu cầu ngay)</option>
+                    <option value="POSTED">Đã chốt (Ghi sổ)</option>
                   </select>
                 </div>
 
@@ -418,12 +428,63 @@ export function CreateStockInReceiptModal({
                     <Calendar className="h-4 w-4 text-cyan-600" />
                     Thời gian nhập kho
                   </label>
-                  <input type="datetime-local" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} required className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
+                  <input type="datetime-local" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} disabled={mode === 'view'} required className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
                 </div>
                 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
-                  <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ví dụ: Kiểm tra kỹ tem mác..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
+                  <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} disabled={mode === 'view'} placeholder="Ví dụ: Kiểm tra kỹ tem mác..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col min-h-[250px] max-h-[300px]">
+                  <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
+                    <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
+                      <UserIcon className="h-4 w-4 text-indigo-600" />
+                      Nhân viên kho
+                    </p>
+                    {mode !== 'view' && (
+                      <label className="flex items-center gap-2 text-sm cursor-pointer text-indigo-700 font-bold hover:text-indigo-800">
+                        <input 
+                          type="checkbox" 
+                          onChange={(e) => {
+                            const eligible = users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff'));
+                            if (e.target.checked) setSelectedStaffIds(eligible.map(u => u.id));
+                            else setSelectedStaffIds([]);
+                          }} 
+                          checked={
+                            selectedStaffIds.length > 0 && 
+                            selectedStaffIds.length === users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length
+                          } 
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600" 
+                        />
+                        Chọn tất cả
+                      </label>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 flex-1 overflow-y-auto pr-2">
+                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u) => (
+                      <label key={u.id} className={`flex ${mode !== 'view' ? 'cursor-pointer hover:border-indigo-400' : 'cursor-default'} items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 transition shadow-sm`}>
+                        <input
+                          type="checkbox"
+                          checked={selectedStaffIds.includes(u.id)}
+                          onChange={(e) => {
+                            if (mode === 'view') return;
+                            if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
+                            else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
+                          }}
+                          onClick={(e) => mode === 'view' && e.preventDefault()}
+                          className={`mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 ${mode === 'view' ? 'pointer-events-none' : ''}`}
+                        />
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
+                          {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
+                        </div>
+                      </label>
+                    ))}
+                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length === 0 && (
+                       <p className="text-sm text-slate-500 italic mt-4 text-center">Không có nhân viên kho nào</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

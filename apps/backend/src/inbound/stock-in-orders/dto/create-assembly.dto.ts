@@ -45,6 +45,10 @@ export class StandaloneAssemblyComponentDto {
   @IsInt()
   @Type(() => Number)
   usedQty: number;
+
+  @IsString()
+  @IsOptional()
+  sourceOrderDetailId?: string;
 }
 
 export class CreateStandaloneAssemblyDto {

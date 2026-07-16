@@ -423,6 +423,8 @@ function PurchaseOrdersPageContent() {
   const [receiptDate, setReceiptDate] = React.useState(new Date().toISOString().slice(0, 16));
   const [stockInNote, setStockInNote] = React.useState('');
   const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
+  const [duplicateReceipts, setDuplicateReceipts] = React.useState<any[]>([]);
+  const [pendingOrderForStockIn, setPendingOrderForStockIn] = React.useState<PurchaseOrder | null>(null);
 
   React.useEffect(() => {
     const handleClickOutside = () => setActiveDropdown(null);
@@ -1108,7 +1110,7 @@ function PurchaseOrdersPageContent() {
     }
   };
 
-  const handleCreateStockInReceipt = async (status: 'DRAFT' | 'CREATED') => {
+  const handleCreateStockInReceipt = async (status: 'DRAFT' | 'POSTED') => {
     if (!selectedOrder) return;
     if (selectedStaffIds.length === 0) {
       setToast({ type: 'error', message: 'Vui lòng chọn ít nhất một nhân viên kiểm kê.' });
@@ -1157,21 +1159,24 @@ function PurchaseOrdersPageContent() {
 
   const openCreateStockIn = async (order: PurchaseOrder) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers: authHeaders() });
+      const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts`, { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.data || [];
-        const matching = list.filter((o: any) => o.sourcePurchaseOrderId === order.id || (o.sourcePurchaseOrderNo && o.sourcePurchaseOrderNo === order.poNumber));
+        const matching = list.filter((o: any) => o.sourceReferenceNo === order.poNumber);
         if (matching.length > 0) {
-          if (!window.confirm(`Đơn mua hàng này đã có ${matching.length} lệnh nhập kho trước đó.\nBạn có chắc chắn muốn tạo thêm lệnh mới không?`)) {
-            return;
-          }
+          setDuplicateReceipts(matching);
+          setPendingOrderForStockIn(order);
+          return;
         }
       }
     } catch (e) {
       console.error(e);
     }
+    proceedWithCreateStockIn(order);
+  };
 
+  const proceedWithCreateStockIn = async (order: PurchaseOrder) => {
     setSelectedId(order.id);
     setSelectedOrderDetails(null);
     setReceiptCode('');
@@ -1794,7 +1799,7 @@ function PurchaseOrdersPageContent() {
               </button>
               <button 
                 type="button" 
-                onClick={() => handleCreateStockInReceipt('CREATED')}
+                onClick={() => handleCreateStockInReceipt('POSTED')}
                 disabled={saving || selectedStaffIds.length === 0}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-8 py-2.5 font-bold text-white shadow-lg transition hover:bg-amber-700 disabled:opacity-60"
               >
@@ -2056,6 +2061,71 @@ function PurchaseOrdersPageContent() {
         onProductFound={handleProductScanned}
         title="Quét mã vạch nhập kho"
       />
+
+      {duplicateReceipts.length > 0 && pendingOrderForStockIn && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Đã tồn tại phiếu nhập kho</h3>
+                <p className="text-sm font-medium text-slate-500">
+                  Đơn mua hàng <span className="font-bold text-slate-700">{pendingOrderForStockIn.poNumber}</span> đã có {duplicateReceipts.length} phiếu nhập kho trước đó.
+                </p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setDuplicateReceipts([]);
+                  setPendingOrderForStockIn(null);
+                }} 
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
+              <div className="space-y-3">
+                {duplicateReceipts.map((receipt) => (
+                  <div key={receipt.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-bold text-slate-800">{receipt.receiptCode}</span>
+                      <span className={`inline-flex rounded-lg border px-2 py-0.5 text-xs font-bold ${receipt.status === 'POSTED' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-100 text-slate-600'}`}>{receipt.status === 'POSTED' ? 'Đã chốt' : 'Lưu nháp'}</span>
+                    </div>
+                    <div className="text-sm text-slate-600">Ngày lập: {new Date(receipt.createdAt || receipt.receiptDate).toLocaleString('vi-VN')}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-6 text-sm font-bold text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                Bạn có chắc chắn muốn tiếp tục tạo thêm lệnh nhập kho mới không?
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <button 
+                type="button" 
+                onClick={() => {
+                  setDuplicateReceipts([]);
+                  setPendingOrderForStockIn(null);
+                }} 
+                className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Hủy bỏ
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  const order = pendingOrderForStockIn;
+                  setDuplicateReceipts([]);
+                  setPendingOrderForStockIn(null);
+                  proceedWithCreateStockIn(order);
+                }} 
+                className="rounded-xl bg-amber-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-amber-700"
+              >
+                Vẫn tiếp tục tạo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
