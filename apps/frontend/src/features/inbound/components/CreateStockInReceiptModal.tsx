@@ -54,7 +54,7 @@ export function CreateStockInReceiptModal({
   const [receiptCode, setReceiptCode] = useState('');
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 16));
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<'DRAFT' | 'CREATED' | 'POSTED'>('DRAFT');
+  const [status, setStatus] = useState<'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED'>('DRAFT');
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [staffCounts, setStaffCounts] = useState<Record<string, number>>({});
   const [items, setItems] = useState<any[]>([]);
@@ -429,8 +429,9 @@ export function CreateStockInReceiptModal({
                   <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái phiếu</label>
                   <select value={status} onChange={(e) => setStatus(e.target.value as any)} disabled={mode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed">
                     <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
-                    <option value="CREATED">Tạo mới (Gửi yêu cầu ngay)</option>
-                    <option value="POSTED">Đã chốt (Ghi sổ)</option>
+                    <option value="ASSIGNED">Đang giao việc (Chờ kiểm kê)</option>
+                    <option value="CHECKED">Đã kiểm kê (Chờ duyệt)</option>
+                    <option value="POSTED">Hoàn thành (Ghi sổ)</option>
                   </select>
                 </div>
 
@@ -530,6 +531,7 @@ export function CreateStockInReceiptModal({
               <button
                 type="button"
                 onClick={() => {
+                  setStatus('CHECKED');
                   setTimeout(() => {
                     const form = document.getElementById('create-receipt-form') as HTMLFormElement;
                     if (form) form.requestSubmit();
@@ -564,7 +566,7 @@ export function CreateStockInReceiptModal({
               <button
                 type="button"
                 onClick={() => {
-                  setStatus('CREATED');
+                  setStatus('ASSIGNED');
                   setTimeout(() => {
                     const form = document.getElementById('create-receipt-form') as HTMLFormElement;
                     if (form) form.requestSubmit();

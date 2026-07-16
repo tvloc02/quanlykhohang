@@ -31,7 +31,7 @@ export class StockInReceipt extends BaseEntity {
   receiptDate: Date;
 
   @Column({ default: 'DRAFT' })
-  status: 'DRAFT' | 'POSTED';
+  status: 'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED';
 
   @Column({ type: 'text', nullable: true })
   description?: string;
