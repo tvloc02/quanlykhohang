@@ -20,6 +20,12 @@ export class Product extends BaseEntity {
   @Column({ nullable: true })
   unit?: string;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  price: number;
+
+  @Column({ type: 'json', nullable: true })
+  images?: string[];
+
   @ManyToOne(() => Category, { nullable: true })
   category?: Category;
 
