@@ -15,7 +15,7 @@ import CreateTransferOrderPage from './features/delivery/pages/CreateTransferOrd
 import Inventory from './features/inventory/Inventory';
 import Reports from './features/reports/Reports';
 import AuditLog from './features/audit-log/AuditLog';
-import Settings, { MailSettings, AiSettings } from './features/settings/Settings';
+import Settings, { MailSettings, AiSettings, StoreSettings } from './features/settings/Settings';
 import ProfilePage from './features/user-management/pages/ProfilePage';
 import SupplierProfilePage from './features/supplier-portal/pages/SupplierProfilePage';
 import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
@@ -98,12 +98,15 @@ function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allo
   return <>{children}</>;
 }
 
+import Shop from './features/shop/Shop';
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
+        <Route path="/shop" element={<Shop />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route
@@ -178,7 +181,7 @@ function App() {
         <Route
           path="/personnel"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin']}>
               <MainLayout>
                 <Personnel />
               </MainLayout>
@@ -412,7 +415,7 @@ function App() {
         <Route
           path="/audit-log"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin']}>
               <MainLayout>
                 <AuditLog />
               </MainLayout>
@@ -432,16 +435,17 @@ function App() {
         <Route
           path="/settings/*"
           element={
-            <ProtectedRoute>
+            <RoleRoute allowedRoles={['admin']}>
               <MainLayout>
                 <Settings />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         >
           <Route index element={<Navigate to="mail" replace />} />
           <Route path="mail" element={<MailSettings />} />
           <Route path="ai" element={<AiSettings />} />
+          <Route path="store" element={<StoreSettings />} />
         </Route>
         <Route
           path="/scanner"

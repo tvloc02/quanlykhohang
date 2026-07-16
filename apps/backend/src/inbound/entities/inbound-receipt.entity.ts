@@ -26,6 +26,15 @@ export class InboundReceipt extends BaseEntity {
   @Column({ nullable: true })
   approverId?: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  approverName?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  creatorName?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  creatorPhone?: string;
+
   @Column({ type: 'text', nullable: true })
   description?: string;
 
@@ -35,4 +44,3 @@ export class InboundReceipt extends BaseEntity {
   @OneToMany(() => InboundDetail, (d) => d.inboundReceipt)
   details: InboundDetail[];
 }
-// Placeholder inbound receipt entity

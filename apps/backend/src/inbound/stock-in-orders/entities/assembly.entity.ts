@@ -10,8 +10,8 @@ export class Assembly extends BaseEntity {
   @Column()
   assemblyCode: string;
 
-  @ManyToOne(() => StockInOrder, { nullable: false })
-  sourceStockInOrder: StockInOrder;
+  @ManyToOne(() => StockInOrder, { nullable: true })
+  sourceStockInOrder?: StockInOrder;
 
   @ManyToOne(() => Product, { nullable: false })
   assembledProduct: Product;

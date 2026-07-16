@@ -88,7 +88,7 @@ export class StockInOrdersService {
         orderCode,
         sourcePurchaseOrder: purchaseOrder,
         sourcePurchaseOrderNo: purchaseOrder.poNumber,
-        status: 'DRAFT',
+        status: (dto as any).status || 'DRAFT',
         currentStepUserEmail: dto.currentStepUserEmail?.trim() || user?.email,
         note: dto.note?.trim() || undefined,
       }),
@@ -217,11 +217,7 @@ export class StockInOrdersService {
       throw new BadRequestException('Co chenh lech so luong. Hay xac nhan chenh lech truoc khi hoan thanh.');
     }
 
-    for (const detail of order.details) {
-      const qty = toNumber(detail.actualQty);
-      if (qty <= 0) continue;
-      await this.adjustInventory(detail.product.id, detail.warehouseCode || 'DEFAULT', qty);
-    }
+    // Inventory adjustment is now handled by StockInReceipt when POSTED
 
     order.status = 'COMPLETED';
     order.completedAt = new Date();
@@ -234,7 +230,7 @@ export class StockInOrdersService {
     }
 
     try {
-      await this.stockInReceiptsService.createFromStockInOrder(order.id, { status: 'POSTED' }, user);
+      await this.stockInReceiptsService.createFromStockInOrder(order.id, { status: 'ASSIGNED' }, user);
     } catch {
       // Phiếu có thể đã được tạo thủ công; không chặn hoàn thành lệnh.
     }
@@ -243,6 +239,50 @@ export class StockInOrdersService {
       confirmDifference: Boolean(dto.confirmDifference),
       nextStepUserEmail: order.currentStepUserEmail,
       actualQtyTotal: order.details.reduce((sum, detail) => sum + toNumber(detail.actualQty), 0),
+    });
+
+    return this.serializeOrder(await this.findOrderEntity(id), true);
+  }
+
+  async distribute(id: string, detailId: string, dto: { qty: number; balanceId: string }, user?: UserContext) {
+    const order = await this.findOrderEntity(id);
+    const detail = order.details.find((d) => d.id === detailId);
+
+    if (!detail) {
+      throw new NotFoundException('Stock in order detail not found');
+    }
+
+    const qty = toNumber(dto.qty);
+    if (qty <= 0) {
+      throw new BadRequestException('So luong phan phoi phai lon hon 0');
+    }
+
+    const available = toNumber(detail.actualQty) - toNumber(detail.distributedQty) - toNumber(detail.producedQty);
+    if (qty > available) {
+      throw new BadRequestException('So luong phan phoi vuot qua so luong con lai cua don hang');
+    }
+
+    detail.distributedQty = toNumber(detail.distributedQty) + qty;
+    await this.detailRepo.save(detail);
+
+    // Update physical inventory
+    const locationCode = detail.warehouseCode || 'DEFAULT';
+    const balance = await this.balanceRepo.findOne({ 
+      where: { product: { id: detail.product.id } as any, locationCode }, 
+      relations: ['product'] 
+    });
+    
+    if (!balance) {
+      throw new NotFoundException(`Stock balance not found for product ${detail.product.id} at ${locationCode}`);
+    }
+    balance.totalPhysical -= qty;
+    balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
+    await this.balanceRepo.save(balance);
+
+    await this.appendLog(id, 'workflow.distribute', user, {
+      detailId,
+      qty,
+      locationCode,
     });
 
     return this.serializeOrder(await this.findOrderEntity(id), true);
@@ -358,6 +398,8 @@ export class StockInOrdersService {
         warehouseCode: detail.warehouseCode,
         requestedQty: toNumber(detail.requestedQty),
         actualQty: toNumber(detail.actualQty),
+        distributedQty: toNumber(detail.distributedQty),
+        producedQty: toNumber(detail.producedQty),
         unitPrice: toNumber(detail.unitPrice),
         totalLineAmount: toNumber(detail.totalLineAmount),
         product: detail.product

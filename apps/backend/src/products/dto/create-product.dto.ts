@@ -20,4 +20,10 @@ export class CreateProductDto {
   @IsOptional()
   @IsInt()
   minimumStock?: number;
+
+  @IsOptional()
+  price?: number;
+
+  @IsOptional()
+  images?: string[];
 }

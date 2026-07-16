@@ -67,14 +67,14 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto, actor?: { id?: string; email?: string }) {
     const user = await this.findOne(id);
     if (!user) throw new NotFoundException('User not found');
-    if (actor?.id === id && updateUserDto.role) {
+    if (actor?.id === id && updateUserDto.role && user.roles?.[0]?.name !== updateUserDto.role) {
       throw new ForbiddenException('You cannot change your own role');
     }
-    if (actor?.id === id && updateUserDto.status === 'inactive') {
+    if (actor?.id === id && updateUserDto.status === 'inactive' && user.status !== 'inactive') {
       throw new ForbiddenException('You cannot deactivate your own account');
     }
     if (updateUserDto.password) {
-      updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
+      user.password = await bcrypt.hash(updateUserDto.password, 10);
     }
     if (updateUserDto.email !== undefined) {
       user.email = updateUserDto.email;

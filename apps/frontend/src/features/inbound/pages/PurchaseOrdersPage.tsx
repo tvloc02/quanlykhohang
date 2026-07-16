@@ -18,6 +18,10 @@ import {
   Truck,
   X,
   XCircle,
+  MoreHorizontal,
+  Send,
+  Calendar,
+  User,
 } from 'lucide-react';
 import InboundSectionPlaceholderPage from './InboundSectionPlaceholderPage';
 import {
@@ -52,6 +56,7 @@ type Supplier = {
   currency: string;
   contactPerson?: string;
   phone?: string;
+  taxCode?: string;
   products?: SupplierProduct[];
 };
 
@@ -255,12 +260,28 @@ function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: Purc
 const modalSelectClass =
   'h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 pr-10 outline-none appearance-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10';
 
+function toLocalDatetimeString(dateObj: Date) {
+  const tzOffset = dateObj.getTimezoneOffset() * 60000;
+  return new Date(dateObj.getTime() - tzOffset).toISOString().slice(0, 16);
+}
+
+function parseDateForInput(dateString?: string) {
+  if (!dateString) return '';
+  const d = new Date(dateString);
+  if (Number.isNaN(d.getTime())) return '';
+  return toLocalDatetimeString(d);
+}
+
 function buildEmptyForm(supplierId = '', warehouseCode = ''): OrderForm {
+  const now = new Date();
+  const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const randomId = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+
   return {
-    poNumber: '',
+    poNumber: `PO-${randomId}`,
     supplierId,
-    orderDate: new Date().toISOString().slice(0, 10),
-    expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    orderDate: toLocalDatetimeString(now),
+    expectedDate: toLocalDatetimeString(nextWeek),
     status: 'CREATED',
     description: '',
     items: [makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode), makeRow(warehouseCode)],
@@ -288,6 +309,8 @@ function parseMoney(value: string) {
 
 function statusLabel(status?: string) {
   switch ((status || 'CREATED').toUpperCase()) {
+    case 'DRAFT':
+      return 'Nháp';
     case 'APPROVED':
       return 'Chờ NCC xác nhận';
     case 'SUPPLIER_APPROVED':
@@ -305,6 +328,8 @@ function statusLabel(status?: string) {
 
 function statusClass(status?: string) {
   switch ((status || 'CREATED').toUpperCase()) {
+    case 'DRAFT':
+      return 'border-slate-300 bg-slate-100 text-slate-600';
     case 'APPROVED':
       return 'border-blue-200 bg-blue-50 text-blue-700';
     case 'SUPPLIER_APPROVED':
@@ -390,8 +415,22 @@ function PurchaseOrdersPageContent() {
   const [deleteTarget, setDeleteTarget] = React.useState<PurchaseOrder | null>(null);
   const [scannedProducts, setScannedProducts] = React.useState<ScannedProduct[]>([]);
   const [receiveOpen, setReceiveOpen] = React.useState(false);
-  const [receiveRows, setReceiveRows] = React.useState<Array<{ detailId: string; label: string; qty: string }>>([]);
+  const [receiveRows, setReceiveRows] = React.useState<Array<{ detailId: string; label: string; sku: string; expectedQty: number; receivedQty: number; unitPrice: number; qty: string }>>([]);
   const [scannerOpen, setScannerOpen] = React.useState(false);
+  const [activeDropdown, setActiveDropdown] = React.useState<string | null>(null);
+
+  const [receiptCode, setReceiptCode] = React.useState('');
+  const [receiptDate, setReceiptDate] = React.useState(new Date().toISOString().slice(0, 16));
+  const [stockInNote, setStockInNote] = React.useState('');
+  const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
+  const [duplicateReceipts, setDuplicateReceipts] = React.useState<any[]>([]);
+  const [pendingOrderForStockIn, setPendingOrderForStockIn] = React.useState<PurchaseOrder | null>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = () => setActiveDropdown(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
   const currentUserId = React.useMemo(() => getCurrentUserId(), []);
 
   const supplierProducts = suppliers.find((supplier) => supplier.id === form.supplierId)?.products || [];
@@ -610,6 +649,14 @@ function PurchaseOrdersPageContent() {
       }
 
       return matchesKeyword && matchesStatus && matchesTime && matchesAdvStartDate && matchesAdvEndDate && matchesAdvSupplier && matchesAdvMinAmt && matchesAdvMaxAmt;
+    }).sort((a, b) => {
+      const dateA = new Date((a as any).createdAt || a.orderDate || 0).getTime();
+      const dateB = new Date((b as any).createdAt || b.orderDate || 0).getTime();
+      // Secondary sort by ID desc if dates are identical
+      if (dateB === dateA) {
+        return (b.id || '').localeCompare(a.id || '');
+      }
+      return dateB - dateA;
     });
   }, [orders, search, statusFilter, timeFilter, advancedFilters]);
 
@@ -689,7 +736,20 @@ function PurchaseOrdersPageContent() {
     const token = localStorage.getItem('token') || '';
     const payload = parseJwtPayload(token);
     const creatorName = getUserDisplayName(payload);
-    const creatorPhone = getUserPhone(payload);
+    let creatorPhone = getUserPhone(payload);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/profile`, { headers: authHeaders() });
+      if (response.ok) {
+        const profile = await response.json();
+        if (profile?.phone) {
+          creatorPhone = profile.phone;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch profile', e);
+    }
+    
     setForm(buildEmptyForm(fallbackSupplier, defaultWarehouse));
     setForm((current) => ({ ...current, creatorName, creatorPhone, warehouseCode: defaultWarehouse }));
     setModalMode('create');
@@ -736,8 +796,8 @@ function PurchaseOrdersPageContent() {
       setForm({
         poNumber: full.poNumber,
         supplierId: full.supplier?.id || '',
-        orderDate: full.orderDate ? full.orderDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
-        expectedDate: full.expectedDate ? full.expectedDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        orderDate: full.orderDate ? parseDateForInput(full.orderDate) : toLocalDatetimeString(new Date()),
+        expectedDate: full.expectedDate ? parseDateForInput(full.expectedDate) : toLocalDatetimeString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
         status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
         description: full.description || '',
         items:
@@ -763,18 +823,65 @@ function PurchaseOrdersPageContent() {
   };
   const openView = async (order: PurchaseOrder) => {
     setSelectedId(order.id);
-    setSelectedOrderDetails(order);
+    setSelectedOrderDetails(null);
     setModalMode('view');
 
     try {
       const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
         headers: authHeaders(),
       });
+
       if (!response.ok) {
         const data = await response.json().catch(() => null);
         throw new Error(data?.message || 'Không tải được chi tiết đơn mua hàng');
       }
-      setSelectedOrderDetails((await response.json()) as PurchaseOrder);
+      const full = (await response.json()) as PurchaseOrder;
+      setSelectedOrderDetails(full);
+
+      // Đưa các sản phẩm từ order details vào scannedProducts
+      const detailProducts: ScannedProduct[] = (full.details || [])
+        .filter((d) => d.product?.id)
+        .map((d) => ({
+          id: d.product!.id,
+          internalSku: d.product!.internalSku || '',
+          name: d.product!.name || '',
+          unit: d.product!.unit,
+          minimumStock: 0,
+          category: null,
+          supplier: full.supplier ? { id: full.supplier.id, name: full.supplier.name } : null,
+          stockBalances: [],
+          totalStock: 0,
+        }));
+      setScannedProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newProducts = detailProducts.filter((p) => !existingIds.has(p.id));
+        return [...prev, ...newProducts];
+      });
+
+      setForm({
+        poNumber: full.poNumber,
+        supplierId: full.supplier?.id || '',
+        orderDate: full.orderDate ? parseDateForInput(full.orderDate) : toLocalDatetimeString(new Date()),
+        expectedDate: full.expectedDate ? parseDateForInput(full.expectedDate) : toLocalDatetimeString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
+        status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
+        description: full.description || '',
+        items:
+          full.details?.length
+            ? full.details.map((detail) => ({
+              id: detail.id,
+              rowId: `${detail.id}-${Date.now()}`,
+              productId: detail.product?.id || '',
+              warehouseCode: detail.warehouseCode || 'KHO-NVL',
+              expectedQty: String(detail.expectedQty || 0),
+              receivedQty: String(detail.receivedQty || 0),
+              unitPrice: String(detail.unitPrice || 0),
+            }))
+            : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
+        creatorName: (full as any).creatorName || '',
+        creatorPhone: (full as any).creatorPhone || '',
+        warehouseCode: (full as any).warehouseCode || accessibleWarehouses[0]?.code || '',
+        approverId: (full as any).approverId || '',
+      });
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tải chi tiết đơn hàng' });
     }
@@ -810,6 +917,7 @@ function PurchaseOrdersPageContent() {
       creatorPhone: form.creatorPhone || undefined,
       warehouseCode: form.warehouseCode || undefined,
       approverId: form.approverId || undefined,
+      approverName: users.find((u) => u.id === form.approverId)?.fullName || undefined,
     };
 
     // For create, always include items. For edit, include items only when there are valid lines to avoid wiping existing lines unintentionally.
@@ -944,13 +1052,211 @@ function PurchaseOrdersPageContent() {
     }
   };
 
+  const submitDraftOrder = async (order: PurchaseOrder) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        headers: authHeaders(),
+      });
+      if (!response.ok) throw new Error('Không tải được chi tiết đơn hàng');
+      const full = await response.json();
+      
+      const payload: any = {
+        poNumber: full.poNumber,
+        supplierId: full.supplier?.id,
+        orderDate: full.orderDate,
+        expectedDate: full.expectedDate,
+        status: 'CREATED',
+        description: full.description,
+        creatorName: (full as any).creatorName,
+        creatorPhone: (full as any).creatorPhone,
+        warehouseCode: (full as any).warehouseCode,
+        approverId: (full as any).approverId,
+      };
+
+      if (full.details?.length > 0) {
+        payload.items = full.details.map((item: any) => ({
+          id: item.id,
+          productId: item.product?.id,
+          warehouseCode: item.warehouseCode || 'KHO-NVL',
+          expectedQty: item.expectedQty,
+          receivedQty: item.receivedQty,
+          unitPrice: item.unitPrice,
+        }));
+      } else {
+        payload.items = [];
+      }
+
+      const putRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(payload)
+      });
+
+      if (!putRes.ok) {
+        const errData = await putRes.json().catch(() => null);
+        let msg = 'Không thể gửi duyệt đơn hàng';
+        if (errData && errData.message) {
+          msg = Array.isArray(errData.message) ? errData.message.join(', ') : errData.message;
+        }
+        throw new Error(msg);
+      }
+      setToast({ type: 'success', message: 'Đã tạo mới/gửi duyệt đơn hàng thành công.' });
+      await loadData();
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi gửi duyệt' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateStockInReceipt = async (status: 'DRAFT' | 'ASSIGNED') => {
+    if (!selectedOrder) return;
+    if (selectedStaffIds.length === 0) {
+      setToast({ type: 'error', message: 'Vui lòng chọn ít nhất một nhân viên kiểm kê.' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const items = form.items.map((item: any) => ({
+        productId: item.productId,
+        warehouseCode: item.warehouseCode || form.warehouseCode || 'KHO-NVL',
+        orderedQty: Number(item.expectedQty) || 0,
+        receivedQty: Number(item.receivedQty) || 0,
+        quantity: item.inventoryQty !== undefined ? Number(item.inventoryQty) : (Number(item.expectedQty) || 0),
+        unitPrice: Number(item.unitPrice) || 0,
+      }));
+
+      const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          poNumber: receiptCode || undefined,
+          status: status,
+          receiptType: 'PURCHASE_GOODS',
+          warehouseCode: form.warehouseCode || 'KHO-NVL',
+          supplierId: selectedOrder.supplier?.id,
+          sourceReferenceNo: selectedOrder.poNumber,
+          receiptDate: new Date(receiptDate).toISOString(),
+          description: stockInNote,
+          assignedStaffIds: selectedStaffIds,
+          items,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Không tạo được lệnh nhập kho');
+      }
+      setToast({ type: 'success', message: status === 'DRAFT' ? 'Đã lưu nháp lệnh nhập kho thành công.' : 'Đã tạo lệnh nhập kho và giao việc thành công.' });
+      closeModal();
+      await loadData();
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi lập lệnh nhập kho' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openCreateStockIn = async (order: PurchaseOrder) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts`, { headers: authHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data.data || [];
+        const matching = list.filter((o: any) => o.sourceReferenceNo === order.poNumber);
+        if (matching.length > 0) {
+          setDuplicateReceipts(matching);
+          setPendingOrderForStockIn(order);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    proceedWithCreateStockIn(order);
+  };
+
+  const proceedWithCreateStockIn = async (order: PurchaseOrder) => {
+    setSelectedId(order.id);
+    setSelectedOrderDetails(null);
+    setReceiptCode('');
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        headers: authHeaders(),
+      });
+      if (!response.ok) {
+        throw new Error('Không tải được chi tiết đơn mua hàng');
+      }
+      const full = (await response.json()) as PurchaseOrder;
+      setSelectedOrderDetails(full);
+      
+      const detailProducts: ScannedProduct[] = (full.details || [])
+        .filter((d) => d.product?.id)
+        .map((d) => ({
+          id: d.product!.id,
+          internalSku: d.product!.internalSku || '',
+          name: d.product!.name || '',
+          unit: d.product!.unit,
+          minimumStock: 0,
+          category: null,
+          supplier: full.supplier ? { id: full.supplier.id, name: full.supplier.name } : null,
+          stockBalances: [],
+          totalStock: 0,
+        }));
+      setScannedProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newProducts = detailProducts.filter((p) => !existingIds.has(p.id));
+        return [...prev, ...newProducts];
+      });
+
+      setForm({
+        poNumber: full.poNumber,
+        supplierId: full.supplier?.id || '',
+        orderDate: full.orderDate ? parseDateForInput(full.orderDate) : toLocalDatetimeString(new Date()),
+        expectedDate: full.expectedDate ? parseDateForInput(full.expectedDate) : toLocalDatetimeString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
+        status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
+        description: full.description || '',
+        items: full.details?.length
+          ? full.details.map((detail) => ({
+              id: detail.id,
+              rowId: `${detail.id}-${Date.now()}`,
+              productId: detail.product?.id || '',
+              warehouseCode: detail.warehouseCode || 'KHO-NVL',
+              expectedQty: String(detail.expectedQty || 0),
+              receivedQty: String(detail.receivedQty || 0),
+              inventoryQty: String(Math.max((detail.expectedQty || 0) - (detail.receivedQty || 0), 0)),
+              unitPrice: String(detail.unitPrice || 0),
+            }))
+          : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
+        creatorName: (full as any).creatorName || '',
+        creatorPhone: (full as any).creatorPhone || '',
+        warehouseCode: (full as any).warehouseCode || accessibleWarehouses[0]?.code || '',
+        approverId: (full as any).approverId || '',
+      });
+      
+      setModalMode('create_order' as any);
+      setReceiptDate(new Date().toISOString().slice(0, 16));
+      setSelectedStaffIds([]);
+      setStockInNote('');
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tải dữ liệu' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const openReceive = (order: PurchaseOrder) => {
     setSelectedId(order.id);
     setReceiveRows(
       (order.details || []).map((detail) => ({
         detailId: detail.id,
-        label: `${detail.product?.internalSku || '-'} · ${detail.product?.name || '-'}`,
-        qty: String(Math.max(detail.expectedQty - detail.receivedQty, 0)),
+        sku: detail.product?.internalSku || '-',
+        label: detail.product?.name || '-',
+        expectedQty: detail.expectedQty || 0,
+        receivedQty: detail.receivedQty || 0,
+        unitPrice: detail.unitPrice || 0,
+        qty: String(Math.max((detail.expectedQty || 0) - (detail.receivedQty || 0), 0)),
       })),
     );
     setReceiveOpen(true);
@@ -986,6 +1292,14 @@ function PurchaseOrdersPageContent() {
       setToast({ type: 'success', message: 'Đã cập nhật số lượng nhận hàng.' });
       setReceiveOpen(false);
       await loadData();
+      if (selectedId) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${selectedId}`, { headers: authHeaders() });
+          if (res.ok) setSelectedOrderDetails(await res.json());
+        } catch (e) {
+          console.error(e);
+        }
+      }
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi nhận hàng' });
     } finally {
@@ -1005,10 +1319,33 @@ function PurchaseOrdersPageContent() {
         received: 0,
       };
 
+  const token = localStorage.getItem('token') || '';
+  const payload = parseJwtPayload(token);
+  const storedUser = getStoredUser();
+  let currentUserIsManager = false;
+  if (storedUser) {
+    if (storedUser.role && String(storedUser.role).toLowerCase() === 'manager') {
+      currentUserIsManager = true;
+    } else if (Array.isArray(storedUser.roles)) {
+      currentUserIsManager = storedUser.roles.some((r: any) => String(r?.name || r).toLowerCase() === 'manager');
+    }
+  }
+
   const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
-  const canManagerApprove = selectedOrderStatus === 'CREATED';
-  const canCreateStockIn = selectedOrderStatus === 'SUPPLIER_APPROVED' || selectedOrderStatus === 'PARTIALLY_RECEIVED' || selectedOrderStatus === 'RECEIVED';
-  const canReceiveGoods = selectedOrderStatus === 'SUPPLIER_APPROVED' || selectedOrderStatus === 'PARTIALLY_RECEIVED';
+  const canManagerApprove = selectedOrderStatus === 'CREATED' && currentUserIsManager;
+  
+  const canReceiveRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
+  const canCreateOrderRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
+  const canCreateReceiptRow = (order: PurchaseOrder) => ['PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
+
+  const canApproveRow = (order: PurchaseOrder) => {
+    return (order.status || 'CREATED').toUpperCase() === 'CREATED' && currentUserIsManager;
+  };
+
+  const canDelete = (order: PurchaseOrder) => {
+    const s = statusToFilter(order.status);
+    return s === 'waiting' || s === 'cancelled';
+  };
 
   const addRow = () => {
     setForm((current) => ({ ...current, items: [...current.items, makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')] }));
@@ -1235,17 +1572,21 @@ function PurchaseOrdersPageContent() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] border-collapse bg-white">
+          <table className="w-full min-w-[1280px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Số đơn hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Ngày đơn hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Nhà cung cấp</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Diễn giải</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Tổng tiền</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Tình trạng</th>
-                <th className="sticky right-0 w-40 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
+                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                </th>
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Số đơn hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Người đặt</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày tạo đơn</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Diễn giải</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tổng tiền</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tình trạng</th>
+                <th className="sticky right-0 w-40 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -1253,41 +1594,45 @@ function PurchaseOrdersPageContent() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Đang tải danh sách đơn mua hàng...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Chưa có đơn mua hàng phù hợp.
                   </td>
                 </tr>
               ) : (
-                paginatedOrders.map((order, index) => (
+                <>
+                  {paginatedOrders.map((order, index) => (
                   <tr
                     key={order.id}
-                    className="group border-b border-slate-200 transition hover:bg-slate-50"
+                    className="group border-b border-slate-200 transition hover:bg-cyan-50/50"
                   >
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{startIndex + index}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{order.poNumber}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">
-                      <span className="inline-flex items-center gap-1">
-                        <CalendarDays className="h-4 w-4 text-slate-400" />
-                        {formatDate(order.orderDate)}
-                      </span>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle" onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{startIndex + index}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.poNumber}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                      {(order as any).creatorName || '-'}
+                    </td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                      {new Date((order as any).createdAt || order.orderDate).toLocaleString('vi-VN')}
+                    </td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {order.supplier?.name || order.supplierName || order.supplier?.supplierCode || '-'}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{order.description || '-'}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{formatMoney(order.totalAmount)}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.description || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatMoney(order.totalAmount)}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(order.status)}`}>
                         {statusLabel(order.status)}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-slate-50">
+                    <td className={`sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeDropdown === order.id ? 'z-[60]' : 'z-10'}`}>
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
@@ -1304,9 +1649,11 @@ function PurchaseOrdersPageContent() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
+                            if (order.status !== 'DRAFT') return;
                             openEdit(order);
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          disabled={order.status !== 'DRAFT'}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${order.status === 'DRAFT' ? 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100 hover:text-cyan-700' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
                           title="Sửa"
                         >
                           <Pencil className="h-4 w-4" />
@@ -1315,18 +1662,100 @@ function PurchaseOrdersPageContent() {
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
+                            if (!canDelete(order)) return;
                             setDeleteTarget(order);
                             setModalMode('delete');
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          disabled={!canDelete(order)}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${canDelete(order) ? 'bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
                           title="Xóa"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                        <div className="relative" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveDropdown(activeDropdown === order.id ? null : order.id)}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                            title="Thao tác khác"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                          {activeDropdown === order.id && (
+                            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left">
+                              <button
+                                type="button"
+                                disabled={order.status !== 'DRAFT'}
+                                onClick={() => { submitDraftOrder(order); setActiveDropdown(null); }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <Send className="h-4 w-4" />
+                                Gửi duyệt (Tạo mới)
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canApproveRow(order)}
+                                onClick={() => { 
+                                  if (window.confirm('Bạn có chắc chắn muốn duyệt đơn hàng này?')) {
+                                    approveOrder(order); 
+                                  }
+                                  setActiveDropdown(null); 
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                Duyệt đơn hàng
+                              </button>
+                              <div className="my-1 border-t border-slate-100"></div>
+                              <button
+                                type="button"
+                                disabled={!canReceiveRow(order)}
+                                onClick={() => { 
+                                  openReceive(order);
+                                  setActiveDropdown(null); 
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <Package className="h-4 w-4" />
+                                Đã nhận hàng
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canCreateReceiptRow(order)}
+                                onClick={() => { 
+                                  navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                              >
+                                <FileText className="h-4 w-4" />
+                                Tạo phiếu nhập kho
+                              </button>
+                                <button
+                                  type="button"
+                                  disabled={!canCreateOrderRow(order)}
+                                  onClick={() => {
+                                    openCreateStockIn(order);
+                                    setActiveDropdown(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                >
+                                <Clock3 className="h-4 w-4" />
+                                Tạo lệnh nhập kho
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
-                ))
+                ))}
+                {/* Spacer row to prevent overflow clipping of the dropdown */}
+                {activeDropdown && (
+                  <tr>
+                    <td colSpan={10} className="p-0" style={{ height: '220px' }}></td>
+                  </tr>
+                )}
+                </>
               )}
             </tbody>
           </table>
@@ -1356,108 +1785,57 @@ function PurchaseOrdersPageContent() {
         </div>
       </div>
 
-      {/* POPUP XEM CHI TIẾT */}
-      {modalMode === 'view' && selectedOrder && selectedOrderMetrics && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col">
-            <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 lg:flex-row lg:items-start lg:justify-between bg-slate-50">
-              <div>
-                <p className="text-2xl font-black text-slate-900">Chi tiết đơn hàng {selectedOrder.poNumber}</p>
-                <p className="mt-1 text-sm font-medium text-slate-500">{selectedOrder.supplier?.name || selectedOrder.supplierName || '-'} · {formatDate(selectedOrder.orderDate)}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <span className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${statusClass(selectedOrder.status)}`}>{statusLabel(selectedOrder.status)}</span>
-                <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 bg-white border border-slate-200 transition hover:bg-slate-100 hover:text-slate-700" title="Đóng">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+      {/* POPUP TẠO / SỬA / XEM */}
+      <PurchaseOrderFormModal
+        isOpen={modalMode === 'create' || modalMode === 'edit' || modalMode === 'view' || modalMode === ('create_order' as any)}
+        mode={modalMode === 'create' ? 'create' : modalMode === 'view' ? 'view' : modalMode === ('create_order' as any) ? ('create_order' as any) : 'edit'}
+        form={form}
+        suppliers={suppliers}
+        warehouses={warehouses}
+        users={users}
+        scannedProducts={scannedProducts}
+        saving={saving}
+        customActions={
+          modalMode === ('create_order' as any) ? (
+            <div className="flex gap-3">
+              <button 
+                type="button" 
+                onClick={() => handleCreateStockInReceipt('DRAFT')}
+                disabled={saving || selectedStaffIds.length === 0}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border-2 border-amber-200 bg-amber-50 px-6 py-2.5 font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
+              >
+                Lưu nháp
+              </button>
+              <button 
+                type="button" 
+                onClick={() => handleCreateStockInReceipt('ASSIGNED')}
+                disabled={saving || selectedStaffIds.length === 0}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-8 py-2.5 font-bold text-white shadow-lg transition hover:bg-amber-700 disabled:opacity-60"
+              >
+                <Clock3 className="h-5 w-5" />
+                {saving ? 'Đang tạo...' : 'Tạo mới & Giao việc'}
+              </button>
             </div>
-
-            <div className="overflow-y-auto flex-1 p-6">
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] mb-6">
-                <div className="rounded-xl border border-slate-200 bg-white p-5">
-                  <h4 className="mb-4 text-sm font-bold uppercase text-slate-500">Thông tin chung</h4>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <Field label="Mã đơn hàng" value={selectedOrder.poNumber} />
-                    <Field label="Nhà cung cấp" value={selectedOrder.supplier?.name || selectedOrder.supplierName || selectedOrder.supplier?.supplierCode || '-'} />
-                    <Field label="Ngày đơn hàng" value={formatDate(selectedOrder.orderDate)} />
-                    <Field label="Ngày giao hàng" value={formatDate(selectedOrder.expectedDate)} />
-                    <Field label="Diễn giải" value={selectedOrder.description || '-'} />
-                    <Field label="Tổng tiền" value={formatMoney(selectedOrder.totalAmount)} />
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Clock3 className="h-5 w-5 text-cyan-600" />
-                    <p className="text-sm font-bold uppercase text-slate-700">Tổng quan số lượng</p>
-                  </div>
-                  <div className="space-y-3">
-                    <SummaryRow label="Số dòng hàng" value={`${selectedOrderMetrics.lines}`} />
-                    <SummaryRow label="SL yêu cầu" value={`${selectedOrderMetrics.ordered}`} />
-                    <SummaryRow label="SL đã nhận" value={`${selectedOrderMetrics.received}`} />
-                    <SummaryRow label="Tổng tiền" value={formatMoney(selectedOrder.totalAmount)} />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-cyan-600" />
-                  <h3 className="text-lg font-black text-slate-900">Danh sách Hàng hóa</h3>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-slate-200">
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[980px] border-collapse bg-white">
-                      <thead className="bg-slate-50">
-                        <tr className="border-b border-slate-200">
-                          <th className="w-14 border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">STT</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Mã hàng</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Tên hàng</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Kho</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL yêu cầu</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">SL đã nhận</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Đơn giá</th>
-                          <th className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold uppercase text-slate-700">Thành tiền</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(selectedOrder.details || []).map((detail, index) => (
-                          <tr key={detail.id} className="border-b border-slate-200 transition hover:bg-slate-50">
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.internalSku || '-'}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.product?.name || '-'}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.warehouseCode || '-'}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.expectedQty}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{detail.receivedQty}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{formatMoney(detail.unitPrice)}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">{formatMoney((detail.expectedQty || 0) * (detail.unitPrice || 0))}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+          ) : (
+            <div className="flex gap-3">
               {canManagerApprove && (
-                <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder); }} disabled={saving} className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60">
-                  Duyệt manager
+                <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder!); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-transparent bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:opacity-60">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Duyệt đơn hàng
                 </button>
               )}
-              {canReceiveGoods && (
+              {selectedOrder && canReceiveRow(selectedOrder) && (
                 <button
                   type="button"
                   onClick={() => openReceive(selectedOrder)}
                   disabled={saving}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
                 >
+                  <Package className="h-4 w-4" />
                   Đã nhận hàng
                 </button>
               )}
-              {canCreateStockIn && (
+              {selectedOrder && canCreateReceiptRow(selectedOrder) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1467,25 +1845,117 @@ function PurchaseOrdersPageContent() {
                   disabled={saving}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                 >
+                  <FileText className="h-4 w-4" />
                   Tạo phiếu nhập kho
                 </button>
               )}
+              {selectedOrder && canCreateOrderRow(selectedOrder) && (
+                <button
+                  type="button"
+                  onClick={() => openCreateStockIn(selectedOrder)}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
+                >
+                  <Clock3 className="h-4 w-4" />
+                  Tạo lệnh nhập kho
+                </button>
+              )}
             </div>
-          </div>
-        </div>
-      )}
+          )
+        }
+        renderRightPanel={
+          modalMode === ('create_order' as any) && (
+            <div className="flex flex-col h-full bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-black text-slate-900 mb-6">Tạo Lệnh Nhập Kho</h3>
+              
+              <div className="space-y-6 flex-1">
+                <div>
+                  <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <FileText className="h-4 w-4 text-cyan-600" />
+                    Mã lệnh nhập kho (Tùy chọn)
+                  </label>
+                  <input
+                    type="text"
+                    value={receiptCode}
+                    onChange={(e) => setReceiptCode(e.target.value)}
+                    placeholder="Bỏ trống để tự động tạo..."
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
+                  />
+                </div>
 
-      {/* POPUP TẠO / SỬA - SỬ DỤNG COMPONENT MỚI */}
-      <PurchaseOrderFormModal
-        isOpen={modalMode === 'create' || modalMode === 'edit'}
-        mode={modalMode === 'create' ? 'create' : 'edit'}
-        form={form}
-        suppliers={suppliers}
-        warehouses={warehouses}
-        users={users}
-        scannedProducts={scannedProducts}
-        saving={saving}
-        onFormChange={setForm}
+                <div>
+                  <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <Calendar className="h-4 w-4 text-cyan-600" />
+                    Thời gian nhập kho (Dự kiến)
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={receiptDate}
+                    onChange={(e) => setReceiptDate(e.target.value)}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
+                  />
+                </div>
+                
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
+                  <input
+                    type="text"
+                    value={stockInNote}
+                    onChange={(e) => setStockInNote(e.target.value)}
+                    placeholder="Ví dụ: Kiểm tra kỹ tem mác..."
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
+                    <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
+                      <User className="h-4 w-4 text-indigo-600" />
+                      Nhân viên kho
+                    </p>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer text-indigo-700 font-bold hover:text-indigo-800">
+                      <input 
+                        type="checkbox" 
+                        onChange={(e) => {
+                          const eligible = users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff'));
+                          if (e.target.checked) setSelectedStaffIds(eligible.map(u => u.id));
+                          else setSelectedStaffIds([]);
+                        }} 
+                        checked={
+                          selectedStaffIds.length > 0 && 
+                          selectedStaffIds.length === users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length
+                        } 
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600" 
+                      />
+                      Chọn tất cả
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2">
+                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u) => (
+                      <label key={u.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:border-indigo-400 transition shadow-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedStaffIds.includes(u.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
+                            else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
+                          }}
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
+                        />
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
+                          {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        }
+        customWidthClass={['create', 'edit', 'view', 'create_order'].includes(modalMode || '') ? 'w-[95vw] max-w-[1500px]' : undefined}
+        onFormChange={setForm as any}
         onSubmit={handleSubmit}
         onClose={closeModal}
         onAddRow={addRow}
@@ -1497,8 +1967,8 @@ function PurchaseOrdersPageContent() {
 
       {/* POPUP NHẬN HÀNG */}
       {receiveOpen && selectedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-5xl rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Nhận hàng cho {selectedOrder.poNumber}</h3>
@@ -1510,22 +1980,44 @@ function PurchaseOrdersPageContent() {
             </div>
 
             <div className="max-h-[calc(92vh-140px)] overflow-y-auto px-6 py-5">
-              <div className="space-y-3">
-                {receiveRows.map((row, index) => (
-                  <div key={row.detailId} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-[1.8fr_0.6fr]">
-                    <div>
-                      <p className="text-sm font-black text-slate-900">{index + 1}. {row.label}</p>
-                      <p className="text-xs font-medium text-slate-500">Nhập số lượng muốn ghi nhận nhận kho.</p>
-                    </div>
-                    <input
-                      type="number"
-                      min={0}
-                      value={row.qty}
-                      onChange={(event) => setReceiveRows((current) => current.map((item) => (item.detailId === row.detailId ? { ...item, qty: event.target.value } : item)))}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                    />
-                  </div>
-                ))}
+              <div className="overflow-hidden rounded-xl border-2 border-slate-200">
+                <table className="w-full text-left text-sm text-slate-600 border-collapse">
+                  <thead className="bg-slate-50 uppercase text-slate-500 border-b-2 border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3 font-black text-center w-12 border-r-2 border-slate-200">STT</th>
+                      <th className="px-4 py-3 font-black border-r-2 border-slate-200">Sản phẩm</th>
+                      <th className="px-4 py-3 font-black text-center w-28 border-r-2 border-slate-200">SL Đặt</th>
+                      <th className="px-4 py-3 font-black text-center w-28 border-r-2 border-slate-200">Đã nhận</th>
+                      <th className="px-4 py-3 font-black text-right w-40 border-r-2 border-slate-200">Đơn giá</th>
+                      <th className="px-4 py-3 font-black text-center w-40">Nhận đợt này</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y-2 divide-slate-200">
+                    {receiveRows.map((row, index) => (
+                      <tr key={row.detailId} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-4 py-3 text-center font-bold text-slate-400 border-r-2 border-slate-200">{index + 1}</td>
+                        <td className="px-4 py-3 border-r-2 border-slate-200">
+                          <p className="font-bold text-slate-900 line-clamp-2" title={row.label}>{row.label}</p>
+                          <p className="text-xs font-semibold text-slate-500 mt-0.5">{row.sku}</p>
+                        </td>
+                        <td className="px-4 py-3 text-center font-bold text-slate-700 border-r-2 border-slate-200">{Number(row.expectedQty) || 0}</td>
+                        <td className="px-4 py-3 text-center font-bold text-emerald-600 border-r-2 border-slate-200">{Number(row.receivedQty) || 0}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-600 border-r-2 border-slate-200">
+                          {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(row.unitPrice) || 0)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min={0}
+                            value={row.qty}
+                            onChange={(event) => setReceiveRows((current) => current.map((item) => (item.detailId === row.detailId ? { ...item, qty: event.target.value } : item)))}
+                            className="h-10 w-full rounded-xl border-2 border-slate-200 px-3 text-center text-sm font-bold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -1578,6 +2070,71 @@ function PurchaseOrdersPageContent() {
         onProductFound={handleProductScanned}
         title="Quét mã vạch nhập kho"
       />
+
+      {duplicateReceipts.length > 0 && pendingOrderForStockIn && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Đã tồn tại phiếu nhập kho</h3>
+                <p className="text-sm font-medium text-slate-500">
+                  Đơn mua hàng <span className="font-bold text-slate-700">{pendingOrderForStockIn.poNumber}</span> đã có {duplicateReceipts.length} phiếu nhập kho trước đó.
+                </p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setDuplicateReceipts([]);
+                  setPendingOrderForStockIn(null);
+                }} 
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
+              <div className="space-y-3">
+                {duplicateReceipts.map((receipt) => (
+                  <div key={receipt.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-bold text-slate-800">{receipt.receiptCode}</span>
+                      <span className={`inline-flex rounded-lg border px-2 py-0.5 text-xs font-bold ${receipt.status === 'POSTED' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-100 text-slate-600'}`}>{receipt.status === 'POSTED' ? 'Đã chốt' : 'Lưu nháp'}</span>
+                    </div>
+                    <div className="text-sm text-slate-600">Ngày lập: {new Date(receipt.createdAt || receipt.receiptDate).toLocaleString('vi-VN')}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-6 text-sm font-bold text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                Bạn có chắc chắn muốn tiếp tục tạo thêm lệnh nhập kho mới không?
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
+              <button 
+                type="button" 
+                onClick={() => {
+                  setDuplicateReceipts([]);
+                  setPendingOrderForStockIn(null);
+                }} 
+                className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Hủy bỏ
+              </button>
+              <button 
+                type="button" 
+                onClick={() => {
+                  const order = pendingOrderForStockIn;
+                  setDuplicateReceipts([]);
+                  setPendingOrderForStockIn(null);
+                  proceedWithCreateStockIn(order);
+                }} 
+                className="rounded-xl bg-amber-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-amber-700"
+              >
+                Vẫn tiếp tục tạo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

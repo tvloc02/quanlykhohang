@@ -11,26 +11,35 @@ export default function Toast({ message, type, onClose }: ToastProps) {
 
   const isError = type === 'error';
 
+  React.useEffect(() => {
+    if (!message) return;
+    const duration = isError ? 6000 : 3000;
+    const timer = setTimeout(() => {
+      onClose();
+    }, duration);
+    return () => clearTimeout(timer);
+  }, [message, isError, onClose]);
+
   return (
-    <div className="fixed top-6 left-1/2 z-[90] w-full px-4 transform -translate-x-1/2 flex justify-center">
+    <div className="fixed right-4 top-4 z-[90] flex justify-end">
       <div
         role="alert"
-        className={`max-w-2xl w-full flex items-center justify-between gap-4 rounded-2xl border-2 px-6 py-4 text-base font-bold shadow-2xl shadow-slate-900/10 ${
+        className={`flex items-center gap-3 rounded-xl border px-4 py-3 shadow-xl max-w-sm w-full ${
           isError
-            ? 'border-red-300 bg-red-50 text-red-800'
-            : 'border-emerald-300 bg-emerald-50 text-emerald-800'
+            ? 'border-red-200 bg-white text-red-600'
+            : 'border-emerald-200 bg-white text-emerald-600'
         }`}
       >
-        <span className="leading-7 text-sm md:text-base">{message}</span>
+        <span className="text-sm font-bold flex-1 break-words leading-tight">{message}</span>
         <button
           type="button"
           onClick={onClose}
-          className={`ml-4 rounded-md px-3 py-1 text-lg leading-6 transition ${
-            isError ? 'hover:bg-red-100' : 'hover:bg-emerald-100'
+          className={`flex-shrink-0 rounded-lg p-1 transition ${
+            isError ? 'hover:bg-red-50 text-red-500' : 'hover:bg-emerald-50 text-emerald-500'
           }`}
           aria-label="Đóng thông báo"
         >
-          ×
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
     </div>
