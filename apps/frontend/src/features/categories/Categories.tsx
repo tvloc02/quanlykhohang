@@ -13,6 +13,7 @@ import {
     Check,
     ChevronDown,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import Toast from '../../shared/components/Toast';
 import {
     CATALOG_CATEGORY_TYPES,
@@ -386,98 +387,95 @@ export default function CategoryManagement() {
         closeModal();
     };
 
-    const parseImportedWorkbook = (content: string): ImportSummary => {
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(content, 'text/xml');
-        const worksheets = Array.from(xmlDoc.getElementsByTagNameNS('*', 'Worksheet'));
-        const nextCategories = [...categories];
-        const details: string[] = [];
-        let successCount = 0;
-        let failedCount = 0;
-
-        if (worksheets.length === 0) {
-            return {
-                successCount: 0,
-                failedCount: 1,
-                details: ['Không tìm thấy sheet hợp lệ. Vui lòng dùng file mẫu tải từ hệ thống.'],
-            };
-        }
-
-        CATALOG_CATEGORY_TYPES.forEach((type) => {
-            const sheet = worksheets.find((worksheet) => {
-                const sheetName =
-                    worksheet.getAttribute('ss:Name') ||
-                    worksheet.getAttributeNS('urn:schemas-microsoft-com:office:spreadsheet', 'Name') ||
-                    worksheet.getAttribute('Name') ||
-                    '';
-                return sheetName.trim().toLowerCase() === categorySheetNames[type.value].toLowerCase();
-            });
-
-            if (!sheet) {
-                failedCount += 1;
-                details.push(`Thiếu sheet "${categorySheetNames[type.value]}".`);
-                return;
-            }
-
-            const rows = Array.from(sheet.getElementsByTagNameNS('*', 'Row')).slice(1);
-            rows.forEach((row, index) => {
-                const cells = Array.from(row.getElementsByTagNameNS('*', 'Data')).map((cell) => cell.textContent?.trim() || '');
-                const [code, name, description, status] = cells;
-                const rowNumber = index + 2;
-
-                if (!code && !name && !description && !status) return;
-
-                if (!code || !name) {
-                    failedCount += 1;
-                    details.push(`${categorySheetNames[type.value]} dòng ${rowNumber}: thiếu mã hoặc tên danh mục.`);
-                    return;
-                }
-
-                const normalizedCode = code.toUpperCase();
-                const duplicateCode = nextCategories.some(
-                    (category) => category.type === type.value && category.code.toUpperCase() === normalizedCode,
-                );
-
-                if (duplicateCode) {
-                    failedCount += 1;
-                    details.push(`${categorySheetNames[type.value]} dòng ${rowNumber}: mã "${normalizedCode}" đã tồn tại.`);
-                    return;
-                }
-
-                nextCategories.unshift({
-                    id: crypto.randomUUID(),
-                    type: type.value,
-                    code: normalizedCode,
-                    name,
-                    description,
-                    status: normalizeStatusLabel(status || 'Đang dùng'),
-                    createdAt: new Date().toISOString(),
-                });
-                successCount += 1;
-            });
-        });
-
-        setCategories(nextCategories);
-        return { successCount, failedCount, details };
-    };
-
     const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         event.target.value = '';
         if (!file) return;
 
         try {
-            const content = await file.text();
-            const summary = parseImportedWorkbook(content);
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            
+            const nextCategories = [...categories];
+            const details: string[] = [];
+            let successCount = 0;
+            let failedCount = 0;
+
+            if (workbook.SheetNames.length === 0) {
+                setImportSummary({
+                    successCount: 0,
+                    failedCount: 1,
+                    details: ['Không tìm thấy sheet hợp lệ trong file Excel.'],
+                });
+                setModalMode('import-result');
+                return;
+            }
+
+            CATALOG_CATEGORY_TYPES.forEach((type) => {
+                const sheetName = workbook.SheetNames.find(
+                    (name) => name.trim().toLowerCase() === categorySheetNames[type.value].toLowerCase()
+                );
+
+                if (!sheetName) {
+                    failedCount += 1;
+                    details.push(`Thiếu sheet "${categorySheetNames[type.value]}".`);
+                    return;
+                }
+
+                const sheet = workbook.Sheets[sheetName];
+                const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+                
+                rows.slice(1).forEach((row, index) => {
+                    const code = String(row[0] ?? '').trim();
+                    const name = String(row[1] ?? '').trim();
+                    const description = String(row[2] ?? '').trim();
+                    const status = String(row[3] ?? '').trim();
+                    const rowNumber = index + 2;
+
+                    if (!code && !name && !description && !status) return;
+
+                    if (!code || !name) {
+                        failedCount += 1;
+                        details.push(`${categorySheetNames[type.value]} dòng ${rowNumber}: thiếu mã hoặc tên danh mục.`);
+                        return;
+                    }
+
+                    const normalizedCode = code.toUpperCase();
+                    const duplicateCode = nextCategories.some(
+                        (category) => category.type === type.value && category.code.toUpperCase() === normalizedCode,
+                    );
+
+                    if (duplicateCode) {
+                        failedCount += 1;
+                        details.push(`${categorySheetNames[type.value]} dòng ${rowNumber}: mã "${normalizedCode}" đã tồn tại.`);
+                        return;
+                    }
+
+                    nextCategories.unshift({
+                        id: crypto.randomUUID(),
+                        type: type.value,
+                        code: normalizedCode,
+                        name,
+                        description,
+                        status: normalizeStatusLabel(status || 'Đang dùng'),
+                        createdAt: new Date().toISOString(),
+                    });
+                    successCount += 1;
+                });
+            });
+
+            setCategories(nextCategories);
+            const summary = { successCount, failedCount, details };
             setImportSummary(summary);
             setSuccess(summary.successCount > 0 ? `Import thành công ${summary.successCount} dòng.` : '');
             setError(summary.successCount === 0 && summary.failedCount > 0 ? 'Import thất bại. Vui lòng kiểm tra file.' : '');
             setModalMode('import-result');
-        } catch {
+        } catch (error) {
+            console.error('Lỗi đọc file Excel', error);
             setImportSummary({
                 successCount: 0,
                 failedCount: 1,
-                details: ['Không đọc được file. Vui lòng dùng file mẫu .xls tải từ hệ thống.'],
+                details: ['Không đọc được file. Vui lòng đảm bảo đây là file Excel hợp lệ (.xlsx, .xls).'],
             });
             setModalMode('import-result');
         }
@@ -570,7 +568,7 @@ export default function CategoryManagement() {
             <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xls,.xml"
+                accept=".xlsx,.xls,.xml"
                 className="hidden"
                 onChange={handleImportFile}
             />
