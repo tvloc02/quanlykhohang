@@ -550,9 +550,14 @@ export function PurchaseOrderFormModal({
                         SL yêu cầu
                       </th>
                       {(mode === 'view' || mode === ('create_order' as any)) && (
-                        <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                          SL kiểm kê
-                        </th>
+                        <>
+                          <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                            SL đã nhận
+                          </th>
+                          <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                            SL kiểm kê
+                          </th>
+                        </>
                       )}
                       <th className="w-40 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Đơn giá
@@ -652,9 +657,14 @@ export function PurchaseOrderFormModal({
                             )}
                           </td>
                           {(mode === 'view' || mode === ('create_order' as any)) && (
-                            <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
-                              {item.receivedQty}
-                            </td>
+                            <>
+                              <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                                {item.receivedQty}
+                              </td>
+                              <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                                {Math.max(Number(item.expectedQty) - Number(item.receivedQty), 0)}
+                              </td>
+                            </>
                           )}
                           <td className="border border-slate-200 px-3 py-3 text-center">
                             {mode === 'create' || mode === 'edit' ? (
