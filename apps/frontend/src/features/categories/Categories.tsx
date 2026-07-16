@@ -412,31 +412,62 @@ export default function CategoryManagement() {
             }
 
             CATALOG_CATEGORY_TYPES.forEach((type) => {
-                const sheetName = workbook.SheetNames.find(
+                let sheetName = workbook.SheetNames.find(
                     (name) => name.trim().toLowerCase() === categorySheetNames[type.value].toLowerCase()
                 );
 
+                // If 1-sheet file and name doesn't match perfectly, assume it's item-group
+                if (!sheetName && workbook.SheetNames.length === 1 && type.value === 'item-group') {
+                    sheetName = workbook.SheetNames[0];
+                }
+
                 if (!sheetName) {
-                    failedCount += 1;
-                    details.push(`Thiếu sheet "${categorySheetNames[type.value]}".`);
+                    if (workbook.SheetNames.length > 1) {
+                        failedCount += 1;
+                        details.push(`Thiếu sheet "${categorySheetNames[type.value]}".`);
+                    }
                     return;
                 }
 
                 const sheet = workbook.Sheets[sheetName];
-                const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+                const rawRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+                if (rawRows.length === 0) return;
+
+                // Find header row dynamically
+                const headerRowIndex = rawRows.findIndex(r => r && r.length > 0 && String(r[0] || '').toLowerCase().includes('mã'));
+                const headerRow = headerRowIndex >= 0 ? rawRows[headerRowIndex] : rawRows[0];
+                const actualRows = headerRowIndex >= 0 ? rawRows.slice(headerRowIndex + 1) : rawRows.slice(1);
+
+                let codeIdx = 0, nameIdx = 1, descIdx = 2, statusIdx = 3;
+                if (headerRow) {
+                    const headers = headerRow.map((h: any) => String(h || '').trim().toLowerCase());
+                    const cIdx = headers.findIndex((h: string) => h.includes('mã'));
+                    const nIdx = headers.findIndex((h: string) => h.includes('tên'));
+                    const dIdx = headers.findIndex((h: string) => h.includes('ý nghĩa') || h.includes('mô tả') || h.includes('vai trò'));
+                    const sIdx = headers.findIndex((h: string) => h.includes('trạng thái'));
+                    
+                    if (cIdx >= 0) codeIdx = cIdx;
+                    if (nIdx >= 0) nameIdx = nIdx;
+                    if (dIdx >= 0) descIdx = dIdx;
+                    else descIdx = -1; // Not found
+                    if (sIdx >= 0) statusIdx = sIdx;
+                    else statusIdx = -1; // Not found
+                }
                 
-                rows.slice(1).forEach((row, index) => {
-                    const code = String(row[0] ?? '').trim();
-                    const name = String(row[1] ?? '').trim();
-                    const description = String(row[2] ?? '').trim();
-                    const status = String(row[3] ?? '').trim();
-                    const rowNumber = index + 2;
+                actualRows.forEach((row, index) => {
+                    if (!row || !row.length) return;
+                    
+                    const code = String(row[codeIdx] ?? '').trim();
+                    const name = String(row[nameIdx] ?? '').trim();
+                    const description = descIdx >= 0 ? String(row[descIdx] ?? '').trim() : '';
+                    const status = statusIdx >= 0 ? String(row[statusIdx] ?? '').trim() : '';
+                    const rowNumber = (headerRowIndex >= 0 ? headerRowIndex : 0) + index + 2;
 
                     if (!code && !name && !description && !status) return;
 
                     if (!code || !name) {
                         failedCount += 1;
-                        details.push(`${categorySheetNames[type.value]} dòng ${rowNumber}: thiếu mã hoặc tên danh mục.`);
+                        details.push(`Sheet "${sheetName}" dòng ${rowNumber}: thiếu mã hoặc tên danh mục.`);
                         return;
                     }
 
@@ -447,7 +478,7 @@ export default function CategoryManagement() {
 
                     if (duplicateCode) {
                         failedCount += 1;
-                        details.push(`${categorySheetNames[type.value]} dòng ${rowNumber}: mã "${normalizedCode}" đã tồn tại.`);
+                        details.push(`Sheet "${sheetName}" dòng ${rowNumber}: mã "${normalizedCode}" đã tồn tại.`);
                         return;
                     }
 
