@@ -570,7 +570,7 @@ export function CreateStockInReceiptModal({
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
               >
                 <CheckCircle2 className="h-4 w-4" />
-                Hoàn thành (Ghi sổ)
+                Duyệt & Hoàn thành
               </button>
             )}
 
