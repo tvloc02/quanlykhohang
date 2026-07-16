@@ -520,7 +520,25 @@ export function CreateStockInReceiptModal({
             </div>
 
             <div className="border-t border-slate-200 p-6 flex flex-col gap-3 bg-white">
-            {mode === 'view' && status !== 'POSTED' && (
+            {mode === 'view' && status === 'DRAFT' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('ASSIGNED');
+                  setTimeout(() => {
+                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                    if (form) form.requestSubmit();
+                  }, 50);
+                }}
+                disabled={saving}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a165] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b08e56] disabled:opacity-60"
+              >
+                <Clock3 className="h-4 w-4" />
+                Tạo mới phiếu yêu cầu (Giao việc)
+              </button>
+            )}
+
+            {mode === 'view' && status === 'ASSIGNED' && (
               <button
                 type="button"
                 onClick={() => {
@@ -533,8 +551,26 @@ export function CreateStockInReceiptModal({
                 disabled={saving}
                 className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
               >
-                <Clock3 className="h-4 w-4" />
+                <CheckCircle2 className="h-4 w-4" />
                 Hoàn thành kiểm kê
+              </button>
+            )}
+
+            {mode === 'view' && status === 'CHECKED' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('POSTED');
+                  setTimeout(() => {
+                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                    if (form) form.requestSubmit();
+                  }, 50);
+                }}
+                disabled={saving}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Hoàn thành (Ghi sổ)
               </button>
             )}
 
