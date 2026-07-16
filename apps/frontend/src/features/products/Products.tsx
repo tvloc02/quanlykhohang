@@ -786,15 +786,6 @@ export default function Products() {
                       </table>
                     </div>
 
-                    {/* Kho ngầm định selector */}
-                    {modalMode !== 'view' && warehouses.length > 0 && (
-                      <div className="mt-4">
-                        <label className="mb-1.5 block text-xs font-bold text-slate-600">Kho ngầm định</label>
-                        <select value={form.defaultWarehouse} onChange={(e) => setForm((c) => ({ ...c, defaultWarehouse: e.target.value }))} className="h-9 w-full max-w-xs rounded-lg border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500">
-                          {warehouseOptions.map((wh) => <option key={wh.value} value={wh.value}>{wh.label}</option>)}
-                        </select>
-                      </div>
-                    )}
                   </div>
                 </div>
 
