@@ -662,7 +662,7 @@ export function PurchaseOrderFormModal({
                                 {item.receivedQty}
                               </td>
                               <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
-                                {Math.max(Number(item.expectedQty) - Number(item.receivedQty), 0)}
+                                {item.receivedQty}
                               </td>
                             </>
                           )}
