@@ -525,7 +525,7 @@ export function PurchaseOrderFormModal({
                   <thead className="bg-slate-50">
                     <tr className="border-b border-slate-200">
                       {mode !== 'view' && (
-                        <th className="w-12 px-3 py-3 text-center">
+                        <th className="w-12 border border-slate-200 px-3 py-3 text-center">
                           <input
                             type="checkbox"
                             className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
@@ -540,33 +540,28 @@ export function PurchaseOrderFormModal({
                           />
                         </th>
                       )}
-                      <th className="w-10 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      <th className="w-10 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         STT
                       </th>
-                      <th className="w-[30%] px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      <th className="w-[30%] border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Mặt hàng
                       </th>
-                      <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         SL yêu cầu
                       </th>
                       {(mode === 'view' || mode === ('create_order' as any)) && (
-                        <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                        <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                           SL đã nhận
                         </th>
                       )}
-                      {mode === ('create_order' as any) && (
-                        <th className="w-28 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                          SL cần nhập
-                        </th>
-                      )}
-                      <th className="w-40 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      <th className="w-40 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Đơn giá
                       </th>
-                      <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                      <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Thành tiền
                       </th>
                       {mode !== 'view' && (
-                        <th className="w-12 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                        <th className="w-12 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                           Xóa
                         </th>
                       )}
@@ -579,7 +574,7 @@ export function PurchaseOrderFormModal({
                       return (
                         <tr key={item.rowId} className="hover:bg-slate-50 transition">
                           {mode !== 'view' && (
-                            <td className="px-3 py-3 text-center">
+                            <td className="border border-slate-200 px-3 py-3 text-center">
                               <input
                                 type="checkbox"
                                 className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
@@ -594,16 +589,16 @@ export function PurchaseOrderFormModal({
                               />
                             </td>
                           )}
-                          <td className="px-3 py-3 text-center text-sm text-slate-600">
+                          <td className="border border-slate-200 px-3 py-3 text-center text-sm text-slate-600">
                             {index + 1}
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="border border-slate-200 px-3 py-3">
                             <select
                               value={item.productId}
                               onChange={(event) =>
                                 onProductChange(item.rowId, event.target.value)
                               }
-                              className={modalSelectClass}
+                              className="h-11 w-full bg-transparent px-2 text-sm outline-none font-medium text-slate-700"
                             >
                               <option value="">Chọn sản phẩm</option>
                               {supplierProducts.map((supplierProduct) => (
@@ -631,7 +626,7 @@ export function PurchaseOrderFormModal({
                               })}
                             </select>
                           </td>
-                          <td className="px-3 py-3">
+                          <td className="border border-slate-200 px-3 py-3">
                             <input
                               type="number"
                               min={0}
@@ -642,30 +637,15 @@ export function PurchaseOrderFormModal({
                                 })
                               }
                               disabled={mode === ('create_order' as any)}
-                              className={`h-11 w-full rounded-xl border-2 border-slate-200 px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium ${mode === ('create_order' as any) ? 'bg-slate-50 cursor-not-allowed text-slate-500' : 'bg-white'}`}
+                              className="h-11 w-full bg-transparent px-3 text-center text-sm outline-none font-medium text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
                             />
                           </td>
                           {(mode === 'view' || mode === ('create_order' as any)) && (
-                            <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                            <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                               {item.receivedQty}
                             </td>
                           )}
-                          {mode === ('create_order' as any) && (
-                            <td className="px-3 py-3">
-                              <input
-                                type="number"
-                                min={0}
-                                value={item.inventoryQty ?? item.expectedQty}
-                                onChange={(event) =>
-                                  onUpdateRow(item.rowId, {
-                                    inventoryQty: event.target.value,
-                                  })
-                                }
-                                className="h-11 w-full rounded-xl border-2 border-emerald-200 bg-white px-3 text-center text-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 font-black text-emerald-700"
-                              />
-                            </td>
-                          )}
-                          <td className="px-3 py-3">
+                          <td className="border border-slate-200 px-3 py-3">
                             <input
                               type="number"
                               min={0}
@@ -675,14 +655,14 @@ export function PurchaseOrderFormModal({
                                   unitPrice: event.target.value,
                                 })
                               }
-                              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-center text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium"
+                              className="h-11 w-full bg-transparent px-3 text-center text-sm outline-none font-medium text-slate-700"
                             />
                           </td>
-                          <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                          <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                             {formatMoney(expectedQty * unitPrice)}
                           </td>
                           {mode !== 'view' && (
-                            <td className="px-3 py-3 text-center">
+                            <td className="border border-slate-200 px-3 py-3 text-center">
                               <button
                                 type="button"
                                 onClick={() => onRemoveRow(item.rowId)}
