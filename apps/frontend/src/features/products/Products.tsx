@@ -82,6 +82,7 @@ type Product = {
   supplier: string;
   price: number;
   stock: number;
+  images: string[];
 };
 
 type ProductForm = {
@@ -165,6 +166,7 @@ function normalizeProduct(product: RawProduct): Product {
     supplier: normalizeSupplierField(product.supplier || ''),
     price: Number(product.price || 0),
     stock: Number(product.stock || 0),
+    images: (product as any).images || [],
   };
 }
 
@@ -335,6 +337,7 @@ export default function Products() {
       supplier: form.supplier.trim(),
       price: Number(form.price),
       stock: Number(form.stock),
+      images: form.images,
     };
     const nextProducts = isEdit
       ? products.map((product) => (product.id === payload.id ? payload : product))
@@ -495,18 +498,17 @@ export default function Products() {
       {/* Wrapper chứa bảng + phân trang dính liền nhau */}
       <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1560px] border-collapse bg-white">
+          <table className="w-full min-w-[900px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b-2 border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã hàng (SKU)</th>
+                <th className="w-10 border-x border-slate-200 px-3 py-4 text-center">
+                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
+                </th>
+                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
+                <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ảnh</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã sản phẩm</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên hàng hóa</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">ĐVT</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhóm hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Kho ngầm định</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Vị trí</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Thuộc tính quản lý</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Giá</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tồn kho</th>
                 <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
@@ -517,82 +519,70 @@ export default function Products() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Đang tải dữ liệu sản phẩm...
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Chưa có sản phẩm phù hợp.
                   </td>
                 </tr>
               ) : (
                 paginatedProducts.map((product, index) => (
                   <tr key={product.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    {/* Checkbox */}
+                    <td className="border-x border-slate-200 px-3 py-3 text-center">
+                      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
+                    </td>
+                    {/* STT */}
+                    <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-500">
                       {startIndex + index}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-800">
+                    {/* Ảnh chính */}
+                    <td className="border-x border-slate-200 px-2 py-2 text-center">
+                      {product.images?.[0] ? (
+                        <img src={product.images[0]} alt={product.name} className="mx-auto h-12 w-12 rounded-lg object-cover border border-slate-200" />
+                      ) : (
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-300">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        </div>
+                      )}
+                    </td>
+                    {/* Mã sản phẩm */}
+                    <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-800">
                       {product.sku}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
+                    {/* Tên */}
+                    <td className="border-x border-slate-200 px-3 py-3 text-sm font-medium text-slate-700">
                       {product.name}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
-                      {product.unit || '-'}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    {/* Nhóm hàng */}
+                    <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">
                       {product.category || '-'}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
-                      {product.defaultWarehouse || '-'}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
-                      {product.location || '-'}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
-                      {product.managementType || '-'}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
-                      {product.supplier || '-'}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-800">
+                    {/* Giá */}
+                    <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-800">
                       {product.price.toLocaleString('vi-VN')} ₫
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
+                    {/* Tồn kho */}
+                    <td className="border-x border-slate-200 px-3 py-3 text-center align-middle">
                       <span className="inline-flex rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
                         {product.stock}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                    {/* Thao tác */}
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
                       <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          aria-label="Xem chi tiết"
-                          title="Xem chi tiết"
-                          onClick={() => openProductModal('view', product)}
-                        >
-                          <Eye size={18} strokeWidth={2} />
+                        <button type="button" className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100" title="Xem chi tiết" onClick={() => openProductModal('view', product)}>
+                          <Eye size={16} strokeWidth={2} />
                         </button>
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          aria-label="Sửa sản phẩm"
-                          title="Sửa sản phẩm"
-                          onClick={() => openProductModal('edit', product)}
-                        >
-                          <Pencil size={18} strokeWidth={2} />
+                        <button type="button" className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100" title="Sửa" onClick={() => openProductModal('edit', product)}>
+                          <Pencil size={16} strokeWidth={2} />
                         </button>
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          aria-label="Xóa sản phẩm"
-                          title="Xóa sản phẩm"
-                          onClick={() => openProductModal('delete', product)}
-                        >
-                          <Trash2 size={18} strokeWidth={2} />
+                        <button type="button" className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-50 text-red-500 transition-colors hover:bg-red-100" title="Xóa" onClick={() => openProductModal('delete', product)}>
+                          <Trash2 size={16} strokeWidth={2} />
                         </button>
                       </div>
                     </td>
