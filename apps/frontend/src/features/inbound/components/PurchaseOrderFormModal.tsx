@@ -435,7 +435,7 @@ export function PurchaseOrderFormModal({
                   >
                     <option value="DRAFT">Nháp</option>
                     <option value="CREATED">Tạo mới (Chờ duyệt)</option>
-                    {mode !== 'create' && (
+                    {mode === 'view' && (
                       <>
                         <option value="APPROVED">Chờ NCC xác nhận</option>
                         <option value="SUPPLIER_APPROVED">NCC đã xác nhận</option>
