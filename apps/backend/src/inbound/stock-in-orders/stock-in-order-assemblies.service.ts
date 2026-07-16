@@ -186,6 +186,16 @@ export class StockInOrderAssembliesService {
         throw new BadRequestException('Số lượng thành phần phải lớn hơn 0');
       }
 
+      if (component.sourceOrderDetailId) {
+        const orderDetail = await this.orderDetailRepo.findOne({
+          where: { id: component.sourceOrderDetailId as any }
+        });
+        if (orderDetail) {
+          (orderDetail as any).producedQty = toNumber((orderDetail as any).producedQty) + usedQty;
+          await this.orderDetailRepo.save(orderDetail);
+        }
+      }
+
       assembly.details.push(
         this.detailRepo.create({
           assembly,

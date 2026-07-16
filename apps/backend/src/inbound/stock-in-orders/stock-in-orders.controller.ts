@@ -54,6 +54,16 @@ export class StockInOrdersController {
     return this.service.complete(id, dto, user);
   }
 
+  @Post(':id/details/:detailId/distribute')
+  distribute(
+    @Param('id') id: string,
+    @Param('detailId') detailId: string,
+    @Body() dto: { qty: number },
+    @CurrentUser() user: { id?: string; email?: string },
+  ) {
+    return this.service.distribute(id, detailId, dto as any, user);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.service.remove(id);

@@ -248,6 +248,50 @@ export class StockInOrdersService {
     return this.serializeOrder(await this.findOrderEntity(id), true);
   }
 
+  async distribute(id: string, detailId: string, dto: { qty: number; balanceId: string }, user?: UserContext) {
+    const order = await this.findOrderEntity(id);
+    const detail = order.details.find((d) => d.id === detailId);
+
+    if (!detail) {
+      throw new NotFoundException('Stock in order detail not found');
+    }
+
+    const qty = toNumber(dto.qty);
+    if (qty <= 0) {
+      throw new BadRequestException('So luong phan phoi phai lon hon 0');
+    }
+
+    const available = toNumber(detail.actualQty) - toNumber(detail.distributedQty) - toNumber(detail.producedQty);
+    if (qty > available) {
+      throw new BadRequestException('So luong phan phoi vuot qua so luong con lai cua don hang');
+    }
+
+    detail.distributedQty = toNumber(detail.distributedQty) + qty;
+    await this.detailRepo.save(detail);
+
+    // Update physical inventory
+    const locationCode = detail.warehouseCode || 'DEFAULT';
+    const balance = await this.balanceRepo.findOne({ 
+      where: { product: { id: detail.product.id } as any, locationCode }, 
+      relations: ['product'] 
+    });
+    
+    if (!balance) {
+      throw new NotFoundException(`Stock balance not found for product ${detail.product.id} at ${locationCode}`);
+    }
+    balance.totalPhysical -= qty;
+    balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
+    await this.balanceRepo.save(balance);
+
+    await this.appendLog(id, 'workflow.distribute', user, {
+      detailId,
+      qty,
+      locationCode,
+    });
+
+    return this.serializeOrder(await this.findOrderEntity(id), true);
+  }
+
   async remove(id: string) {
     const order = await this.findOrderEntity(id);
     await this.orderRepo.remove(order);
@@ -358,6 +402,8 @@ export class StockInOrdersService {
         warehouseCode: detail.warehouseCode,
         requestedQty: toNumber(detail.requestedQty),
         actualQty: toNumber(detail.actualQty),
+        distributedQty: toNumber(detail.distributedQty),
+        producedQty: toNumber(detail.producedQty),
         unitPrice: toNumber(detail.unitPrice),
         totalLineAmount: toNumber(detail.totalLineAmount),
         product: detail.product
