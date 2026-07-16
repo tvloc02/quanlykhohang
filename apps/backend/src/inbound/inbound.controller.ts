@@ -19,7 +19,7 @@ export class InboundController {
   }
 
   @Post('purchase-orders')
-  @Roles('admin', 'manager', 'supplier')
+  @Roles('admin', 'manager', 'supplier', 'staff')
   createPurchaseOrder(@Body() dto: CreateAsnDto, @Req() req: any) {
     return this.svc.createPurchaseOrder(dto, req.user);
   }
@@ -31,7 +31,7 @@ export class InboundController {
   }
 
   @Put('purchase-orders/:id')
-  @Roles('admin', 'manager', 'supplier')
+  @Roles('admin', 'manager', 'supplier', 'staff')
   updatePurchaseOrder(@Param('id') id: string, @Body() dto: CreateAsnDto, @Req() req: any) {
     return this.svc.updatePurchaseOrder(id, dto, req.user);
   }
