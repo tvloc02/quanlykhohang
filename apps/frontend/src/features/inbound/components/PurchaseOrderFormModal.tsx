@@ -524,7 +524,7 @@ export function PurchaseOrderFormModal({
                 <table className="w-full bg-white">
                   <thead className="bg-slate-50">
                     <tr className="border-b border-slate-200">
-                      {mode !== 'view' && (
+                      {(mode === 'create' || mode === 'edit') && (
                         <th className="w-12 border border-slate-200 px-3 py-3 text-center">
                           <input
                             type="checkbox"
@@ -551,7 +551,7 @@ export function PurchaseOrderFormModal({
                       </th>
                       {(mode === 'view' || mode === ('create_order' as any)) && (
                         <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                          SL đã nhận
+                          SL kiểm kê
                         </th>
                       )}
                       <th className="w-40 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
@@ -560,7 +560,7 @@ export function PurchaseOrderFormModal({
                       <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Thành tiền
                       </th>
-                      {mode !== 'view' && (
+                      {(mode === 'create' || mode === 'edit') && (
                         <th className="w-12 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                           Xóa
                         </th>
@@ -573,7 +573,7 @@ export function PurchaseOrderFormModal({
                       const unitPrice = parseMoney(item.unitPrice);
                       return (
                         <tr key={item.rowId} className="hover:bg-slate-50 transition">
-                          {mode !== 'view' && (
+                          {(mode === 'create' || mode === 'edit') && (
                             <td className="border border-slate-200 px-3 py-3 text-center">
                               <input
                                 type="checkbox"
@@ -593,75 +593,90 @@ export function PurchaseOrderFormModal({
                             {index + 1}
                           </td>
                           <td className="border border-slate-200 px-3 py-3">
-                            <select
-                              value={item.productId}
-                              onChange={(event) =>
-                                onProductChange(item.rowId, event.target.value)
-                              }
-                              className="h-11 w-full bg-transparent px-2 text-sm outline-none font-medium text-slate-700"
-                            >
-                              <option value="">Chọn sản phẩm</option>
-                              {supplierProducts.map((supplierProduct) => (
-                                <option
-                                  key={supplierProduct.id}
-                                  value={supplierProduct.product?.id || ''}
-                                >
-                                  {supplierProduct.product?.internalSku} -{' '}
-                                  {supplierProduct.product?.name}
-                                </option>
-                              ))}
-                              {scannedProducts.map((sp) => {
-                                if (
-                                  !supplierProducts.some(
-                                    (p) => p.product?.id === sp.id
-                                  )
-                                ) {
-                                  return (
-                                    <option key={sp.id} value={sp.id}>
-                                      {sp.internalSku} - {sp.name} (Mới quét)
-                                    </option>
-                                  );
+                            {mode === 'create' || mode === 'edit' ? (
+                              <select
+                                value={item.productId}
+                                onChange={(event) =>
+                                  onProductChange(item.rowId, event.target.value)
                                 }
-                                return null;
-                              })}
-                            </select>
+                                className="h-11 w-full bg-transparent px-2 text-sm outline-none font-medium text-slate-700"
+                              >
+                                <option value="">Chọn sản phẩm</option>
+                                {supplierProducts.map((supplierProduct) => (
+                                  <option
+                                    key={supplierProduct.id}
+                                    value={supplierProduct.product?.id || ''}
+                                  >
+                                    {supplierProduct.product?.internalSku} -{' '}
+                                    {supplierProduct.product?.name}
+                                  </option>
+                                ))}
+                                {scannedProducts.map((sp) => {
+                                  if (
+                                    !supplierProducts.some(
+                                      (p) => p.product?.id === sp.id
+                                    )
+                                  ) {
+                                    return (
+                                      <option key={sp.id} value={sp.id}>
+                                        {sp.internalSku} - {sp.name} (Mới quét)
+                                      </option>
+                                    );
+                                  }
+                                  return null;
+                                })}
+                              </select>
+                            ) : (
+                              <div className="text-sm font-medium text-slate-700">
+                                {supplierProducts.find((p) => p.product?.id === item.productId)?.product?.name ||
+                                  scannedProducts.find((p) => p.id === item.productId)?.name ||
+                                  item.productId}
+                              </div>
+                            )}
                           </td>
-                          <td className="border border-slate-200 px-3 py-3">
-                            <input
-                              type="number"
-                              min={0}
-                              value={item.expectedQty}
-                              onChange={(event) =>
-                                onUpdateRow(item.rowId, {
-                                  expectedQty: event.target.value,
-                                })
-                              }
-                              disabled={mode === ('create_order' as any)}
-                              className="h-11 w-full bg-transparent px-3 text-center text-sm outline-none font-medium text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
-                            />
+                          <td className="border border-slate-200 px-3 py-3 text-center">
+                            {mode === 'create' || mode === 'edit' ? (
+                              <input
+                                type="number"
+                                min={0}
+                                value={item.expectedQty}
+                                onChange={(event) =>
+                                  onUpdateRow(item.rowId, {
+                                    expectedQty: event.target.value,
+                                  })
+                                }
+                                className="h-11 w-full bg-transparent px-3 text-center text-sm outline-none font-medium text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
+                              />
+                            ) : (
+                              <span className="text-sm font-medium text-slate-700">{item.expectedQty}</span>
+                            )}
                           </td>
                           {(mode === 'view' || mode === ('create_order' as any)) && (
                             <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                               {item.receivedQty}
                             </td>
                           )}
-                          <td className="border border-slate-200 px-3 py-3">
-                            <input
-                              type="number"
-                              min={0}
-                              value={item.unitPrice}
-                              onChange={(event) =>
-                                onUpdateRow(item.rowId, {
-                                  unitPrice: event.target.value,
-                                })
-                              }
-                              className="h-11 w-full bg-transparent px-3 text-center text-sm outline-none font-medium text-slate-700"
-                            />
+                          <td className="border border-slate-200 px-3 py-3 text-center">
+                            {mode === 'create' || mode === 'edit' ? (
+                              <input
+                                type="number"
+                                min={0}
+                                value={item.unitPrice}
+                                onChange={(event) =>
+                                  onUpdateRow(item.rowId, {
+                                    unitPrice: event.target.value,
+                                  })
+                                }
+                                className="h-11 w-full bg-transparent px-3 text-center text-sm outline-none font-medium text-slate-700"
+                              />
+                            ) : (
+                              <span className="text-sm font-medium text-slate-700">{formatMoney(parseMoney(item.unitPrice))}</span>
+                            )}
                           </td>
                           <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                             {formatMoney(expectedQty * unitPrice)}
                           </td>
-                          {mode !== 'view' && (
+                          {(mode === 'create' || mode === 'edit') && (
                             <td className="border border-slate-200 px-3 py-3 text-center">
                               <button
                                 type="button"
