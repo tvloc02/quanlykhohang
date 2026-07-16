@@ -667,9 +667,10 @@ export default function Products() {
 
       {/* Modals */}
       {modalMode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
-          <div className="w-full max-w-6xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+          <div className="flex w-full max-w-6xl flex-col max-h-[90vh] rounded-2xl bg-white shadow-2xl">
+            {/* Header */}
+            <div className="flex shrink-0 items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="rounded-xl bg-cyan-50 p-2 text-cyan-600">
                   <Package className="h-6 w-6" />
@@ -677,7 +678,7 @@ export default function Products() {
                 <div>
                   <h2 className="text-xl font-black text-slate-800">{modalTitle}</h2>
                   <p className="text-sm font-medium text-slate-500">
-                    {modalMode === 'view' ? 'Thông tin chỉ xem' : 'Khai báo SKU, ĐVT, nhóm hàng, kho, vị trí và thuộc tính quản lý'}
+                    {modalMode === 'view' ? 'Thông tin sản phẩm chi tiết' : 'Khai báo thông tin sản phẩm và phân bổ theo kho'}
                   </p>
                 </div>
               </div>
@@ -690,28 +691,22 @@ export default function Products() {
               <div className="px-6 py-5">
                 <p className="text-base text-slate-700">
                   Bạn có chắc muốn xóa sản phẩm{' '}
-                  <span className="font-black text-slate-950">{selectedProduct?.name}</span> (SKU: {selectedProduct?.sku}) không?
+                  <span className="font-black text-slate-950">{selectedProduct?.name}</span> (Mã: {selectedProduct?.sku}) không?
                 </p>
                 <p className="mt-2 text-sm text-red-500 font-medium">Hành động này không thể hoàn tác.</p>
                 <div className="mt-8 flex justify-end gap-3">
-                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
-                    Hủy
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={handleDelete} 
-                    disabled={saving}
-                    className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
-                  >
+                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 transition">Hủy</button>
+                  <button type="button" onClick={handleDelete} disabled={saving} className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60">
                     {saving ? 'Đang xóa...' : 'Xóa sản phẩm'}
                   </button>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit}>
-                <div className="flex divide-x divide-slate-100">
+              <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+                {/* Body — scrollable */}
+                <div className="flex min-h-0 flex-1 divide-x divide-slate-100 overflow-hidden">
                   {/* TRÁI: Thông tin sản phẩm */}
-                  <div className="w-64 shrink-0 space-y-4 p-5">
+                  <div className="w-72 shrink-0 space-y-4 overflow-y-auto p-6">
                     <p className="text-xs font-black uppercase tracking-wider text-slate-400">Thông tin sản phẩm</p>
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-slate-600">Mã sản phẩm <span className="text-red-500">*</span></label>
@@ -729,7 +724,7 @@ export default function Products() {
                     </div>
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-slate-600">Giới thiệu</label>
-                      <textarea value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} readOnly={modalMode === 'view'} rows={4} className="w-full resize-none rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="Mô tả ngắn về sản phẩm..." />
+                      <textarea value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} readOnly={modalMode === 'view'} rows={5} className="w-full resize-none rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="Mô tả ngắn về sản phẩm..." />
                     </div>
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-slate-600">Giá bán (₫) <span className="text-red-500">*</span></label>
@@ -737,92 +732,74 @@ export default function Products() {
                     </div>
                   </div>
 
-                  {/* PHẢI: Ma trận kho × thuộc tính */}
-                  <div className="min-w-0 flex-1 p-5">
+                  {/* PHẢI: Ma trận kho × chỉ số */}
+                  <div className="min-w-0 flex-1 overflow-y-auto p-6">
                     <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-400">Phân bổ theo kho</p>
-                    <div className="overflow-auto rounded-xl border border-slate-200">
-                      <table className="w-full border-collapse text-xs">
+                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                      <table className="w-full border-collapse text-sm">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200">
-                            <th className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-left font-black text-slate-600 border-r border-slate-200 min-w-[130px]">Kho</th>
-                            <th className="px-3 py-2 text-center font-black text-slate-600 border-r border-slate-200 min-w-[80px]">ĐVT</th>
-                            <th className="px-3 py-2 text-center font-black text-cyan-700 bg-cyan-50/70 border-r border-slate-200 min-w-[85px]">Tồn kho</th>
-                            <th className="px-3 py-2 text-center font-black text-slate-500 border-r border-slate-200 min-w-[75px]">Đã bán</th>
-                            <th className="px-3 py-2 text-center font-black text-emerald-700 bg-emerald-50/70 border-r border-slate-200 min-w-[70px]">Nhập (+)</th>
-                            <th className="px-3 py-2 text-center font-black text-red-600 bg-red-50/70 border-r border-slate-200 min-w-[70px]">Xuất (−)</th>
-                            <th className="px-3 py-2 text-center font-black text-slate-600 border-r border-slate-200 min-w-[90px]">Vị trí</th>
-                            <th className="px-3 py-2 text-center font-black text-slate-600 min-w-[90px]">Ngầm định</th>
+                            <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left font-bold text-slate-700 border-r border-slate-200 min-w-[160px]">Kho</th>
+                            <th className="px-4 py-3 text-center font-bold text-slate-700 border-r border-slate-200 min-w-[110px]">Tồn kho</th>
+                            <th className="px-4 py-3 text-center font-bold text-slate-700 border-r border-slate-200 min-w-[100px]">Đã bán</th>
+                            <th className="px-4 py-3 text-center font-bold text-slate-700 border-r border-slate-200 min-w-[100px]">Nhập gần nhất (+)</th>
+                            <th className="px-4 py-3 text-center font-bold text-slate-700 min-w-[100px]">Xuất gần nhất (−)</th>
                           </tr>
                         </thead>
                         <tbody>
                           {warehouses.length === 0 ? (
-                            <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Chưa có kho nào.</td></tr>
+                            <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400">Chưa có kho nào được cấu hình.</td></tr>
                           ) : warehouses.map((wh) => {
                             const isDef = form.defaultWarehouse === wh.name;
                             return (
-                              <tr key={wh.id || wh.name} className={`border-b border-slate-100 transition hover:bg-slate-50/80 ${isDef ? 'bg-cyan-50/50' : ''}`}>
-                                <td className="sticky left-0 z-10 bg-inherit border-r border-slate-100 px-3 py-2">
-                                  <div className="flex items-center gap-1.5">
-                                    {isDef && <span className="h-1.5 w-1.5 rounded-full bg-cyan-500 shrink-0" />}
-                                    <span className="font-semibold text-slate-700">{wh.name}</span>
+                              <tr key={wh.id || wh.name} className={`border-b border-slate-100 transition hover:bg-slate-50 ${isDef ? 'bg-slate-50/80' : ''}`}>
+                                <td className="sticky left-0 z-10 bg-inherit border-r border-slate-100 px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    {isDef && <span className="h-2 w-2 rounded-full bg-cyan-500 shrink-0" />}
+                                    <div>
+                                      <p className="font-semibold text-slate-800">{wh.name}</p>
+                                      <p className="text-xs text-slate-400">{wh.code}</p>
+                                    </div>
                                   </div>
-                                  <span className="text-[10px] text-slate-400">{wh.code}</span>
                                 </td>
-                                <td className="border-r border-slate-100 px-2 py-1.5 text-center">
-                                  <select value={isDef ? form.unit : ''} onChange={(e) => isDef && setForm((c) => ({ ...c, unit: e.target.value }))} disabled={!isDef || modalMode === 'view'} className="w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-xs outline-none focus:border-cyan-400 disabled:bg-transparent disabled:border-transparent disabled:text-slate-300 text-center">
-                                    {productUnitOptions.length === 0 ? <option value="">-</option> : productUnitOptions.map((u) => <option key={u.value} value={u.value}>{u.value}</option>)}
-                                  </select>
-                                </td>
-                                <td className="border-r border-slate-100 bg-cyan-50/30 px-2 py-1.5 text-center">
+                                <td className="border-r border-slate-100 px-3 py-3 text-center">
                                   {isDef ? (
-                                    <input type="number" min="0" value={form.stock} onChange={(e) => setForm((c) => ({ ...c, stock: e.target.value ? Number(e.target.value) : '' }))} readOnly={modalMode === 'view'} className="w-full rounded border border-cyan-300 bg-white px-1 py-0.5 text-center text-xs font-bold text-cyan-800 outline-none focus:border-cyan-500 read-only:border-transparent read-only:bg-transparent" placeholder="0" required />
+                                    <input type="number" min="0" value={form.stock} onChange={(e) => setForm((c) => ({ ...c, stock: e.target.value ? Number(e.target.value) : '' }))} readOnly={modalMode === 'view'} className="w-full rounded-lg border-2 border-slate-200 px-2 py-1.5 text-center text-sm font-semibold text-slate-800 outline-none focus:border-cyan-500 read-only:border-transparent read-only:bg-transparent" placeholder="0" required />
                                   ) : <span className="text-slate-300">—</span>}
                                 </td>
-                                <td className="border-r border-slate-100 px-2 py-1.5 text-center text-slate-300">—</td>
-                                <td className="border-r border-slate-100 bg-emerald-50/30 px-2 py-1.5 text-center text-emerald-500 font-semibold">—</td>
-                                <td className="border-r border-slate-100 bg-red-50/30 px-2 py-1.5 text-center text-red-400 font-semibold">—</td>
-                                <td className="border-r border-slate-100 px-2 py-1.5 text-center">
-                                  <select value={isDef ? form.location : ''} onChange={(e) => isDef && setForm((c) => ({ ...c, location: e.target.value }))} disabled={!isDef || modalMode === 'view'} className="w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-xs outline-none focus:border-cyan-400 disabled:bg-transparent disabled:border-transparent disabled:text-slate-300 text-center">
-                                    {productLocationOptions.length === 0 ? <option value="">-</option> : productLocationOptions.map((l) => <option key={l.value} value={l.value}>{l.value}</option>)}
-                                  </select>
-                                </td>
-                                <td className="px-2 py-1.5 text-center">
-                                  {modalMode !== 'view' ? (
-                                    <button type="button" onClick={() => setForm((c) => ({ ...c, defaultWarehouse: wh.name }))} className={`mx-auto flex h-5 w-5 items-center justify-center rounded-full border-2 transition ${isDef ? 'border-cyan-500 bg-cyan-500' : 'border-slate-300 hover:border-cyan-400'}`}>
-                                      {isDef && <span className="h-2 w-2 rounded-full bg-white" />}
-                                    </button>
-                                  ) : isDef ? (
-                                    <span className="mx-auto flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500"><span className="h-2 w-2 rounded-full bg-white" /></span>
-                                  ) : <span className="text-slate-300">—</span>}
-                                </td>
+                                <td className="border-r border-slate-100 px-4 py-3 text-center text-slate-400">—</td>
+                                <td className="border-r border-slate-100 px-4 py-3 text-center text-slate-400">—</td>
+                                <td className="px-4 py-3 text-center text-slate-400">—</td>
                               </tr>
                             );
                           })}
                         </tbody>
                         <tfoot>
                           <tr className="bg-slate-50 border-t-2 border-slate-200">
-                            <td className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-xs font-black text-slate-600 border-r border-slate-200">Tổng</td>
-                            <td className="border-r border-slate-200 px-2 py-2" />
-                            <td className="border-r border-slate-200 bg-cyan-50 px-2 py-2 text-center text-xs font-black text-cyan-700">{Number(form.stock) || 0}</td>
-                            <td className="border-r border-slate-200 px-2 py-2 text-center text-xs font-bold text-slate-400">0</td>
-                            <td className="border-r border-slate-200 px-2 py-2" />
-                            <td className="border-r border-slate-200 px-2 py-2" />
-                            <td className="border-r border-slate-200 px-2 py-2" />
-                            <td className="px-2 py-2" />
+                            <td className="sticky left-0 z-10 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-600 border-r border-slate-200">Tổng cộng</td>
+                            <td className="border-r border-slate-200 px-4 py-2.5 text-center text-sm font-bold text-slate-700">{Number(form.stock) || 0}</td>
+                            <td className="border-r border-slate-200 px-4 py-2.5 text-center text-sm font-bold text-slate-400">0</td>
+                            <td className="border-r border-slate-200 px-4 py-2.5" />
+                            <td className="px-4 py-2.5" />
                           </tr>
                         </tfoot>
                       </table>
                     </div>
-                    <div className="mt-4">
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Thuộc tính quản lý</label>
-                      <select value={form.managementType} onChange={(e) => setForm((c) => ({ ...c, managementType: e.target.value }))} disabled={modalMode === 'view' || productManagementTypeOptions.length === 0} className="h-9 w-full max-w-xs rounded-lg border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 disabled:bg-slate-50">
-                        {productManagementTypeOptions.length === 0 ? <option value="">Chưa có danh mục</option> : productManagementTypeOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                      </select>
-                    </div>
+
+                    {/* Kho ngầm định selector */}
+                    {modalMode !== 'view' && warehouses.length > 0 && (
+                      <div className="mt-4">
+                        <label className="mb-1.5 block text-xs font-bold text-slate-600">Kho ngầm định</label>
+                        <select value={form.defaultWarehouse} onChange={(e) => setForm((c) => ({ ...c, defaultWarehouse: e.target.value }))} className="h-9 w-full max-w-xs rounded-lg border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500">
+                          {warehouseOptions.map((wh) => <option key={wh.value} value={wh.value}>{wh.label}</option>)}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
+                {/* Footer */}
+                <div className="flex shrink-0 justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
                   <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition">
                     {modalMode === 'view' ? 'Đóng' : 'Hủy bỏ'}
                   </button>
@@ -837,6 +814,7 @@ export default function Products() {
           </div>
         </div>
       )}
+
     </div>
   );
 }
