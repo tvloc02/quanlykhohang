@@ -1110,7 +1110,7 @@ function PurchaseOrdersPageContent() {
     }
   };
 
-  const handleCreateStockInReceipt = async (status: 'DRAFT' | 'POSTED') => {
+  const handleCreateStockInReceipt = async (status: 'DRAFT' | 'ASSIGNED') => {
     if (!selectedOrder) return;
     if (selectedStaffIds.length === 0) {
       setToast({ type: 'error', message: 'Vui lòng chọn ít nhất một nhân viên kiểm kê.' });
@@ -1808,7 +1808,7 @@ function PurchaseOrdersPageContent() {
               </button>
               <button 
                 type="button" 
-                onClick={() => handleCreateStockInReceipt('POSTED')}
+                onClick={() => handleCreateStockInReceipt('ASSIGNED')}
                 disabled={saving || selectedStaffIds.length === 0}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-600 px-8 py-2.5 font-bold text-white shadow-lg transition hover:bg-amber-700 disabled:opacity-60"
               >
