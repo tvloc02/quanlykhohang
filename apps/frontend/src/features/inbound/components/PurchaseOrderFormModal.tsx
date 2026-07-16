@@ -435,7 +435,7 @@ export function PurchaseOrderFormModal({
                   >
                     <option value="DRAFT">Nháp</option>
                     <option value="CREATED">Tạo mới (Chờ duyệt)</option>
-                    {mode === 'view' && (
+                    {(mode === 'view' || mode === ('create_order' as any)) && (
                       <>
                         <option value="APPROVED">Chờ NCC xác nhận</option>
                         <option value="SUPPLIER_APPROVED">NCC đã xác nhận</option>
@@ -556,7 +556,7 @@ export function PurchaseOrderFormModal({
                       )}
                       {mode === ('create_order' as any) && (
                         <th className="w-28 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
-                          SL kiểm kê
+                          SL cần nhập
                         </th>
                       )}
                       <th className="w-40 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
