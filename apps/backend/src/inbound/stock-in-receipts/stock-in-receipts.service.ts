@@ -141,6 +141,7 @@ export class StockInReceiptsService {
       throw new BadRequestException('Không thể chỉnh sửa phiếu đã ghi sổ');
     }
 
+    const shouldPost = dto.status === 'POSTED';
     const next = await this.applyHeader(receipt, dto);
 
     if (dto.items) {
@@ -160,6 +161,10 @@ export class StockInReceiptsService {
       receiptType: next.receiptType,
       warehouseCode: next.warehouseCode,
     });
+
+    if (shouldPost) {
+      return this.post(id, user);
+    }
 
     return this.serializeReceipt(await this.findReceiptEntity(id), true);
   }
@@ -230,7 +235,7 @@ export class StockInReceiptsService {
       sourceStockInOrder: sourceOrder || undefined,
       sourceReferenceNo: dto.sourceReferenceNo?.trim() || sourceOrder?.orderCode || undefined,
       receiptDate: dto.receiptDate ? new Date(dto.receiptDate) : new Date(),
-      status: 'DRAFT',
+      status: dto.status || 'DRAFT',
       description: dto.description?.trim() || undefined,
       assignedStaffIds: dto.assignedStaffIds || undefined,
       totalAmount: '0',
