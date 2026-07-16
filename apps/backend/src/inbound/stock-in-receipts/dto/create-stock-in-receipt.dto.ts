@@ -62,9 +62,9 @@ export class CreateStockInReceiptDto {
   @IsOptional()
   receiptDate?: string;
 
-  @IsIn(['DRAFT', 'POSTED'])
+  @IsIn(['DRAFT', 'ASSIGNED', 'CHECKED', 'POSTED'])
   @IsOptional()
-  status?: 'DRAFT' | 'POSTED';
+  status?: 'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED';
 
   @IsString()
   @IsOptional()

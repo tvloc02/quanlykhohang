@@ -1,19 +1,32 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowUpRight,
+  ChevronRight,
+  FileText,
+  Package,
+  PackageCheck,
+  Pencil,
+  PlusCircle,
+  RefreshCw,
+  Search,
+  Settings2,
+  Trash2,
+  Truck,
+  X,
+  Eye,
   Building2,
   CalendarDays,
   CheckCircle2,
   Filter,
-  Package,
-  Pencil,
-  RefreshCw,
-  Search,
-  Trash2,
-  X,
   XCircle,
   Clock3,
+  MoreHorizontal,
+  Bell,
+  ClipboardCheck,
 } from 'lucide-react';
+
+import { useLocation, useNavigate } from 'react-router-dom';
+import { CreateStockInReceiptModal } from '../components/CreateStockInReceiptModal';
 
 export type WarehouseRecord = {
   id: string;
@@ -58,7 +71,7 @@ type StockInReceipt = {
   warehouseCode?: string;
   sourceReferenceNo?: string;
   receiptDate?: string;
-  status: 'DRAFT' | 'POSTED';
+  status: 'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED';
   description?: string;
   totalAmount: number;
   assignedStaffIds?: string[];
@@ -103,31 +116,40 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat('vi-VN').format(value || 0);
 }
 
-function statusLabel(status?: string) {
+const statusLabel = (status: string) => {
   switch ((status || 'DRAFT').toUpperCase()) {
-    case 'POSTED':
-      return 'Đã chốt (Ghi sổ)';
-    default:
-      return 'Chưa chốt (Nháp)';
+    case 'POSTED': return 'Hoàn thành';
+    case 'CHECKED': return 'Đã kiểm kê';
+    case 'ASSIGNED': return 'Đã chốt (Giao việc)';
+    default: return 'Chưa chốt (Nháp)';
   }
-}
+};
 
-function statusClass(status?: string) {
+const statusClass = (status: string) => {
   switch ((status || 'DRAFT').toUpperCase()) {
-    case 'POSTED':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    default:
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'POSTED': return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'CHECKED': return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+    case 'ASSIGNED': return 'border-blue-200 bg-blue-50 text-blue-700';
+    default: return 'border-amber-200 bg-amber-50 text-amber-700';
   }
-}
+};
 
 export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptTypeFilter?: string }) {
-  const [receipts, setReceipts] = React.useState<StockInReceipt[]>([]);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = () => setActiveDropdown(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  const [receipts, setReceipts] = useState<StockInReceipt[]>([]);
   const [users, setUsers] = React.useState<User[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
 
   const [search, setSearch] = React.useState('');
-  const [statusFilter, setStatusFilter] = React.useState<'all' | 'DRAFT' | 'POSTED'>('all');
+  const [statusFilter, setStatusFilter] = React.useState<'all' | 'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED'>('all');
+  const [timeFilter, setTimeFilter] = React.useState<'all' | 'this-month' | '7-days'>('this-month');
   const [pageSize, setPageSize] = React.useState(10);
   const [currentPage, setCurrentPage] = React.useState(1);
 
@@ -136,8 +158,25 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
   const [toast, setToast] = React.useState<Toast | null>(null);
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [modalMode, setModalMode] = React.useState<'view' | 'delete' | null>(null);
+  const [modalMode, setModalMode] = useState<'create' | 'edit' | 'view' | 'delete' | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<StockInReceipt | null>(null);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+  const state = location.state as { sourceStockInOrderId?: string; sourcePurchaseOrderId?: string } | null;
+
+  const [sourcePOId, setSourcePOId] = React.useState<string | null>(null);
+  const [sourceSOId, setSourceSOId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (state?.sourceStockInOrderId || state?.sourcePurchaseOrderId) {
+      setModalMode('create');
+      setSourcePOId(state.sourcePurchaseOrderId || null);
+      setSourceSOId(state.sourceStockInOrderId || null);
+      // Clear state so it doesn't reopen on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [state]);
 
   // Form editing
   const [editQuantities, setEditQuantities] = React.useState<Record<string, string>>({});
@@ -180,6 +219,16 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
 
   const filteredReceipts = React.useMemo(() => {
     const keyword = search.trim().toLowerCase();
+
+    // Calculate date filter limits
+    const now = new Date();
+    let startDate: Date | null = null;
+    if (timeFilter === 'this-month') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (timeFilter === '7-days') {
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    }
+
     return receipts.filter((r) => {
       const matchesKeyword =
         !keyword ||
@@ -189,12 +238,26 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
 
       const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
       const matchesType = !receiptTypeFilter || r.receiptType === receiptTypeFilter;
-      return matchesKeyword && matchesStatus && matchesType;
+
+      let matchesTime = true;
+      if (startDate) {
+        const receiptDate = new Date(r.receiptDate || 0);
+        matchesTime = receiptDate >= startDate;
+      }
+
+      return matchesKeyword && matchesStatus && matchesType && matchesTime;
     });
-  }, [receipts, search, statusFilter, receiptTypeFilter]);
+  }, [receipts, search, statusFilter, receiptTypeFilter, timeFilter]);
+
+  const draftCount = receipts.filter(r => r.status === 'DRAFT').length;
+  const assignedCount = receipts.filter(r => r.status === 'ASSIGNED').length;
+  const checkedCount = receipts.filter(r => r.status === 'CHECKED').length;
+  const postedCount = receipts.filter(r => r.status === 'POSTED').length;
 
   const totalItems = filteredReceipts.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const startIndex = totalItems > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+  const endIndex = Math.min(currentPage * pageSize, totalItems);
   const paginatedReceipts = filteredReceipts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const selectedReceipt = React.useMemo(
@@ -292,12 +355,15 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
         method: 'DELETE',
         headers: authHeaders(),
       });
-      if (!response.ok) throw new Error('Lỗi xóa phiếu');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.message || 'Lỗi xóa phiếu');
+      }
       setToast({ type: 'success', message: 'Xóa thành công' });
       closeModal();
       await loadData();
-    } catch (error) {
-      setToast({ type: 'error', message: 'Lỗi xóa phiếu' });
+    } catch (error: any) {
+      setToast({ type: 'error', message: error.message || 'Lỗi xóa phiếu' });
     } finally {
       setSaving(false);
     }
@@ -318,29 +384,65 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="text-2xl font-black text-slate-900">Biên Bản Nhập Kho & Kiểm Kê</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">Quản lý việc kiểm đếm và ghi sổ hàng hóa</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setModalMode('create')}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+        >
+          <PlusCircle className="h-4 w-4" />
+          Tạo biên bản nhập kho
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{receipts.length}<br/>TỔNG BIÊN BẢN</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{draftCount}<br/>NHÁP</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{assignedCount}<br/>ĐÃ CHỐT</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{checkedCount}<br/>ĐÃ KIỂM KÊ</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{postedCount}<br/>HOÀN THÀNH</p>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_0.9fr_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500"
-              placeholder="Tìm theo mã, nguồn..."
-            />
-          </div>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            placeholder="Tìm theo mã biên bản, nguồn, diễn giải..."
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={timeFilter}
+            onChange={(event) => setTimeFilter(event.target.value as 'all' | 'this-month' | '7-days')}
+            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+          >
+            <option value="this-month">Thời gian: Tháng này</option>
+            <option value="7-days">Thời gian: 7 ngày gần đây</option>
+            <option value="all">Thời gian: Tất cả</option>
+          </select>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
+            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           >
             <option value="all">Tình trạng: Tất cả</option>
             <option value="DRAFT">Tình trạng: Chưa chốt (Nháp)</option>
-            <option value="POSTED">Tình trạng: Đã chốt (Ghi sổ)</option>
+            <option value="ASSIGNED">Tình trạng: Đã chốt (Giao việc)</option>
+            <option value="CHECKED">Tình trạng: Đã kiểm kê</option>
+            <option value="POSTED">Tình trạng: Hoàn thành</option>
           </select>
         </div>
       </div>
@@ -350,163 +452,237 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
           <table className="w-full min-w-[1000px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">#</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Mã Phiếu</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày tạo</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Nguồn / Tham chiếu</th>
+                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
+                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                </th>
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã lệnh nhập kho</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã đơn hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Kho hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Quản lý</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày nhận hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Số lượng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tổng tiền</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Trạng thái</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Thao tác</th>
+                <th className="sticky right-0 w-32 border-l border-slate-200 bg-white px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">Thao tác</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-sm font-medium text-slate-500">Đang tải...</td>
+                  <td colSpan={11} className="px-6 py-12 text-center text-sm font-medium text-slate-500">Đang tải...</td>
                 </tr>
               ) : paginatedReceipts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-sm font-medium text-slate-500">Chưa có biên bản nào.</td>
+                  <td colSpan={11} className="px-6 py-12 text-center text-sm font-medium text-slate-500">Chưa có biên bản nào.</td>
                 </tr>
               ) : (
-                paginatedReceipts.map((r, i) => (
-                  <tr key={r.id} className="border-b border-slate-200 transition hover:bg-cyan-50/50">
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-600">{(currentPage - 1) * pageSize + i + 1}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-sm font-black text-blue-600">{r.receiptCode}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatDate(r.receiptDate)}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-sm font-semibold text-slate-700">{r.sourceReferenceNo || '-'}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                      <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(r.status)}`}>
-                        {statusLabel(r.status)}
-                      </span>
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => { setSelectedId(r.id); setModalMode('view'); }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition hover:bg-cyan-100"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => { setDeleteTarget(r); setModalMode('delete'); }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition hover:bg-red-100"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
+                <>
+                  {paginatedReceipts.map((r, i) => {
+                  const totalQty = r.details?.reduce((sum, d) => sum + (d.quantity || d.receivedQty || d.orderedQty || 0), 0) || 0;
+                  const totalAmt = r.details?.reduce((sum, d) => sum + ((d.quantity || d.receivedQty || d.orderedQty || 0) * (d.unitPrice || 0)), 0) || 0;
+
+                  return (
+                    <tr key={r.id} className="border-b border-slate-200 transition hover:bg-cyan-50/50">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{(currentPage - 1) * pageSize + i + 1}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{r.receiptCode}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{r.sourceReferenceNo || '-'}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{r.details?.[0]?.warehouseCode || 'KHO-NVL'}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{(r as any).approver?.fullName || '-'}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatDate(r.receiptDate)}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-700">{formatNumber(totalQty)}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-700">{formatMoney(totalAmt)}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
+                        <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(r.status)}`}>
+                          {statusLabel(r.status)}
+                        </span>
+                      </td>
+                      <td className={`sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeDropdown === r.id ? 'z-[60]' : 'z-10'}`}>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); setModalMode('view'); }}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition hover:bg-cyan-100 hover:text-cyan-700"
+                            title="Xem"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          {r.status === 'ASSIGNED' && r.details?.some(d => (Number(d.receivedQty) || 0) > 0) && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); setModalMode('view'); }}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition hover:bg-indigo-100 hover:text-indigo-700"
+                              title="Nhập số liệu kiểm kê"
+                            >
+                              <ClipboardCheck className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); setModalMode('edit'); }}
+                            disabled={r.status === 'POSTED'}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl transition ${r.status === 'POSTED'
+                                ? 'bg-slate-50 text-slate-300 cursor-not-allowed'
+                                : 'bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700'
+                              }`}
+                            title="Sửa"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+
+                          <div className="relative" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setActiveDropdown(activeDropdown === r.id ? null : r.id)}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
+                              title="Thao tác khác"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
+                            {activeDropdown === r.id && (
+                              <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left">
+                                <button
+                                  type="button"
+                                  disabled={r.status !== 'CHECKED'}
+                                  onClick={async () => {
+                                    if (window.confirm('Bạn có chắc chắn muốn duyệt biên bản này?')) {
+                                      try {
+                                        const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts/${r.id}/post`, {
+                                          method: 'POST',
+                                          headers: authHeaders(),
+                                        });
+                                        if (!res.ok) {
+                                          const errData = await res.json().catch(()=>null);
+                                          throw new Error(errData?.message || 'Có lỗi xảy ra khi duyệt biên bản');
+                                        }
+                                        await loadData();
+                                      } catch(err: any) {
+                                        alert(err.message || 'Lỗi khi duyệt');
+                                      }
+                                    }
+                                    setActiveDropdown(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  Duyệt biên bản
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    alert('Gửi thông báo thành công!');
+                                    setActiveDropdown(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                >
+                                  <Bell className="h-4 w-4" />
+                                  Thông báo
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={r.status !== 'POSTED'}
+                                  onClick={() => {
+                                    alert('Tính năng Xem hóa đơn đang phát triển!');
+                                    setActiveDropdown(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                  title="Hóa đơn xem được khi nhà cung cấp xuất"
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  Xem hóa đơn
+                                </button>
+
+                                <div className="my-1 border-t border-slate-100"></div>
+                                <button
+                                  type="button"
+                                  disabled={r.status === 'POSTED'}
+                                  onClick={() => {
+                                    setDeleteTarget(r);
+                                    setModalMode('delete');
+                                    setActiveDropdown(null);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Xóa
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {/* Spacer row to prevent overflow clipping of the dropdown */}
+                {activeDropdown && (
+                  <tr>
+                    <td colSpan={11} className="p-0" style={{ height: '180px' }}></td>
                   </tr>
-                ))
+                )}
+                </>
               )}
             </tbody>
           </table>
         </div>
-        <div className="flex justify-between border-t border-slate-200 px-6 py-3">
-            <span className="text-sm font-bold text-slate-500">Tổng: {totalItems}</span>
-        </div>
-      </div>
-
-      {/* CHI TIẾT MODAL */}
-      {modalMode === 'view' && selectedReceipt && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col">
-            <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
-              <div>
-                <h3 className="text-xl font-black text-slate-900">Chi tiết biên bản: {selectedReceipt.receiptCode}</h3>
-                <p className="text-sm font-medium text-slate-500">Từ lệnh: {selectedReceipt.sourceReferenceNo || '-'}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${statusClass(selectedReceipt.status)}`}>
-                  {statusLabel(selectedReceipt.status)}
-                </span>
-                <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-y-auto flex-1 p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-xs font-bold uppercase text-slate-500 mb-2">Nhân viên tham gia kiểm đếm</p>
-                  <p className="font-semibold text-slate-800">
-                    {selectedReceipt.assignedStaffIds && selectedReceipt.assignedStaffIds.length > 0
-                      ? selectedReceipt.assignedStaffIds.map(id => {
-                          const u = users.find(u => u.id === id);
-                          return u ? u.fullName || u.email : id;
-                        }).join(', ')
-                      : 'Không có thông tin'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 p-4">
-                  <p className="text-xs font-bold uppercase text-slate-500 mb-2">Ghi chú chung</p>
-                  <p className="font-semibold text-slate-800">{selectedReceipt.description || 'Không có ghi chú'}</p>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="font-black text-slate-900 mb-3">Kết Quả Kiểm Đếm</h4>
-                <div className="overflow-hidden rounded-xl border border-slate-200">
-                  <table className="w-full bg-white text-left">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>
-                        <th className="px-3 py-3 text-sm font-black uppercase text-slate-700 text-center">STT</th>
-                        <th className="px-3 py-3 text-sm font-black uppercase text-slate-700">Mã / Tên Hàng</th>
-                        <th className="px-3 py-3 text-sm font-black uppercase text-slate-700 text-center">Số lượng Đặt</th>
-                        <th className="px-3 py-3 text-sm font-black uppercase text-slate-700 text-center">Số lượng Giao / Nhận</th>
-                        <th className="px-3 py-3 text-sm font-black uppercase text-slate-700 text-center">Số lượng Thực Tế (Kiểm kê)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {(selectedReceipt.details || []).map((d, i) => (
-                        <tr key={d.id} className="hover:bg-slate-50 transition">
-                          <td className="px-3 py-3 text-sm text-slate-600 text-center">{i + 1}</td>
-                          <td className="px-3 py-3 text-sm">
-                            <p className="font-bold text-slate-800">{d.product?.internalSku}</p>
-                            <p className="text-slate-600">{d.product?.name}</p>
-                          </td>
-                          <td className="px-3 py-3 text-sm font-black text-cyan-700 text-center">{formatNumber(d.orderedQty)}</td>
-                          <td className="px-3 py-3 text-sm font-black text-indigo-700 text-center">{formatNumber(d.receivedQty)}</td>
-                          <td className="px-3 py-3 text-center">
-                            {selectedReceipt.status === 'POSTED' ? (
-                              <span className="font-black text-emerald-700">{formatNumber(d.quantity)}</span>
-                            ) : (
-                              <input
-                                type="number"
-                                min={0}
-                                value={editQuantities[d.id] ?? d.quantity}
-                                onChange={(e) => setEditQuantities({ ...editQuantities, [d.id]: e.target.value })}
-                                className="w-24 text-center rounded-lg border-2 border-slate-200 px-2 py-1 font-black text-emerald-700 outline-none transition focus:border-emerald-500"
-                              />
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4 bg-slate-50">
-              <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-6 py-2.5 font-bold text-slate-700 hover:bg-slate-100">
-                Đóng
+        <div className="flex flex-col items-center justify-between gap-4 border-t border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
+          <div className="text-sm text-slate-600">
+            Tổng số: <b>{totalItems}</b>
+            {totalItems > 0 && <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-600">Số dòng/trang</span>
+            <select
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setCurrentPage(1);
+              }}
+              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm font-semibold text-slate-700 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                &laquo;
               </button>
-              {selectedReceipt.status === 'DRAFT' && (
-                <>
-                  <button type="button" onClick={saveChanges} disabled={saving} className="rounded-xl border-2 border-cyan-200 bg-cyan-50 px-6 py-2.5 font-bold text-cyan-700 hover:bg-cyan-100">
-                    Lưu tạm
-                  </button>
-                  <button type="button" onClick={postReceipt} disabled={saving} className="rounded-xl bg-emerald-600 px-6 py-2.5 font-bold text-white shadow-lg hover:bg-emerald-700">
-                    Chốt hoàn thành & Ghi sổ
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                &lsaquo;
+              </button>
+              <span className="flex h-8 min-w-[32px] items-center justify-center rounded-lg bg-cyan-600 px-2 text-sm font-bold text-white">
+                {currentPage}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                &rsaquo;
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                &raquo;
+              </button>
             </div>
           </div>
         </div>
-      )}
-
+      </div>
       {/* XÓA MODAL */}
       {modalMode === 'delete' && deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
@@ -519,6 +695,22 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
             </div>
           </div>
         </div>
+      )}
+
+      {(modalMode === 'create' || modalMode === 'edit' || modalMode === 'view') && (
+        <CreateStockInReceiptModal
+          isOpen={true}
+          mode={modalMode}
+          receiptId={(modalMode === 'edit' || modalMode === 'view') ? selectedId : undefined}
+          onClose={closeModal}
+          onSuccess={() => {
+            closeModal();
+            setToast({ type: 'success', message: 'Thao tác thành công' });
+            loadData();
+          }}
+          sourceStockInOrderId={sourceSOId}
+          sourcePurchaseOrderId={sourcePOId}
+        />
       )}
     </div>
   );

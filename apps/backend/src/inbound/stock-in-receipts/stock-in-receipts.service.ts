@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { AuditLogService } from '../../audit-log/audit-log.service';
 import { Product } from '../../entities/product.entity';
 import { Supplier } from '../../entities/supplier.entity';
@@ -10,6 +10,7 @@ import { StockInReceiptDetail } from './entities/stock-in-receipt-detail.entity'
 import { StockInReceipt } from './entities/stock-in-receipt.entity';
 import { CreateStockInReceiptDto, StockInReceiptType } from './dto/create-stock-in-receipt.dto';
 import { UpdateStockInReceiptDto } from './dto/update-stock-in-receipt.dto';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 type UserContext = {
   id?: string;
@@ -48,6 +49,8 @@ export class StockInReceiptsService {
     @InjectRepository(StockBalance) private readonly balanceRepo: Repository<StockBalance>,
     @InjectRepository(StockInOrder) private readonly stockInOrderRepo: Repository<StockInOrder>,
     private readonly auditLogService: AuditLogService,
+    private readonly notificationsService: NotificationsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll() {
@@ -76,6 +79,10 @@ export class StockInReceiptsService {
       warehouseCode: reloaded.warehouseCode,
       sourceReferenceNo: reloaded.sourceReferenceNo,
     });
+
+    if (reloaded.status === 'ASSIGNED') {
+      await this.notifyAssignedStaff(reloaded);
+    }
 
     if (shouldPost) {
       return this.post(saved.id, user);
@@ -140,6 +147,7 @@ export class StockInReceiptsService {
       throw new BadRequestException('Không thể chỉnh sửa phiếu đã ghi sổ');
     }
 
+    const shouldPost = dto.status === 'POSTED';
     const next = await this.applyHeader(receipt, dto);
 
     if (dto.items) {
@@ -159,6 +167,14 @@ export class StockInReceiptsService {
       receiptType: next.receiptType,
       warehouseCode: next.warehouseCode,
     });
+
+    if (next.status === 'ASSIGNED') {
+      await this.notifyAssignedStaff(next);
+    }
+
+    if (shouldPost) {
+      return this.post(id, user);
+    }
 
     return this.serializeReceipt(await this.findReceiptEntity(id), true);
   }
@@ -229,7 +245,7 @@ export class StockInReceiptsService {
       sourceStockInOrder: sourceOrder || undefined,
       sourceReferenceNo: dto.sourceReferenceNo?.trim() || sourceOrder?.orderCode || undefined,
       receiptDate: dto.receiptDate ? new Date(dto.receiptDate) : new Date(),
-      status: 'DRAFT',
+      status: dto.status || 'DRAFT',
       description: dto.description?.trim() || undefined,
       assignedStaffIds: dto.assignedStaffIds || undefined,
       totalAmount: '0',
@@ -399,6 +415,15 @@ export class StockInReceiptsService {
   private async serializeReceipt(receipt: StockInReceipt, includeLogs = false) {
     const logs = includeLogs ? await this.auditLogService.findByResource('stock-in-receipt', receipt.id) : [];
 
+    let poFields: any = null;
+    if (receipt.sourceReferenceNo && receipt.sourceReferenceNo.startsWith('PO-')) {
+      poFields = await this.dataSource.query(
+        'SELECT poNumber, orderDate, expectedDate, creatorName, creatorPhone, approverName, status, description FROM inbound_receipts WHERE poNumber = ? LIMIT 1',
+        [receipt.sourceReferenceNo]
+      );
+      poFields = poFields?.[0] || null;
+    }
+
     return {
       id: receipt.id,
       receiptCode: receipt.receiptCode,
@@ -410,13 +435,29 @@ export class StockInReceiptsService {
         ? {
             id: receipt.sourceStockInOrder.id,
             orderCode: receipt.sourceStockInOrder.orderCode,
+            orderDate: toIso((receipt.sourceStockInOrder as any).sourcePurchaseOrder?.orderDate),
+            expectedDate: toIso((receipt.sourceStockInOrder as any).sourcePurchaseOrder?.expectedDate),
+            creatorName: (receipt.sourceStockInOrder as any).sourcePurchaseOrder?.creatorName,
           }
         : null,
+      poNumber: poFields?.poNumber || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.poNumber || receipt.sourceReferenceNo,
+      orderDate: toIso(poFields?.orderDate || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.orderDate),
+      expectedDate: toIso(poFields?.expectedDate || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.expectedDate),
+      creatorName: poFields?.creatorName || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.creatorName,
+      creatorPhone: poFields?.creatorPhone || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.creatorPhone,
+      approver: {
+        fullName: poFields?.approverName || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.approverName,
+      },
+      orderStatus: poFields?.status || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.status,
+      orderDescription: poFields?.description || (receipt.sourceStockInOrder as any)?.sourcePurchaseOrder?.description,
       supplier: receipt.supplier
         ? {
             id: receipt.supplier.id,
             supplierCode: receipt.supplier.supplierCode,
             name: receipt.supplier.name,
+            taxCode: receipt.supplier.taxCode,
+            contactPerson: receipt.supplier.contactPerson,
+            phone: receipt.supplier.phone,
           }
         : null,
       receiptDate: toIso(receipt.receiptDate),
@@ -457,5 +498,25 @@ export class StockInReceiptsService {
         actorId: log.actorId,
       })),
     };
+  }
+
+  private async notifyAssignedStaff(receipt: StockInReceipt) {
+    if (!receipt.assignedStaffIds || receipt.assignedStaffIds.length === 0) return;
+    const title = `Phân công kiểm kê: ${receipt.receiptCode}`;
+    const message = `Bạn đã được phân công kiểm kê lệnh nhập kho ${receipt.receiptCode}. Vui lòng kiểm tra và thực hiện kiểm kê.`;
+    const link = `/inbound/stock-in-receipts`;
+    
+    await Promise.all(
+      receipt.assignedStaffIds.map((staffId) =>
+        this.notificationsService.notifyUser(staffId, {
+          title,
+          message,
+          link,
+          priority: 'high',
+          referenceType: 'STOCK_IN_RECEIPT',
+          referenceId: receipt.id,
+        })
+      )
+    );
   }
 }

@@ -5,6 +5,7 @@ import { InboundReceipt } from './entities/inbound-receipt.entity';
 import { InboundDetail } from './entities/inbound-detail.entity';
 import { CreateAsnDto, PurchaseOrderItemDto } from './dto/create-asn.dto';
 import { ReceiveDto } from './dto/receive.dto';
+import { StockInReceiptDetail } from './stock-in-receipts/entities/stock-in-receipt-detail.entity';
 import { Supplier } from '../entities/supplier.entity';
 import { Product } from '../entities/product.entity';
 import { SupplierProduct } from '../entities/supplier-product.entity';
@@ -19,6 +20,9 @@ type SerializedPurchaseOrder = {
   expectedDate?: string;
   status?: string;
   approverId?: string;
+  approverName?: string;
+  creatorName?: string;
+  creatorPhone?: string;
   description?: string;
   totalAmount: number;
   supplier?: {
@@ -59,8 +63,22 @@ export function isEditablePurchaseOrderStatus(status?: string) {
   return !status || status === 'CREATED' || status === 'DRAFT';
 }
 
-export function isReceivingReady(status?: string) {
-  return status === 'SUPPLIER_APPROVED' || status === 'PARTIALLY_RECEIVED';
+function isEditablePurchaseOrderStatus(status?: string) {
+  const norm = normalizeStatus(status);
+  return !status || norm === 'CREATED' || norm === 'DRAFT';
+}
+
+function isManagerApprovalReady(status?: string) {
+  return normalizeStatus(status) === 'CREATED';
+}
+
+function isSupplierApprovalReady(status?: string) {
+  return normalizeStatus(status) === 'APPROVED';
+}
+
+function isReceivingReady(status?: string) {
+  const normalized = normalizeStatus(status);
+  return normalized === 'SUPPLIER_APPROVED' || normalized === 'PARTIALLY_RECEIVED' || normalized === 'RECEIVED';
 }
 
 @Injectable()
@@ -72,7 +90,8 @@ export class InboundService {
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(SupplierProduct) private supplierProductRepo: Repository<SupplierProduct>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
-    private notificationsService: NotificationsService,
+    @InjectRepository(StockInReceiptDetail) private stockInReceiptDetailRepo: Repository<StockInReceiptDetail>,
+    private readonly notificationsService: NotificationsService,
   ) { }
 
   async createReceipt(dto: CreateAsnDto, user?: any) {
@@ -93,8 +112,11 @@ export class InboundService {
       poNumber,
       orderDate: dto.orderDate ? new Date(dto.orderDate) : new Date(),
       expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
-      status: 'CREATED',
+      status: dto.status || 'CREATED',
       approverId: dto.approverId?.trim() || undefined,
+      approverName: dto.approverName?.trim() || undefined,
+      creatorName: dto.creatorName?.trim() || undefined,
+      creatorPhone: dto.creatorPhone?.trim() || undefined,
       description: dto.description?.trim() || undefined,
       supplier: supplier || undefined,
       supplierName,
@@ -106,24 +128,26 @@ export class InboundService {
     savedReceipt.totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty)), 0).toFixed(2);
     await this.receiptRepo.save(savedReceipt);
 
-    if (savedReceipt.approverId) {
-      await this.notificationsService.notifyUser(savedReceipt.approverId, {
-        title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
-        message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
-        link: '/inbound/purchase-orders',
-        referenceType: 'purchase-order',
-        referenceId: savedReceipt.id,
-        priority: 'high',
-      });
-    } else {
-      await this.notificationsService.notifyRole('manager', {
-        title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
-        message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
-        link: '/inbound/purchase-orders',
-        referenceType: 'purchase-order',
-        referenceId: savedReceipt.id,
-        priority: 'high',
-      });
+    if (savedReceipt.status !== 'DRAFT') {
+      if (savedReceipt.approverId) {
+        await this.notificationsService.notifyUser(savedReceipt.approverId, {
+          title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
+          message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+          link: '/inbound/purchase-orders',
+          referenceType: 'purchase-order',
+          referenceId: savedReceipt.id,
+          priority: 'high',
+        });
+      } else {
+        await this.notificationsService.notifyRole('manager', {
+          title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
+          message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+          link: '/inbound/purchase-orders',
+          referenceType: 'purchase-order',
+          referenceId: savedReceipt.id,
+          priority: 'high',
+        });
+      }
     }
 
     return this.serializeReceipt(await this.findReceiptEntity(savedReceipt.id, user));
@@ -167,8 +191,16 @@ export class InboundService {
 
     if (dto.orderDate) receipt.orderDate = new Date(dto.orderDate);
     if (dto.expectedDate) receipt.expectedDate = new Date(dto.expectedDate);
-    if (dto.description !== undefined) receipt.description = dto.description.trim() || undefined;
-    if (dto.approverId !== undefined) receipt.approverId = dto.approverId.trim() || undefined;
+    if (dto.description !== undefined) receipt.description = dto.description ? dto.description.trim() : undefined;
+    if (dto.approverId !== undefined) receipt.approverId = dto.approverId ? dto.approverId.trim() : undefined;
+    if (dto.approverName !== undefined) receipt.approverName = dto.approverName ? dto.approverName.trim() : undefined;
+    if (dto.creatorName !== undefined) receipt.creatorName = dto.creatorName ? dto.creatorName.trim() : undefined;
+    if (dto.creatorPhone !== undefined) receipt.creatorPhone = dto.creatorPhone ? dto.creatorPhone.trim() : undefined;
+
+    const oldStatus = receipt.status;
+    if (dto.status !== undefined) {
+      receipt.status = dto.status;
+    }
 
     if (dto.items) {
       if (!isEditablePurchaseOrderStatus(receipt.status)) {
@@ -224,6 +256,28 @@ export class InboundService {
 
     await this.recalculateTotalAmount(receipt.id);
     await this.receiptRepo.save(receipt);
+
+    if (oldStatus === 'DRAFT' && receipt.status === 'CREATED') {
+      if (receipt.approverId) {
+        await this.notificationsService.notifyUser(receipt.approverId, {
+          title: `Don mua hang ${receipt.poNumber} can duyet`,
+          message: `Don mua hang ${receipt.poNumber} vua duoc gui duyet. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+          link: '/inbound/purchase-orders',
+          referenceType: 'purchase-order',
+          referenceId: receipt.id,
+          priority: 'high',
+        });
+      } else {
+        await this.notificationsService.notifyRole('manager', {
+          title: `Don mua hang ${receipt.poNumber} can duyet`,
+          message: `Don mua hang ${receipt.poNumber} vua duoc gui duyet. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
+          link: '/inbound/purchase-orders',
+          referenceType: 'purchase-order',
+          referenceId: receipt.id,
+          priority: 'high',
+        });
+      }
+    }
     return this.serializeReceipt(await this.findReceiptEntity(receipt.id));
   }
 
@@ -336,6 +390,18 @@ export class InboundService {
     detail.receivedQty = nextReceived;
     await this.detailRepo.save(detail);
     await this.syncReceiptStatus(detail.inboundReceipt.id);
+
+    // Sync to corresponding StockInReceiptDetail if exists
+    if (detail.inboundReceipt.poNumber) {
+      await this.stockInReceiptDetailRepo
+        .createQueryBuilder()
+        .update(StockInReceiptDetail)
+        .set({ receivedQty: nextReceived })
+        .where('product.id = :productId', { productId: detail.product.id })
+        .andWhere('receipt.id IN (SELECT id FROM stock_in_receipts WHERE sourceReferenceNo = :poNumber)', { poNumber: detail.inboundReceipt.poNumber })
+        .execute();
+    }
+
     return this.serializeDetail(detail);
   }
 
@@ -508,6 +574,9 @@ export class InboundService {
         id: receipt.supplier.id,
         supplierCode: receipt.supplier.supplierCode,
         name: receipt.supplier.name,
+        taxCode: receipt.supplier.taxCode,
+        contactPerson: receipt.supplier.contactPerson,
+        phone: receipt.supplier.phone,
       }
       : receipt.supplierName
         ? { id: '', supplierCode: '', name: receipt.supplierName }
@@ -526,9 +595,12 @@ export class InboundService {
       expectedDate: toDateString(receipt.expectedDate),
       status: receipt.status,
       approverId: receipt.approverId,
+      approverName: receipt.approverName,
+      creatorName: receipt.creatorName,
+      creatorPhone: receipt.creatorPhone,
       description: receipt.description,
       totalAmount: computedTotal,
-      supplier: supplierDisplay,
+      supplier: supplierDisplay as any,
       supplierName: receipt.supplierName || receipt.supplier?.name || undefined,
       details: details.map((detail) => this.serializeDetail(detail)),
       items: details.length,

@@ -69,6 +69,18 @@ export class CreateAsnDto {
 
   @IsOptional()
   @IsString()
+  approverName?: string;
+
+  @IsOptional()
+  @IsString()
+  creatorName?: string;
+
+  @IsOptional()
+  @IsString()
+  creatorPhone?: string;
+
+  @IsOptional()
+  @IsString()
   description?: string;
 
   @IsOptional()

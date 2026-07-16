@@ -20,6 +20,12 @@ export class StockInOrderDetail extends BaseEntity {
   @Column({ type: 'int', default: 0 })
   actualQty: number;
 
+  @Column({ type: 'int', default: 0 })
+  distributedQty: number;
+
+  @Column({ type: 'int', default: 0 })
+  producedQty: number;
+
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   unitPrice: string;
 
