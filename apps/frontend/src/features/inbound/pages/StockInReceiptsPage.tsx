@@ -118,9 +118,9 @@ function formatNumber(value: number) {
 
 const statusLabel = (status: string) => {
   switch ((status || 'DRAFT').toUpperCase()) {
-    case 'POSTED': return 'Đã chốt (Ghi sổ)';
+    case 'POSTED': return 'Hoàn thành';
     case 'CHECKED': return 'Đã kiểm kê';
-    case 'ASSIGNED': return 'Đang giao việc';
+    case 'ASSIGNED': return 'Đã chốt (Giao việc)';
     default: return 'Chưa chốt (Nháp)';
   }
 };
@@ -148,7 +148,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
 
   const [search, setSearch] = React.useState('');
-  const [statusFilter, setStatusFilter] = React.useState<'all' | 'DRAFT' | 'POSTED'>('all');
+  const [statusFilter, setStatusFilter] = React.useState<'all' | 'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED'>('all');
   const [timeFilter, setTimeFilter] = React.useState<'all' | 'this-month' | '7-days'>('this-month');
   const [pageSize, setPageSize] = React.useState(10);
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -250,6 +250,8 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
   }, [receipts, search, statusFilter, receiptTypeFilter, timeFilter]);
 
   const draftCount = receipts.filter(r => r.status === 'DRAFT').length;
+  const assignedCount = receipts.filter(r => r.status === 'ASSIGNED').length;
+  const checkedCount = receipts.filter(r => r.status === 'CHECKED').length;
   const postedCount = receipts.filter(r => r.status === 'POSTED').length;
 
   const totalItems = filteredReceipts.length;
@@ -393,18 +395,21 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{receipts.length} TỔNG BIÊN BẢN</p>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{receipts.length}<br/>TỔNG BIÊN BẢN</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{draftCount} CHƯA CHỐT (NHÁP)</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{draftCount}<br/>NHÁP</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{postedCount} ĐÃ CHỐT (GHI SỔ)</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{assignedCount}<br/>ĐÃ CHỐT</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{users.filter(u => (u as any).roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF'].includes(r.name))).length} NV KHO</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{checkedCount}<br/>ĐÃ KIỂM KÊ</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
+          <p className="text-sm font-bold text-white uppercase leading-tight">{postedCount}<br/>HOÀN THÀNH</p>
         </div>
       </div>
 
@@ -435,7 +440,9 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
           >
             <option value="all">Tình trạng: Tất cả</option>
             <option value="DRAFT">Tình trạng: Chưa chốt (Nháp)</option>
-            <option value="POSTED">Tình trạng: Đã chốt (Ghi sổ)</option>
+            <option value="ASSIGNED">Tình trạng: Đã chốt (Giao việc)</option>
+            <option value="CHECKED">Tình trạng: Đã kiểm kê</option>
+            <option value="POSTED">Tình trạng: Hoàn thành</option>
           </select>
         </div>
       </div>
