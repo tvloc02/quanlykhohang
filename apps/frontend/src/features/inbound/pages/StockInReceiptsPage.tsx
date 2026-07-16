@@ -502,7 +502,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          {(r.status === 'ASSIGNED' || r.status === 'CHECKED' || r.status === 'DRAFT') && (
+                          {r.status === 'ASSIGNED' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); setModalMode('view'); }}
                               className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition hover:bg-indigo-100 hover:text-indigo-700"
@@ -536,7 +536,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                               <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left">
                                 <button
                                   type="button"
-                                  disabled={r.status === 'POSTED'}
+                                  disabled={r.status !== 'CHECKED'}
                                   onClick={async () => {
                                     if (window.confirm('Bạn có chắc chắn muốn duyệt biên bản này?')) {
                                       try {
