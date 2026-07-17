@@ -110,7 +110,7 @@ export class StocktakeService {
     // Gửi thông báo cho nhân viên được giao kiểm kê
     if (dto.assignee) {
       try {
-        await this.notificationsService.notifyRole('staff', {
+        await this.notificationsService.notifyUserByIdentifier(dto.assignee, {
           title: 'Phiếu kiểm kê mới',
           message: `Bạn được giao kiểm kê phiên ${result.stocktakeNo} tại kho ${result.locationCode}. Vui lòng thực hiện kiểm kê.`,
           link: '/inventory/stocktake/my-tasks',
@@ -358,14 +358,21 @@ export class StocktakeService {
 
     // Gửi thông báo cho người tạo / nhân viên
     try {
-      await this.notificationsService.notifyRole('staff', {
+      const msgData = {
         title: 'Kiểm kê đã duyệt',
         message: `Phiên kiểm kê ${stocktake.stocktakeNo} đã được duyệt bởi ${approvedBy || 'quản lý'}. Tồn kho đã được cập nhật.`,
         link: '/inventory/stocktake/my-tasks',
         referenceType: 'stocktake',
         referenceId: stocktake.id,
-        priority: 'normal',
-      });
+        priority: 'normal' as 'normal',
+      };
+      
+      if (stocktake.assignee) {
+        await this.notificationsService.notifyUserByIdentifier(stocktake.assignee, msgData);
+      }
+      if (stocktake.createdBy && stocktake.createdBy !== stocktake.assignee) {
+        await this.notificationsService.notifyUserByIdentifier(stocktake.createdBy, msgData);
+      }
     } catch (e) {}
 
     return this.serialize(await this.findEntity(id));
@@ -383,14 +390,21 @@ export class StocktakeService {
 
     // Gửi thông báo cho người tạo / nhân viên
     try {
-      await this.notificationsService.notifyRole('staff', {
+      const msgData = {
         title: 'Kiểm kê bị từ chối',
         message: `Phiên kiểm kê ${stocktake.stocktakeNo} đã bị từ chối. Vui lòng liên hệ quản lý để biết thêm chi tiết.`,
         link: '/inventory/stocktake/my-tasks',
         referenceType: 'stocktake',
         referenceId: stocktake.id,
-        priority: 'high',
-      });
+        priority: 'high' as 'high',
+      };
+
+      if (stocktake.assignee) {
+        await this.notificationsService.notifyUserByIdentifier(stocktake.assignee, msgData);
+      }
+      if (stocktake.createdBy && stocktake.createdBy !== stocktake.assignee) {
+        await this.notificationsService.notifyUserByIdentifier(stocktake.createdBy, msgData);
+      }
     } catch (e) {}
 
     return this.serialize(await this.findEntity(id));

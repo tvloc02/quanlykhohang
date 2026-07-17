@@ -111,6 +111,21 @@ export class NotificationsService {
     return this.notifyRole('supplier', input);
   }
 
+  async notifyUserByIdentifier(identifier: string, input: NotificationInput) {
+    if (!identifier) return null;
+    const user = await this.userRepo.findOne({
+      where: [
+        { email: identifier },
+        { fullName: identifier }
+      ]
+    });
+    
+    if (user) {
+      return this.notifyUser(user.id, input);
+    }
+    return null;
+  }
+
   private async findAccessibleNotification(id: string, user?: { id?: string; role?: string; roles?: Array<{ name?: string }> }) {
     const notification = await this.notificationRepo.findOne({ where: { id } });
     if (!notification) {
