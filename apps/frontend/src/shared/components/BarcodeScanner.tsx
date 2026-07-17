@@ -79,6 +79,8 @@ export interface BarcodeScannerProps {
   defaultQty?: number;
   /** Title shown in modal header */
   title?: string;
+  /** Allow opening the quick-add product form if not found. Default: true */
+  allowQuickAdd?: boolean;
 }
 
 const API_BASE_URL = 'http://localhost:3000/api';
@@ -209,6 +211,7 @@ export default function BarcodeScanner({
   showQtyDialog = true,
   defaultQty = 1,
   title = 'Quét mã vạch / QR',
+  allowQuickAdd = true,
 }: BarcodeScannerProps) {
   const scannerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -426,6 +429,12 @@ export default function BarcodeScanner({
 
     try {
       const product = await lookupBarcode(code);
+      
+      // Nếu là chế độ không cho phép thêm nhanh (Xuất kho, Kiểm kê) mà sản phẩm lại chưa có trong hệ thống
+      if (product.isExternal && allowQuickAdd === false) {
+        throw new Error('Sản phẩm chưa có trong hệ thống. Không thể quét mã này ở chế độ hiện tại.');
+      }
+
       setFoundProduct(product);
 
       if (product.isExternal) {
@@ -447,7 +456,7 @@ export default function BarcodeScanner({
     } finally {
       setLoading(false);
     }
-  }, [loading, mode, showQtyDialog, defaultQty, onProductFound, onBarcodeScanned, onClose, restartCamera]);
+  }, [loading, mode, showQtyDialog, defaultQty, allowQuickAdd, onProductFound, onBarcodeScanned, onClose, restartCamera]);
 
   const handleCreateExternalProduct = async () => {
     if (!quickAddName.trim()) {

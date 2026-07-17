@@ -417,22 +417,15 @@ export default function Products() {
       });
 
       if (!response.ok) {
-        const nextProducts = products.filter((product) => product.id !== selectedProduct.id);
-        setProducts(nextProducts);
-        saveStoredProducts(nextProducts);
-        setSuccess('Đã xóa sản phẩm.');
-        closeModal();
-        return;
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không thể xóa sản phẩm. Có thể do sản phẩm đang có dữ liệu liên quan.');
       }
 
-      setSuccess('Đã xóa sản phẩm.');
+      setSuccess('Đã xóa sản phẩm thành công.');
       closeModal();
       await loadData();
     } catch (err) {
-      const nextProducts = products.filter((product) => product.id !== selectedProduct.id);
-      setProducts(nextProducts);
-      saveStoredProducts(nextProducts);
-      setSuccess('Đã xóa sản phẩm.');
+      setError(err instanceof Error ? err.message : 'Lỗi hệ thống khi xóa sản phẩm');
       closeModal();
     } finally {
       setSaving(false);
