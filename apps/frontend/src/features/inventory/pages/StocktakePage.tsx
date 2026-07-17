@@ -37,11 +37,10 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
 
   return (
     <div
-      className={`fixed top-4 right-4 z-[60] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg transition-all animate-[slideIn_0.3s_ease-out] ${
-        type === 'error'
+      className={`fixed top-4 right-4 z-[60] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg transition-all animate-[slideIn_0.3s_ease-out] ${type === 'error'
           ? 'bg-red-50 text-red-600 border border-red-200'
           : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-      }`}
+        }`}
     >
       {type === 'error' ? <XCircle size={20} /> : <CheckCircle size={20} />}
       <p className="text-sm font-semibold">{message}</p>
@@ -160,18 +159,18 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
 
   const pageTitle = isRequestsView ? 'Yêu cầu kiểm kê từ nhân viên'
     : isCreateView ? 'Tạo phiên kiểm kê'
-    : isMyTasksView ? 'Kiểm kê của tôi'
-    : isRequestNewView ? 'Gửi yêu cầu kiểm kê'
-    : 'Kiểm kê kho hàng';
+      : isMyTasksView ? 'Kiểm kê của tôi'
+        : isRequestNewView ? 'Gửi yêu cầu kiểm kê'
+          : 'Kiểm kê kho hàng';
   const pageSubtitle = isRequestsView
     ? 'Danh sách yêu cầu kiểm kê từ nhân viên cần tiếp nhận và xử lý.'
     : isCreateView
-    ? 'Tạo mới một phiên kiểm kê để bắt đầu kiểm kê hàng hóa.'
-    : isMyTasksView
-    ? 'Danh sách phiên kiểm kê được giao cho bạn.'
-    : isRequestNewView
-    ? 'Tạo yêu cầu kiểm kê và gửi cho quản lý phê duyệt.'
-    : 'Tạo phiên kiểm kê, đếm thực tế, so sánh chênh lệch và cập nhật tồn kho.';
+      ? 'Tạo mới một phiên kiểm kê để bắt đầu kiểm kê hàng hóa.'
+      : isMyTasksView
+        ? 'Danh sách phiên kiểm kê được giao cho bạn.'
+        : isRequestNewView
+          ? 'Tạo yêu cầu kiểm kê và gửi cho quản lý phê duyệt.'
+          : 'Tạo phiên kiểm kê, đếm thực tế, so sánh chênh lệch và cập nhật tồn kho.';
   const defaultIsRequest = isRequestsView || isRequestNewView;
   const [selectedStocktake, setSelectedStocktake] = React.useState<StocktakeItem | null>(null);
 
@@ -253,25 +252,25 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
     }
   };
 
-    const handleAcceptRequest = async (id: string) => {
-      try {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        const res = await fetch(`${API_BASE}/inventory/stocktakes/${id}/accept`, {
-          method: 'POST',
-          headers: authHeaders(),
-          body: JSON.stringify({ acceptedBy: user.fullName || user.email || '' }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.message || 'Không thể tiếp nhận yêu cầu');
-        }
-        showSuccess('Đã tiếp nhận yêu cầu kiểm kê');
-        loadData();
-        if (selectedStocktake?.id === id) handleViewDetail(id);
-      } catch (err) {
-        showError(err instanceof Error ? err.message : 'Lỗi');
+  const handleAcceptRequest = async (id: string) => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const res = await fetch(`${API_BASE}/inventory/stocktakes/${id}/accept`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ acceptedBy: user.fullName || user.email || '' }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Không thể tiếp nhận yêu cầu');
       }
-    };
+      showSuccess('Đã tiếp nhận yêu cầu kiểm kê');
+      loadData();
+      if (selectedStocktake?.id === id) handleViewDetail(id);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Lỗi');
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bạn chắc chắn muốn xóa phiên kiểm kê này?')) return;
@@ -338,7 +337,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   // Determine button label
   const createButtonLabel = isStaff ? 'Gửi yêu cầu kiểm kê'
     : isRequestsView ? 'Xem yêu cầu'
-    : 'Tạo phiên kiểm kê';
+      : 'Tạo phiên kiểm kê';
 
   return (
     <div>
@@ -360,7 +359,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
             Làm mới
           </button>
           {/* Manager: Tạo phiên kiểm kê, Staff: Gửi yêu cầu */}
-          {!isRequestsView && (
+          {!isRequestsView && viewMode !== 'stocktake' && (
             <button
               onClick={() => setShowCreateModal(true)}
               className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg"
@@ -661,18 +660,18 @@ function CreateStocktakeModal({
     fetch(`${API_BASE}/warehouses`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => setWarehouses(Array.isArray(data) ? data : data?.data || []))
-      .catch(() => {});
-      
-      
+      .catch(() => { });
+
+
     fetch(`${API_BASE}/users`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => setUsers(Array.isArray(data) ? data : data?.data || []))
-      .catch(() => {});
+      .catch(() => { });
 
     fetch(`${API_BASE}/products`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => setProducts(Array.isArray(data) ? data : data?.data || []))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -772,7 +771,7 @@ function CreateStocktakeModal({
   };
 
   const toggleProduct = (id: string) => {
-    setSelectedProductIds(prev => 
+    setSelectedProductIds(prev =>
       prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
     );
   };
@@ -782,7 +781,7 @@ function CreateStocktakeModal({
       <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between border-b-2 border-slate-200 px-6 py-4 flex-shrink-0">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: isStaff ? 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' : 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}>
               <ClipboardList className="h-5 w-5 text-white" />
             </div>
@@ -825,13 +824,13 @@ function CreateStocktakeModal({
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Ngày dự kiến</label>
-                <input
-                  type="datetime-local"
-                  value={plannedDate}
-                  min={new Date().toISOString().slice(0, 16)}
-                  onChange={(e) => setPlannedDate(e.target.value)}
-                  className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                />
+              <input
+                type="datetime-local"
+                value={plannedDate}
+                min={new Date().toISOString().slice(0, 16)}
+                onChange={(e) => setPlannedDate(e.target.value)}
+                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+              />
             </div>
           </div>
 
@@ -855,8 +854,8 @@ function CreateStocktakeModal({
                 {users
                   .filter(u => Array.isArray(u.roles) && u.roles.some((r: any) => ['staff', 'manager', 'admin'].includes(r.name?.toLowerCase())))
                   .map(u => (
-                  <option key={u.id} value={u.fullName || u.email}>{u.fullName || u.email}</option>
-                ))}
+                    <option key={u.id} value={u.fullName || u.email}>{u.fullName || u.email}</option>
+                  ))}
               </select>
             )}
           </div>
@@ -920,8 +919,8 @@ function CreateStocktakeModal({
                   })
                   .map(p => (
                     <label key={p.id} className="flex items-center gap-3 p-2 hover:bg-slate-100 rounded-lg cursor-pointer transition">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={selectedProductIds.includes(p.id)}
                         onChange={() => toggleProduct(p.id)}
                         className="w-4 h-4 rounded text-cyan-600 focus:ring-cyan-500"
@@ -1025,7 +1024,7 @@ function StocktakeDetailModal({
         if (Array.isArray(data)) setProducts(data);
         else if (data?.data && Array.isArray(data.data)) setProducts(data.data);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const canEdit = stocktake.status === 'DRAFT' || stocktake.status === 'COUNTING';
@@ -1082,7 +1081,7 @@ function StocktakeDetailModal({
         if (!res.ok) {
           throw new Error('Không thể thêm sản phẩm mới từ máy quét');
         }
-        
+
         // Ta cần onRefresh() để lấy detail id mới sinh.
         // Tạm thời, người dùng sẽ quét lại hoặc nhập tay số lượng sau khi nó xuất hiện.
         onSuccess(`Đã thêm ${product.name} vào danh sách kiểm kê.`);
@@ -1425,11 +1424,10 @@ function StocktakeDetailModal({
               <button
                 onClick={handleFinishCounting}
                 disabled={!stocktake.details || stocktake.details.length === 0}
-                className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition ${
-                  !stocktake.details || stocktake.details.length === 0
+                className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition ${!stocktake.details || stocktake.details.length === 0
                     ? 'opacity-50 cursor-not-allowed grayscale'
                     : 'hover:shadow-lg'
-                }`}
+                  }`}
                 style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}
               >
                 <span className="flex items-center gap-2">
@@ -1464,7 +1462,7 @@ function StocktakeDetailModal({
           </div>
         </div>
       </div>
-      
+
       {/* Tích hợp Barcode Scanner */}
       <BarcodeScanner
         isOpen={scannerOpen}
