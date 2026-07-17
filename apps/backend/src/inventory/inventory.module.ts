@@ -8,13 +8,16 @@ import { Stocktake } from './stocktake/entities/stocktake.entity';
 import { StocktakeDetail } from './stocktake/entities/stocktake-detail.entity';
 import { StocktakeService } from './stocktake/stocktake.service';
 import { StocktakeController } from './stocktake/stocktake.controller';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([StockBalance, Product, Stocktake, StocktakeDetail]),
+    NotificationsModule,
   ],
   controllers: [InventoryController, StocktakeController],
   providers: [InventoryService, StocktakeService],
   exports: [InventoryService, StocktakeService],
 })
 export class InventoryModule {}
+

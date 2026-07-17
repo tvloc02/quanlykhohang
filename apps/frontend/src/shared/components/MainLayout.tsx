@@ -116,9 +116,6 @@ const menuItems = [
     path: '/inventory',
     badge: null,
     allowedRoles: ['manager', 'staff'],
-    children: [
-      { icon: Archive, label: 'Tồn kho hiện tại', path: '/inventory' },
-    ],
   },
   {
     icon: ListChecks,
@@ -127,9 +124,10 @@ const menuItems = [
     badge: null,
     allowedRoles: ['manager', 'staff'],
     children: [
-      { icon: ClipboardList, label: 'Yêu cầu kiểm kê', path: '/inventory/stocktake/requests' },
-      { icon: FileText, label: 'Lập phiếu kiểm kê', path: '/inventory/stocktake/create' },
-      { icon: Package, label: 'Kiểm kê', path: '/inventory/stocktake' },
+      { icon: FileText, label: 'Tạo phiên kiểm kê', path: '/inventory/stocktake/create', allowedRoles: ['admin', 'manager'] },
+      { icon: ClipboardList, label: 'Yêu cầu từ NV', path: '/inventory/stocktake/requests', allowedRoles: ['admin', 'manager'] },
+      { icon: Package, label: 'Danh sách phiên kiểm kê', path: '/inventory/stocktake', allowedRoles: ['admin', 'manager'] },
+      { icon: Package, label: 'Kiểm kê của tôi', path: '/inventory/stocktake/my-tasks', allowedRoles: ['staff'] },
     ],
   },
   { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null, allowedRoles: ['manager', 'staff'] },

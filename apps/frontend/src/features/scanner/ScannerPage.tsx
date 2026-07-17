@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import GoodsReceiptModal from './GoodsReceiptModal';
+import OutboundReceiptModal from './OutboundReceiptModal';
+import StocktakeReceiptModal from './StocktakeReceiptModal';
 import { saveOfflineReceipt, getOfflineReceipts, deleteOfflineReceipt } from '../offline-sync/db/indexedDb';
 
 // ──── Types ────────────────────────────────────────────────────
@@ -161,6 +163,8 @@ export default function ScannerPage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showOutboundModal, setShowOutboundModal] = useState(false);
+  const [showStocktakeModal, setShowStocktakeModal] = useState(false);
 
   const modeLabels: Record<ScanMode, { icon: string; label: string; desc: string }> = {
     inbound: { icon: '📥', label: 'Nhập kho', desc: 'Quét sản phẩm để tạo phiếu nhập kho' },
@@ -403,12 +407,13 @@ export default function ScannerPage() {
   };
 
   const handleSubmit = () => {
+    if (scannedItems.length === 0) return;
     if (mode === 'inbound') {
-      if (scannedItems.length > 0) setShowReceiptModal(true);
+      setShowReceiptModal(true);
     } else if (mode === 'outbound') {
-      submitOutbound();
+      setShowOutboundModal(true);
     } else {
-      submitStocktake();
+      setShowStocktakeModal(true);
     }
   };
 
@@ -580,11 +585,29 @@ export default function ScannerPage() {
           title={`Quét ${modeLabels[mode].label}`}
         />
 
-        {/* Goods Receipt Preview Modal */}
+        {/* Goods Receipt Preview Modal (Inbound) */}
         <GoodsReceiptModal
           isOpen={showReceiptModal}
           onClose={() => setShowReceiptModal(false)}
           onConfirm={submitInbound}
+          items={scannedItems}
+          isSubmitting={submitting}
+        />
+
+        {/* Outbound Receipt Preview Modal */}
+        <OutboundReceiptModal
+          isOpen={showOutboundModal}
+          onClose={() => setShowOutboundModal(false)}
+          onConfirm={() => { setShowOutboundModal(false); submitOutbound(); }}
+          items={scannedItems}
+          isSubmitting={submitting}
+        />
+
+        {/* Stocktake Receipt Preview Modal */}
+        <StocktakeReceiptModal
+          isOpen={showStocktakeModal}
+          onClose={() => setShowStocktakeModal(false)}
+          onConfirm={() => { setShowStocktakeModal(false); submitStocktake(); }}
           items={scannedItems}
           isSubmitting={submitting}
         />

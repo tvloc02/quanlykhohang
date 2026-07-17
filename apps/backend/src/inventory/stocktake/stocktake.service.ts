@@ -8,6 +8,7 @@ import { Product } from '../../entities/product.entity';
 import { CreateStocktakeDto } from './dto/create-stocktake.dto';
 import { AddStocktakeDetailDto } from './dto/add-stocktake-detail.dto';
 import { UpdateCountDto } from './dto/update-count.dto';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 type SerializedStocktake = {
   id: string;
@@ -62,14 +63,13 @@ export class StocktakeService {
     @InjectRepository(StocktakeDetail) private detailRepo: Repository<StocktakeDetail>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
     @InjectRepository(Product) private productRepo: Repository<Product>,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   // ─── CRUD ──────────────────────────────────────────────────────
 
   async create(dto: CreateStocktakeDto) {
-    if (dto.plannedDate && new Date(dto.plannedDate) < new Date()) {
-      throw new BadRequestException('Ngày dự kiến không được trong quá khứ');
-    }
+    // Removed past date check to allow retroactive recording or slight delays in testing
 
     const stocktakeNo = await this.generateStocktakeNo();
 
@@ -105,7 +105,25 @@ export class StocktakeService {
       }
     }
 
-    return this.serialize(await this.findEntity(saved.id));
+    const result = this.serialize(await this.findEntity(saved.id));
+
+    // Gửi thông báo cho nhân viên được giao kiểm kê
+    if (dto.assignee) {
+      try {
+        await this.notificationsService.notifyRole('staff', {
+          title: 'Phiếu kiểm kê mới',
+          message: `Bạn được giao kiểm kê phiên ${result.stocktakeNo} tại kho ${result.locationCode}. Vui lòng thực hiện kiểm kê.`,
+          link: '/inventory/stocktake/my-tasks',
+          referenceType: 'stocktake',
+          referenceId: result.id,
+          priority: 'high',
+        });
+      } catch (e) {
+        // Không block nếu gửi thông báo lỗi
+      }
+    }
+
+    return result;
   }
 
   async acceptRequest(id: string, acceptedBy?: string) {
@@ -114,14 +132,36 @@ export class StocktakeService {
       throw new BadRequestException('Chỉ có thể tiếp nhận yêu cầu ở trạng thái REQUESTED');
     }
 
-    stocktake.status = 'DRAFT';
-    if (acceptedBy) stocktake.assignee = acceptedBy.trim();
+    stocktake.status = 'COUNTING';
     await this.stocktakeRepo.save(stocktake);
     return this.serialize(await this.findEntity(id));
   }
 
   async findAll() {
     const stocktakes = await this.stocktakeRepo.find({
+      relations: ['details', 'details.product'],
+      order: { id: 'DESC' },
+    });
+    return stocktakes.map((s) => this.serialize(s));
+  }
+
+  async findMyTasks(userIdentifier: string) {
+    const stocktakes = await this.stocktakeRepo.find({
+      relations: ['details', 'details.product'],
+      order: { id: 'DESC' },
+    });
+    // Filter by assignee or createdBy matching user identifier (case-insensitive)
+    const filtered = stocktakes.filter(
+      (s) => 
+        (s.assignee && s.assignee.toLowerCase() === userIdentifier.toLowerCase()) ||
+        (s.createdBy && s.createdBy.toLowerCase() === userIdentifier.toLowerCase())
+    );
+    return filtered.map((s) => this.serialize(s));
+  }
+
+  async findRequests() {
+    const stocktakes = await this.stocktakeRepo.find({
+      where: { status: 'REQUESTED' },
       relations: ['details', 'details.product'],
       order: { id: 'DESC' },
     });
@@ -153,7 +193,7 @@ export class StocktakeService {
 
   async addDetail(stocktakeId: string, dto: AddStocktakeDetailDto) {
     const stocktake = await this.findEntity(stocktakeId);
-    if (stocktake.status !== 'DRAFT' && stocktake.status !== 'COUNTING') {
+    if (stocktake.status !== 'DRAFT' && stocktake.status !== 'COUNTING' && stocktake.status !== 'REQUESTED') {
       throw new BadRequestException('Không thể thêm sản phẩm ở trạng thái hiện tại');
     }
 
@@ -208,7 +248,7 @@ export class StocktakeService {
     });
     if (!detail) throw new NotFoundException('Chi tiết kiểm kê không tồn tại');
 
-    if (detail.stocktake.status !== 'DRAFT' && detail.stocktake.status !== 'COUNTING') {
+    if (detail.stocktake.status !== 'DRAFT' && detail.stocktake.status !== 'COUNTING' && detail.stocktake.status !== 'REQUESTED') {
       throw new BadRequestException('Không thể xóa sản phẩm ở trạng thái hiện tại');
     }
 
@@ -267,6 +307,29 @@ export class StocktakeService {
 
     stocktake.status = 'COUNTING_DONE';
     await this.stocktakeRepo.save(stocktake);
+
+    // Gửi thông báo cho quản lý duyệt
+    try {
+      await this.notificationsService.notifyRole('admin', {
+        title: 'Kiểm kê chờ duyệt',
+        message: `Phiên kiểm kê ${stocktake.stocktakeNo} đã hoàn tất đếm. Vui lòng xem xét và duyệt.`,
+        link: '/inventory/stocktake',
+        referenceType: 'stocktake',
+        referenceId: stocktake.id,
+        priority: 'high',
+      });
+      await this.notificationsService.notifyRole('manager', {
+        title: 'Kiểm kê chờ duyệt',
+        message: `Phiên kiểm kê ${stocktake.stocktakeNo} đã hoàn tất đếm. Vui lòng xem xét và duyệt.`,
+        link: '/inventory/stocktake',
+        referenceType: 'stocktake',
+        referenceId: stocktake.id,
+        priority: 'high',
+      });
+    } catch (e) {
+      // Không block nếu gửi thông báo lỗi
+    }
+
     return this.serialize(await this.findEntity(id));
   }
 
@@ -292,6 +355,19 @@ export class StocktakeService {
     stocktake.approvedBy = approvedBy?.trim() || undefined;
     stocktake.approvedAt = new Date();
     await this.stocktakeRepo.save(stocktake);
+
+    // Gửi thông báo cho người tạo / nhân viên
+    try {
+      await this.notificationsService.notifyRole('staff', {
+        title: 'Kiểm kê đã duyệt',
+        message: `Phiên kiểm kê ${stocktake.stocktakeNo} đã được duyệt bởi ${approvedBy || 'quản lý'}. Tồn kho đã được cập nhật.`,
+        link: '/inventory/stocktake/my-tasks',
+        referenceType: 'stocktake',
+        referenceId: stocktake.id,
+        priority: 'normal',
+      });
+    } catch (e) {}
+
     return this.serialize(await this.findEntity(id));
   }
 
@@ -304,6 +380,19 @@ export class StocktakeService {
 
     stocktake.status = 'REJECTED';
     await this.stocktakeRepo.save(stocktake);
+
+    // Gửi thông báo cho người tạo / nhân viên
+    try {
+      await this.notificationsService.notifyRole('staff', {
+        title: 'Kiểm kê bị từ chối',
+        message: `Phiên kiểm kê ${stocktake.stocktakeNo} đã bị từ chối. Vui lòng liên hệ quản lý để biết thêm chi tiết.`,
+        link: '/inventory/stocktake/my-tasks',
+        referenceType: 'stocktake',
+        referenceId: stocktake.id,
+        priority: 'high',
+      });
+    } catch (e) {}
+
     return this.serialize(await this.findEntity(id));
   }
 

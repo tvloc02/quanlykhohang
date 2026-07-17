@@ -19,7 +19,7 @@ import { BarcodeMappingController } from './barcode-mapping/barcode-mapping.cont
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InboundReceipt, InboundDetail, StockInReceiptDetail, Product, Supplier, SupplierProduct, StockBalance]),
+    TypeOrmModule.forFeature([InboundReceipt, InboundDetail, StockInReceiptDetail, Product, Supplier, SupplierProduct, StockBalance, BarcodeMapping]),
     StockInOrdersModule,
     StockInReceiptsModule,
     ReturnRequestsModule,

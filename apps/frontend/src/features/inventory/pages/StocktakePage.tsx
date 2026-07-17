@@ -126,7 +126,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── MAIN PAGE ─────────────────────────────────────────────────
 
-export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: 'requests' | 'create' | 'stocktake' }) {
+export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: 'requests' | 'create' | 'stocktake' | 'my-tasks' | 'request-new' }) {
   const [stocktakes, setStocktakes] = React.useState<StocktakeItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
@@ -137,22 +137,42 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   const [currentPage, setCurrentPage] = React.useState(1);
 
   // Modals
-  const [showCreateModal, setShowCreateModal] = React.useState(viewMode === 'create');
+  const [showCreateModal, setShowCreateModal] = React.useState(false);
   const [showDetailModal, setShowDetailModal] = React.useState(false);
+
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const userRole = currentUser.role || '';
+  const userIdentifier = currentUser.fullName || currentUser.email || '';
+  const isManager = userRole === 'manager' || userRole === 'admin';
+  const isStaff = userRole === 'staff';
+
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    if (isStaff && (viewMode === 'stocktake' || viewMode === 'requests' || viewMode === 'create')) {
+      navigate('/inventory/stocktake/my-tasks', { replace: true });
+    }
+  }, [isStaff, viewMode, navigate]);
 
   const isRequestsView = viewMode === 'requests';
   const isCreateView = viewMode === 'create';
-  const pageTitle = isRequestsView ? 'Yêu cầu kiểm kê' : isCreateView ? 'Lập phiếu kiểm kê' : 'Kiểm kê kho hàng';
+  const isMyTasksView = viewMode === 'my-tasks';
+  const isRequestNewView = viewMode === 'request-new';
+
+  const pageTitle = isRequestsView ? 'Yêu cầu kiểm kê từ nhân viên'
+    : isCreateView ? 'Tạo phiên kiểm kê'
+    : isMyTasksView ? 'Kiểm kê của tôi'
+    : isRequestNewView ? 'Gửi yêu cầu kiểm kê'
+    : 'Kiểm kê kho hàng';
   const pageSubtitle = isRequestsView
-    ? 'Danh sách yêu cầu kiểm kê cần tiếp nhận và xử lý.'
+    ? 'Danh sách yêu cầu kiểm kê từ nhân viên cần tiếp nhận và xử lý.'
     : isCreateView
     ? 'Tạo mới một phiên kiểm kê để bắt đầu kiểm kê hàng hóa.'
+    : isMyTasksView
+    ? 'Danh sách phiên kiểm kê được giao cho bạn.'
+    : isRequestNewView
+    ? 'Tạo yêu cầu kiểm kê và gửi cho quản lý phê duyệt.'
     : 'Tạo phiên kiểm kê, đếm thực tế, so sánh chênh lệch và cập nhật tồn kho.';
-  const defaultIsRequest = isRequestsView;
-
-  React.useEffect(() => {
-    setShowCreateModal(viewMode === 'create');
-  }, [viewMode]);
+  const defaultIsRequest = isRequestsView || isRequestNewView;
   const [selectedStocktake, setSelectedStocktake] = React.useState<StocktakeItem | null>(null);
 
   // ── Data Loading ────────────────────────────────────────────
@@ -160,7 +180,14 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   const loadData = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/inventory/stocktakes`, { headers: authHeaders() });
+      // Choose API endpoint based on view mode
+      let url = `${API_BASE}/inventory/stocktakes`;
+      if (isMyTasksView || isRequestNewView) {
+        url = `${API_BASE}/inventory/stocktakes/my-tasks`;
+      } else if (isRequestsView) {
+        url = `${API_BASE}/inventory/stocktakes/requests`;
+      }
+      const res = await fetch(url, { headers: authHeaders() });
       if (!res.ok) throw new Error('Không tải được dữ liệu kiểm kê');
       const data = await res.json();
       setStocktakes(data);
@@ -169,7 +196,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isMyTasksView, isRequestsView]);
 
   React.useEffect(() => {
     loadData();
@@ -192,9 +219,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
     );
   });
 
-  const displayedStocktakes = isRequestsView
-    ? filtered.filter((s) => s.status === 'REQUESTED')
-    : filtered;
+  const displayedStocktakes = filtered;
 
   const totalItems = displayedStocktakes.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
@@ -214,8 +239,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
 
   const showSuccess = (msg: string) => setToast({ message: msg, type: 'success' });
   const showError = (msg: string) => setToast({ message: msg, type: 'error' });
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-  const hasAcceptPermission = Array.isArray(currentUser.permissions) ? currentUser.permissions.includes('stocktake:accept') : String(currentUser.permissions || '').split(',').includes('stocktake:accept');
+  const hasAcceptPermission = isManager;
 
   const handleViewDetail = async (id: string) => {
     try {
@@ -311,6 +335,11 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
 
   // ── Render ──────────────────────────────────────────────────
 
+  // Determine button label
+  const createButtonLabel = isStaff ? 'Gửi yêu cầu kiểm kê'
+    : isRequestsView ? 'Xem yêu cầu'
+    : 'Tạo phiên kiểm kê';
+
   return (
     <div>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
@@ -330,14 +359,15 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
             <PackageSearch className="h-4 w-4" />
             Làm mới
           </button>
-          {!isCreateView && (
+          {/* Manager: Tạo phiên kiểm kê, Staff: Gửi yêu cầu */}
+          {!isRequestsView && (
             <button
               onClick={() => setShowCreateModal(true)}
               className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg"
-              style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
+              style={{ background: isStaff ? 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' : 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
             >
               <Plus className="h-4 w-4" />
-              {isRequestsView ? 'Tạo yêu cầu kiểm kê' : 'Tạo phiên kiểm kê'}
+              {createButtonLabel}
             </button>
           )}
         </div>
@@ -440,7 +470,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                         >
                           <Eye size={16} />
                         </button>
-                        {item.status === 'COUNTING_DONE' && (
+                        {item.status === 'COUNTING_DONE' && isManager && (
                           <>
                             <button
                               onClick={() => handleApprove(item.id)}
@@ -517,8 +547,20 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
       {/* Modals */}
       {showCreateModal && (
         <CreateStocktakeModal
+          defaultIsRequest={defaultIsRequest}
+          isStaff={isStaff}
+          isManager={isManager}
           onClose={() => setShowCreateModal(false)}
-          onCreated={() => { setShowCreateModal(false); loadData(); showSuccess('Đã tạo phiên kiểm kê mới'); }}
+          onCreated={(created) => {
+            setShowCreateModal(false);
+            loadData();
+            if (isStaff) {
+              showSuccess('Đã gửi yêu cầu kiểm kê thành công');
+            } else {
+              const assigneeMsg = created?.assignee ? ` và đã gửi thông báo cho nhân viên ${created.assignee}` : '';
+              showSuccess(`Đã tạo phiên kiểm kê mới${assigneeMsg}`);
+            }
+          }}
           onSaveAndAdd={(created) => { loadData(); showSuccess('Đã lưu yêu cầu, bạn có thể tạo tiếp'); }}
           onError={showError}
         />
@@ -526,6 +568,8 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
       {showDetailModal && selectedStocktake && (
         <StocktakeDetailModal
           stocktake={selectedStocktake}
+          isManager={isManager}
+          isStaff={isStaff}
           onClose={() => { setShowDetailModal(false); setSelectedStocktake(null); }}
           onRefresh={async () => {
             await loadData();
@@ -547,6 +591,7 @@ function SummaryCard({ icon: Icon, label, value, color }: { icon: any; label: st
     amber: { border: 'border-amber-200', bg: 'bg-amber-50', textLabel: 'text-amber-800', textValue: 'text-amber-600', iconBg: 'bg-amber-100' },
     blue: { border: 'border-blue-200', bg: 'bg-blue-50', textLabel: 'text-blue-800', textValue: 'text-blue-600', iconBg: 'bg-blue-100' },
     emerald: { border: 'border-emerald-200', bg: 'bg-emerald-50', textLabel: 'text-emerald-800', textValue: 'text-emerald-600', iconBg: 'bg-emerald-100' },
+    violet: { border: 'border-violet-200', bg: 'bg-violet-50', textLabel: 'text-violet-800', textValue: 'text-violet-600', iconBg: 'bg-violet-100' },
   };
   const c = colorMap[color] || colorMap.cyan;
 
@@ -572,18 +617,29 @@ function CreateStocktakeModal({
   onCreated,
   onSaveAndAdd,
   onError,
+  defaultIsRequest = false,
+  isStaff = false,
+  isManager = false,
 }: {
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (created?: any) => void;
   onSaveAndAdd?: (created?: any) => void;
   onError: (msg: string) => void;
+  defaultIsRequest?: boolean;
+  isStaff?: boolean;
+  isManager?: boolean;
 }) {
+  const modalUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const userIdentifier = modalUser.fullName || modalUser.email || '';
+
   const [locationCode, setLocationCode] = React.useState('');
   const [plannedDate, setPlannedDate] = React.useState('');
-  const [assignee, setAssignee] = React.useState('');
+  // Staff: assignee luôn là chính mình, không chỉnh được
+  const [assignee, setAssignee] = React.useState(isStaff ? userIdentifier : (defaultIsRequest ? userIdentifier : ''));
   const [note, setNote] = React.useState('');
   const [selectedProductIds, setSelectedProductIds] = React.useState<string[]>([]);
-  const [isRequest, setIsRequest] = React.useState(false);
+  // Staff: luôn là yêu cầu
+  const [isRequest, setIsRequest] = React.useState(isStaff ? true : defaultIsRequest);
   const [requestDate, setRequestDate] = React.useState<string>(new Date().toISOString().slice(0, 16));
   const [requestNo, setRequestNo] = React.useState<string>('');
   const [branch, setBranch] = React.useState<string>('');
@@ -597,8 +653,8 @@ function CreateStocktakeModal({
   const [warehouses, setWarehouses] = React.useState<any[]>([]);
   const [users, setUsers] = React.useState<any[]>([]);
   const [products, setProducts] = React.useState<ProductOption[]>([]);
+  const [productSearch, setProductSearch] = React.useState('');
 
-  const modalUser = JSON.parse(localStorage.getItem('user') || '{}');
   const canRequest = Array.isArray(modalUser.permissions) ? modalUser.permissions.includes('stocktake:request') : String(modalUser.permissions || '').split(',').includes('stocktake:request');
 
   React.useEffect(() => {
@@ -655,7 +711,7 @@ function CreateStocktakeModal({
       const created = await res.json().catch(() => null);
       // If server returns a requestNo, display it
       if (created?.requestNo) setRequestNo(created.requestNo);
-      onCreated();
+      onCreated(created);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Lỗi');
     } finally {
@@ -727,10 +783,10 @@ function CreateStocktakeModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b-2 border-slate-200 px-6 py-4 flex-shrink-0">
             <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: isStaff ? 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' : 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}>
               <ClipboardList className="h-5 w-5 text-white" />
             </div>
-            <h2 className="text-lg font-black text-slate-900">{isRequest ? 'Thêm yêu cầu kiểm kê' : 'Tạo phiên kiểm kê'}</h2>
+            <h2 className="text-lg font-black text-slate-900">{isStaff ? 'Gửi yêu cầu kiểm kê' : (isRequest ? 'Thêm yêu cầu kiểm kê' : 'Tạo phiên kiểm kê')}</h2>
           </div>
           <button onClick={onClose} className="rounded-lg p-2 transition hover:bg-slate-100">
             <X size={20} className="text-slate-500" />
@@ -780,37 +836,100 @@ function CreateStocktakeModal({
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Người kiểm kê</label>
-            <select
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-            >
-              <option value="">— Chọn nhân viên —</option>
-              {users.map(u => (
-                <option key={u.id} value={u.fullName || u.email}>{u.fullName || u.email}</option>
-              ))}
-            </select>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              Người kiểm kê {isStaff && <span className="text-xs font-normal text-slate-400">(mặc định là bạn)</span>}
+            </label>
+            {isStaff ? (
+              <input
+                value={assignee}
+                readOnly
+                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-4 text-sm outline-none cursor-not-allowed text-slate-600 font-semibold"
+              />
+            ) : (
+              <select
+                value={assignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+              >
+                <option value="">— Chọn nhân viên —</option>
+                {users
+                  .filter(u => Array.isArray(u.roles) && u.roles.some((r: any) => ['staff', 'manager', 'admin'].includes(r.name?.toLowerCase())))
+                  .map(u => (
+                  <option key={u.id} value={u.fullName || u.email}>{u.fullName || u.email}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">Sản phẩm cần kiểm</label>
+            <div className="mb-2 flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-cyan-500"
+                  placeholder="Tìm sản phẩm theo SKU hoặc tên..."
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const filteredIds = products
+                    .filter(p => {
+                      if (!productSearch.trim()) return true;
+                      const kw = productSearch.trim().toLowerCase();
+                      return p.internalSku.toLowerCase().includes(kw) || p.name.toLowerCase().includes(kw);
+                    })
+                    .map(p => p.id);
+                  const allSelected = filteredIds.every(id => selectedProductIds.includes(id));
+                  if (allSelected) {
+                    setSelectedProductIds(prev => prev.filter(id => !filteredIds.includes(id)));
+                  } else {
+                    setSelectedProductIds(prev => [...new Set([...prev, ...filteredIds])]);
+                  }
+                }}
+                className="h-9 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+              >
+                {(() => {
+                  const filteredIds = products
+                    .filter(p => {
+                      if (!productSearch.trim()) return true;
+                      const kw = productSearch.trim().toLowerCase();
+                      return p.internalSku.toLowerCase().includes(kw) || p.name.toLowerCase().includes(kw);
+                    })
+                    .map(p => p.id);
+                  return filteredIds.length > 0 && filteredIds.every(id => selectedProductIds.includes(id)) ? 'Bỏ chọn tất cả' : 'Chọn tất cả';
+                })()}
+              </button>
+            </div>
+            {selectedProductIds.length > 0 && (
+              <p className="text-xs font-bold text-cyan-600 mb-1">Đã chọn: {selectedProductIds.length} sản phẩm</p>
+            )}
             <div className="max-h-40 overflow-y-auto rounded-xl border-2 border-slate-200 bg-slate-50 p-2">
               {products.length === 0 ? (
                 <p className="text-sm text-slate-500 text-center py-4">Chưa có sản phẩm</p>
               ) : (
-                products.map(p => (
-                  <label key={p.id} className="flex items-center gap-3 p-2 hover:bg-slate-100 rounded-lg cursor-pointer transition">
-                    <input 
-                      type="checkbox" 
-                      checked={selectedProductIds.includes(p.id)}
-                      onChange={() => toggleProduct(p.id)}
-                      className="w-4 h-4 rounded text-cyan-600 focus:ring-cyan-500"
-                    />
-                    <span className="text-sm font-bold text-slate-700">{p.internalSku}</span>
-                    <span className="text-sm text-slate-500">— {p.name} {p.unit ? `(${p.unit})` : ''}</span>
-                  </label>
-                ))
+                products
+                  .filter(p => {
+                    if (!productSearch.trim()) return true;
+                    const kw = productSearch.trim().toLowerCase();
+                    return p.internalSku.toLowerCase().includes(kw) || p.name.toLowerCase().includes(kw);
+                  })
+                  .map(p => (
+                    <label key={p.id} className="flex items-center gap-3 p-2 hover:bg-slate-100 rounded-lg cursor-pointer transition">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedProductIds.includes(p.id)}
+                        onChange={() => toggleProduct(p.id)}
+                        className="w-4 h-4 rounded text-cyan-600 focus:ring-cyan-500"
+                      />
+                      <span className="text-sm font-bold text-slate-700">{p.internalSku}</span>
+                      <span className="text-sm text-slate-500">— {p.name} {p.unit ? `(${p.unit})` : ''}</span>
+                    </label>
+                  ))
               )}
             </div>
           </div>
@@ -826,7 +945,12 @@ function CreateStocktakeModal({
             />
           </div>
 
-          {canRequest && (
+          {isStaff ? (
+            <div className="flex items-center gap-2 rounded-xl border-2 border-violet-200 bg-violet-50 px-4 py-3">
+              <ClipboardList size={16} className="text-violet-600" />
+              <span className="text-sm font-semibold text-violet-700">Yêu cầu sẽ được gửi đến quản lý để phê duyệt</span>
+            </div>
+          ) : canRequest && (
             <div className="flex items-center gap-3">
               <input id="isRequest" type="checkbox" checked={isRequest} onChange={(e) => setIsRequest(e.target.checked)} className="w-4 h-4 text-cyan-600" />
               <label htmlFor="isRequest" className="text-sm font-medium text-slate-700">Tạo là yêu cầu kiểm kê (gửi từ phòng ban)</label>
@@ -841,21 +965,23 @@ function CreateStocktakeModal({
             >
               Hủy
             </button>
-            <button
-              type="button"
-              onClick={handleSubmitSaveAndAdd}
-              disabled={submitting}
-              className="rounded-xl border-2 border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-            >
-              {submitting ? 'Đang lưu...' : 'Lưu và Thêm'}
-            </button>
+            {!isStaff && (
+              <button
+                type="button"
+                onClick={handleSubmitSaveAndAdd}
+                disabled={submitting}
+                className="rounded-xl border-2 border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                {submitting ? 'Đang lưu...' : 'Lưu và Thêm'}
+              </button>
+            )}
             <button
               type="submit"
               disabled={submitting}
               className="rounded-xl px-5 py-3 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
+              style={{ background: isStaff ? 'linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)' : 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
             >
-              {submitting ? 'Đang lưu...' : 'Lưu'}
+              {submitting ? 'Đang gửi...' : (isStaff ? 'Gửi yêu cầu' : 'Lưu')}
             </button>
           </div>
         </form>
@@ -872,12 +998,16 @@ function StocktakeDetailModal({
   onRefresh,
   onSuccess,
   onError,
+  isManager = false,
+  isStaff = false,
 }: {
   stocktake: StocktakeItem;
   onClose: () => void;
   onRefresh: () => void;
   onSuccess: (msg: string) => void;
   onError: (msg: string) => void;
+  isManager?: boolean;
+  isStaff?: boolean;
 }) {
   const [products, setProducts] = React.useState<ProductOption[]>([]);
   const [selectedProductId, setSelectedProductId] = React.useState('');
@@ -900,7 +1030,7 @@ function StocktakeDetailModal({
 
   const canEdit = stocktake.status === 'DRAFT' || stocktake.status === 'COUNTING';
   const canFinish = stocktake.status === 'COUNTING';
-  const canApproveReject = stocktake.status === 'COUNTING_DONE';
+  const canApproveReject = stocktake.status === 'COUNTING_DONE' && isManager;
 
   // ── Add Product ─────────────────────────────────────────────
 
