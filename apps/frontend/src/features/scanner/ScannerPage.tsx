@@ -583,6 +583,7 @@ export default function ScannerPage() {
           onClose={() => setScannerOpen(false)}
           onProductFound={handleProductFound}
           title={`Quét ${modeLabels[mode].label}`}
+          allowQuickAdd={mode === 'inbound'}
         />
 
         {/* Goods Receipt Preview Modal (Inbound) */}

@@ -159,7 +159,24 @@ export class ProductsService {
   }
 
   async remove(id: string) {
-    await this.productRepo.delete(id);
-    return { deleted: true };
+    // Không cho phép xóa nếu có tồn kho
+    const hasBalances = await this.balanceRepo.count({
+      where: { product: { id } }
+    });
+
+    if (hasBalances > 0) {
+      throw new BadRequestException('Sản phẩm đang có dữ liệu tồn kho, không thể xóa');
+    }
+
+    try {
+      await this.productRepo.delete(id);
+      return { deleted: true };
+    } catch (err: any) {
+      // Bắt lỗi khóa ngoại nếu sản phẩm đang nằm trong đơn đặt hàng, phiếu xuất, v.v.
+      if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+        throw new BadRequestException('Sản phẩm đang có giao dịch liên quan (chưa xóa hết), không thể xóa');
+      }
+      throw err;
+    }
   }
 }
