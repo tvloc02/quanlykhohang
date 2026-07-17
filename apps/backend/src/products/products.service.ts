@@ -85,9 +85,22 @@ export class ProductsService {
 
   async findAll() {
     // Chỉ trả về sản phẩm kho/chung, không trả về các sản phẩm được liên kết riêng với nhà cung cấp.
-    return this.productRepo.find({
+    const products = await this.productRepo.find({
       where: { supplier: IsNull() },
       relations: ['category', 'supplier'],
+      order: { id: 'DESC' },
+    });
+
+    const balances = await this.balanceRepo.find({
+      relations: ['product'],
+    });
+
+    return products.map((product) => {
+      const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
+      return {
+        ...product,
+        totalStock: productBalances.reduce((sum, b) => sum + b.available, 0),
+      };
     });
   }
 

@@ -68,6 +68,7 @@ type RawProduct = {
   supplier?: SupplierField;
   price?: number;
   stock?: number;
+  totalStock?: number;
 };
 
 type Product = {
@@ -165,7 +166,7 @@ function normalizeProduct(product: RawProduct): Product {
     managementType: product.managementType || '',
     supplier: normalizeSupplierField(product.supplier || ''),
     price: Number(product.price || 0),
-    stock: Number(product.stock || 0),
+    stock: Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0)),
     images: (product as any).images || [],
   };
 }

@@ -373,7 +373,7 @@ function App() {
           }
         />
         <Route
-          path="/stocktake"
+          path="/inventory/stocktake"
           element={
             <ProtectedRoute>
               <MainLayout>
@@ -402,6 +402,27 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/inventory/stocktake/my-tasks"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StocktakePage viewMode="my-tasks" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake/request-new"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StocktakePage viewMode="request-new" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+
         <Route
           path="/reports"
           element={
@@ -457,6 +478,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/stocktake" element={<Navigate to="/inventory/stocktake" replace />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>

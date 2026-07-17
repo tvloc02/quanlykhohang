@@ -22,6 +22,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || user.status === 'inactive') {
       throw new UnauthorizedException('Tài khoản đã bị vô hiệu hóa hoặc không tồn tại');
     }
-    return { id: payload.sub, email: payload.email, role: payload.role, supplierId: payload.supplierId, customerId: payload.customerId };
+    return { id: payload.sub, email: payload.email, fullName: user.fullName, role: payload.role, supplierId: payload.supplierId, customerId: payload.customerId };
   }
 }

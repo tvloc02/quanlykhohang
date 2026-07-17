@@ -59,11 +59,11 @@ function toDateString(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
-export function isEditablePurchaseOrderStatus(status?: string) {
-  return !status || status === 'CREATED' || status === 'DRAFT';
+function normalizeStatus(status?: string) {
+  return status ? status.toUpperCase() : '';
 }
 
-function isEditablePurchaseOrderStatus(status?: string) {
+export function isEditablePurchaseOrderStatus(status?: string) {
   const norm = normalizeStatus(status);
   return !status || norm === 'CREATED' || norm === 'DRAFT';
 }
