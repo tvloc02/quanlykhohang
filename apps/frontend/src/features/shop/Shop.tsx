@@ -25,6 +25,10 @@ interface Product {
   id: string;
   sku: string;
   name: string;
+  price?: number;
+  stock?: number;
+  images?: string[];
+  isVisible?: boolean;
 }
 
 export default function Shop() {
@@ -53,8 +57,9 @@ export default function Shop() {
   }, []);
 
   const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) || 
-    p.sku.toLowerCase().includes(search.toLowerCase())
+    p.isVisible && 
+    (p.name.toLowerCase().includes(search.toLowerCase()) || 
+    p.sku.toLowerCase().includes(search.toLowerCase()))
   );
 
   const containerClass = "w-full mx-auto px-6 md:px-12 lg:px-24 xl:px-40";
@@ -124,9 +129,13 @@ export default function Shop() {
               {filteredProducts.map((product) => (
                 <div key={product.id} className="bg-white rounded-2xl overflow-hidden border border-slate-200 hover:shadow-xl hover:shadow-cyan-900/5 transition-all duration-300 group cursor-pointer">
                   <div className="aspect-square bg-slate-100 relative overflow-hidden">
-                    <div className="absolute inset-0 flex items-center justify-center text-slate-400 group-hover:scale-110 transition-transform duration-500">
-                      <Package size={64} strokeWidth={1} />
-                    </div>
+                    {product.images?.[0] ? (
+                      <img src={product.images[0]} alt={product.name} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-slate-400 group-hover:scale-110 transition-transform duration-500">
+                        <Package size={64} strokeWidth={1} />
+                      </div>
+                    )}
                     <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg text-xs font-bold text-slate-700 shadow-sm">
                       {product.sku}
                     </div>

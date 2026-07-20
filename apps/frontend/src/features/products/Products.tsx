@@ -69,6 +69,7 @@ type RawProduct = {
   price?: number;
   stock?: number;
   totalStock?: number;
+  isVisible?: boolean;
 };
 
 type Product = {
@@ -84,6 +85,7 @@ type Product = {
   price: number;
   stock: number;
   images: string[];
+  isVisible: boolean;
 };
 
 type ProductForm = {
@@ -98,6 +100,7 @@ type ProductForm = {
   price: number | '';
   stock: number | '';
   images: string[];
+  isVisible: boolean;
 };
 
 type ModalMode = 'create' | 'view' | 'edit' | 'delete' | null;
@@ -125,6 +128,7 @@ function buildEmptyForm(): ProductForm {
     price: '',
     stock: '',
     images: [],
+    isVisible: false,
   };
 }
 
@@ -168,6 +172,7 @@ function normalizeProduct(product: RawProduct): Product {
     price: Number(product.price || 0),
     stock: Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0)),
     images: (product as any).images || [],
+    isVisible: !!product.isVisible,
   };
 }
 
@@ -320,7 +325,8 @@ export default function Products() {
       supplier: product.supplier,
       price: product.price,
       stock: product.stock,
-      images: [],
+      images: product.images || [],
+      isVisible: product.isVisible || false,
     });
     setModalMode(mode);
   };
@@ -339,6 +345,7 @@ export default function Products() {
       price: Number(form.price),
       stock: Number(form.stock),
       images: form.images,
+      isVisible: form.isVisible,
     };
     const nextProducts = isEdit
       ? products.map((product) => (product.id === payload.id ? payload : product))
@@ -363,6 +370,11 @@ export default function Products() {
 
     if (categoryOptions.length === 0) {
       setError('Vui lòng tạo danh mục loại "Nhóm hàng vật tư hàng hóa" trước khi thêm sản phẩm.');
+      return;
+    }
+
+    if (!form.category) {
+      setError('Vui lòng chọn Danh mục cho sản phẩm.');
       return;
     }
 
@@ -508,10 +520,11 @@ export default function Products() {
                 <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ảnh</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã sản phẩm</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên hàng hóa</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhóm hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Danh mục</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Giá</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tồn kho</th>
-                <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-28 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 leading-tight">Hiện trên Shop</th>
+                <th className="sticky right-0 w-48 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -519,13 +532,13 @@ export default function Products() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Đang tải dữ liệu sản phẩm...
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Chưa có sản phẩm phù hợp.
                   </td>
                 </tr>
@@ -558,7 +571,7 @@ export default function Products() {
                     <td className="border-x border-slate-200 px-3 py-3 text-sm font-medium text-slate-700">
                       {product.name}
                     </td>
-                    {/* Nhóm hàng */}
+                    {/* Danh mục */}
                     <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">
                       {product.category || '-'}
                     </td>
@@ -571,6 +584,30 @@ export default function Products() {
                       <span className="inline-flex rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
                         {product.stock}
                       </span>
+                    </td>
+                    {/* Hiện trên Shop */}
+                    <td className="border-x border-slate-200 px-3 py-3 text-center align-middle">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const response = await fetch(`${API_BASE_URL}/products/${product.id}`, {
+                              method: 'PUT',
+                              headers: authHeaders(),
+                              body: JSON.stringify({ isVisible: !product.isVisible }),
+                            });
+                            if (!response.ok) throw new Error('Cập nhật thất bại');
+                            const updatedList = products.map(p => p.id === product.id ? { ...p, isVisible: !p.isVisible } : p);
+                            setProducts(updatedList);
+                            saveStoredProducts(updatedList);
+                          } catch (err) {
+                            setError('Không thể cập nhật trạng thái hiển thị');
+                          }
+                        }}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${product.isVisible ? 'bg-cyan-500' : 'bg-slate-300'}`}
+                        title={product.isVisible ? "Đang hiển thị trên Shop" : "Đã ẩn khỏi Shop"}
+                      >
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${product.isVisible ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </button>
                     </td>
                     {/* Thao tác */}
                     <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
@@ -748,7 +785,7 @@ export default function Products() {
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-slate-600">Danh mục</label>
                       <select value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} disabled={modalMode === 'view' || productCategoryOptions.length === 0} className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 disabled:bg-slate-50">
-                        {productCategoryOptions.length === 0 ? <option value="">Chưa có danh mục</option> : productCategoryOptions.map((cat) => <option key={cat.value} value={cat.value}>{cat.label}</option>)}
+                        {productCategoryOptions.length === 0 ? <option value="">Chưa có danh mục</option> : <><option value="" disabled>-- Chọn danh mục --</option>{productCategoryOptions.map((cat) => <option key={cat.value} value={cat.value}>{cat.label}</option>)}</>}
                       </select>
                     </div>
                     <div>
@@ -758,6 +795,10 @@ export default function Products() {
                     <div>
                       <label className="mb-1.5 block text-xs font-bold text-slate-600">Giá bán (₫) <span className="text-red-500">*</span></label>
                       <input type="number" min="0" value={form.price} onChange={(e) => setForm((c) => ({ ...c, price: e.target.value ? Number(e.target.value) : '' }))} readOnly={modalMode === 'view'} className="h-9 w-full rounded-lg border-2 border-slate-200 px-3 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="0" required />
+                    </div>
+                    <div className="flex items-center gap-2 pt-2">
+                      <input type="checkbox" id="isVisible" checked={form.isVisible} onChange={(e) => setForm(c => ({...c, isVisible: e.target.checked}))} disabled={modalMode === 'view'} className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer" />
+                      <label htmlFor="isVisible" className="text-xs font-bold text-slate-700 cursor-pointer leading-tight">Hiển thị sản phẩm ở trang bán hàng (Shop)</label>
                     </div>
                   </div>
 
