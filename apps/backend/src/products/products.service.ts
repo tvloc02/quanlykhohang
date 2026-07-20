@@ -70,38 +70,49 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    const product = this.productRepo.create({
-      internalSku: dto.internalSku,
-      name: dto.name,
-      unit: dto.unit,
-      minimumStock: dto.minimumStock || 0,
-    });
-    if (dto.categoryId) {
-      const cat = await this.categoryRepo.findOneBy({ id: dto.categoryId });
-      if (cat) product.category = cat;
+    try {
+      const product = this.productRepo.create({
+        internalSku: dto.internalSku,
+        name: dto.name,
+        unit: dto.unit,
+        minimumStock: dto.minimumStock || 0,
+        price: dto.price || 0,
+        images: dto.images || [],
+      });
+      if (dto.categoryId) {
+        const cat = await this.categoryRepo.findOneBy({ id: dto.categoryId });
+        if (cat) product.category = cat;
+      }
+      return await this.productRepo.save(product);
+    } catch (error: any) {
+      if (error.code === 'ER_DUP_ENTRY') {
+        throw new BadRequestException(`Mã sản phẩm "${dto.internalSku}" đã tồn tại trong hệ thống (có thể thuộc Sản phẩm NCC). Vui lòng chọn mã khác.`);
+      }
+      throw new BadRequestException(error.sqlMessage || error.message || 'Lỗi khi tạo sản phẩm');
     }
-    return this.productRepo.save(product);
   }
 
   async findAll() {
-    // Chỉ trả về sản phẩm kho/chung, không trả về các sản phẩm được liên kết riêng với nhà cung cấp.
-    const products = await this.productRepo.find({
-      where: { supplier: IsNull() },
-      relations: ['category', 'supplier'],
-      order: { id: 'DESC' },
-    });
+    try {
+      const products = await this.productRepo.find({
+        where: { supplier: IsNull() },
+        relations: ['category', 'supplier'],
+      });
 
-    const balances = await this.balanceRepo.find({
-      relations: ['product'],
-    });
+      const balances = await this.balanceRepo.find({
+        relations: ['product'],
+      });
 
-    return products.map((product) => {
-      const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
-      return {
-        ...product,
-        totalStock: productBalances.reduce((sum, b) => sum + b.available, 0),
-      };
-    });
+      return products.map((product) => {
+        const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
+        return {
+          ...product,
+          totalStock: productBalances.reduce((sum, b) => sum + b.available, 0),
+        };
+      }).sort((a, b) => Number(b.id) - Number(a.id));
+    } catch (e: any) {
+      throw new BadRequestException('FINDALL_ERR: ' + e.message);
+    }
   }
 
   async findAllWithBalances() {
@@ -146,16 +157,25 @@ export class ProductsService {
   }
 
   async update(id: string, dto: UpdateProductDto) {
-    const p = await this.findOne(id);
+    try {
+      const p = await this.findOne(id);
 
-    if (dto.name) p.name = dto.name;
-    if (dto.unit) p.unit = dto.unit;
-    if (dto.minimumStock !== undefined) p.minimumStock = dto.minimumStock;
-    if (dto.categoryId) {
-      const c = await this.categoryRepo.findOneBy({ id: dto.categoryId });
-      if (c) p.category = c;
+      if (dto.name) p.name = dto.name;
+      if (dto.unit) p.unit = dto.unit;
+      if (dto.minimumStock !== undefined) p.minimumStock = dto.minimumStock;
+      if (dto.price !== undefined) p.price = dto.price;
+      if (dto.images !== undefined) p.images = dto.images;
+      if (dto.categoryId) {
+        const c = await this.categoryRepo.findOneBy({ id: dto.categoryId });
+        if (c) p.category = c;
+      }
+      return await this.productRepo.save(p);
+    } catch (error: any) {
+      if (error.code === 'ER_DUP_ENTRY') {
+        throw new BadRequestException(`Mã sản phẩm đã bị trùng lặp.`);
+      }
+      throw new BadRequestException(error.sqlMessage || error.message || 'Lỗi khi cập nhật sản phẩm');
     }
-    return this.productRepo.save(p);
   }
 
   async remove(id: string) {

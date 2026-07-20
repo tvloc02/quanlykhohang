@@ -373,33 +373,39 @@ export default function Products() {
       const isEdit = modalMode === 'edit';
       const url = isEdit && selectedProduct ? `${API_BASE_URL}/products/${selectedProduct.id}` : `${API_BASE_URL}/products`;
       
+      const foundCategory = categoryOptions.find(c => c.name === form.category);
+      const payload = {
+        internalSku: form.sku.trim().toUpperCase(),
+        sku: form.sku.trim().toUpperCase(),
+        name: form.name.trim(),
+        categoryId: foundCategory ? foundCategory.id : undefined,
+        category: form.category.trim(),
+        unit: form.unit.trim(),
+        defaultWarehouse: form.defaultWarehouse.trim(),
+        location: form.location.trim(),
+        managementType: form.managementType.trim(),
+        supplier: form.supplier.trim(),
+        price: Number(form.price),
+        stock: Number(form.stock),
+        images: form.images.filter(Boolean),
+      };
+
       const response = await fetch(url, {
         method: isEdit ? 'PUT' : 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({
-          sku: form.sku.trim().toUpperCase(),
-          name: form.name.trim(),
-          category: form.category.trim(),
-          unit: form.unit.trim(),
-          defaultWarehouse: form.defaultWarehouse.trim(),
-          location: form.location.trim(),
-          managementType: form.managementType.trim(),
-          supplier: form.supplier.trim(),
-          price: Number(form.price),
-          stock: Number(form.stock),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        saveProductLocally(isEdit);
-        return;
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không thể lưu sản phẩm. Vui lòng kiểm tra lại thông tin (có thể trùng mã sản phẩm).');
       }
 
       setSuccess(isEdit ? 'Đã cập nhật sản phẩm.' : 'Đã thêm sản phẩm mới.');
       closeModal();
       await loadData();
-    } catch (err) {
-      saveProductLocally(modalMode === 'edit');
+    } catch (err: any) {
+      setError(err.message || 'Có lỗi xảy ra khi kết nối đến máy chủ.');
     } finally {
       setSaving(false);
     }
@@ -704,7 +710,7 @@ export default function Products() {
                         <label className="flex flex-col items-center justify-center w-full aspect-square rounded-xl border-2 border-dashed border-slate-300 bg-white cursor-pointer hover:border-cyan-400 transition">
                           <span className="text-2xl text-slate-300">+</span>
                           <span className="text-[10px] text-slate-400 mt-1">Ảnh chính</span>
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const url = URL.createObjectURL(f); setForm((c) => { const imgs = [...c.images]; imgs[0] = url; return { ...c, images: imgs }; }); }} />
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const reader = new FileReader(); reader.onload = (ev) => { const url = ev.target?.result as string; setForm((c) => { const imgs = [...c.images]; imgs[0] = url; return { ...c, images: imgs }; }); }; reader.readAsDataURL(f); }} />
                         </label>
                       )}
                     </div>
@@ -721,7 +727,7 @@ export default function Products() {
                         ) : modalMode !== 'view' && (
                           <label className="flex flex-col items-center justify-center w-full aspect-square rounded-xl border border-dashed border-slate-200 bg-white cursor-pointer hover:border-cyan-400 transition">
                             <span className="text-xl text-slate-300">+</span>
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const url = URL.createObjectURL(f); setForm((c) => { const imgs = [...c.images]; while (imgs.length <= idx) imgs.push(''); imgs[idx] = url; return { ...c, images: imgs }; }); }} />
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const reader = new FileReader(); reader.onload = (ev) => { const url = ev.target?.result as string; setForm((c) => { const imgs = [...c.images]; while (imgs.length <= idx) imgs.push(''); imgs[idx] = url; return { ...c, images: imgs }; }); }; reader.readAsDataURL(f); }} />
                           </label>
                         )}
                       </div>
