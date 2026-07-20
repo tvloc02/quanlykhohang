@@ -13,6 +13,12 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import CreateTransferRequestModal from '../components/CreateTransferRequestModal';
+
+type Toast = {
+  type: 'success' | 'error';
+  message: string;
+};
 
 type TransferRequestLine = {
   id: string;
@@ -38,7 +44,7 @@ type TransferRequest = {
 
 type TimeFilter = 'this-month' | '7-days' | 'all';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'completed' | 'rejected';
-type ModalMode = 'view' | null;
+type ModalMode = 'view' | 'create' | null;
 
 const sampleRequests: TransferRequest[] = [];
 
@@ -137,6 +143,7 @@ function Select({
 
 export default function TransferRequestsPage() {
   const navigate = useNavigate();
+  const [toast, setToast] = React.useState<Toast | null>(null);
   const [search, setSearch] = React.useState('');
   const [timeFilter, setTimeFilter] = React.useState<TimeFilter>('this-month');
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('all');
@@ -144,6 +151,12 @@ export default function TransferRequestsPage() {
   const [requests] = React.useState<TransferRequest[]>([]);
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [selectedRequest, setSelectedRequest] = React.useState<TransferRequest | null>(null);
+
+  React.useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const filteredRequests = requests.filter((request) => {
     const query = search.trim().toLowerCase();
@@ -165,7 +178,7 @@ export default function TransferRequestsPage() {
   });
 
   const openCreate = () => {
-    navigate('/delivery/create-transfer-order');
+    setModalMode('create');
   };
 
   const openView = (request: TransferRequest) => {
@@ -478,6 +491,26 @@ export default function TransferRequestsPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {modalMode === 'create' && (
+        <CreateTransferRequestModal
+          onClose={closeModal}
+          onSuccess={() => {
+            closeModal();
+            // Optional: trigger data reload here if we had real API
+          }}
+          setToast={setToast}
+        />
+      )}
+
+      {toast && (
+        <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
+          <p className="text-sm font-bold">{toast.message}</p>
+          <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
     </div>

@@ -166,7 +166,6 @@ export class StockInOrderAssembliesService {
         barcode: dto.barcode?.trim() || undefined,
         note: dto.note?.trim() || undefined,
         status: 'COMPLETED',
-        details: [],
       });
 
       if (assembly.quantity <= 0) {
@@ -176,6 +175,9 @@ export class StockInOrderAssembliesService {
       if (!dto.components?.length) {
         throw new BadRequestException('Phải chọn ít nhất một thành phần để lắp ráp');
       }
+
+      const savedAssembly = await this.assemblyRepo.save(assembly);
+      savedAssembly.details = [];
 
       for (const component of dto.components) {
         const product = await this.productRepo.findOneBy({ id: component.productId });
@@ -199,17 +201,14 @@ export class StockInOrderAssembliesService {
           }
         }
 
-        assembly.details.push(
-          this.detailRepo.create({
-            assembly,
-            componentProduct: product,
-            usedQty,
-            warehouseCode: component.warehouseCode || undefined,
-          }),
-        );
+        const detail = this.detailRepo.create({
+          assembly: savedAssembly,
+          componentProduct: product,
+          usedQty,
+          warehouseCode: component.warehouseCode || undefined,
+        });
+        savedAssembly.details.push(await this.detailRepo.save(detail));
       }
-
-      const savedAssembly = await this.assemblyRepo.save(assembly);
 
       for (const detail of savedAssembly.details) {
         await this.adjustInventory(detail.componentProduct.id, detail.warehouseCode || savedAssembly.warehouseCode || 'DEFAULT', -detail.usedQty);
@@ -232,6 +231,7 @@ export class StockInOrderAssembliesService {
 
       return this.serializeAssembly(await this.findAssemblyEntity(savedAssembly.id), true);
     } catch (e: any) {
+      console.error(e);
       throw new BadRequestException('STANDALONE_ERR: ' + e.message);
     }
   }
