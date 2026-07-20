@@ -96,7 +96,6 @@ export class ProductsService {
   async findAll() {
     try {
       const products = await this.productRepo.find({
-        where: { supplier: IsNull() },
         relations: ['category', 'supplier'],
       });
 

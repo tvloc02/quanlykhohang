@@ -149,6 +149,18 @@ async function seed() {
              VALUES (?,?,?,?,?,?,?,?,?)`, [p.sku, p.barcode, p.name, p.unit, p.price, catId, supId, p.min, true]);
   }
 
+  // ─── 7b. SUPPLIER PRODUCTS (Sản phẩm Nhà cung cấp) ───────────
+  console.log('🔗 Liên kết Sản phẩm với Nhà cung cấp (Supplier Products)...');
+  const allProds: any[] = await q(`SELECT id, internalSku, price, categoryId, supplierId FROM products`);
+  for (let i = 0; i < allProds.length; i++) {
+    const p = allProds[i];
+    const supId = p.supplierId || supRows[i % supRows.length]?.id;
+    if (supId) {
+      await q(`INSERT IGNORE INTO supplier_products (supplierId, productId, supplierSku, itemGroup, purchasePrice, isPrimary)
+               VALUES (?,?,?,?,?,?)`, [supId, p.id, `NCC-SKU-${String(i + 1).padStart(3, '0')}`, 'Điện tử & Phụ kiện', String(p.price || 150000), true]);
+    }
+  }
+
   // ─── 8. STOCK BALANCES ───────────────────────────────────────
   console.log('📊 Tạo tồn kho tại các vị trí...');
   const prodRows: any[] = await q(`SELECT id, internalSku FROM products ORDER BY id`);
