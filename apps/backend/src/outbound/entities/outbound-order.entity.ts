@@ -2,6 +2,7 @@ import { Column, Entity, ManyToOne, OneToMany, Index } from 'typeorm';
 import { BaseEntity } from '../../entities/base.entity';
 import { Customer } from '../../entities/customer.entity';
 import { OutboundDetail } from './outbound-detail.entity';
+import { ShippingNote } from './shipping-note.entity';
 
 @Entity('outbound_orders')
 export class OutboundOrder extends BaseEntity {
@@ -26,4 +27,7 @@ export class OutboundOrder extends BaseEntity {
 
   @OneToMany(() => OutboundDetail, (d) => d.outboundOrder)
   details: OutboundDetail[];
+
+  @ManyToOne(() => ShippingNote, (sn) => sn.orders, { nullable: true })
+  shippingNote?: ShippingNote;
 }

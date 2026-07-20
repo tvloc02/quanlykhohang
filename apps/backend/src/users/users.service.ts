@@ -35,6 +35,7 @@ export class UsersService {
       password: hashed,
       fullName: createUserDto.fullName,
       phone: createUserDto.phone,
+      address: createUserDto.address,
       roles: [role],
       status: createUserDto.status || 'active',
     });
@@ -86,6 +87,10 @@ export class UsersService {
 
     if (updateUserDto.phone !== undefined) {
       user.phone = updateUserDto.phone;
+    }
+
+    if (updateUserDto.address !== undefined) {
+      user.address = updateUserDto.address;
     }
 
     if (updateUserDto.status !== undefined) {

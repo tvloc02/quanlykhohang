@@ -25,6 +25,7 @@ type CustomerUser = {
   email: string;
   fullName?: string;
   phone?: string;
+  address?: string;
   roles?: Role[];
   status?: string;
 };
@@ -211,7 +212,7 @@ export default function CustomersManagement() {
     setSuccess('');
     setSelectedUser(null);
     setShowPassword(false);
-    setForm({ email: '', fullName: '', phone: '', status: 'active', password: '' });
+    setForm({ email: '', fullName: '', phone: '', address: '', status: 'active', password: '' });
     setModalMode('create');
   };
 
@@ -224,6 +225,7 @@ export default function CustomersManagement() {
       email: user.email,
       fullName: user.fullName || '',
       phone: user.phone || '',
+      address: user.address || '',
       status: (user.status as any) || 'active',
       password: '',
     });
@@ -245,6 +247,7 @@ export default function CustomersManagement() {
         email: form.email,
         fullName: form.fullName,
         phone: form.phone,
+        address: form.address || '',
         role: 'customer',
         status: form.status,
       };
@@ -381,10 +384,11 @@ export default function CustomersManagement() {
           <table className="w-full min-w-[1000px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b-2 border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Họ và Tên</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Email</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Số điện thoại</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Địa chỉ</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Trạng thái</th>
                 <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
@@ -419,6 +423,9 @@ export default function CustomersManagement() {
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
                         {user.phone || '-'}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-left text-sm text-slate-700 truncate max-w-[200px]" title={user.address}>
+                        {user.address || '-'}
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                         <span
@@ -604,6 +611,16 @@ export default function CustomersManagement() {
                       readOnly={modalMode === 'view'}
                       className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
                       placeholder="0901234567"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">Địa chỉ</label>
+                    <input
+                      value={form.address || ''}
+                      onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
+                      readOnly={modalMode === 'view'}
+                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                      placeholder="Số nhà, đường, phường, quận..."
                     />
                   </div>
                   <div>
