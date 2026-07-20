@@ -122,6 +122,11 @@ const menuItems = [
     path: '/inventory',
     badge: null,
     allowedRoles: ['manager', 'staff'],
+    children: [
+      { icon: Layers, label: 'Sơ đồ 2D & Heatmap', path: '/inventory/visualizer' },
+      { icon: Cpu, label: 'Gợi ý cất hàng (Smart Slotting)', path: '/inventory/smart-slotting' },
+      { icon: Warehouse, label: 'Bảng tồn kho tổng hợp', path: '/inventory' },
+    ],
   },
   {
     icon: ListChecks,
@@ -459,6 +464,7 @@ export default function MainLayout({ children }: LayoutProps) {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
     navigate('/login', { replace: true });
   };
 

@@ -27,8 +27,9 @@ const Button = ({ children, variant = 'primary', size = 'md', className = '', on
 
 export default function Home() {
     const navigate = useNavigate();
+    const token = localStorage.getItem('token');
     const userStr = localStorage.getItem('user');
-    const user = userStr ? JSON.parse(userStr) : null;
+    const user = (token && userStr) ? JSON.parse(userStr) : null;
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -153,6 +154,9 @@ export default function Home() {
                                     </div>
                                     <span className="text-sm font-semibold text-slate-800">{user.fullName || user.email?.split('@')[0]}</span>
                                 </div>
+                                <Button onClick={() => navigate('/dashboard')} variant="primary" size="sm">
+                                    Vào Dashboard <ArrowRight size={14} className="ml-1" />
+                                </Button>
                                 <Button onClick={handleLogout} variant="ghost" size="sm" className="text-slate-600 hover:text-red-600 hover:bg-red-50">
                                     Đăng xuất
                                 </Button>

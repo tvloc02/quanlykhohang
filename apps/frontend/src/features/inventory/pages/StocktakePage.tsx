@@ -358,6 +358,37 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
             <PackageSearch className="h-4 w-4" />
             Làm mới
           </button>
+          {/* Manager: Tạo phiên kiểm kê thông minh AI */}
+          {isManager && (
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch('http://localhost:3000/api/inventory/smart-stocktake/generate-recommended', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+                    },
+                    body: JSON.stringify({ createdBy: 'Smart AI Risk Engine' }),
+                  });
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => null);
+                    throw new Error(err?.message || 'Không có sản phẩm nguy cơ cao nào');
+                  }
+                  const created = await res.json();
+                  setToast({ message: `Đã tự động khởi tạo phiên kiểm kê thông minh ${created.stocktakeNo} pre-filled danh sách rủi ro cao!`, type: 'success' });
+                  await loadData();
+                } catch (err: any) {
+                  setToast({ message: err.message || 'Lỗi', type: 'error' });
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-purple-700"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Kiểm kê thông minh AI
+            </button>
+          )}
+
           {/* Manager: Tạo phiên kiểm kê, Staff: Gửi yêu cầu */}
           {!isRequestsView && viewMode !== 'stocktake' && (
             <button

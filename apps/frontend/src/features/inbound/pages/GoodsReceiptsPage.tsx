@@ -796,14 +796,23 @@ export default function GoodsReceiptsPage() {
         <div>
           <h1 className="text-2xl font-black text-slate-900">Phiếu nhập kho</h1>
         </div>
-        <button
-          type="button"
-          onClick={() => openCreate()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Tạo phiếu nhập kho
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/inventory/smart-slotting')}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-purple-700"
+          >
+            💡 Gợi ý vị trí cất hàng
+          </button>
+          <button
+            type="button"
+            onClick={() => openCreate()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Tạo phiếu nhập kho
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
