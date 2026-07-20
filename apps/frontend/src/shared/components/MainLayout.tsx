@@ -14,6 +14,7 @@ import {
   Layers,
   Truck,
   Users,
+  HeartHandshake,
   Box,
   ClipboardList,
   Warehouse,
@@ -140,6 +141,7 @@ const menuItems = [
   },
   { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null, allowedRoles: ['manager', 'staff'] },
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null, allowedRoles: ['admin'] },
+  { icon: HeartHandshake, label: 'Khách hàng', path: '/customers', badge: null, allowedRoles: ['admin', 'manager', 'staff'] },
   { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null, allowedRoles: ['manager', 'staff'] },
   {
     icon: Settings,

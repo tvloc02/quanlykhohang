@@ -78,6 +78,7 @@ export class ProductsService {
         minimumStock: dto.minimumStock || 0,
         price: dto.price || 0,
         images: dto.images || [],
+        isVisible: dto.isVisible || false,
       });
       if (dto.categoryId) {
         const cat = await this.categoryRepo.findOneBy({ id: dto.categoryId });
@@ -165,6 +166,7 @@ export class ProductsService {
       if (dto.minimumStock !== undefined) p.minimumStock = dto.minimumStock;
       if (dto.price !== undefined) p.price = dto.price;
       if (dto.images !== undefined) p.images = dto.images;
+      if (dto.isVisible !== undefined) p.isVisible = dto.isVisible;
       if (dto.categoryId) {
         const c = await this.categoryRepo.findOneBy({ id: dto.categoryId });
         if (c) p.category = c;
