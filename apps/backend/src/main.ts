@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import * as express from 'express';
 import { ValidationPipe } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { QueryFailedExceptionFilter } from './common/filters/query-failed.filter';
 
 async function ensureWarehouseTable(dataSource: DataSource) {
   await dataSource.query(`
@@ -43,6 +44,7 @@ async function bootstrap() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }));
+  app.useGlobalFilters(new QueryFailedExceptionFilter());
   app.enableCors({
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

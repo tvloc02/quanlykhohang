@@ -31,6 +31,8 @@ import StocktakePage from './features/inventory/pages/StocktakePage';
 import StocktakeFreezePage from './features/inventory/pages/StocktakeFreezePage';
 import StocktakeScanPage from './features/inventory/pages/StocktakeScanPage';
 import AdjustmentApprovalPage from './features/inventory/pages/AdjustmentApprovalPage';
+import WarehouseVisualizerPage from './features/inventory/pages/WarehouseVisualizerPage';
+import SmartSlottingPage from './features/inventory/pages/SmartSlottingPage';
 import TaskAssignPage from './features/outbound/pages/TaskAssignPage';
 import Outbound from './features/outbound/Outbound';
 import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
@@ -415,6 +417,26 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <Inventory />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/visualizer"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <WarehouseVisualizerPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/smart-slotting"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <SmartSlottingPage />
               </MainLayout>
             </ProtectedRoute>
           }

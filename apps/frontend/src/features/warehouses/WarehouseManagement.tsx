@@ -116,6 +116,7 @@ export default function WarehouseManagement() {
       const response = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() });
       if (response.status === 401) {
         localStorage.removeItem('token');
+        localStorage.removeItem('user');
         window.location.href = '/login';
         return;
       }
@@ -171,6 +172,7 @@ export default function WarehouseManagement() {
         const response = await fetch(`${API_BASE_URL}/users`, { headers: authHeaders() });
         if (response.status === 401) {
           localStorage.removeItem('token');
+        localStorage.removeItem('user');
           window.location.href = '/login';
           return;
         }

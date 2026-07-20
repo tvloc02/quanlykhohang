@@ -21,6 +21,11 @@ export class UsersService {
   }
 
   async create(createUserDto: CreateUserDto, actor?: { id?: string; email?: string }): Promise<User> {
+    const existingUser = await this.repo.findOne({ where: { email: createUserDto.email } });
+    if (existingUser) {
+      throw new BadRequestException('Email đã tồn tại trong hệ thống. Vui lòng sử dụng email khác.');
+    }
+
     const rawPassword = createUserDto.password ?? (Math.random().toString(36).slice(-8) + 'A1');
     const hashed = await bcrypt.hash(rawPassword, 10);
     const roleName = createUserDto.role || 'staff';
@@ -38,7 +43,15 @@ export class UsersService {
       roles: [role],
       status: createUserDto.status || 'active',
     });
-    const savedUser = await this.repo.save(user);
+    let savedUser: User;
+    try {
+      savedUser = await this.repo.save(user);
+    } catch (err: any) {
+      if (err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062 || err?.message?.includes('Duplicate entry')) {
+        throw new BadRequestException('Email đã tồn tại trong hệ thống. Vui lòng sử dụng email khác.');
+      }
+      throw err;
+    }
     await this.auditLogService.append({
       actorId: actor?.id,
       actorEmail: actor?.email,
@@ -76,7 +89,11 @@ export class UsersService {
     if (updateUserDto.password) {
       user.password = await bcrypt.hash(updateUserDto.password, 10);
     }
-    if (updateUserDto.email !== undefined) {
+    if (updateUserDto.email !== undefined && updateUserDto.email !== user.email) {
+      const existingUser = await this.repo.findOne({ where: { email: updateUserDto.email } });
+      if (existingUser && existingUser.id !== id) {
+        throw new BadRequestException('Email đã tồn tại trong hệ thống. Vui lòng sử dụng email khác.');
+      }
       user.email = updateUserDto.email;
     }
 

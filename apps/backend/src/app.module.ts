@@ -22,6 +22,8 @@ import { WarehousesModule } from './warehouses/warehouses.module';
 import { CustomerPortalModule } from './customer-portal/customer-portal.module';
 import { ScanModule } from './scan/scan.module';
 
+import { SmartInventoryModule } from './inventory/smart-inventory/smart-inventory.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -43,6 +45,7 @@ import { ScanModule } from './scan/scan.module';
     InboundModule,
     OutboundModule,
     InventoryModule,
+    SmartInventoryModule,
     ReportsModule,
     AuditLogModule,
     RolesModule,

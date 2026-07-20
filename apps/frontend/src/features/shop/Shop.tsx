@@ -40,8 +40,9 @@ export default function Shop() {
   const [showCart, setShowCart] = useState(false);
   const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
+  const token = localStorage.getItem('token');
   const userStr = localStorage.getItem('user');
-  const user = userStr ? JSON.parse(userStr) : null;
+  const user = (token && userStr) ? JSON.parse(userStr) : null;
 
   const handleLogout = () => {
       localStorage.removeItem('token');
