@@ -31,6 +31,7 @@ import StocktakePage from './features/inventory/pages/StocktakePage';
 import TaskAssignPage from './features/outbound/pages/TaskAssignPage';
 import Outbound from './features/outbound/Outbound';
 import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
+import PickingPage from './features/outbound/pages/PickingPage';
 import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDetailPage';
 import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalPage';
 import ScannerPage from './features/scanner/ScannerPage';
@@ -315,9 +316,19 @@ function App() {
         <Route
           path="/outbound/approve"
           element={
-            <ProtectedRoute>
+            <RoleRoute allowedRoles={['admin', 'manager']}>
               <MainLayout>
                 <ApproveOutboundPage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/outbound/picking"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <PickingPage />
               </MainLayout>
             </ProtectedRoute>
           }

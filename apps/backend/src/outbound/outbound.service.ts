@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { OutboundOrder } from './entities/outbound-order.entity';
 import { OutboundDetail } from './entities/outbound-detail.entity';
 import { PickingTask } from './entities/picking-task.entity';
@@ -59,6 +59,7 @@ export class OutboundService {
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
     private readonly outboxService: OutboxService,
     private readonly idempotencyService: IdempotencyService,
+    private readonly dataSource: DataSource,
   ) {}
 
   // ─── CRUD ──────────────────────────────────────────────────────
@@ -94,6 +95,8 @@ export class OutboundService {
     // Persist detail items if provided
     if (dto.details?.length) {
       await this.persistDetails(savedOrder.id, dto.details);
+      // US03.01: Reserve inventory — chuyển available sang allocated
+      await this.reserveInventory(savedOrder.id);
     }
 
     return this.serializeOutbound(await this.findOrderEntity(savedOrder.id));
@@ -158,6 +161,11 @@ export class OutboundService {
   async removeOutbound(id: string) {
     const order = await this.findOrderEntity(id);
 
+    // US03.01: Giải phóng reserved trước khi xóa (chỉ nếu chưa shipped)
+    if (order.status !== 'shipped') {
+      await this.releaseInventory(order);
+    }
+
     // Delete details first
     const details = await this.detailRepo.find({
       where: { outboundOrder: { id } as any },
@@ -192,7 +200,7 @@ export class OutboundService {
     return this.serializeOutbound(await this.findOrderEntity(id));
   }
 
-  // ─── CONFIRM (trừ tồn kho) ────────────────────────────────────
+  // ─── CONFIRM (ACID trừ tồn kho — US03.05) ─────────────────────
 
   async confirmOutbound(id: string, idempotencyKey?: string) {
     const order = await this.findOrderEntity(id);
@@ -201,22 +209,38 @@ export class OutboundService {
       return { order: this.serializeOutbound(order), idempotentReplay: true };
     }
 
-    // Trừ tồn kho cho từng detail
-    for (const detail of order.details || []) {
-      const qty = detail.requiredQty;
-      const locCode = detail.warehouseCode || 'DEFAULT';
-      await this.deductInventory(detail.product.id, locCode, qty);
-    }
+    // Bọc toàn bộ logic trong Database Transaction
+    const result = await this.dataSource.transaction(async (manager) => {
+      // 1. Cập nhật trạng thái đơn hàng
+      order.status = 'shipped';
+      const savedOrder = await manager.save(OutboundOrder, order);
 
-    order.status = 'shipped';
-    const savedOrder = await this.orderRepo.save(order);
+      // 2. Trừ tồn kho cho từng detail trong transaction
+      for (const detail of order.details || []) {
+        const locCode = detail.warehouseCode || 'DEFAULT';
+        const balance = await manager.findOne(StockBalance, {
+          where: { product: { id: detail.product.id } as any, locationCode: locCode },
+          relations: ['product'],
+        });
 
+        if (balance) {
+          balance.totalPhysical -= detail.pickedQty;
+          balance.allocated -= detail.requiredQty;
+          balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
+          await manager.save(StockBalance, balance);
+        }
+      }
+
+      return savedOrder;
+    });
+
+    // 3. Ghi sự kiện Outbox (ngoài transaction chính vì outbox có lifecycle riêng)
     const outboxEvent = await this.outboxService.enqueue({
       eventType: 'OUTBOUND_ORDER_CONFIRMED',
       idempotencyKey,
       payload: {
-        orderId: savedOrder.id,
-        customerId: savedOrder.customer?.id,
+        orderId: result.id,
+        customerId: order.customer?.id,
         confirmedAt: new Date().toISOString(),
         details: (order.details || []).map((d) => ({
           detailId: d.id,
@@ -227,7 +251,7 @@ export class OutboundService {
     });
 
     return {
-      order: this.serializeOutbound(savedOrder),
+      order: this.serializeOutbound(await this.findOrderEntity(id)),
       outboxEvent,
       idempotentReplay: false,
     };
@@ -335,29 +359,53 @@ export class OutboundService {
     return saved;
   }
 
-  private async deductInventory(productId: string, locationCode: string, qty: number) {
-    const balance = await this.balanceRepo.findOne({
-      where: { product: { id: productId } as any, locationCode },
-      relations: ['product'],
+  // US03.01: Giữ chỗ tồn kho khi tạo đơn xuất
+  private async reserveInventory(orderId: string) {
+    const details = await this.detailRepo.find({
+      where: { outboundOrder: { id: orderId } as any },
+      relations: ['outboundOrder', 'product'],
     });
 
-    if (!balance) {
-      // No stock record — still allow the deduction but create a negative record
-      const product = await this.productRepo.findOneBy({ id: productId });
-      if (!product) throw new NotFoundException('Product not found');
-      const newBalance = this.balanceRepo.create({
-        product,
-        locationCode,
-        totalPhysical: -qty,
-        allocated: 0,
-        available: -qty,
+    for (const detail of details) {
+      const locCode = detail.warehouseCode || 'DEFAULT';
+      let balance = await this.balanceRepo.findOne({
+        where: { product: { id: detail.product.id } as any, locationCode: locCode },
+        relations: ['product'],
       });
-      return this.balanceRepo.save(newBalance);
-    }
 
-    balance.totalPhysical -= qty;
-    balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
-    return this.balanceRepo.save(balance);
+      if (!balance) {
+        throw new BadRequestException(
+          `Sản phẩm "${detail.product.name}" (${detail.product.internalSku}) không có tồn kho tại vị trí ${locCode}`,
+        );
+      }
+
+      if (balance.available < detail.requiredQty) {
+        throw new BadRequestException(
+          `Tồn kho không đủ cho "${detail.product.name}" (${detail.product.internalSku}). Khả dụng: ${balance.available}, Yêu cầu: ${detail.requiredQty}`,
+        );
+      }
+
+      balance.allocated += detail.requiredQty;
+      balance.available = balance.totalPhysical - balance.allocated;
+      await this.balanceRepo.save(balance);
+    }
+  }
+
+  // US03.01: Giải phóng tồn kho đã giữ chỗ khi hủy/xóa đơn
+  private async releaseInventory(order: OutboundOrder) {
+    for (const detail of order.details || []) {
+      const locCode = detail.warehouseCode || 'DEFAULT';
+      const balance = await this.balanceRepo.findOne({
+        where: { product: { id: detail.product.id } as any, locationCode: locCode },
+        relations: ['product'],
+      });
+
+      if (balance) {
+        balance.allocated = Math.max(balance.allocated - detail.requiredQty, 0);
+        balance.available = balance.totalPhysical - balance.allocated;
+        await this.balanceRepo.save(balance);
+      }
+    }
   }
 
   private async updateOrderStatus(orderId: string) {

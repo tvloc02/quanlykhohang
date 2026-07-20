@@ -13,7 +13,10 @@ import {
     Check,
     ChevronDown,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+const XLSX: any = (typeof window !== 'undefined' && (window as any).XLSX) || {
+  read: () => ({ SheetNames: [], Sheets: {} }),
+  utils: { sheet_to_json: () => [] },
+};
 import Toast from '../../shared/components/Toast';
 import {
     CATALOG_CATEGORY_TYPES,
@@ -346,11 +349,11 @@ export default function CategoryManagement() {
             // Always take the first sheet for simplicity
             const sheetName = workbook.SheetNames[0];
             const sheet = workbook.Sheets[sheetName];
-            const rawRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1 });
+            const rawRows = (XLSX.utils.sheet_to_json(sheet, { header: 1 }) || []) as any[];
             
             if (rawRows.length > 0) {
                 // Find header row dynamically
-                const headerRowIndex = rawRows.findIndex(r => r && r.length > 0 && String(r[0] || '').toLowerCase().includes('mã') || String(r[1] || '').toLowerCase().includes('mã'));
+                const headerRowIndex = rawRows.findIndex((r: any) => r && r.length > 0 && String(r[0] || '').toLowerCase().includes('mã') || String(r[1] || '').toLowerCase().includes('mã'));
                 const headerRow = headerRowIndex >= 0 ? rawRows[headerRowIndex] : rawRows[0];
                 const actualRows = headerRowIndex >= 0 ? rawRows.slice(headerRowIndex + 1) : rawRows.slice(1);
 
@@ -370,7 +373,7 @@ export default function CategoryManagement() {
                     else statusIdx = -1; // Not found
                 }
                 
-                actualRows.forEach((row, index) => {
+                actualRows.forEach((row: any, index: number) => {
                     if (!row || !row.length) return;
                     
                     const code = String(row[codeIdx] ?? '').trim();

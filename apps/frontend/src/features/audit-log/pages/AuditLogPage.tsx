@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, ShieldAlert, FileText, User, Box, Search, Filter } from 'lucide-react';
-import { format } from 'date-fns';
-import { vi } from 'date-fns/locale';
+
+function formatDate(dateStr?: string) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '-';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -200,7 +206,7 @@ export default function AuditLogPage() {
                   return (
                     <tr key={log.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-6 py-4 font-semibold text-slate-700 whitespace-nowrap">
-                        {format(new Date(log.createdAt), 'HH:mm:ss dd/MM/yyyy')}
+                        {formatDate(log.createdAt)}
                       </td>
                       <td className="px-6 py-4">
                         <div className="font-bold text-slate-900">{log.actorEmail || 'Hệ thống'}</div>
