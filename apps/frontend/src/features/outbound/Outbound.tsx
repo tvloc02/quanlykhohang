@@ -14,6 +14,15 @@ import {
 import { outboundApi, OutboundOrder, OutboundCreatePayload } from './api/outboundApi';
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../shared/components/BarcodeScanner';
 
+const API_BASE_URL = 'http://localhost:3000/api';
+
+function authHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+  };
+}
+
 // Tích hợp Toast nội bộ để không bị lỗi import
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
   React.useEffect(() => {
@@ -65,7 +74,7 @@ type OutboundForm = {
   details: OutboundDetailRow[];
 };
 
-type ModalMode = 'create' | 'view' | 'edit' | 'delete' | null;
+type ModalMode = 'create' | 'view' | 'edit' | 'delete' | 'create-note' | null;
 
 function makeEmptyDetailRow(): OutboundDetailRow {
   return { id: crypto.randomUUID(), productId: '', warehouseCode: '', requiredQty: '', unitPrice: '' };
@@ -108,12 +117,19 @@ export default function Outbound() {
   const [form, setForm] = React.useState<OutboundForm>(buildEmptyForm());
   const [products, setProducts] = React.useState<ProductOption[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseOption[]>([]);
+  const [staff, setStaff] = React.useState<{ id: string, fullName: string, email: string }[]>([]);
   const [scannerOpen, setScannerOpen] = React.useState(false);
+  const [selectedOrderIds, setSelectedOrderIds] = React.useState<string[]>([]);
+  const [shippingNoteForm, setShippingNoteForm] = React.useState({
+    expectedDate: '',
+    description: '',
+    assignee: ''
+  });
 
   const handleProductScanned = React.useCallback((product: ScannedProduct, qty: number) => {
     setForm((current) => {
       const newDetails = [...current.details];
-      
+
       // Nếu dòng cuối cùng đang trống (chưa chọn sản phẩm), thì ghi đè lên dòng đó
       const lastIndex = newDetails.length - 1;
       if (lastIndex >= 0 && !newDetails[lastIndex].productId && !newDetails[lastIndex].requiredQty) {
@@ -171,9 +187,10 @@ export default function Outbound() {
   React.useEffect(() => {
     const fetchRefs = async () => {
       try {
-        const [productsRes, warehousesRes] = await Promise.all([
+        const [productsRes, warehousesRes, usersRes] = await Promise.all([
           fetch('http://localhost:3000/api/products', { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }),
           fetch('http://localhost:3000/api/warehouses', { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }),
+          fetch('http://localhost:3000/api/users', { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }),
         ]);
 
         if (productsRes.ok) {
@@ -183,6 +200,14 @@ export default function Outbound() {
         if (warehousesRes.ok) {
           const data = await warehousesRes.json();
           setWarehouses(Array.isArray(data) ? data.map((item: any) => ({ id: String(item.id), code: String(item.code || item.id).toUpperCase(), name: String(item.name || item.code || item.id) })) : []);
+        }
+        if (usersRes.ok) {
+          const data = await usersRes.json();
+          setStaff(Array.isArray(data) ? data.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u: any) => ({
+            id: String(u.id),
+            fullName: String(u.fullName || u.email?.split('@')[0]),
+            email: String(u.email)
+          })) : []);
         }
       } catch (err) {
         // Ignore reference loading errors, list still works.
@@ -217,6 +242,7 @@ export default function Outbound() {
     setModalMode(null);
     setSelectedOrder(null);
     setSaving(false);
+    setShippingNoteForm({ expectedDate: '', description: '', assignee: '' });
   };
 
   const openModal = (mode: ModalMode, order?: OutboundOrder) => {
@@ -236,12 +262,12 @@ export default function Outbound() {
         details:
           order.details && order.details.length > 0
             ? order.details.map((detail) => ({
-                id: crypto.randomUUID(),
-                productId: detail.product?.id || '',
-                warehouseCode: detail.warehouseCode || '',
-                requiredQty: detail.requiredQty,
-                unitPrice: detail.unitPrice || '',
-              }))
+              id: crypto.randomUUID(),
+              productId: detail.product?.id || '',
+              warehouseCode: detail.warehouseCode || '',
+              requiredQty: detail.requiredQty,
+              unitPrice: detail.unitPrice || '',
+            }))
             : [makeEmptyDetailRow()],
       });
     }
@@ -333,6 +359,55 @@ export default function Outbound() {
     }
   };
 
+  const handleCreateShippingNote = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (selectedOrderIds.length === 0) return;
+
+    setSaving(true);
+    setError('');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/outbounds/shipping-notes`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          orderIds: selectedOrderIds,
+          expectedDate: shippingNoteForm.expectedDate || undefined,
+          description: shippingNoteForm.description || undefined,
+          assignee: shippingNoteForm.assignee || undefined
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message || 'Không tạo được phiếu xuất kho');
+      }
+
+      setSuccess('Đã tạo phiếu xuất kho và lệnh xuất kho thành công.');
+      setSelectedOrderIds([]);
+      closeModal();
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Lỗi khi tạo phiếu xuất kho');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleSelectOrder = (id: string) => {
+    setSelectedOrderIds(prev =>
+      prev.includes(id) ? prev.filter(orderId => orderId !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedOrderIds.length === paginatedOrders.length) {
+      setSelectedOrderIds([]);
+    } else {
+      setSelectedOrderIds(paginatedOrders.map(o => o.id));
+    }
+  };
+
   return (
     <div>
       <Toast
@@ -352,14 +427,26 @@ export default function Outbound() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => openModal('create')}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Tạo đơn đặt hàng
-        </button>
+        <div className="flex flex-wrap gap-3">
+          {selectedOrderIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setModalMode('create-note')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700"
+            >
+              <Truck className="h-4 w-4" />
+              Tạo phiếu xuất kho ({selectedOrderIds.length})
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => openModal('create')}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Tạo đơn đặt hàng
+          </button>
+        </div>
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -387,6 +474,14 @@ export default function Outbound() {
           <table className="w-full min-w-[1040px] border-collapse bg-white">
             <thead className="bg-slate-50">
               <tr className="border-b-2 border-slate-200">
+                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                    checked={paginatedOrders.length > 0 && selectedOrderIds.length === paginatedOrders.length}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã SO</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Khách hàng</th>
@@ -401,19 +496,27 @@ export default function Outbound() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Đang tải dữ liệu đơn đặt hàng...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Chưa có đơn đặt hàng phù hợp.
                   </td>
                 </tr>
               ) : (
                 paginatedOrders.map((order, index) => (
                   <tr key={order.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                        checked={selectedOrderIds.includes(order.id)}
+                        onChange={() => toggleSelectOrder(order.id)}
+                      />
+                    </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
                       {startIndex + index}
                     </td>
@@ -532,7 +635,146 @@ export default function Outbound() {
       </div>
 
       {/* Modals */}
-      {modalMode && (
+      {modalMode === 'create-note' && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
+          <form
+            onSubmit={handleCreateShippingNote}
+            className="max-h-[94vh] w-[95vw] max-w-[1200px] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col"
+          >
+            <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-indigo-100 p-2 text-indigo-700">
+                  <Truck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">Tạo Phiếu Xuất Kho</h3>
+                  <p className="text-sm font-medium text-slate-500">
+                    Gộp {selectedOrderIds.length} đơn đặt hàng để tạo phiếu xuất kho
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 transition">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-1 overflow-hidden min-h-0">
+              {/* Cột trái: Danh sách đơn hàng */}
+              <div className="overflow-y-auto flex-1 px-8 py-6 bg-slate-50">
+                <h4 className="font-black text-slate-900 mb-4 flex items-center gap-2">Danh sách đơn hàng xuất</h4>
+                <div className="space-y-4">
+                  {orders.filter(o => selectedOrderIds.includes(o.id)).map((order, idx) => (
+                    <div key={order.id} className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">{idx + 1}</span>
+                          <span className="font-black text-indigo-700">{order.orderNo}</span>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">{order.items} sản phẩm</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                          <p className="text-xs font-bold uppercase text-slate-500 mb-1">Khách hàng</p>
+                          <p className="text-sm font-bold text-slate-900">{order.customer || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold uppercase text-slate-500 mb-1">Hạn giao</p>
+                          <p className="text-sm font-semibold text-slate-700">{order.dueDate ? new Date(order.dueDate).toLocaleDateString('vi-VN') : 'Không'}</p>
+                        </div>
+                      </div>
+
+                      {/* Bảng sản phẩm của đơn hàng này */}
+                      {order.details && order.details.length > 0 && (
+                        <div className="rounded-xl border border-slate-100 overflow-hidden mt-3">
+                          <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-slate-500 text-xs font-bold uppercase border-b border-slate-100">
+                              <tr>
+                                <th className="px-3 py-2">Sản phẩm</th>
+                                <th className="px-3 py-2 text-center">SL</th>
+                                <th className="px-3 py-2 text-right">Đơn giá</th>
+                                <th className="px-3 py-2 text-right">Thành tiền</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {order.details.map((detail, dIdx) => (
+                                <tr key={dIdx} className="hover:bg-slate-50/50">
+                                  <td className="px-3 py-2 font-medium text-slate-800">
+                                    <div className="line-clamp-1" title={detail.product?.name}>{detail.product?.name || detail.product?.internalSku || 'Sản phẩm ' + (dIdx + 1)}</div>
+                                  </td>
+                                  <td className="px-3 py-2 text-center font-bold text-indigo-600">{detail.requiredQty}</td>
+                                  <td className="px-3 py-2 text-right text-slate-600">{detail.unitPrice ? new Intl.NumberFormat('vi-VN').format(detail.unitPrice) : 0} ₫</td>
+                                  <td className="px-3 py-2 text-right font-bold text-slate-800">{detail.unitPrice ? new Intl.NumberFormat('vi-VN').format(detail.requiredQty * detail.unitPrice) : 0} ₫</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cột phải: Form nhập thông tin */}
+              <div className="w-[450px] shrink-0 border-l border-slate-200 bg-white overflow-y-auto flex flex-col">
+                <div className="flex flex-col h-full p-6">
+                  <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Phiếu Xuất Kho</h3>
+                  <div className="space-y-6 flex-1">
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-slate-700">Ngày giờ dự kiến xuất kho <span className="text-red-500">*</span></label>
+                      <input
+                        type="datetime-local"
+                        value={shippingNoteForm.expectedDate}
+                        onChange={e => setShippingNoteForm({ ...shippingNoteForm, expectedDate: e.target.value })}
+                        className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-indigo-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-slate-700">Nhân viên phụ trách xuất</label>
+                      <select
+                        value={shippingNoteForm.assignee}
+                        onChange={e => setShippingNoteForm({ ...shippingNoteForm, assignee: e.target.value })}
+                        className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-indigo-500 bg-white"
+                      >
+                        <option value="">-- Chọn nhân viên  --</option>
+                        {staff.map(s => (
+                          <option key={s.id} value={s.fullName}>{s.fullName} ({s.email})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú phiếu xuất</label>
+                      <textarea
+                        rows={4}
+                        value={shippingNoteForm.description}
+                        onChange={e => setShippingNoteForm({ ...shippingNoteForm, description: e.target.value })}
+                        className="w-full rounded-xl border-2 border-slate-200 p-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-indigo-500"
+                        placeholder="Nhập ghi chú cho thủ kho..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-8 flex flex-col gap-3 border-t border-slate-200 pt-6">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="w-full rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
+                    >
+                      {saving ? 'Đang xử lý...' : 'Tạo phiếu và Lệnh xuất'}
+                    </button>
+                    <button type="button" onClick={closeModal} className="w-full rounded-xl border-2 border-slate-200 px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50">
+                      Hủy
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {modalMode && modalMode !== 'create-note' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
@@ -565,9 +807,9 @@ export default function Outbound() {
                   <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
                     Hủy
                   </button>
-                  <button 
-                    type="button" 
-                    onClick={handleDelete} 
+                  <button
+                    type="button"
+                    onClick={handleDelete}
                     disabled={saving}
                     className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
                   >
@@ -589,7 +831,7 @@ export default function Outbound() {
                       required
                     />
                   </div>
-                  
+
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">Khách hàng <span className="text-red-500">*</span></label>
                     <input
@@ -761,8 +1003,8 @@ export default function Outbound() {
                     {modalMode === 'view' ? 'Đóng' : 'Hủy'}
                   </button>
                   {modalMode !== 'view' && (
-                    <button 
-                      type="submit" 
+                    <button
+                      type="submit"
                       disabled={saving}
                       className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                     >

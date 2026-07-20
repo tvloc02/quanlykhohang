@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { OutboundOrder } from './entities/outbound-order.entity';
 import { OutboundDetail } from './entities/outbound-detail.entity';
 import { PickingTask } from './entities/picking-task.entity';
+import { ShippingNote } from './entities/shipping-note.entity';
 import { CreateOutboundOrderDto, OutboundItemDto } from './dto/create-outbound-order.dto';
 import { AddOutboundDetailDto } from './dto/add-outbound-detail.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
@@ -57,9 +58,42 @@ export class OutboundService {
     @InjectRepository(Customer) private customerRepo: Repository<Customer>,
     @InjectRepository(Product) private productRepo: Repository<Product>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
+    @InjectRepository(ShippingNote) private shippingNoteRepo: Repository<ShippingNote>,
     private readonly outboxService: OutboxService,
     private readonly idempotencyService: IdempotencyService,
   ) {}
+
+  async getShippingNotes() {
+    return this.shippingNoteRepo.find({ relations: ['orders'] });
+  }
+
+  async createShippingNote(dto: { orderIds: string[]; expectedDate?: string; description?: string; assignee?: string }) {
+    if (!dto.orderIds || dto.orderIds.length === 0) throw new BadRequestException('No orders selected');
+    const orders = await this.orderRepo.findByIds(dto.orderIds);
+    if (orders.length === 0) throw new NotFoundException('Orders not found');
+
+    const noteNo = 'PXK-' + Date.now().toString().slice(-6);
+    
+    const shippingNote = this.shippingNoteRepo.create({
+      noteNo,
+      status: 'READY',
+      description: dto.description,
+      expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
+      assignee: dto.assignee,
+      orders,
+    });
+    
+    const saved = await this.shippingNoteRepo.save(shippingNote);
+
+    // Update status of orders
+    for (const order of orders) {
+      order.status = 'READY_TO_SHIP';
+      order.shippingNote = saved;
+      await this.orderRepo.save(order);
+    }
+    
+    return saved;
+  }
 
   // ─── CRUD ──────────────────────────────────────────────────────
 
@@ -83,7 +117,10 @@ export class OutboundService {
       // Try find existing customer by name, or create a stub
       let customer = await this.customerRepo.findOneBy({ name: dto.customer.trim() });
       if (!customer) {
-        customer = this.customerRepo.create({ name: dto.customer.trim() });
+        customer = this.customerRepo.create({ 
+          name: dto.customer.trim(),
+          customerCode: 'CUS-' + Date.now().toString().slice(-6),
+        });
         customer = await this.customerRepo.save(customer);
       }
       order.customer = customer;

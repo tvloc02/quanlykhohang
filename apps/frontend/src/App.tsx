@@ -100,6 +100,7 @@ function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allo
 }
 
 import Shop from './features/shop/Shop';
+import CartCheckoutPage from './features/shop/pages/CartCheckoutPage';
 
 function App() {
   return (
@@ -108,6 +109,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
         <Route path="/shop" element={<Shop />} />
+        <Route path="/cart" element={<CartCheckoutPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route

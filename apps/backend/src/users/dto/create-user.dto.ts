@@ -24,4 +24,8 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   status?: 'active' | 'inactive';
+
+  @IsOptional()
+  @IsString()
+  address?: string;
 }
