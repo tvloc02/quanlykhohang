@@ -69,9 +69,13 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
     loadData();
   }, []);
 
-  const handleAddProducts = (selectedProducts: Product[]) => {
-    const newItems = selectedProducts.filter(p => !items.find(i => i.productId === p.id));
-    setItems([...items, ...newItems.map(p => ({ productId: p.id, product: p, quantity: 1 }))]);
+  const handleAddProducts = (selectedItemsWithQty: { product: Product; quantity: number }[]) => {
+    const newItems = selectedItemsWithQty.map(item => ({
+      productId: item.product.id,
+      product: item.product,
+      quantity: item.quantity
+    }));
+    setItems(newItems);
     setIsProductModalOpen(false);
     setProductSearch('');
   };
@@ -310,7 +314,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
       {isProductModalOpen && (
         <ProductSelectionModal
           products={products}
-          selectedProductIds={items.map(i => i.productId)}
+          initialItems={items.map(i => ({ productId: i.productId, quantity: i.quantity }))}
           onClose={() => setIsProductModalOpen(false)}
           onConfirm={handleAddProducts}
         />
@@ -319,29 +323,43 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
   );
 }
 
-function ProductSelectionModal({ products, selectedProductIds, onClose, onConfirm }: { products: Product[], selectedProductIds: string[], onClose: () => void, onConfirm: (products: Product[]) => void }) {
+function ProductSelectionModal({
+  products,
+  initialItems,
+  onClose,
+  onConfirm
+}: {
+  products: Product[];
+  initialItems: { productId: string; quantity: number }[];
+  onClose: () => void;
+  onConfirm: (items: { product: Product; quantity: number }[]) => void;
+}) {
   const [search, setSearch] = React.useState('');
-  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set(selectedProductIds));
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set(initialItems.map(i => i.productId)));
+  const [quantities, setQuantities] = React.useState<Record<string, number>>(() => {
+    const q: Record<string, number> = {};
+    initialItems.forEach(i => q[i.productId] = i.quantity);
+    return q;
+  });
 
   const filteredProducts = products.filter(p => 
     p.name.toLowerCase().includes(search.toLowerCase()) || 
     p.internalSku.toLowerCase().includes(search.toLowerCase())
   );
 
-  const toggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
-  };
-
   const handleConfirm = () => {
-    onConfirm(products.filter(p => selectedIds.has(p.id)));
+    const result = products
+      .filter(p => selectedIds.has(p.id))
+      .map(p => ({
+        product: p,
+        quantity: quantities[p.id] || 1
+      }));
+    onConfirm(result);
   };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-      <div className="flex h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className="flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-xl font-black text-slate-900">Chọn sản phẩm</h2>
           <button onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
@@ -360,7 +378,7 @@ function ProductSelectionModal({ products, selectedProductIds, onClose, onConfir
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50">
           {filteredProducts.length === 0 ? (
             <div className="py-12 text-center text-slate-500">Không tìm thấy sản phẩm phù hợp</div>
           ) : (
@@ -368,18 +386,60 @@ function ProductSelectionModal({ products, selectedProductIds, onClose, onConfir
               {filteredProducts.map(p => (
                 <div
                   key={p.id}
-                  onClick={() => toggleSelect(p.id)}
-                  className={`flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition ${selectedIds.has(p.id) ? 'border-cyan-500 bg-cyan-50/50' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                  className={`flex items-center gap-4 rounded-xl border-2 p-4 transition ${selectedIds.has(p.id) ? 'border-cyan-500 bg-cyan-50/30 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
                 >
-                  <div className={`flex h-6 w-6 items-center justify-center rounded-md border-2 transition ${selectedIds.has(p.id) ? 'border-cyan-500 bg-cyan-500' : 'border-slate-300 bg-white'}`}>
+                  <div
+                    className={`flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded-md border-2 transition ${selectedIds.has(p.id) ? 'border-cyan-500 bg-cyan-500' : 'border-slate-300 bg-white'}`}
+                    onClick={() => {
+                      const next = new Set(selectedIds);
+                      if (next.has(p.id)) {
+                        next.delete(p.id);
+                      } else {
+                        next.add(p.id);
+                        if (!quantities[p.id]) {
+                          setQuantities(prev => ({ ...prev, [p.id]: 1 }));
+                        }
+                      }
+                      setSelectedIds(next);
+                    }}
+                  >
                     {selectedIds.has(p.id) && <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100">
-                    <Package className="h-6 w-6 text-slate-400" />
+                  <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 border border-slate-200">
+                    <Package className="h-7 w-7 text-slate-400" />
                   </div>
-                  <div>
-                    <div className="font-bold text-slate-900">{p.name}</div>
-                    <div className="text-sm text-slate-500">Mã: {p.internalSku} • Tồn kho: {p.totalStock}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-900 truncate">{p.name}</div>
+                    <div className="text-sm text-slate-500 mt-0.5">Mã: {p.internalSku}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                    <div className="text-sm font-semibold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
+                      Tồn kho: <span className={`ml-1 ${p.totalStock > 0 ? "text-emerald-600 font-bold" : "text-red-500 font-bold"}`}>{p.totalStock}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-slate-600">SL chuyển:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max={p.totalStock > 0 ? p.totalStock : undefined}
+                        value={quantities[p.id] || ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          setQuantities(prev => ({ ...prev, [p.id]: isNaN(val) ? 0 : val }));
+                          if (val > 0) {
+                            const next = new Set(selectedIds);
+                            next.add(p.id);
+                            setSelectedIds(next);
+                          } else if (val === 0 || isNaN(val)) {
+                            const next = new Set(selectedIds);
+                            next.delete(p.id);
+                            setSelectedIds(next);
+                          }
+                        }}
+                        className="w-24 rounded-lg border-2 border-slate-200 px-3 py-1.5 text-right font-bold text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+                        placeholder="0"
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -387,12 +447,12 @@ function ProductSelectionModal({ products, selectedProductIds, onClose, onConfir
           )}
         </div>
         <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
-          <div className="text-sm font-bold text-slate-700">Đã chọn: <span className="text-cyan-600">{selectedIds.size}</span> sản phẩm</div>
+          <div className="text-sm font-bold text-slate-700">Đã chọn: <span className="text-cyan-600 text-lg">{selectedIds.size}</span> sản phẩm</div>
           <div className="flex gap-3">
-            <button onClick={onClose} className="rounded-xl border border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-100">
+            <button onClick={onClose} className="rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 font-bold text-slate-600 transition hover:bg-slate-50">
               Hủy
             </button>
-            <button onClick={handleConfirm} className="rounded-xl bg-cyan-600 px-5 py-2.5 font-bold text-white hover:bg-cyan-700">
+            <button onClick={handleConfirm} className="rounded-xl bg-cyan-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700">
               Xác nhận
             </button>
           </div>
