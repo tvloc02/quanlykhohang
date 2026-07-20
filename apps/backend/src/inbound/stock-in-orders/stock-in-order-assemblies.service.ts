@@ -151,83 +151,89 @@ export class StockInOrderAssembliesService {
   }
 
   async createStandalone(dto: CreateStandaloneAssemblyDto, user?: UserContext) {
-    const assembledProduct = await this.productRepo.findOneBy({ id: dto.assembledProductId });
-    if (!assembledProduct) {
-      throw new NotFoundException('Sản phẩm lắp ráp không tồn tại');
-    }
-
-    const assemblyCode = await this.generateAssemblyCode();
-    const assembly = this.assemblyRepo.create({
-      assemblyCode,
-      assembledProduct,
-      warehouseCode: dto.warehouseCode?.trim() || 'DEFAULT',
-      quantity: Math.max(0, toNumber(dto.assembledQty)),
-      barcode: dto.barcode?.trim() || undefined,
-      note: dto.note?.trim() || undefined,
-      status: 'COMPLETED',
-      details: [],
-    });
-
-    if (assembly.quantity <= 0) {
-      throw new BadRequestException('Số lượng sản phẩm lắp ráp phải lớn hơn 0');
-    }
-
-    if (!dto.components?.length) {
-      throw new BadRequestException('Phải chọn ít nhất một thành phần để lắp ráp');
-    }
-
-    for (const component of dto.components) {
-      const product = await this.productRepo.findOneBy({ id: component.productId });
-      if (!product) {
-        throw new BadRequestException('Thành phần lắp ráp không hợp lệ');
-      }
-      const usedQty = Math.max(0, toNumber(component.usedQty));
-      if (usedQty <= 0) {
-        throw new BadRequestException('Số lượng thành phần phải lớn hơn 0');
+    try {
+      const assembledProduct = await this.productRepo.findOneBy({ id: dto.assembledProductId });
+      if (!assembledProduct) {
+        throw new NotFoundException('Sản phẩm lắp ráp không tồn tại');
       }
 
-      if (component.sourceOrderDetailId) {
-        const orderDetail = await this.orderDetailRepo.findOne({
-          where: { id: component.sourceOrderDetailId as any }
-        });
-        if (orderDetail) {
-          (orderDetail as any).producedQty = toNumber((orderDetail as any).producedQty) + usedQty;
-          await this.orderDetailRepo.save(orderDetail);
+      const assemblyCode = await this.generateAssemblyCode();
+      const assembly = this.assemblyRepo.create({
+        assemblyCode,
+        assembledProduct,
+        warehouseCode: dto.warehouseCode?.trim() || 'DEFAULT',
+        quantity: Math.max(0, toNumber(dto.assembledQty)),
+        barcode: dto.barcode?.trim() || undefined,
+        note: dto.note?.trim() || undefined,
+        status: 'COMPLETED',
+        details: [],
+      });
+
+      if (assembly.quantity <= 0) {
+        throw new BadRequestException('Số lượng sản phẩm lắp ráp phải lớn hơn 0');
+      }
+
+      if (!dto.components?.length) {
+        throw new BadRequestException('Phải chọn ít nhất một thành phần để lắp ráp');
+      }
+
+      for (const component of dto.components) {
+        const product = await this.productRepo.findOneBy({ id: component.productId });
+        if (!product) {
+          throw new BadRequestException('Thành phần lắp ráp không hợp lệ');
         }
+        const usedQty = Math.max(0, toNumber(component.usedQty));
+        if (usedQty <= 0) {
+          throw new BadRequestException('Số lượng thành phần phải lớn hơn 0');
+        }
+
+        if (component.sourceOrderDetailId) {
+          const orderDetail = await this.orderDetailRepo.findOne({
+            where: { id: component.sourceOrderDetailId as any }
+          });
+          if (orderDetail) {
+            await this.orderDetailRepo.query(
+              'UPDATE stock_in_order_details SET distributedQty = COALESCE(distributedQty, 0) + ?, producedQty = COALESCE(producedQty, 0) + ? WHERE id = ?',
+              [usedQty, usedQty, orderDetail.id]
+            );
+          }
+        }
+
+        assembly.details.push(
+          this.detailRepo.create({
+            assembly,
+            componentProduct: product,
+            usedQty,
+            warehouseCode: component.warehouseCode || undefined,
+          }),
+        );
       }
 
-      assembly.details.push(
-        this.detailRepo.create({
-          assembly,
-          componentProduct: product,
-          usedQty,
-          warehouseCode: component.warehouseCode || undefined,
-        }),
-      );
+      const savedAssembly = await this.assemblyRepo.save(assembly);
+
+      for (const detail of savedAssembly.details) {
+        await this.adjustInventory(detail.componentProduct.id, detail.warehouseCode || savedAssembly.warehouseCode || 'DEFAULT', -detail.usedQty);
+      }
+      await this.adjustInventory(savedAssembly.assembledProduct.id, savedAssembly.warehouseCode || 'DEFAULT', savedAssembly.quantity);
+
+      await this.auditLogService.append({
+        actorId: user?.id,
+        actorEmail: user?.email,
+        action: 'assembly.create',
+        resource: 'standalone-assembly',
+        resourceId: savedAssembly.id,
+        metadata: {
+          assemblyCode: savedAssembly.assemblyCode,
+          assembledProductId: assembledProduct.id,
+          quantity: savedAssembly.quantity,
+          barcode: savedAssembly.barcode,
+        },
+      });
+
+      return this.serializeAssembly(await this.findAssemblyEntity(savedAssembly.id), true);
+    } catch (e: any) {
+      throw new BadRequestException('STANDALONE_ERR: ' + e.message);
     }
-
-    const savedAssembly = await this.assemblyRepo.save(assembly);
-
-    for (const detail of savedAssembly.details) {
-      await this.adjustInventory(detail.componentProduct.id, detail.warehouseCode || savedAssembly.warehouseCode || 'DEFAULT', -detail.usedQty);
-    }
-    await this.adjustInventory(savedAssembly.assembledProduct.id, savedAssembly.warehouseCode || 'DEFAULT', savedAssembly.quantity);
-
-    await this.auditLogService.append({
-      actorId: user?.id,
-      actorEmail: user?.email,
-      action: 'assembly.create',
-      resource: 'standalone-assembly',
-      resourceId: savedAssembly.id,
-      metadata: {
-        assemblyCode: savedAssembly.assemblyCode,
-        assembledProductId: assembledProduct.id,
-        quantity: savedAssembly.quantity,
-        barcode: savedAssembly.barcode,
-      },
-    });
-
-    return this.serializeAssembly(await this.findAssemblyEntity(savedAssembly.id), true);
   }
 
   async recount(id: string, dto: RecountAssemblyDto, user?: UserContext) {
@@ -297,9 +303,16 @@ export class StockInOrderAssembliesService {
     });
 
     if (existing) {
-      existing.totalPhysical += qtyChange;
-      existing.available = Math.max(existing.totalPhysical - existing.allocated, 0);
-      await this.balanceRepo.save(existing);
+      const newTotalPhysical = existing.totalPhysical + qtyChange;
+      const newAvailable = Math.max(newTotalPhysical - existing.allocated, 0);
+      
+      await this.balanceRepo.query(
+        'UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?',
+        [newTotalPhysical, newAvailable, existing.id]
+      );
+      
+      existing.totalPhysical = newTotalPhysical;
+      existing.available = newAvailable;
       return existing;
     }
 

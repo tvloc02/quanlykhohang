@@ -383,7 +383,7 @@ export default function StockInOrdersPage() {
 
       if (!ordersResponse.ok) {
         const data = await ordersResponse.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách phiếu nhập kho');
+        throw new Error(data?.message || 'Không tải được danh sách lệnh nhập kho');
       }
       if (!purchaseOrdersResponse.ok) {
         const data = await purchaseOrdersResponse.json().catch(() => null);
@@ -398,7 +398,7 @@ export default function StockInOrdersPage() {
       setPurchaseOrders(purchaseOrdersData);
       setUsers(Array.isArray(usersData) ? usersData : usersData.data || []);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tải dữ liệu phiếu nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tải dữ liệu lệnh nhập kho' });
     } finally {
       setLoading(false);
     }
@@ -518,7 +518,7 @@ export default function StockInOrdersPage() {
     if (usedPurchaseOrderIds.has(autoOpenSourcePurchaseOrderId)) {
       const existingOrder = orders.find(o => o.sourcePurchaseOrderId === autoOpenSourcePurchaseOrderId);
       if (existingOrder) {
-        setToast({ type: 'error', message: 'Đã có Phiếu nhập kho cho đơn mua hàng này' });
+        setToast({ type: 'error', message: 'Đã có Lệnh nhập kho cho đơn mua hàng này' });
         setSelectedId(existingOrder.id);
         window.history.replaceState({}, document.title);
       }
@@ -546,7 +546,7 @@ export default function StockInOrdersPage() {
   const createFromPurchaseOrder = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!createForm.sourceId) {
-      setToast({ type: 'error', message: 'Hãy chọn một đơn mua hàng để tạo phiếu nhập kho' });
+      setToast({ type: 'error', message: 'Hãy chọn một đơn mua hàng để tạo lệnh nhập kho' });
       return;
     }
 
@@ -566,7 +566,7 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tạo được phiếu nhập kho');
+        throw new Error(data?.message || 'Không tạo được lệnh nhập kho');
       }
 
       const created = (await response.json()) as StockInOrder;
@@ -575,7 +575,7 @@ export default function StockInOrdersPage() {
       await loadData();
       setSelectedId(created.id);
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tạo phiếu nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tạo lệnh nhập kho' });
     } finally {
       setSaving(false);
     }
@@ -599,7 +599,7 @@ export default function StockInOrdersPage() {
     setSaving(true);
     try {
       const payload = {
-        currentStepUserEmail: draft.currentStepUserEmail || undefined,
+        currentStepUserEmail: users.filter((u: any) => selectedStaffIds.includes(u.id)).map((u: any) => u.email).join(',') || undefined,
         note: draft.note || undefined,
         status: draft.status || selectedOrder.status,
         details: selectedOrder.details.map((detail) => {
@@ -622,13 +622,13 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không lưu được phiếu nhập kho');
+        throw new Error(data?.message || 'Không lưu được lệnh nhập kho');
       }
 
       setToast({ type: 'success', message: 'Đã lưu thay đổi' });
       await loadData();
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi lưu phiếu nhập kho' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi lưu lệnh nhập kho' });
     } finally {
       setSaving(false);
     }
@@ -639,7 +639,7 @@ export default function StockInOrdersPage() {
     setSaving(true);
     try {
       const payload = {
-        currentStepUserEmail: draft.currentStepUserEmail || undefined,
+        currentStepUserEmail: users.filter((u: any) => selectedStaffIds.includes(u.id)).map((u: any) => u.email).join(',') || undefined,
         note: draft.note || undefined,
         status: draft.status || selectedOrder.status,
         details: selectedOrder.details.map((detail) => {
@@ -701,7 +701,7 @@ export default function StockInOrdersPage() {
     setSaving(true);
     try {
       const payload = {
-        currentStepUserEmail: draft.currentStepUserEmail || undefined,
+        currentStepUserEmail: users.filter((u: any) => selectedStaffIds.includes(u.id)).map((u: any) => u.email).join(',') || undefined,
         note: draft.note || undefined,
         status: draft.status || selectedOrder.status,
         details: selectedOrder.details.map((detail) => {
@@ -736,10 +736,10 @@ export default function StockInOrdersPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không duyệt được phiếu nhập kho');
+        throw new Error(data?.message || 'Không duyệt được lệnh nhập kho');
       }
 
-      setToast({ type: 'success', message: 'Đã duyệt phiếu nhập kho' });
+      setToast({ type: 'success', message: 'Đã duyệt lệnh nhập kho' });
       await loadData();
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi duyệt phiếu' });
@@ -757,9 +757,9 @@ export default function StockInOrdersPage() {
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không xóa được phiếu nhập kho');
+        throw new Error(data?.message || 'Không xóa được lệnh nhập kho');
       }
-      setToast({ type: 'success', message: 'Đã xóa phiếu nhập kho.' });
+      setToast({ type: 'success', message: 'Đã xóa lệnh nhập kho.' });
       closeModal();
       await loadData();
     } catch (error) {
@@ -792,7 +792,7 @@ export default function StockInOrdersPage() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Phiếu nhập kho</h1>
+          <h1 className="text-2xl font-black text-slate-900">Lệnh nhập kho</h1>
         </div>
         <button
           type="button"
@@ -800,13 +800,13 @@ export default function StockInOrdersPage() {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Tạo phiếu nhập kho
+          Tạo lệnh nhập kho
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{orders.length} TỔNG PHIẾU</p>
+          <p className="text-lg font-bold text-white uppercase">{orders.length} TỔNG LỆNH</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
           <p className="text-lg font-bold text-white uppercase">{draftCount} NHÁP</p>
@@ -827,7 +827,7 @@ export default function StockInOrdersPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-              placeholder="Tìm theo mã phiếu, nguồn, nhà cung cấp, diễn giải..."
+              placeholder="Tìm theo mã lệnh, nguồn, nhà cung cấp, diễn giải..."
             />
           </div>
           <select
@@ -885,7 +885,7 @@ export default function StockInOrdersPage() {
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
                 </th>
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã Phiếu</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã Lệnh</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày tạo</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nguồn PO</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
@@ -901,13 +901,13 @@ export default function StockInOrdersPage() {
               {loading ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Đang tải danh sách phiếu nhập kho...
+                    Đang tải danh sách lệnh nhập kho...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có phiếu nhập kho phù hợp.
+                    Chưa có lệnh nhập kho phù hợp.
                   </td>
                 </tr>
               ) : (
@@ -1049,7 +1049,7 @@ export default function StockInOrdersPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-slate-900">
-                    Chi tiết Phiếu Nhập Kho {selectedOrder.orderCode}
+                    Chi tiết Lệnh Nhập Kho {selectedOrder.orderCode}
                   </h3>
                   <p className="text-sm font-medium text-slate-500">
                     Từ đơn mua hàng: {selectedOrder.sourcePurchaseOrderNo || '-'}
@@ -1234,14 +1234,14 @@ export default function StockInOrdersPage() {
 
               <div className="w-[420px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto flex flex-col">
                 <div className="flex flex-col h-full p-6">
-                  <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Phiếu Nhập Kho</h3>
+                  <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Lệnh Nhập Kho</h3>
                   <div className="space-y-6 flex-1">
                     <div>
-                      <label className="mb-2 block text-sm font-bold text-slate-700">Mã phiếu nhập kho</label>
+                      <label className="mb-2 block text-sm font-bold text-slate-700">Mã lệnh nhập kho</label>
                       <input type="text" value={draft.orderCode || ''} onChange={(e) => setDraft((current) => ({ ...current, orderCode: e.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái phiếu</label>
+                      <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái lệnh</label>
                       <select
                         value={draft.status || 'DRAFT'}
                         onChange={(e) => setDraft((current) => ({ ...current, status: e.target.value }))}
@@ -1266,10 +1266,51 @@ export default function StockInOrdersPage() {
                       </label>
                       <input type="datetime-local" value={draft.expectedDate || ''} onChange={(e) => setDraft((current) => ({ ...current, expectedDate: e.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-bold text-slate-700">Người đang xử lý</label>
-                      <input type="text" value={draft.currentStepUserEmail || ''} onChange={(event) => setDraft((current) => ({ ...current, currentStepUserEmail: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" placeholder="Email người xử lý (tùy chọn)..." />
-                    </div>
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col min-h-[250px] max-h-[300px]">
+                            <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
+                              <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
+                                Nhân viên kho
+                              </p>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer text-indigo-700 font-bold hover:text-indigo-800">
+                                <input 
+                                  type="checkbox" 
+                                  onChange={(e) => {
+                                    const eligible = users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff'));
+                                    if (e.target.checked) setSelectedStaffIds(eligible.map((u: any) => u.id));
+                                    else setSelectedStaffIds([]);
+                                  }} 
+                                  checked={
+                                    selectedStaffIds.length > 0 && 
+                                    selectedStaffIds.length === users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length
+                                  } 
+                                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600" 
+                                />
+                                Chọn tất cả
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 flex-1 overflow-y-auto pr-2">
+                              {users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u: any) => (
+                                <label key={u.id} className="flex cursor-pointer hover:border-indigo-400 items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 transition shadow-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedStaffIds.includes(u.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
+                                      else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
+                                    }}
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
+                                  />
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
+                                    {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
+                                  </div>
+                                </label>
+                              ))}
+                              {users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length === 0 && (
+                                 <p className="text-sm text-slate-500 italic mt-4 text-center">Không có nhân viên kho nào</p>
+                              )}
+                            </div>
+                          </div>
                     <div>
                       <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
                       <textarea value={draft.note || ''} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))} rows={3} className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 resize-none" placeholder="Ví dụ: Kiểm tra kỹ tem mác..." />
@@ -1279,8 +1320,8 @@ export default function StockInOrdersPage() {
 
                 <div className="border-t border-slate-200 p-6 bg-white shrink-0 flex flex-col gap-3">
                   {selectedOrder.status === 'READY' && (
-                    <button type="button" onClick={async () => { if (window.confirm('Bạn có chắc chắn muốn duyệt phiếu nhập kho này?')) { await completeOrder(); } }} disabled={saving} className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
-                      Duyệt phiếu nhập kho
+                    <button type="button" onClick={async () => { if (window.confirm('Bạn có chắc chắn muốn duyệt lệnh nhập kho này?')) { await completeOrder(); } }} disabled={saving} className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
+                      Duyệt lệnh nhập kho
                     </button>
                   )}
 
@@ -1288,8 +1329,11 @@ export default function StockInOrdersPage() {
                     <button type="button" onClick={() => { setTimeout(() => { window.print(); }, 100); }} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
                       <Printer className="h-4 w-4" /> In
                     </button>
-                    <button type="button" onClick={saveOrder} disabled={saving || selectedOrder.status === 'COMPLETED'} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60">
-                      Lưu
+                    <button type="button" onClick={() => { setDraft(d => ({...d, status: 'DRAFT'})); saveOrder(); }} disabled={saving || selectedOrder.status === 'COMPLETED'} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
+                      Lưu nháp
+                    </button>
+                    <button type="button" onClick={() => { setDraft(d => ({...d, status: 'READY'})); saveOrder(); }} disabled={saving || selectedOrder.status === 'COMPLETED'} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a165] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b08e56] disabled:opacity-60">
+                      Cập nhật & Giao việc
                     </button>
                   </div>
                 </div>
@@ -1327,7 +1371,7 @@ export default function StockInOrdersPage() {
                       </div>
                       <div>
                         <h3 className="text-lg font-black text-slate-900">
-                          Tạo Phiếu Nhập Kho
+                          Tạo Lệnh Nhập Kho
                         </h3>
                         <p className="text-sm font-medium text-slate-500">
                           Ghi nhận hàng hóa đã nhận vào kho.
@@ -1505,14 +1549,14 @@ export default function StockInOrdersPage() {
 
                     <div className="w-[420px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto flex flex-col">
                       <div className="flex flex-col h-full p-6">
-                        <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Phiếu Nhập Kho</h3>
+                        <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Lệnh Nhập Kho</h3>
                         <div className="space-y-6 flex-1">
                           <div>
-                            <label className="mb-2 block text-sm font-bold text-slate-700">Mã phiếu nhập kho</label>
+                            <label className="mb-2 block text-sm font-bold text-slate-700">Mã lệnh nhập kho</label>
                             <input type="text" value={createForm.orderCode} onChange={(e) => setCreateForm((current) => ({ ...current, orderCode: e.target.value }))} placeholder="Để trống để tự động tạo..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
                           </div>
                           <div>
-                            <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái phiếu</label>
+                            <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái lệnh</label>
                             <select value={createForm.status} onChange={(e) => setCreateForm((current) => ({ ...current, status: e.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500">
                               <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
                               <option value="READY">Tạo mới (Sẵn sàng duyệt)</option>
@@ -1521,24 +1565,75 @@ export default function StockInOrdersPage() {
                           <div>
                             <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
                               <Calendar className="h-4 w-4 text-cyan-600" />
-                              Thời gian nhập kho
+                              Thời gian nhập kho (Dự kiến)
                             </label>
                             <input type="datetime-local" value={createForm.expectedDate} onChange={(e) => setCreateForm((current) => ({ ...current, expectedDate: e.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
                           </div>
                           <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
-                            <textarea value={createForm.note} onChange={(event) => setCreateForm((current) => ({ ...current, note: event.target.value }))} rows={3} placeholder="Ví dụ: Kiểm tra kỹ tem mác..." className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 resize-none" />
+                            <textarea value={createForm.note} onChange={(event) => setCreateForm((current) => ({ ...current, note: event.target.value }))} rows={2} placeholder="Ví dụ: Kiểm tra kỹ tem mác..." className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 resize-none" />
+                          </div>
+
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col min-h-[250px] max-h-[300px]">
+                            <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
+                              <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
+                                Nhân viên kho
+                              </p>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer text-indigo-700 font-bold hover:text-indigo-800">
+                                <input 
+                                  type="checkbox" 
+                                  onChange={(e) => {
+                                    const eligible = users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff'));
+                                    if (e.target.checked) setSelectedStaffIds(eligible.map((u: any) => u.id));
+                                    else setSelectedStaffIds([]);
+                                  }} 
+                                  checked={
+                                    selectedStaffIds.length > 0 && 
+                                    selectedStaffIds.length === users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length
+                                  } 
+                                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600" 
+                                />
+                                Chọn tất cả
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 flex-1 overflow-y-auto pr-2">
+                              {users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u: any) => (
+                                <label key={u.id} className="flex cursor-pointer hover:border-indigo-400 items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 transition shadow-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedStaffIds.includes(u.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
+                                      else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
+                                    }}
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
+                                  />
+                                  <div className="flex-1">
+                                    <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
+                                    {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
+                                  </div>
+                                </label>
+                              ))}
+                              {users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length === 0 && (
+                                 <p className="text-sm text-slate-500 italic mt-4 text-center">Không có nhân viên kho nào</p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="border-t border-slate-200 p-6 bg-white shrink-0 flex items-center gap-3">
-                        <button type="button" onClick={closeModal} className="flex-1 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+                      <div className="border-t border-slate-200 p-6 bg-white shrink-0 flex flex-col gap-3">
+                        <button type="button" onClick={closeModal} className="w-full inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
                           Đóng
                         </button>
-                        <button type="submit" disabled={saving || !createForm.sourceId} className="flex-1 inline-flex items-center justify-center rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60">
-                          Tạo phiếu
-                        </button>
+                        <div className="flex gap-3">
+                          <button type="button" onClick={() => { setCreateForm(c => ({...c, status: 'DRAFT'})); setTimeout(() => document.getElementById('create-order-form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })), 50); }} disabled={saving || !createForm.sourceId} className="flex-1 inline-flex items-center justify-center rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60">
+                            Lưu nháp
+                          </button>
+                          <button type="submit" onClick={() => setCreateForm(c => ({...c, status: 'READY'}))} disabled={saving || !createForm.sourceId} className="flex-1 inline-flex items-center justify-center rounded-xl bg-[#c5a165] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b08e56] disabled:opacity-60">
+                            Tạo mới & Giao việc
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1554,7 +1649,7 @@ export default function StockInOrdersPage() {
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div>
-                <h3 className="text-lg font-black text-slate-900">Xóa phiếu nhập kho</h3>
+                <h3 className="text-lg font-black text-slate-900">Xóa lệnh nhập kho</h3>
                 <p className="text-sm font-medium text-slate-500">Thao tác này không thể hoàn tác.</p>
               </div>
               <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
@@ -1563,14 +1658,14 @@ export default function StockInOrdersPage() {
             </div>
             <div className="px-6 py-5">
               <p className="text-sm text-slate-700">
-                Bạn có chắc muốn xóa phiếu nhập kho <span className="font-black text-slate-950">{deleteTarget.orderCode}</span> không?
+                Bạn có chắc muốn xóa lệnh nhập kho <span className="font-black text-slate-950">{deleteTarget.orderCode}</span> không?
               </p>
               <div className="mt-8 flex justify-end gap-3">
                 <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50">
                   Hủy
                 </button>
                 <button type="button" onClick={handleDelete} disabled={saving} className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-60">
-                  {saving ? 'Đang xóa...' : 'Xóa phiếu'}
+                  {saving ? 'Đang xóa...' : 'Xóa lệnh'}
                 </button>
               </div>
             </div>
