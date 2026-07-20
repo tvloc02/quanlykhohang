@@ -40,6 +40,11 @@ import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalP
 import ScannerPage from './features/scanner/ScannerPage';
 import SupplierProducts from './features/supplier-products/SupplierProducts';
 
+import Shop from './features/shop/Shop';
+import Customers from './features/customers/Customers';
+import BarcodeMappingsPage from './features/inbound/pages/BarcodeMappingsPage';
+import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
+
 function getStoredUser() {
   try {
     return JSON.parse(localStorage.getItem('user') || '{}') as { role?: string };
@@ -101,8 +106,6 @@ function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allo
   }
   return <>{children}</>;
 }
-
-import Shop from './features/shop/Shop';
 
 function App() {
   return (
