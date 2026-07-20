@@ -39,4 +39,18 @@ export class BarcodeMappingService {
       relations: ['product'],
     });
   }
+
+  async findAll() {
+    return this.mappingRepo.find({
+      relations: ['product'],
+      order: { id: 'DESC' },
+    });
+  }
+
+  async remove(id: string) {
+    const mapping = await this.mappingRepo.findOneBy({ id });
+    if (!mapping) throw new NotFoundException('Liên kết mã vạch không tồn tại');
+    await this.mappingRepo.remove(mapping);
+    return { deleted: true };
+  }
 }

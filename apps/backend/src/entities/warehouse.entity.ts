@@ -26,6 +26,9 @@ export class Warehouse {
   @Column('enum', { enum: ['active', 'inactive'], default: 'active' })
   status: 'active' | 'inactive';
 
+  @Column({ type: 'boolean', default: false })
+  isFrozen: boolean;
+
   @Column({ type: 'text', nullable: true })
   managerIds: string;
 

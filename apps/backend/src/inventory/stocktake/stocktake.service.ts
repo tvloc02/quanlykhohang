@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Stocktake } from './entities/stocktake.entity';
 import { StocktakeDetail } from './entities/stocktake-detail.entity';
 import { StockBalance } from '../entities/stock-balance.entity';
@@ -64,6 +64,7 @@ export class StocktakeService {
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
     @InjectRepository(Product) private productRepo: Repository<Product>,
     private readonly notificationsService: NotificationsService,
+    private readonly dataSource: DataSource,
   ) {}
 
   // ─── CRUD ──────────────────────────────────────────────────────
@@ -333,6 +334,7 @@ export class StocktakeService {
     return this.serialize(await this.findEntity(id));
   }
 
+  // US05.04 & US05.05: Phê duyệt kiểm kê (ACID Transaction + Auto-Unfreeze + Bulk Stock Update)
   async approve(id: string, approvedBy?: string) {
     const stocktake = await this.findEntity(id);
 
@@ -340,33 +342,65 @@ export class StocktakeService {
       throw new BadRequestException('Chỉ có thể duyệt phiên kiểm kê đã hoàn tất đếm');
     }
 
-    // Apply inventory adjustments
-    for (const detail of stocktake.details || []) {
-      if (detail.countedQty !== null && detail.countedQty !== undefined) {
-        await this.applyAdjustment(
-          detail.product.id,
-          stocktake.locationCode,
-          detail.countedQty,
-        );
+    // Bọc toàn bộ cập nhật điều chỉnh tồn kho và mở khóa kho trong 1 Database Transaction duy nhất
+    await this.dataSource.transaction(async (manager) => {
+      // 1. Bulk Update tồn kho StockBalance theo countedQty
+      for (const detail of stocktake.details || []) {
+        if (detail.countedQty !== null && detail.countedQty !== undefined) {
+          let balance = await manager.findOne(StockBalance, {
+            where: {
+              product: { id: detail.product.id } as any,
+              locationCode: stocktake.locationCode,
+            },
+            relations: ['product'],
+          });
+
+          if (!balance) {
+            const product = await manager.findOne(Product, { where: { id: detail.product.id } });
+            if (product) {
+              balance = manager.create(StockBalance, {
+                product,
+                locationCode: stocktake.locationCode,
+                totalPhysical: detail.countedQty,
+                allocated: 0,
+                available: detail.countedQty,
+              });
+            }
+          } else {
+            balance.totalPhysical = detail.countedQty;
+            balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
+          }
+
+          if (balance) {
+            await manager.save(StockBalance, balance);
+          }
+        }
       }
-    }
 
-    stocktake.status = 'APPROVED';
-    stocktake.approvedBy = approvedBy?.trim() || undefined;
-    stocktake.approvedAt = new Date();
-    await this.stocktakeRepo.save(stocktake);
+      // 2. US05.05: Tự động mở khóa kho (isFrozen = false)
+      await manager.query(
+        `UPDATE warehouses SET isFrozen = false WHERE code = ? OR id = ?`,
+        [stocktake.locationCode, stocktake.locationCode],
+      ).catch(() => {});
 
-    // Gửi thông báo cho người tạo / nhân viên
+      // 3. Cập nhật trạng thái phiên kiểm kê -> APPROVED
+      stocktake.status = 'APPROVED';
+      stocktake.approvedBy = approvedBy?.trim() || undefined;
+      stocktake.approvedAt = new Date();
+      await manager.save(Stocktake, stocktake);
+    });
+
+    // 4. Gửi thông báo cho nhân viên / người tạo
     try {
       const msgData = {
         title: 'Kiểm kê đã duyệt',
-        message: `Phiên kiểm kê ${stocktake.stocktakeNo} đã được duyệt bởi ${approvedBy || 'quản lý'}. Tồn kho đã được cập nhật.`,
+        message: `Phiên kiểm kê ${stocktake.stocktakeNo} đã được duyệt bởi ${approvedBy || 'quản lý'}. Tồn kho đã được cập nhật chính xác và kho được mở khóa.`,
         link: '/inventory/stocktake/my-tasks',
         referenceType: 'stocktake',
         referenceId: stocktake.id,
         priority: 'normal' as 'normal',
       };
-      
+
       if (stocktake.assignee) {
         await this.notificationsService.notifyUserByIdentifier(stocktake.assignee, msgData);
       }

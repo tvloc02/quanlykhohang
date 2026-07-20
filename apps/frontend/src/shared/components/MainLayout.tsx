@@ -36,7 +36,10 @@ import {
   AlertCircle,
   ScanLine,
   ListChecks,
+  AlertOctagon,
+  Lock,
 } from 'lucide-react';
+import SyncStatusBanner from '../../features/offline-sync/components/SyncStatusBanner';
 
 // --- SIDEBAR COMPONENT ---
 
@@ -72,6 +75,7 @@ const menuItems = [
       { icon: ClipboardList, label: 'Đề nghị nhập kho hàng trả lại', path: '/inbound/return-requests' },
       { icon: FileText, label: 'Lệnh nhập kho', path: '/inbound/stock-in-orders' },
       { icon: Package, label: 'Nhập kho', path: '/inbound/stock-in' },
+      { icon: ScanLine, label: 'Ánh xạ mã vạch', path: '/inbound/barcode-mappings' },
     ]
   },
   {
@@ -126,6 +130,9 @@ const menuItems = [
     allowedRoles: ['manager', 'staff'],
     children: [
       { icon: FileText, label: 'Tạo phiên kiểm kê', path: '/inventory/stocktake/create', allowedRoles: ['admin', 'manager'] },
+      { icon: ScanLine, label: 'Quét đếm kiểm kê', path: '/inventory/stocktake/scan' },
+      { icon: CheckCheck, label: 'Đối chiếu & Phê duyệt', path: '/inventory/stocktake/adjustment-approval', allowedRoles: ['admin', 'manager'] },
+      { icon: Lock, label: 'Đóng băng kho', path: '/inventory/stocktake/freeze', allowedRoles: ['admin', 'manager'] },
       { icon: ClipboardList, label: 'Yêu cầu từ NV', path: '/inventory/stocktake/requests', allowedRoles: ['admin', 'manager'] },
       { icon: Package, label: 'Danh sách phiên kiểm kê', path: '/inventory/stocktake', allowedRoles: ['admin', 'manager'] },
       { icon: Package, label: 'Kiểm kê của tôi', path: '/inventory/stocktake/my-tasks', allowedRoles: ['staff'] },
@@ -144,6 +151,7 @@ const menuItems = [
       { icon: Mail, label: 'Cấu hình mail', path: '/settings/mail' },
       { icon: Cpu, label: 'Cấu hình AI', path: '/settings/ai' },
       { icon: Package, label: 'Cấu hình bán hàng', path: '/settings/store' },
+      { icon: AlertOctagon, label: 'Xung đột đồng bộ', path: '/sync-conflicts', allowedRoles: ['admin', 'manager'] },
     ],
   },
   { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null, allowedRoles: ['admin'] },
@@ -471,6 +479,8 @@ export default function MainLayout({ children }: LayoutProps) {
 
       {/* Main Content Area */}
       <div className={`${sidebarOpen ? 'ml-80' : 'ml-20'} flex-1 flex flex-col overflow-hidden lg:ml-0 transition-all duration-300`}>
+        {/* Sync Status Banner */}
+        <SyncStatusBanner />
 
         {/* Header */}
         <header

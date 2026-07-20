@@ -41,4 +41,14 @@ export class WarehousesController {
     await this.warehousesService.remove(id, actor);
     return { success: true };
   }
+
+  @Post(':id/freeze')
+  async freeze(@Param('id') id: string) {
+    return this.warehousesService.freezeWarehouse(id);
+  }
+
+  @Post(':id/unfreeze')
+  async unfreeze(@Param('id') id: string) {
+    return this.warehousesService.unfreezeWarehouse(id);
+  }
 }
