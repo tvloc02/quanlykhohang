@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Package, TrendingUp, Shield, Zap, LogIn, UserPlus,
-    ArrowRight, CheckCircle, Star, Target, AlertTriangle,
+    ArrowRight, CheckCircle, Star, Target, AlertTriangle, User, LogOut,
     ShieldCheck, Server, Database, Globe, ChevronRight, BarChart3
 } from 'lucide-react';
 
@@ -27,6 +27,14 @@ const Button = ({ children, variant = 'primary', size = 'md', className = '', on
 
 export default function Home() {
     const navigate = useNavigate();
+    const userStr = localStorage.getItem('user');
+    const user = userStr ? JSON.parse(userStr) : null;
+
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.reload();
+    };
 
     const features = [
         {
@@ -137,12 +145,28 @@ export default function Home() {
                         <a href="#" className="text-sm font-medium text-slate-600 hover:text-cyan-600 transition">Tính năng</a>
                         <a href="#" className="text-sm font-medium text-slate-600 hover:text-cyan-600 transition">Tài liệu API</a>
                         <div className="h-4 w-[1px] bg-slate-200 mx-2"></div>
-                        <Button onClick={() => navigate('/login')} variant="ghost" className="text-slate-700">
-                            Đăng nhập
-                        </Button>
-                        <Button onClick={() => navigate('/signup')} variant="primary" className="shadow-cyan-600/20">
-                            Dùng thử miễn phí
-                        </Button>
+                        {user ? (
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-700">
+                                        <User size={16} />
+                                    </div>
+                                    <span className="text-sm font-semibold text-slate-800">{user.fullName || user.email?.split('@')[0]}</span>
+                                </div>
+                                <Button onClick={handleLogout} variant="ghost" size="sm" className="text-slate-600 hover:text-red-600 hover:bg-red-50">
+                                    Đăng xuất
+                                </Button>
+                            </div>
+                        ) : (
+                            <>
+                                <Button onClick={() => navigate('/login')} variant="ghost" className="text-slate-700">
+                                    Đăng nhập
+                                </Button>
+                                <Button onClick={() => navigate('/signup')} variant="primary" className="shadow-cyan-600/20">
+                                    Dùng thử miễn phí
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </div>
             </nav>

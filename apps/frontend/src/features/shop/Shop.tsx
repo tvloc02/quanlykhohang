@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, ShoppingCart, Star, ChevronRight, Search } from 'lucide-react';
+import { Package, ShoppingCart, Star, Search, User, LogOut, X, CheckCircle2 } from 'lucide-react';
 
 const Button = ({ children, variant = 'primary', size = 'md', className = '', onClick }: any) => {
     const baseStyle = "inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 active:scale-95";
@@ -36,6 +36,84 @@ export default function Shop() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [cart, setCart] = useState<{product: Product, quantity: number}[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
+
+  const userStr = localStorage.getItem('user');
+  const user = userStr ? JSON.parse(userStr) : null;
+
+  const handleLogout = () => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      navigate('/');
+  };
+
+  const handleAddToCart = (product: Product) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.product.id === product.id);
+      if (existing) {
+        return prev.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+      }
+      return [...prev, { product, quantity: 1 }];
+    });
+    setToast({ type: 'success', message: `Đã thêm ${product.name} vào giỏ hàng!` });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+
+  const handleCheckout = async () => {
+    if (cart.length === 0) return;
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setToast({ type: 'error', message: 'Vui lòng đăng nhập để thanh toán.' });
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    setIsCheckingOut(true);
+    try {
+      const payload = {
+        orderNo: `SO-${Date.now().toString().slice(-6)}`,
+        customer: user?.fullName || user?.email?.split('@')[0] || 'Khách vãng lai',
+        dueDate: new Date().toISOString().split('T')[0],
+        status: 'pending',
+        items: cart.length,
+        description: 'Đơn đặt hàng từ trang Bán hàng (Shop)',
+        details: cart.map(item => ({
+          productId: item.product.id,
+          requiredQty: item.quantity,
+          unitPrice: item.product.price || 0,
+        }))
+      };
+
+      const response = await fetch('http://localhost:3000/api/outbounds', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error('Lỗi đặt hàng. Vui lòng thử lại.');
+      }
+
+      setCart([]);
+      setShowCart(false);
+      setToast({ type: 'success', message: 'Thanh toán thành công! Đơn hàng đã được gửi tới kho.' });
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi hệ thống.' });
+    } finally {
+      setIsCheckingOut(false);
+      setTimeout(() => setToast(null), 4000);
+    }
+  };
+
+  const cartTotal = cart.reduce((total, item) => total + ((item.product.price || 0) * item.quantity), 0);
 
   // Lấy cấu hình bán hàng (Mock)
   const storeConfig = {
@@ -84,15 +162,94 @@ export default function Shop() {
                   <a href="#" className="text-sm font-medium text-slate-600 hover:text-cyan-600 transition">Tính năng</a>
                   <a href="#" className="text-sm font-medium text-slate-600 hover:text-cyan-600 transition">Tài liệu API</a>
                   <div className="h-4 w-[1px] bg-slate-200 mx-2"></div>
-                  <Button onClick={() => navigate('/login')} variant="ghost" className="text-slate-700">
-                      Đăng nhập
-                  </Button>
-                  <Button onClick={() => navigate('/signup')} variant="primary" className="shadow-cyan-600/20">
-                      Dùng thử miễn phí
-                  </Button>
+                  
+                  <div className="relative">
+                    <button onClick={() => setShowCart(!showCart)} className="relative p-2 text-slate-600 hover:text-cyan-600 transition-colors">
+                      <ShoppingCart size={22} />
+                      {cart.length > 0 && (
+                        <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                          {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                        </span>
+                      )}
+                    </button>
+                    
+                    {/* Cart Dropdown */}
+                    {showCart && (
+                      <div className="absolute right-0 mt-4 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 p-4 z-50">
+                        <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+                          <h3 className="font-bold text-slate-800">Giỏ hàng</h3>
+                          <button onClick={() => setShowCart(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+                        </div>
+                        
+                        {cart.length === 0 ? (
+                          <div className="text-center py-6 text-slate-500 text-sm">
+                            Giỏ hàng của bạn đang trống
+                          </div>
+                        ) : (
+                          <>
+                            <div className="max-h-60 overflow-y-auto space-y-3 mb-4">
+                              {cart.map((item, index) => (
+                                <div key={index} className="flex justify-between items-center gap-3">
+                                  <div className="flex-1 truncate">
+                                    <p className="text-sm font-semibold text-slate-800 truncate">{item.product.name}</p>
+                                    <p className="text-xs text-slate-500">{item.quantity} x {item.product.price?.toLocaleString()}đ</p>
+                                  </div>
+                                  <span className="font-bold text-cyan-600 text-sm">
+                                    {((item.product.price || 0) * item.quantity).toLocaleString()}đ
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="pt-3 border-t border-slate-100 mb-4 flex justify-between items-center font-black text-slate-800">
+                              <span>Tổng cộng:</span>
+                              <span className="text-cyan-600 text-lg">{cartTotal.toLocaleString()}đ</span>
+                            </div>
+                            <Button onClick={handleCheckout} disabled={isCheckingOut} className="w-full">
+                              {isCheckingOut ? 'Đang xử lý...' : 'Thanh toán ngay'}
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {user ? (
+                      <div className="flex items-center gap-4 ml-2">
+                          <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-700">
+                                  <User size={16} />
+                              </div>
+                              <span className="text-sm font-semibold text-slate-800">{user.fullName || user.email?.split('@')[0]}</span>
+                          </div>
+                          <Button onClick={handleLogout} variant="ghost" size="sm" className="text-slate-600 hover:text-red-600 hover:bg-red-50">
+                              Đăng xuất
+                          </Button>
+                      </div>
+                  ) : (
+                      <>
+                          <Button onClick={() => navigate('/login')} variant="ghost" className="text-slate-700 ml-2">
+                              Đăng nhập
+                          </Button>
+                          <Button onClick={() => navigate('/signup')} variant="primary" className="shadow-cyan-600/20">
+                              Đăng ký
+                          </Button>
+                      </>
+                  )}
               </div>
           </div>
       </nav>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-white border border-slate-100 shadow-xl shadow-cyan-900/10 rounded-xl py-3 px-4 flex items-center gap-3 animate-bounce">
+          {toast.type === 'success' ? (
+            <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-600">
+              <CheckCircle2 size={18} />
+            </div>
+          ) : null}
+          <span className="font-semibold text-slate-700">{toast.message}</span>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="pt-24 pb-20 lg:pt-32 lg:pb-32 bg-slate-50 min-h-[80vh]">
@@ -150,10 +307,13 @@ export default function Shop() {
                       {[1,2,3,4,5].map(i => <Star key={i} size={14} className="fill-amber-400 text-amber-400" />)}
                       <span className="text-xs text-slate-500 ml-1">(12)</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-black text-cyan-600">Liên hệ</span>
-                      <button className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-cyan-600 hover:text-white transition-colors">
-                        <ShoppingCart size={16} />
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-lg font-black text-cyan-600">{product.price ? product.price.toLocaleString() + 'đ' : 'Liên hệ'}</span>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleAddToCart(product); }}
+                        className="h-9 w-9 rounded-full bg-cyan-50 flex items-center justify-center text-cyan-600 hover:bg-cyan-600 hover:text-white transition-all shadow-sm"
+                      >
+                        <ShoppingCart size={18} />
                       </button>
                     </div>
                   </div>

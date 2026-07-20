@@ -107,9 +107,9 @@ export class AuthService {
         email: payload.email,
         password: undefined,
         fullName: payload.name || payload.email.split('@')[0],
-        role: 'staff',
+        role: 'customer',
       });
-      return this.login({ ...createdUser, role: 'staff' });
+      return this.login({ ...createdUser, role: 'customer' });
     }
 
     return this.login(existingUser);
