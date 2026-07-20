@@ -39,8 +39,6 @@ import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDet
 import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalPage';
 import ScannerPage from './features/scanner/ScannerPage';
 import SupplierProducts from './features/supplier-products/SupplierProducts';
-import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
-import BarcodeMappingsPage from './features/inbound/pages/BarcodeMappingsPage';
 
 function getStoredUser() {
   try {
@@ -190,6 +188,16 @@ function App() {
             <RoleRoute allowedRoles={['admin']}>
               <MainLayout>
                 <Personnel />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/customers"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+              <MainLayout>
+                <Customers />
               </MainLayout>
             </RoleRoute>
           }

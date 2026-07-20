@@ -34,4 +34,7 @@ export class Product extends BaseEntity {
 
   @Column({ type: 'int', default: 0 })
   minimumStock: number;
+
+  @Column({ type: 'boolean', default: false })
+  isVisible: boolean;
 }

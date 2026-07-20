@@ -97,7 +97,7 @@ export default function Login() {
             }
 
             const data = await responsePayload.json();
-            const loggedInUser = data.user || { email: 'google-user@example.com', role: 'staff' };
+            const loggedInUser = data.user || { email: 'google-user@example.com', role: 'customer' };
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('user', JSON.stringify(loggedInUser));
 
@@ -108,7 +108,13 @@ export default function Login() {
             });
 
             window.setTimeout(() => {
-              navigate(loggedInUser.role === 'supplier' ? '/supplier-portal' : '/dashboard');
+              if (loggedInUser.role === 'customer' || loggedInUser.role === 'CUSTOMER') {
+                navigate('/shop');
+              } else if (loggedInUser.role === 'supplier' || loggedInUser.role === 'SUPPLIER') {
+                navigate('/supplier-portal');
+              } else {
+                navigate('/dashboard');
+              }
             }, 700);
           } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Đăng nhập Google thất bại';
@@ -207,10 +213,10 @@ export default function Login() {
       });
 
       window.setTimeout(() => {
-        if (loggedInUser.role === 'supplier') {
+        if (loggedInUser.role === 'supplier' || loggedInUser.role === 'SUPPLIER') {
           navigate('/supplier-portal');
-        } else if (loggedInUser.role === 'customer') {
-          navigate('/customer-portal');
+        } else if (loggedInUser.role === 'customer' || loggedInUser.role === 'CUSTOMER') {
+          navigate('/shop');
         } else {
           navigate('/dashboard');
         }

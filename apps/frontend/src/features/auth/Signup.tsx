@@ -1,7 +1,28 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, AlertCircle, LogIn } from 'lucide-react';
-import Button from '../../shared/components/Button';
+import { AlertCircle, ArrowLeft, BarChart3, CheckCircle2, Lock, Mail, Package, ShieldCheck, User, X, Zap } from 'lucide-react';
+
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (config: { client_id: string; callback: (response: { credential?: string }) => void }) => void;
+          renderButton: (element: HTMLElement, options: { theme: 'outline' | 'filled_blue' | 'filled_black'; size: 'large' | 'medium' | 'small'; text?: string; shape?: string; logo_alignment?: string }) => void;
+          prompt: () => void;
+          disableAutoSelect?: () => void;
+        };
+      };
+    };
+  }
+}
+
+type Toast = {
+  type: 'success' | 'error';
+  title: string;
+  message: string;
+};
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -10,34 +31,176 @@ export default function Signup() {
     email: '',
     password: '',
     confirmPassword: '',
+    role: 'customer',
   });
-  const [error, setError] = React.useState('');
+  const [toast, setToast] = React.useState<Toast | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [googleReady, setGoogleReady] = React.useState(false);
+  const hiddenGoogleRef = React.useRef<HTMLDivElement | null>(null);
+
+  const handleGoogleSignIn = () => {
+    if (!googleReady) {
+      setToast({ type: 'error', title: 'Google chưa sẵn sàng', message: 'Vui lòng đợi thư viện Google tải xong hoặc refresh trang' });
+      return;
+    }
+    if (window.google?.accounts?.id) {
+      try { window.google.accounts.id.prompt(); } catch (e) { setToast({ type: 'error', title: 'Lỗi Google', message: 'Không thể mở popup Google' }); }
+    } else {
+      setToast({ type: 'error', title: 'Lỗi Google', message: 'Google Identity chưa sẵn sàng' });
+    }
+  };
+
+
+
+  React.useEffect(() => {
+    if (!toast) return;
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, 4000);
+
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+    React.useEffect(() => {
+    const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '1079704717727-3c0hitge9b5sniqh619lassoc0pd9262.apps.googleusercontent.com';
+
+    const initializeGoogle = () => {
+      console.debug('initializeGoogle called, clientId=', clientId);
+      if (!clientId) {
+        setToast({ type: 'error', title: 'Cấu hình Google', message: 'VITE_GOOGLE_CLIENT_ID chưa được thiết lập' });
+        return;
+      }
+
+      if (!window.google?.accounts?.id) {
+        console.warn('window.google.accounts.id not available');
+        return;
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response: { credential?: string }) => {
+          if (!response.credential) return;
+
+          setLoading(true);
+          try {
+            const responsePayload = await fetch('http://localhost:3000/api/auth/google-login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ credential: response.credential }),
+            });
+
+            if (!responsePayload.ok) {
+              const errorData = await responsePayload.json().catch(() => null);
+              throw new Error(errorData?.message || 'Đăng nhập Google thất bại');
+            }
+
+            const data = await responsePayload.json();
+            const loggedInUser = data.user || { email: 'google-user@example.com', role: 'customer' };
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('user', JSON.stringify(loggedInUser));
+
+            setToast({
+              type: 'success',
+              title: 'Đăng nhập thành công',
+              message: 'Đang chuyển bạn vào trang của bạn.',
+            });
+
+            window.setTimeout(() => {
+              if (loggedInUser.role === 'customer' || loggedInUser.role === 'CUSTOMER') {
+                navigate('/shop');
+              } else if (loggedInUser.role === 'supplier' || loggedInUser.role === 'SUPPLIER') {
+                navigate('/supplier-portal');
+              } else {
+                navigate('/dashboard');
+              }
+            }, 700);
+          } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Đăng nhập Google thất bại';
+            setToast({
+              type: 'error',
+              title: 'Đăng nhập thất bại',
+              message: errorMessage,
+            });
+          } finally {
+            setLoading(false);
+          }
+        },
+      });
+
+      // Render official Google button into hidden container to be used as an invisible click target
+      try {
+        if (hiddenGoogleRef.current && window.google?.accounts?.id?.renderButton) {
+          window.google.accounts.id.renderButton(hiddenGoogleRef.current, {
+            theme: 'outline',
+            size: 'large',
+            shape: 'rectangular'
+          });
+          // Remove default margin to ensure it covers our button
+          Object.assign(hiddenGoogleRef.current.style, {
+            display: 'flex',
+            justifyContent: 'center',
+            width: '100%',
+          });
+        }
+      } catch (e) {
+        console.warn('renderButton failed', e);
+      }
+
+      setGoogleReady(true);
+      console.debug('Google Identity initialized');
+    };
+
+    if (window.google?.accounts?.id) {
+      initializeGoogle();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      console.debug('gsi script loaded');
+      initializeGoogle();
+    };
+    script.onerror = (e) => {
+      console.error('Failed to load Google Identity script', e);
+      setToast({ type: 'error', title: 'Lỗi tải Google', message: 'Không thể tải client Google' });
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, [navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError('');
+    setToast(null);
 
     // Validate
     if (!formData.fullName.trim()) {
-      setError('Vui lòng nhập tên đầy đủ');
+      setToast({ type: 'error', title: 'Thiếu thông tin', message: 'Vui lòng nhập tên đầy đủ' });
       return;
     }
     if (!formData.email.trim()) {
-      setError('Vui lòng nhập email');
+      setToast({ type: 'error', title: 'Thiếu thông tin', message: 'Vui lòng nhập email' });
       return;
     }
     if (formData.password.length < 6) {
-      setError('Mật khẩu phải ít nhất 6 ký tự');
+      setToast({ type: 'error', title: 'Mật khẩu yếu', message: 'Mật khẩu phải ít nhất 6 ký tự' });
       return;
     }
     if (formData.password !== formData.confirmPassword) {
-      setError('Mật khẩu không khớp');
+      setToast({ type: 'error', title: 'Lỗi xác nhận', message: 'Mật khẩu không khớp' });
       return;
     }
 
@@ -53,6 +216,7 @@ export default function Signup() {
           email: formData.email,
           password: formData.password,
           fullName: formData.fullName,
+          role: formData.role,
         }),
       });
 
@@ -61,145 +225,276 @@ export default function Signup() {
         throw new Error(errorData.message || 'Đăng ký thất bại');
       }
 
-      // Đăng ký thành công - chuyển đến đăng nhập
-      navigate('/login', { replace: true });
+      setToast({
+        type: 'success',
+        title: 'Đăng ký thành công',
+        message: 'Tài khoản của bạn đã được tạo. Vui lòng đăng nhập.',
+      });
+
+      window.setTimeout(() => {
+        navigate('/login', { replace: true });
+      }, 1500);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Đăng ký thất bại';
-      setError(errorMessage);
+      setToast({
+        type: 'error',
+        title: 'Đăng ký thất bại',
+        message: errorMessage,
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary to-primary-light flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-block bg-white rounded-lg p-4 mb-6">
-            <div className="text-primary font-bold text-4xl">WMS</div>
+    <div className="relative min-h-screen bg-cyan-50 flex items-center justify-center p-4 md:p-8 font-sans">
+
+      {/* Nút quay lại trang chủ ở góc trái */}
+      <button
+        onClick={() => navigate('/')}
+        className="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/60 backdrop-blur-md border border-cyan-200 text-cyan-800 font-bold shadow-sm hover:shadow-md hover:bg-white transition-all z-20"
+      >
+        <ArrowLeft size={18} />
+        Trang chủ
+      </button>
+
+      {toast && (
+        <div className="fixed right-5 top-5 z-50 w-[calc(100%-2.5rem)] max-w-sm">
+          <div
+            className={`flex items-start gap-3 rounded-2xl border bg-white p-4 shadow-2xl shadow-slate-900/10 ${toast.type === 'success' ? 'border-cyan-100' : 'border-red-100'
+              }`}
+          >
+            <div
+              className={`mt-0.5 rounded-full p-1 ${toast.type === 'success' ? 'bg-cyan-50 text-cyan-600' : 'bg-red-50 text-red-600'
+                }`}
+            >
+              {toast.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-slate-900">{toast.title}</p>
+              <p className="mt-1 text-sm leading-5 text-slate-600">{toast.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              aria-label="Đóng thông báo"
+            >
+              <X size={16} />
+            </button>
           </div>
-          <h1 className="text-3xl font-bold text-white">Smart WMS</h1>
-          <p className="text-white opacity-75 mt-2">Hệ thống quản lý kho thông minh</p>
+        </div>
+      )}
+
+      <div className="w-full max-w-[1340px] bg-white rounded-[28px] shadow-2xl shadow-cyan-900/15 overflow-hidden flex flex-col lg:flex-row min-h-[730px]">
+        
+        {/* Left side styling - similar to Login */}
+        <div className="w-full lg:w-[47%] bg-gradient-to-br from-cyan-700 to-cyan-500 text-white p-10 lg:p-14 flex flex-col relative overflow-hidden">
+          <div className="absolute bottom-0 left-0 w-full opacity-20 pointer-events-none">
+            <svg viewBox="0 0 1440 320" className="w-full h-auto">
+              <path fill="#ffffff" fillOpacity="1" d="M0,160L48,176C96,192,192,224,288,213.3C384,203,480,149,576,144C672,139,768,181,864,197.3C960,213,1056,203,1152,176C1248,149,1344,107,1392,85.3L1440,64L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+            </svg>
+          </div>
+          <div className="absolute bottom-0 left-0 w-full opacity-10 pointer-events-none">
+            <svg viewBox="0 0 1440 320" className="w-full h-auto">
+              <path fill="#ffffff" fillOpacity="1" d="M0,256L48,229.3C96,203,192,149,288,154.7C384,160,480,224,576,218.7C672,213,768,139,864,128C960,117,1056,171,1152,197.3C1248,224,1344,224,1392,224L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+            </svg>
+          </div>
+
+          <div className="relative z-10 flex-1 flex flex-col">
+            <div className="flex items-center gap-2 mb-12">
+              <Package size={28} className="text-cyan-300" />
+              <span className="font-bold text-xl tracking-wide">Smart WMS</span>
+            </div>
+
+            <h1 className="text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+              Bắt đầu<br />hành trình mới
+            </h1>
+            <p className="text-cyan-50/80 text-lg mb-12 leading-relaxed max-w-md">
+              Tham gia cùng hàng ngàn doanh nghiệp đã và đang tối ưu hóa chuỗi cung ứng của họ. Đăng ký để trở thành Đối tác và Khách hàng ngay hôm nay.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4 lg:gap-6 mb-auto">
+              <div className="p-5 rounded-2xl bg-white/5 border border-white/10 transition-all duration-200 cursor-default hover:bg-white/10">
+                <Zap className="w-6 h-6 text-cyan-300 mb-3" />
+                <h3 className="font-semibold text-lg mb-1">Khởi tạo nhanh</h3>
+                <p className="text-sm text-cyan-50/70">Thiết lập tài khoản và dùng thử ngay</p>
+              </div>
+              <div className="p-5 rounded-2xl bg-white/5 border border-white/10 transition-all duration-200 cursor-default hover:bg-white/10">
+                <BarChart3 className="w-6 h-6 text-cyan-300 mb-3" />
+                <h3 className="font-semibold text-lg mb-1">Trải nghiệm vượt trội</h3>
+                <p className="text-sm text-cyan-50/70">Mọi tính năng được cung cấp hoàn chỉnh</p>
+              </div>
+            </div>
+
+            <div className="mt-12 text-sm text-cyan-50/60 pt-8 border-t border-white/10">
+              © 2026 Smart WMS. Developed by Tech Team.
+            </div>
+          </div>
         </div>
 
-        {/* Signup Card */}
-        <div className="bg-white rounded-lg shadow-2xl p-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Tạo tài khoản</h2>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center gap-3">
-              <AlertCircle size={20} className="text-red-600" />
-              <p className="text-red-700 text-sm">{error}</p>
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="signup-fullname" className="block text-sm font-medium text-gray-900 mb-2">
-                Tên đầy đủ
-              </label>
-              <input
-                id="signup-fullname"
-                type="text"
-                name="fullName"
-                value={formData.fullName}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Nhập tên của bạn"
-                required
-              />
+        {/* Right side form */}
+        <div className="w-full lg:w-[53%] p-10 lg:p-20 flex flex-col relative bg-white">
+          <div className="max-w-[500px] w-full mx-auto flex-1 flex flex-col justify-center">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-cyan-50 text-cyan-700 mb-7">
+                <User size={32} />
+              </div>
+              <h2 className="text-4xl font-bold text-slate-800 mb-4">Tạo tài khoản mới</h2>
+              <p className="text-base text-slate-500">Vui lòng điền thông tin bên dưới để đăng ký</p>
             </div>
 
-            <div>
-              <label htmlFor="signup-email" className="block text-sm font-medium text-gray-900 mb-2">
-                Email
-              </label>
-              <input
-                id="signup-email"
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="your@email.com"
-                required
-              />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Loại tài khoản</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <label className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all ${formData.role === 'customer' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                    <input type="radio" name="role" value="customer" checked={formData.role === 'customer'} onChange={handleChange} className="hidden" />
+                    <span className="font-semibold">Khách hàng</span>
+                  </label>
+                  <label className={`flex items-center justify-center p-3 rounded-xl border-2 cursor-pointer transition-all ${formData.role === 'supplier' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                    <input type="radio" name="role" value="supplier" checked={formData.role === 'supplier'} onChange={handleChange} className="hidden" />
+                    <span className="font-semibold">Nhà cung cấp</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="signup-fullname" className="block text-sm font-semibold text-slate-700 mb-2">Họ và tên</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <input
+                    id="signup-fullname"
+                    name="fullName"
+                    type="text"
+                    value={formData.fullName}
+                    onChange={handleChange}
+                    className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-colors"
+                    placeholder="Nhập họ và tên đầy đủ"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="signup-email" className="block text-sm font-semibold text-slate-700 mb-2">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <input
+                    id="signup-email"
+                    name="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-colors"
+                    placeholder="Nhập địa chỉ email của bạn"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="signup-password" className="block text-sm font-semibold text-slate-700 mb-2">Mật khẩu</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <input
+                    id="signup-password"
+                    name="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-colors"
+                    placeholder="Mật khẩu (ít nhất 6 ký tự)"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="signup-confirm" className="block text-sm font-semibold text-slate-700 mb-2">Xác nhận mật khẩu</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <input
+                    id="signup-confirm"
+                    name="confirmPassword"
+                    type="password"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-colors"
+                    placeholder="Nhập lại mật khẩu"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1 pb-2">
+                <input
+                  type="checkbox"
+                  id="terms"
+                  name="terms"
+                  className="w-4 h-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                  required
+                />
+                <label htmlFor="terms" className="text-sm text-slate-600 cursor-pointer">
+                  Tôi đồng ý với <a href="#" className="font-semibold text-cyan-700 hover:underline">Điều khoản dịch vụ</a>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 px-4 bg-cyan-600 hover:bg-cyan-700 text-white rounded-2xl font-semibold transition-colors duration-200 shadow-lg shadow-cyan-600/25 mt-2 flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {loading ? 'Đang xử lý...' : 'Đăng ký ngay'}
+              </button>
+            </form>
+
+            <div className="my-8 flex items-center gap-4">
+              <div className="flex-1 h-px bg-slate-200"></div>
+              <span className="text-sm text-slate-400 font-medium">Hoặc đăng ký với tài khoản</span>
+              <div className="flex-1 h-px bg-slate-200"></div>
             </div>
 
-            <div>
-              <label htmlFor="signup-password" className="block text-sm font-medium text-gray-900 mb-2">
-                Mật khẩu
-              </label>
-              <input
-                id="signup-password"
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Nhập mật khẩu"
-                required
-              />
+            <div className="relative w-full h-[56px] flex items-center justify-center cursor-pointer group">
+              {/* Nút custom hiển thị cho người dùng */}
+              <button
+                type="button"
+                disabled={!googleReady}
+                className="absolute inset-0 w-full h-full bg-white border border-slate-200 group-hover:bg-slate-50 text-slate-700 rounded-2xl font-semibold transition-colors duration-200 shadow-sm flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                <svg viewBox="0 0 24 24" className="w-6 h-6">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                </svg>
+                {googleReady ? 'Đăng ký bằng Google' : 'Đang tải Google...'}
+              </button>
+
+              {/* Nút Google official ẩn ở trên cùng để hứng click (mở popup thật) */}
+              <div className="absolute inset-0 z-10 flex items-center justify-center overflow-hidden rounded-2xl opacity-0.011 cursor-pointer">
+                {/* Scale to ensure the iframe covers the entire button area */}
+                <div
+                  className="w-full h-full flex items-center justify-center"
+                  style={{ transform: 'scale(1.5)', opacity: 0.01 }}
+                >
+                  <div ref={hiddenGoogleRef as any} className="w-full flex justify-center cursor-pointer" />
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label htmlFor="signup-confirm-password" className="block text-sm font-medium text-gray-900 mb-2">
-                Xác nhận mật khẩu
-              </label>
-              <input
-                id="signup-confirm-password"
-                type="password"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Xác nhận mật khẩu"
-                required
-              />
-            </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="terms"
-                name="terms"
-                className="w-4 h-4 text-primary rounded"
-                required
-              />
-              <label htmlFor="terms" className="text-sm text-gray-700">
-                Tôi đồng ý với <a href="#" className="text-primary hover:underline">Điều khoản dịch vụ</a>
-              </label>
-            </div>
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2"
-            >
-              <UserPlus size={20} />
-              {loading ? 'Đang tạo tài khoản...' : 'Đăng ký'}
-            </Button>
-          </form>
-
-          {/* Login Link */}
-          <div className="mt-6 pt-6 border-t border-gray-200 text-center">
-            <p className="text-gray-600 text-sm">
+            <p className="text-center text-sm text-slate-500 mt-8">
               Đã có tài khoản?{' '}
               <button
                 onClick={() => navigate('/login')}
-                className="text-primary font-semibold hover:underline"
+                className="font-semibold text-cyan-700 hover:underline cursor-pointer"
               >
                 Đăng nhập ngay
               </button>
             </p>
           </div>
         </div>
-
-        {/* Footer */}
-        <p className="text-center text-white opacity-75 text-sm mt-8">
-          © 2026 Smart WMS. Tất cả quyền được bảo lưu.
-        </p>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  HeartHandshake,
   Home,
   Layers,
   Package,
@@ -34,6 +35,7 @@ const menuItems = [
   { icon: Warehouse, label: 'Tồn kho', path: '/inventory', badge: null },
   { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null },
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null },
+  { icon: HeartHandshake, label: 'Khách hàng', path: '/customers', badge: null },
   { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null },
   { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null },
   { icon: Settings, label: 'Cài đặt', path: '/settings', badge: null },
@@ -56,7 +58,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const allowedMenuItems = menuItems.filter((item) => {
     // Admin: Chỉ Trang chủ, Nhân sự, Nhật ký hoạt động, Cài đặt
     if (userRole === 'admin') {
-      return ['/dashboard', '/personnel', '/audit-log', '/settings'].includes(item.path);
+      return ['/dashboard', '/personnel', '/customers', '/audit-log', '/settings'].includes(item.path);
     }
     // Manager & Staff: Tất cả NGOẠI TRỪ Nhân sự, Nhật ký hoạt động, Cài đặt
     return !['/personnel', '/audit-log', '/settings'].includes(item.path);
