@@ -174,6 +174,7 @@ export default function CategoryManagement() {
     const [exportMode, setExportMode] = React.useState<ExportMode>('sheets');
     const [importSummary, setImportSummary] = React.useState<ImportSummary | null>(null);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const [productCounts, setProductCounts] = React.useState<Record<string, number>>({});
 
     React.useEffect(() => {
         saveStoredCatalogCategories(categories);
@@ -182,7 +183,6 @@ export default function CategoryManagement() {
 
     React.useEffect(() => {
         let cancelled = false;
-
         const loadCategories = async () => {
             try {
                 const response = await fetch(`${API_BASE_URL}/categories`, { headers: authHeaders() });
@@ -195,18 +195,40 @@ export default function CategoryManagement() {
                 if (!cancelled && backendCategories.length > 0) {
                     setCategories(backendCategories);
                     saveStoredCatalogCategories(backendCategories);
-                    return;
                 }
             } catch {
                 // Fall back to local storage below.
             }
 
             if (!cancelled) {
-                setCategories(getStoredCatalogCategories());
+                setCategories((prev) => prev.length ? prev : getStoredCatalogCategories());
             }
         };
 
+        const loadProducts = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
+                if (res.ok) {
+                    const prods = await res.json();
+                    if (Array.isArray(prods)) {
+                        const counts: Record<string, number> = {};
+                        prods.forEach((p: any) => {
+                            const catName = typeof p.category === 'string' ? p.category : p.category?.name;
+                            const catId = p.category?.id;
+                            if (catId) counts[catId] = (counts[catId] || 0) + 1;
+                            if (catName) {
+                                const k = catName.trim().toLowerCase();
+                                counts[k] = (counts[k] || 0) + 1;
+                            }
+                        });
+                        if (!cancelled) setProductCounts(counts);
+                    }
+                }
+            } catch { }
+        };
+
         void loadCategories();
+        void loadProducts();
         return () => {
             cancelled = true;
         };
@@ -714,8 +736,8 @@ export default function CategoryManagement() {
                                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
                                         {category.name}
                                     </td>
-                                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-600">
-                                        0
+                                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-cyan-700">
+                                        {productCounts[category.id!] || productCounts[category.name.trim().toLowerCase()] || 0}
                                     </td>
                                     <td className="border-x border-slate-200 px-3 py-4 text-sm leading-6 text-slate-600">
                                         {category.description || '-'}
