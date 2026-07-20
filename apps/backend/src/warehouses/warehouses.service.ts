@@ -66,6 +66,28 @@ export class WarehousesService {
     return this.repo.findOne({ where: { code } });
   }
 
+  async isWarehouseFrozen(codeOrId: string): Promise<boolean> {
+    if (!codeOrId) return false;
+    const warehouse = await this.repo.findOne({
+      where: [{ id: codeOrId }, { code: codeOrId }],
+    });
+    return warehouse ? Boolean(warehouse.isFrozen) : false;
+  }
+
+  async freezeWarehouse(id: string) {
+    const warehouse = await this.findOneEntity(id);
+    warehouse.isFrozen = true;
+    await this.repo.save(warehouse);
+    return this.parseWarehouse(warehouse);
+  }
+
+  async unfreezeWarehouse(id: string) {
+    const warehouse = await this.findOneEntity(id);
+    warehouse.isFrozen = false;
+    await this.repo.save(warehouse);
+    return this.parseWarehouse(warehouse);
+  }
+
   async create(
     createWarehouseDto: CreateWarehouseDto,
     actor?: { id?: string; email?: string },

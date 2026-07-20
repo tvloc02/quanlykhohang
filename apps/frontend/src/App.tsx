@@ -28,6 +28,9 @@ import AssemblyPage from './features/inbound/pages/AssemblyPage';
 import ProductionPage from './features/inbound/pages/ProductionPage';
 import DistributionPage from './features/inbound/pages/DistributionPage';
 import StocktakePage from './features/inventory/pages/StocktakePage';
+import StocktakeFreezePage from './features/inventory/pages/StocktakeFreezePage';
+import StocktakeScanPage from './features/inventory/pages/StocktakeScanPage';
+import AdjustmentApprovalPage from './features/inventory/pages/AdjustmentApprovalPage';
 import TaskAssignPage from './features/outbound/pages/TaskAssignPage';
 import Outbound from './features/outbound/Outbound';
 import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
@@ -36,6 +39,8 @@ import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDet
 import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalPage';
 import ScannerPage from './features/scanner/ScannerPage';
 import SupplierProducts from './features/supplier-products/SupplierProducts';
+import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
+import BarcodeMappingsPage from './features/inbound/pages/BarcodeMappingsPage';
 
 function getStoredUser() {
   try {
@@ -286,6 +291,26 @@ function App() {
           }
         />
         <Route
+          path="/inbound/barcode-mappings"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <BarcodeMappingsPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sync-conflicts"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager']}>
+              <MainLayout>
+                <SyncConflictsPage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
           path="/outbound"
           element={
             <ProtectedRoute>
@@ -421,6 +446,36 @@ function App() {
                 <StocktakePage viewMode="my-tasks" />
               </MainLayout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake/freeze"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager']}>
+              <MainLayout>
+                <StocktakeFreezePage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake/scan"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <StocktakeScanPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stocktake/adjustment-approval"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager']}>
+              <MainLayout>
+                <AdjustmentApprovalPage />
+              </MainLayout>
+            </RoleRoute>
           }
         />
         <Route

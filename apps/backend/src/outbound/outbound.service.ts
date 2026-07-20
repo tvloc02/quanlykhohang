@@ -368,6 +368,17 @@ export class OutboundService {
 
     for (const detail of details) {
       const locCode = detail.warehouseCode || 'DEFAULT';
+
+      // US05.01: Chặn giao dịch nếu kho đang bị đóng băng để kiểm kê
+      const frozenCheck = await this.dataSource.query(
+        `SELECT isFrozen FROM warehouses WHERE code = ? OR id = ? LIMIT 1`,
+        [locCode, locCode],
+      ).catch(() => []);
+      if (frozenCheck?.[0]?.isFrozen) {
+        throw new BadRequestException(
+          `Khu vực kho "${locCode}" đang bị đóng băng để kiểm kê. Không thể tạo đơn xuất.`,
+        );
+      }
       let balance = await this.balanceRepo.findOne({
         where: { product: { id: detail.product.id } as any, locationCode: locCode },
         relations: ['product'],

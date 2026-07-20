@@ -222,6 +222,7 @@ export default function BarcodeScanner({
   const [scannedBarcode, setScannedBarcode] = useState<string>(''); // For scan mode
   const [qty, setQty] = useState(defaultQty);
   const [cameraActive, setCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
 
   // Quick Add State cho sản phẩm từ external API
   const [quickAddName, setQuickAddName] = useState('');
