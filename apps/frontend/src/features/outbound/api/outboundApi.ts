@@ -107,9 +107,14 @@ export const outboundApi = {
   },
 
   confirmOrder: async (id: string): Promise<{ order: OutboundOrder; outboxEvent: unknown; idempotentReplay: boolean }> => {
+    // Sinh Idempotency-Key (UUID v4) để đảm bảo không trùng lặp
+    const idempotencyKey = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const response = await fetch(`${API_BASE_URL}/outbounds/${encodeURIComponent(id)}/confirm`, {
       method: 'POST',
-      headers: authHeaders(),
+      headers: {
+        ...authHeaders(),
+        'idempotency-key': idempotencyKey,
+      },
     });
     return normalizeResponse<{ order: OutboundOrder; outboxEvent: unknown; idempotentReplay: boolean }>(response);
   },

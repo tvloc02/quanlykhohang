@@ -94,7 +94,8 @@ const menuItems = [
     children: [
       { icon: FileText, label: 'Đơn đặt hàng', path: '/outbound/orders' },
       { icon: ClipboardList, label: 'Phân công công việc', path: '/outbound/task-assign' },
-      { icon: CheckCheck, label: 'Lệnh xuất kho', path: '/outbound/approve' },
+      { icon: ScanLine, label: 'Lấy hàng', path: '/outbound/picking' },
+      { icon: CheckCheck, label: 'Lệnh xuất kho', path: '/outbound/approve', allowedRoles: ['admin', 'manager'] },
       { icon: Package, label: 'Phiếu xuất kho', path: '/outbound/shipping-notes' },
     ],
   },
