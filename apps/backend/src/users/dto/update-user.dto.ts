@@ -24,4 +24,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsIn(['active', 'inactive'])
   status?: 'active' | 'inactive';
+
+  @IsOptional()
+  @IsString()
+  address?: string;
 }

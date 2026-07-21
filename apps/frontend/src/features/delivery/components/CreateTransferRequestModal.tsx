@@ -60,7 +60,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
         if (usersRes.ok) {
           const users = await usersRes.json();
           // Filter managers (assuming role is manager or admin)
-          setManagers(users.filter((u: any) => u.role === 'ADMIN' || u.role === 'MANAGER'));
+          setManagers(Array.isArray(users) ? users.filter((u: any) => u.roles?.some((r: any) => ['admin', 'manager'].includes(String(r.name).toLowerCase()))) : []);
         }
       } catch (err) {
         console.error('Lỗi tải dữ liệu', err);
@@ -199,9 +199,13 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
               >
                 <option value="">-- Chọn người quản lý duyệt --</option>
                 {managers
-                  .filter(m => !sourceWarehouse || warehouses.find(w => w.code === sourceWarehouse)?.managerIds?.includes(m.id))
+                  .filter(m => {
+                    const wh = warehouses.find(w => w.code === sourceWarehouse);
+                    if (!sourceWarehouse || !wh || !wh.managerIds || wh.managerIds.length === 0) return true;
+                    return wh.managerIds.includes(m.id);
+                  })
                   .map(m => (
-                    <option key={m.id} value={m.id}>{m.fullName || m.username}</option>
+                    <option key={m.id} value={m.id}>{m.fullName || m.email || m.username || 'Quản lý'}</option>
                 ))}
               </select>
             </div>
