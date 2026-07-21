@@ -47,6 +47,7 @@ import CartCheckoutPage from './features/shop/pages/CartCheckoutPage';
 import Customers from './features/customers/Customers';
 import BarcodeMappingsPage from './features/inbound/pages/BarcodeMappingsPage';
 import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
+import ErpSyncStatusPage from './features/erp-status/pages/ErpSyncStatusPage';
 
 function getStoredUser() {
   try {
@@ -533,6 +534,16 @@ function App() {
                 <Reports />
               </MainLayout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/erp-status"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager']}>
+              <MainLayout>
+                <ErpSyncStatusPage />
+              </MainLayout>
+            </RoleRoute>
           }
         />
         <Route

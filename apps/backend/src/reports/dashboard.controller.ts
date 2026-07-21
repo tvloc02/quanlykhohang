@@ -30,4 +30,17 @@ export class DashboardController {
   getOutboundHistory(@Query() query: ReportFilterDto) {
     return this.dashboardService.getOutboundHistory(query.startDate, query.endDate);
   }
+
+  /** US 6.3 – Trend xuất nhập kho theo tuần/tháng */
+  @Get('trend')
+  getStockTrend(@Query('period') period?: string) {
+    const p = period === 'month' ? 'month' : 'week';
+    return this.dashboardService.getStockTrend(p);
+  }
+
+  /** US 6.4 – Cảnh báo tồn kho thấp */
+  @Get('alerts')
+  getLowStockAlerts() {
+    return this.dashboardService.getLowStockAlerts();
+  }
 }

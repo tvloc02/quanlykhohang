@@ -39,6 +39,7 @@ import {
   ListChecks,
   AlertOctagon,
   Lock,
+  Zap,
 } from 'lucide-react';
 import SyncStatusBanner from '../../features/offline-sync/components/SyncStatusBanner';
 
@@ -162,6 +163,7 @@ const menuItems = [
     ],
   },
   { icon: FileText, label: 'Nhật ký hoạt động', path: '/audit-log', badge: null, allowedRoles: ['admin'] },
+  { icon: Zap, label: 'Giám sát ERP Sync', path: '/erp-status', badge: null, allowedRoles: ['admin', 'manager'] },
 ];
 
 function getStoredUserRole() {

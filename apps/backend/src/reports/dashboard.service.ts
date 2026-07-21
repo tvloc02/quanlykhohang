@@ -242,4 +242,77 @@ export class DashboardService {
       })),
     }));
   }
+
+  /**
+   * US 6.3 – Trend xuất nhập tồn kho theo tuần/tháng
+   * Trả về mảng { label, inbound, outbound, available } để vẽ biểu đồ
+   */
+  async getStockTrend(period: 'week' | 'month' = 'week') {
+    const points = period === 'week' ? 8 : 6;
+    const unitDays = period === 'week' ? 7 : 30;
+    const result: Array<{ label: string; inbound: number; outbound: number; available: number }> = [];
+
+    for (let i = points - 1; i >= 0; i--) {
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() - i * unitDays);
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - unitDays);
+
+      const label = period === 'week'
+        ? `T${String(endDate.getDate()).padStart(2, '0')}/${String(endDate.getMonth() + 1).padStart(2, '0')}`
+        : `${endDate.toLocaleString('vi-VN', { month: 'short' })} ${endDate.getFullYear()}`;
+
+      const [inboundAgg, outboundAgg, availableAgg] = await Promise.all([
+        this.inboundRepo.createQueryBuilder('r')
+          .innerJoin('r.details', 'd')
+          .select('COALESCE(SUM(d.receivedQty), 0)', 'total')
+          .where('r.orderDate BETWEEN :s AND :e', { s: startDate.toISOString(), e: endDate.toISOString() })
+          .getRawOne<{ total: string }>(),
+        this.outboundRepo.createQueryBuilder('o')
+          .innerJoin('o.details', 'd')
+          .select('COALESCE(SUM(d.pickedQty), 0)', 'total')
+          .where('o.expectedDate BETWEEN :s AND :e', { s: startDate.toISOString(), e: endDate.toISOString() })
+          .getRawOne<{ total: string }>(),
+        this.stockRepo.createQueryBuilder('b')
+          .select('COALESCE(SUM(b.available), 0)', 'total')
+          .getRawOne<{ total: string }>(),
+      ]);
+
+      result.push({
+        label,
+        inbound: Number(inboundAgg?.total || 0),
+        outbound: Number(outboundAgg?.total || 0),
+        available: Number(availableAgg?.total || 0),
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * US 6.4 – Cảnh báo tồn kho thấp
+   * Trả về danh sách sản phẩm đang có available < minimumStock
+   */
+  async getLowStockAlerts() {
+    const balances = await this.stockRepo.createQueryBuilder('balance')
+      .innerJoinAndSelect('balance.product', 'product')
+      .where('balance.available < COALESCE(product.minimumStock, 0)')
+      .orderBy('balance.available', 'ASC')
+      .getMany();
+
+    return balances.map((b) => ({
+      id: b.id,
+      locationCode: b.locationCode,
+      available: b.available,
+      allocated: b.allocated,
+      product: {
+        id: b.product.id,
+        name: b.product.name,
+        internalSku: b.product.internalSku,
+        minimumStock: b.product.minimumStock,
+        unit: b.product.unit,
+      },
+      severity: b.available === 0 ? 'critical' : b.available < (b.product.minimumStock || 0) * 0.5 ? 'high' : 'medium',
+    }));
+  }
 }
