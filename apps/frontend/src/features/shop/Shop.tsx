@@ -42,11 +42,7 @@ export default function Shop() {
 
   const token = localStorage.getItem('token');
   const userStr = localStorage.getItem('user');
-<<<<<<< HEAD
   const user = (token && userStr) ? JSON.parse(userStr) : null;
-=======
-  const user = userStr ? JSON.parse(userStr) : null;
-  const token = localStorage.getItem('token');
 
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [profileForm, setProfileForm] = useState({
@@ -55,7 +51,6 @@ export default function Shop() {
     address: user?.address || ''
   });
   const [updatingAddress, setUpdatingAddress] = useState(false);
->>>>>>> 106e73923c2c22fc40123e756592163c017845ff
 
   const handleLogout = () => {
       localStorage.removeItem('token');
