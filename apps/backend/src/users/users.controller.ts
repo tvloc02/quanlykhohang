@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -30,8 +30,11 @@ export class UsersController {
   }
 
   @Put(':id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'customer')
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Req() req: any) {
+    if (req.user.role === 'customer' && req.user.id !== id) {
+      throw new ForbiddenException('Bạn chỉ có thể cập nhật thông tin của chính mình');
+    }
     return this.usersService.update(id, updateUserDto, req.user);
   }
 

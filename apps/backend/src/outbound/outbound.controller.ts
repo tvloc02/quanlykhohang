@@ -12,6 +12,16 @@ export class OutboundController {
 
   // ─── CRUD endpoints (used by frontend Outbound.tsx) ──────────
 
+  @Post('shipping-notes')
+  createShippingNote(@Body() dto: { orderIds: string[]; expectedDate?: string; description?: string; assignee?: string }) {
+    return this.service.createShippingNote(dto);
+  }
+
+  @Get('shipping-notes/all')
+  getShippingNotes() {
+    return this.service.getShippingNotes();
+  }
+
   @Get()
   findAll() {
     return this.service.findAll();

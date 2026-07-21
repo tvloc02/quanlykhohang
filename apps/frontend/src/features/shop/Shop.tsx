@@ -42,7 +42,20 @@ export default function Shop() {
 
   const token = localStorage.getItem('token');
   const userStr = localStorage.getItem('user');
+<<<<<<< HEAD
   const user = (token && userStr) ? JSON.parse(userStr) : null;
+=======
+  const user = userStr ? JSON.parse(userStr) : null;
+  const token = localStorage.getItem('token');
+
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    fullName: user?.fullName || '',
+    phone: user?.phone || '',
+    address: user?.address || ''
+  });
+  const [updatingAddress, setUpdatingAddress] = useState(false);
+>>>>>>> 106e73923c2c22fc40123e756592163c017845ff
 
   const handleLogout = () => {
       localStorage.removeItem('token');
@@ -50,71 +63,57 @@ export default function Shop() {
       navigate('/');
   };
 
+  const handleUpdateAddress = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.id) return;
+    setUpdatingAddress(true);
+    try {
+      const res = await fetch(`http://localhost:3000/api/users/${user.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profileForm),
+      });
+      if (!res.ok) throw new Error('Không thể cập nhật thông tin');
+      
+      const updatedUser = await res.json();
+      localStorage.setItem('user', JSON.stringify({ ...user, ...updatedUser }));
+      setToast({ type: 'success', message: 'Cập nhật thông tin thành công!' });
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Lỗi hệ thống' });
+      setUpdatingAddress(false);
+    }
+  };
+
   const handleAddToCart = (product: Product) => {
+    let newCart: any;
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
-        return prev.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+        newCart = prev.map(item => item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
+      } else {
+        newCart = [...prev, { product, quantity: 1 }];
       }
-      return [...prev, { product, quantity: 1 }];
+      localStorage.setItem('shop_cart', JSON.stringify(newCart));
+      return newCart;
     });
     setToast({ type: 'success', message: `Đã thêm ${product.name} vào giỏ hàng!` });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
-
-  const handleCheckout = async () => {
-    if (cart.length === 0) return;
-    
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setToast({ type: 'error', message: 'Vui lòng đăng nhập để thanh toán.' });
-      setTimeout(() => setToast(null), 3000);
-      return;
-    }
-
-    setIsCheckingOut(true);
-    try {
-      const payload = {
-        orderNo: `SO-${Date.now().toString().slice(-6)}`,
-        customer: user?.fullName || user?.email?.split('@')[0] || 'Khách vãng lai',
-        dueDate: new Date().toISOString().split('T')[0],
-        status: 'pending',
-        items: cart.length,
-        description: 'Đơn đặt hàng từ trang Bán hàng (Shop)',
-        details: cart.map(item => ({
-          productId: item.product.id,
-          requiredQty: item.quantity,
-          unitPrice: item.product.price || 0,
-        }))
-      };
-
-      const response = await fetch('http://localhost:3000/api/outbounds', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error('Lỗi đặt hàng. Vui lòng thử lại.');
+  useEffect(() => {
+    const savedCart = localStorage.getItem('shop_cart');
+    if (savedCart) {
+      try {
+        setCart(JSON.parse(savedCart));
+      } catch (e) {
+        console.error("Failed to parse cart", e);
       }
-
-      setCart([]);
-      setShowCart(false);
-      setToast({ type: 'success', message: 'Thanh toán thành công! Đơn hàng đã được gửi tới kho.' });
-    } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi hệ thống.' });
-    } finally {
-      setIsCheckingOut(false);
-      setTimeout(() => setToast(null), 4000);
     }
-  };
-
-  const cartTotal = cart.reduce((total, item) => total + ((item.product.price || 0) * item.quantity), 0);
+  }, []);
 
   // Lấy cấu hình bán hàng (Mock)
   const storeConfig = {
@@ -165,7 +164,7 @@ export default function Shop() {
                   <div className="h-4 w-[1px] bg-slate-200 mx-2"></div>
                   
                   <div className="relative">
-                    <button onClick={() => setShowCart(!showCart)} className="relative p-2 text-slate-600 hover:text-cyan-600 transition-colors">
+                    <button onClick={() => navigate('/cart')} className="relative p-2 text-slate-600 hover:text-cyan-600 transition-colors">
                       <ShoppingCart size={22} />
                       {cart.length > 0 && (
                         <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
@@ -173,54 +172,26 @@ export default function Shop() {
                         </span>
                       )}
                     </button>
-                    
-                    {/* Cart Dropdown */}
-                    {showCart && (
-                      <div className="absolute right-0 mt-4 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 p-4 z-50">
-                        <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
-                          <h3 className="font-bold text-slate-800">Giỏ hàng</h3>
-                          <button onClick={() => setShowCart(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
-                        </div>
-                        
-                        {cart.length === 0 ? (
-                          <div className="text-center py-6 text-slate-500 text-sm">
-                            Giỏ hàng của bạn đang trống
-                          </div>
-                        ) : (
-                          <>
-                            <div className="max-h-60 overflow-y-auto space-y-3 mb-4">
-                              {cart.map((item, index) => (
-                                <div key={index} className="flex justify-between items-center gap-3">
-                                  <div className="flex-1 truncate">
-                                    <p className="text-sm font-semibold text-slate-800 truncate">{item.product.name}</p>
-                                    <p className="text-xs text-slate-500">{item.quantity} x {item.product.price?.toLocaleString()}đ</p>
-                                  </div>
-                                  <span className="font-bold text-cyan-600 text-sm">
-                                    {((item.product.price || 0) * item.quantity).toLocaleString()}đ
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="pt-3 border-t border-slate-100 mb-4 flex justify-between items-center font-black text-slate-800">
-                              <span>Tổng cộng:</span>
-                              <span className="text-cyan-600 text-lg">{cartTotal.toLocaleString()}đ</span>
-                            </div>
-                            <Button onClick={handleCheckout} disabled={isCheckingOut} className="w-full">
-                              {isCheckingOut ? 'Đang xử lý...' : 'Thanh toán ngay'}
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    )}
                   </div>
 
                   {user ? (
                       <div className="flex items-center gap-4 ml-2">
-                          <div className="flex items-center gap-2">
+                          <div 
+                            className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" 
+                            onClick={() => {
+                              setProfileForm({
+                                fullName: user.fullName || '',
+                                phone: user.phone || '',
+                                address: user.address || ''
+                              });
+                              setAddressModalOpen(true);
+                            }}
+                            title="Bấm để cập nhật thông tin cá nhân"
+                          >
                               <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-700">
                                   <User size={16} />
                               </div>
-                              <span className="text-sm font-semibold text-slate-800">{user.fullName || user.email?.split('@')[0]}</span>
+                              <span className="text-sm font-semibold text-slate-800 hover:text-cyan-600 transition-colors">{user.fullName || user.email?.split('@')[0]}</span>
                           </div>
                           <Button onClick={handleLogout} variant="ghost" size="sm" className="text-slate-600 hover:text-red-600 hover:bg-red-50">
                               Đăng xuất
@@ -381,6 +352,63 @@ export default function Shop() {
               </div>
           </div>
       </footer>
+
+      {/* Address Modal */}
+      {addressModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="border-b-2 border-slate-100 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">Cập nhật thông tin cá nhân</h2>
+              <button type="button" onClick={() => setAddressModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <span className="sr-only">Đóng</span>
+                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleUpdateAddress} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Họ và tên</label>
+                <input
+                  type="text"
+                  value={profileForm.fullName}
+                  onChange={e => setProfileForm(prev => ({...prev, fullName: e.target.value}))}
+                  className="w-full h-12 rounded-xl border-2 border-slate-200 px-4 text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                  placeholder="Nhập họ và tên..."
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Số điện thoại</label>
+                <input
+                  type="text"
+                  value={profileForm.phone}
+                  onChange={e => setProfileForm(prev => ({...prev, phone: e.target.value}))}
+                  className="w-full h-12 rounded-xl border-2 border-slate-200 px-4 text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                  placeholder="Nhập số điện thoại..."
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Địa chỉ giao hàng</label>
+                <textarea
+                  value={profileForm.address}
+                  onChange={e => setProfileForm(prev => ({...prev, address: e.target.value}))}
+                  className="w-full h-24 rounded-xl border-2 border-slate-200 p-4 text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                  placeholder="Nhập địa chỉ của bạn..."
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="ghost" onClick={() => setAddressModalOpen(false)} type="button">Hủy</Button>
+                <Button type="submit" disabled={updatingAddress}>
+                  {updatingAddress ? 'Đang lưu...' : 'Lưu thông tin'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

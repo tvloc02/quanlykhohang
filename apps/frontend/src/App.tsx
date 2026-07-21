@@ -109,6 +109,12 @@ function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allo
   return <>{children}</>;
 }
 
+<<<<<<< HEAD
+=======
+import Shop from './features/shop/Shop';
+import CartCheckoutPage from './features/shop/pages/CartCheckoutPage';
+
+>>>>>>> 106e73923c2c22fc40123e756592163c017845ff
 function App() {
   return (
     <BrowserRouter>
@@ -116,6 +122,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
         <Route path="/shop" element={<Shop />} />
+        <Route path="/cart" element={<CartCheckoutPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route
