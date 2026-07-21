@@ -43,6 +43,7 @@ import ScannerPage from './features/scanner/ScannerPage';
 import SupplierProducts from './features/supplier-products/SupplierProducts';
 
 import Shop from './features/shop/Shop';
+import CartCheckoutPage from './features/shop/pages/CartCheckoutPage';
 import Customers from './features/customers/Customers';
 import BarcodeMappingsPage from './features/inbound/pages/BarcodeMappingsPage';
 import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
@@ -109,12 +110,7 @@ function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allo
   return <>{children}</>;
 }
 
-<<<<<<< HEAD
-=======
-import Shop from './features/shop/Shop';
-import CartCheckoutPage from './features/shop/pages/CartCheckoutPage';
 
->>>>>>> 106e73923c2c22fc40123e756592163c017845ff
 function App() {
   return (
     <BrowserRouter>
