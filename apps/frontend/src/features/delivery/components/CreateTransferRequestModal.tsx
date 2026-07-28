@@ -1,11 +1,100 @@
 import React from 'react';
-import { X, Plus, Trash2, Search, Package } from 'lucide-react';
+import { X, Plus, Trash2, Search, Package, ChevronDown } from 'lucide-react';
 const API_BASE_URL = 'http://localhost:3000/api';
 function authHeaders() {
   return {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${localStorage.getItem('token')}`,
   };
+}
+
+interface CustomSelectProps {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+  label?: string;
+  required?: boolean;
+}
+
+function CustomSelect({
+  value,
+  onChange,
+  options,
+  placeholder = 'Chọn...',
+  disabled,
+  className = '',
+  label,
+  required,
+}: CustomSelectProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value);
+
+  const selectBody = (
+    <div ref={containerRef} className="relative w-full">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className={`h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 pr-10 text-left text-sm font-bold text-slate-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm flex items-center justify-between cursor-pointer disabled:bg-slate-50 disabled:text-slate-400 ${className}`}
+      >
+        <span className="truncate pr-2">{selectedOption ? selectedOption.label : placeholder}</span>
+        <ChevronDown className={`h-4 w-4 text-cyan-600 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && !disabled && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border-2 border-cyan-500 bg-white p-1.5 shadow-2xl z-[9999] animate-in fade-in duration-100">
+          {options.length === 0 ? (
+            <div className="px-4 py-3 text-sm font-semibold text-slate-400 text-center">Không có lựa chọn</div>
+          ) : (
+            options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full rounded-lg px-4 py-2.5 text-left text-sm font-bold transition ${
+                  option.value === value
+                    ? 'bg-cyan-50 text-cyan-700 font-black'
+                    : 'text-slate-700 hover:bg-cyan-50/50 hover:text-cyan-600'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  if (label) {
+    return (
+      <div>
+        <label className="mb-2 block text-sm font-bold text-slate-700">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        {selectBody}
+      </div>
+    );
+  }
+
+  return selectBody;
 }
 
 type Product = {
@@ -125,7 +214,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md">
       <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div>
@@ -142,36 +231,26 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
 
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">Kho nguồn <span className="text-red-500">*</span></label>
-              <select
-                value={sourceWarehouse}
-                onChange={(e) => setSourceWarehouse(e.target.value)}
-                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
-              >
-                <option value="">-- Chọn kho nguồn --</option>
-                {warehouses
-                  .filter(w => w.code !== destinationWarehouse)
-                  .map(w => (
-                    <option key={w.code} value={w.code}>{w.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">Kho đích <span className="text-red-500">*</span></label>
-              <select
-                value={destinationWarehouse}
-                onChange={(e) => setDestinationWarehouse(e.target.value)}
-                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
-              >
-                <option value="">-- Chọn kho đích --</option>
-                {warehouses
-                  .filter(w => w.code !== sourceWarehouse)
-                  .map(w => (
-                    <option key={w.code} value={w.code}>{w.name}</option>
-                ))}
-              </select>
-            </div>
+            <CustomSelect
+              label="Kho nguồn"
+              required
+              value={sourceWarehouse}
+              onChange={(val) => setSourceWarehouse(val)}
+              placeholder="-- Chọn kho nguồn --"
+              options={warehouses
+                .filter(w => w.code !== destinationWarehouse)
+                .map(w => ({ value: w.code, label: w.name }))}
+            />
+            <CustomSelect
+              label="Kho đích"
+              required
+              value={destinationWarehouse}
+              onChange={(val) => setDestinationWarehouse(val)}
+              placeholder="-- Chọn kho đích --"
+              options={warehouses
+                .filter(w => w.code !== sourceWarehouse)
+                .map(w => ({ value: w.code, label: w.name }))}
+            />
             <div>
               <label className="mb-2 block text-sm font-bold text-slate-700">Ngày giờ xuất dự kiến <span className="text-red-500">*</span></label>
               <input
@@ -190,25 +269,20 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
                 className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
               />
             </div>
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">Người quản lý duyệt <span className="text-red-500">*</span></label>
-              <select
-                value={managerId}
-                onChange={(e) => setManagerId(e.target.value)}
-                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
-              >
-                <option value="">-- Chọn người quản lý duyệt --</option>
-                {managers
-                  .filter(m => {
-                    const wh = warehouses.find(w => w.code === sourceWarehouse);
-                    if (!sourceWarehouse || !wh || !wh.managerIds || wh.managerIds.length === 0) return true;
-                    return wh.managerIds.includes(m.id);
-                  })
-                  .map(m => (
-                    <option key={m.id} value={m.id}>{m.fullName || m.email || m.username || 'Quản lý'}</option>
-                ))}
-              </select>
-            </div>
+            <CustomSelect
+              label="Người quản lý duyệt"
+              required
+              value={managerId}
+              onChange={(val) => setManagerId(val)}
+              placeholder="-- Chọn người quản lý duyệt --"
+              options={managers
+                .filter(m => {
+                  const wh = warehouses.find(w => w.code === sourceWarehouse);
+                  if (!sourceWarehouse || !wh || !wh.managerIds || wh.managerIds.length === 0) return true;
+                  return wh.managerIds.includes(m.id);
+                })
+                .map(m => ({ value: m.id, label: m.fullName || m.email || m.username || 'Quản lý' }))}
+            />
             <div>
               <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú / Lý do điều chuyển</label>
               <input
@@ -233,45 +307,55 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
               </button>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="w-full text-left text-sm">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <table className="w-full min-w-[600px] border-collapse bg-white text-left text-sm">
                 <thead className="bg-cyan-50 text-xs uppercase text-slate-800">
                   <tr className="border-b border-slate-200">
-                    <th className="px-4 py-3 font-extrabold">Sản phẩm</th>
-                    <th className="px-4 py-3 font-extrabold w-24">ĐVT</th>
-                    <th className="px-4 py-3 font-extrabold w-40">Số lượng điều chuyển</th>
-                    <th className="px-4 py-3 font-extrabold w-20 text-center">Xóa</th>
+                    <th className="w-16 border-x border-slate-200 px-3 py-3.5 text-center font-extrabold text-slate-800">STT</th>
+                    <th className="border-x border-slate-200 px-4 py-3.5 font-extrabold text-slate-800">Tên sản phẩm</th>
+                    <th className="w-44 border-x border-slate-200 px-4 py-3.5 text-center font-extrabold text-slate-800">Số lượng trong kho</th>
+                    <th className="w-44 border-x border-slate-200 px-4 py-3.5 text-center font-extrabold text-slate-800">Số lượng điều chuyển</th>
+                    <th className="w-24 border-x border-slate-200 px-4 py-3.5 text-center font-extrabold text-slate-800">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-500 font-semibold">
                         Chưa có sản phẩm nào được chọn
                       </td>
                     </tr>
                   ) : (
-                    items.map(item => (
-                      <tr key={item.productId} className="hover:bg-slate-50">
-                        <td className="px-4 py-3">
-                          <div className="font-bold text-slate-900">{item.product.name}</div>
-                          <div className="text-xs text-slate-500">{item.product.internalSku}</div>
+                    items.map((item, index) => (
+                      <tr key={item.productId} className="hover:bg-cyan-50/30 transition">
+                        <td className="border-x border-slate-200 px-3 py-3 text-center font-bold text-slate-600">
+                          {index + 1}
                         </td>
-                        <td className="px-4 py-3 text-slate-700">{item.product.unit || '---'}</td>
-                        <td className="px-4 py-3">
+                        <td className="border-x border-slate-200 px-4 py-3">
+                          <div className="font-bold text-slate-900">{item.product.name}</div>
+                          <div className="text-xs font-semibold text-slate-500">Mã: {item.product.internalSku} {item.product.unit ? `(${item.product.unit})` : ''}</div>
+                        </td>
+                        <td className="border-x border-slate-200 px-4 py-3 text-center">
+                          <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-bold ${item.product.totalStock > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                            {item.product.totalStock.toLocaleString('vi-VN')} {item.product.unit || ''}
+                          </span>
+                        </td>
+                        <td className="border-x border-slate-200 px-4 py-3 text-center">
                           <input
                             type="number"
                             min="1"
+                            max={item.product.totalStock > 0 ? item.product.totalStock : undefined}
                             value={item.quantity || ''}
                             onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
-                            className="w-full rounded-lg border-2 border-slate-200 px-3 py-1.5 outline-none transition focus:border-cyan-500"
+                            className="h-10 w-28 rounded-xl border-2 border-cyan-500 bg-white px-3 text-center font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
                           />
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="border-x border-slate-200 px-4 py-3 text-center">
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(item.productId)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 border border-red-200 transition hover:bg-red-100 hover:text-red-700 shadow-sm"
+                            title="Xóa sản phẩm"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -372,13 +456,13 @@ function ProductSelectionModal({
         </div>
         <div className="border-b border-slate-200 bg-slate-50 p-4">
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
             <input
               type="text"
               placeholder="Tìm kiếm theo mã, tên sản phẩm..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 outline-none focus:border-cyan-500"
+              className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
             />
           </div>
         </div>

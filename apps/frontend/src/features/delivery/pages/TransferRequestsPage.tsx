@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  ChevronDown,
   Clock3,
   Eye,
   FileText,
@@ -117,28 +118,77 @@ function Select({
   value,
   onChange,
   options,
+  className = '',
 }: {
-  label: string;
+  label?: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
+  className?: string;
 }) {
-  return (
-    <div>
-      <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+  const [isOpen, setIsOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value);
+
+  const selectBody = (
+    <div ref={containerRef} className="relative min-w-[180px]">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 pr-10 text-left text-sm font-bold text-slate-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm flex items-center justify-between cursor-pointer ${className}`}
       >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        <span className="truncate pr-2">{selectedOption ? selectedOption.label : 'Chọn...'}</span>
+        <ChevronDown className={`h-4 w-4 text-cyan-600 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full mt-1.5 rounded-xl border-2 border-cyan-500 bg-white p-1.5 shadow-2xl z-[9999] animate-in fade-in duration-100">
+          {options.length === 0 ? (
+            <div className="px-4 py-3 text-sm font-semibold text-slate-400 text-center">Không có lựa chọn</div>
+          ) : (
+            options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full rounded-lg px-4 py-2.5 text-left text-sm font-bold transition ${
+                  option.value === value
+                    ? 'bg-cyan-50 text-cyan-700 font-black'
+                    : 'text-slate-700 hover:bg-cyan-50/50 hover:text-cyan-600'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
+
+  if (label) {
+    return (
+      <div>
+        <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
+        {selectBody}
+      </div>
+    );
+  }
+
+  return selectBody;
 }
 
 export default function TransferRequestsPage() {
@@ -203,7 +253,6 @@ export default function TransferRequestsPage() {
             <Package className="h-5 w-5 text-cyan-100" />
             <h1 className="text-lg font-bold tracking-tight text-white">Yêu Cầu Điều Chuyển</h1>
           </div>
-          <p className="mt-2 text-sm font-medium text-slate-500">Tạo yêu cầu chuyển hàng từ kho này sang kho kia và gửi duyệt.</p>
         </div>
         <button
           type="button"
@@ -242,35 +291,37 @@ export default function TransferRequestsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Select
-            label="Thời gian"
             value={timeFilter}
             onChange={(value) => setTimeFilter(value as TimeFilter)}
             options={[
-              { value: 'this-month', label: 'Tháng này' },
-              { value: '7-days', label: '7 ngày gần đây' },
-              { value: 'all', label: 'Tất cả' },
+              { value: 'this-month', label: 'Thời gian: Tháng này' },
+              { value: '7-days', label: 'Thời gian: 7 ngày gần đây' },
+              { value: 'all', label: 'Thời gian: Tất cả' },
             ]}
           />
           <Select
-            label="Trạng thái"
             value={statusFilter}
             onChange={(value) => setStatusFilter(value as StatusFilter)}
             options={[
-              { value: 'all', label: 'Tất cả' },
-              { value: 'draft', label: 'Nháp' },
-              { value: 'pending', label: 'Chờ duyệt' },
-              { value: 'approved', label: 'Đã duyệt' },
-              { value: 'completed', label: 'Hoàn thành' },
-              { value: 'rejected', label: 'Từ chối' },
+              { value: 'all', label: 'Trạng thái: Tất cả' },
+              { value: 'draft', label: 'Trạng thái: Nháp' },
+              { value: 'pending', label: 'Trạng thái: Chờ duyệt' },
+              { value: 'approved', label: 'Trạng thái: Đã duyệt' },
+              { value: 'completed', label: 'Trạng thái: Hoàn thành' },
+              { value: 'rejected', label: 'Trạng thái: Từ chối' },
             ]}
           />
           <button
             type="button"
             onClick={() => setShowAdvancedFilters((current) => !current)}
-            className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 transition shadow-sm ${showAdvancedFilters ? 'border-cyan-500 bg-cyan-50 text-cyan-600' : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50'}`}
-            title="Tìm kiếm nâng cao"
+            className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition shadow-sm ${
+              showAdvancedFilters
+                ? 'border-cyan-500 bg-cyan-50 text-cyan-600'
+                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50'
+            }`}
           >
             <Filter className="h-4 w-4" />
+            Bộ lọc
           </button>
           <button
             type="button"

@@ -550,7 +550,6 @@ export default function CategoryManagement() {
                         <Tags className="h-5 w-5 text-cyan-100" />
                         <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Danh Mục</h1>
                     </div>
-                    <p className="mt-2 text-sm font-medium text-slate-500">Quản lý các nhóm sản phẩm và danh mục hàng hóa trong hệ thống kho.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                     <button
