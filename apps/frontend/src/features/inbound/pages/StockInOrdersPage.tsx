@@ -402,7 +402,20 @@ export default function StockInOrdersPage() {
 
   const [users, setUsers] = React.useState<Array<{ id: string; email: string; fullName?: string; roles?: any[] }>>([]);
   const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
-  const [actionMenuId, setActionMenuId] = React.useState<string | null>(null);
+  const [actionMenuState, setActionMenuState] = React.useState<{ id: string; top: number; right: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!actionMenuState) return;
+    const handleClose = () => setActionMenuState(null);
+    window.addEventListener('click', handleClose);
+    window.addEventListener('scroll', handleClose, true);
+    window.addEventListener('resize', handleClose);
+    return () => {
+      window.removeEventListener('click', handleClose);
+      window.removeEventListener('scroll', handleClose, true);
+      window.removeEventListener('resize', handleClose);
+    };
+  }, [actionMenuState]);
 
   const resetFilters = () => {
     setSearch('');
@@ -701,7 +714,7 @@ export default function StockInOrdersPage() {
       }
 
       setToast({ type: 'success', message: 'Đã duyệt lệnh nhập kho' });
-      setActionMenuId(null);
+      setActionMenuState(null);
       await loadData();
       setSelectedId(order.id);
     } catch (error) {
@@ -725,7 +738,7 @@ export default function StockInOrdersPage() {
       }
 
       setToast({ type: 'success', message: 'Đã gửi thông báo đến nhân viên được giao' });
-      setActionMenuId(null);
+      setActionMenuState(null);
       await loadData();
       setSelectedId(order.id);
     } catch (error) {
@@ -752,7 +765,7 @@ export default function StockInOrdersPage() {
       }
 
       setToast({ type: 'success', message: 'Đã chuyển sang bước nhập số lượng kiểm kê' });
-      setActionMenuId(null);
+      setActionMenuState(null);
       await loadData();
       setSelectedId(order.id);
     } catch (error) {
@@ -816,7 +829,7 @@ export default function StockInOrdersPage() {
       }
 
       setToast({ type: 'success', message: 'Đã duyệt lệnh nhập kho' });
-      setActionMenuId(null);
+      setActionMenuState(null);
       await loadData();
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi duyệt lệnh' });
@@ -840,7 +853,7 @@ export default function StockInOrdersPage() {
       }
 
       setToast({ type: 'success', message: 'Đã gửi thông báo đến nhân viên được giao' });
-      setActionMenuId(null);
+      setActionMenuState(null);
       await loadData();
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi gửi thông báo' });
@@ -867,7 +880,7 @@ export default function StockInOrdersPage() {
       }
 
       setToast({ type: 'success', message: 'Đã chuyển sang bước nhập số lượng kiểm kê' });
-      setActionMenuId(null);
+      setActionMenuState(null);
       await loadData();
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi chuyển bước nhập số lượng' });
@@ -916,7 +929,7 @@ export default function StockInOrdersPage() {
       }
 
       setToast({ type: 'success', message: 'Đã duyệt lệnh nhập kho' });
-      setActionMenuId(null);
+      setActionMenuState(null);
       await loadData();
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi duyệt phiếu' });
@@ -1171,58 +1184,22 @@ export default function StockInOrdersPage() {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              setActionMenuId((current) => (current === order.id ? null : order.id));
+                              if (actionMenuState?.id === order.id) {
+                                setActionMenuState(null);
+                              } else {
+                                const rect = event.currentTarget.getBoundingClientRect();
+                                setActionMenuState({
+                                  id: order.id,
+                                  top: rect.bottom + 6,
+                                  right: Math.max(16, window.innerWidth - rect.right),
+                                });
+                              }
                             }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                             title="Thêm thao tác"
                           >
                             <MoreHorizontal size={18} strokeWidth={2.5} />
                           </button>
-
-                          {actionMenuId === order.id && (
-                            <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-xl">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setSelectedId(order.id);
-                                  setActionMenuId(null);
-                                }}
-                                disabled={!isDraftStatus(order.status) && !isReadyStatus(order.status) && !isInProgressStatus(order.status)}
-                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300"
-                              >
-                                <Pencil className="h-4 w-4" />
-                                Sửa
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  if (!isDraftStatus(order.status)) return;
-                                  setDeleteTarget(order);
-                                  setModalMode('delete');
-                                  setActionMenuId(null);
-                                }}
-                                disabled={!isDraftStatus(order.status)}
-                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                Xóa
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setActionMenuId(null);
-                                  window.print();
-                                }}
-                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                              >
-                                <Printer className="h-4 w-4" />
-                                In
-                              </button>
-                            </div>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -1932,6 +1909,60 @@ export default function StockInOrdersPage() {
       {selectedOrder && (
         <PrintableStockInReceipt order={selectedOrder} />
       )}
+
+      {/* Floating Action Popover Menu (Thao tác 3 chấm) */}
+      {actionMenuState && (() => {
+        const targetOrder = orders.find((o) => o.id === actionMenuState.id);
+        if (!targetOrder) return null;
+        return (
+          <div
+            style={{ top: `${actionMenuState.top}px`, right: `${actionMenuState.right}px` }}
+            className="fixed z-[9999] w-44 overflow-hidden rounded-2xl border-2 border-cyan-500 bg-white p-1.5 shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelectedId(targetOrder.id);
+                setActionMenuState(null);
+              }}
+              disabled={!isDraftStatus(targetOrder.status) && !isReadyStatus(targetOrder.status) && !isInProgressStatus(targetOrder.status)}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-700 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:cursor-not-allowed disabled:text-slate-300 cursor-pointer"
+            >
+              <Pencil className="h-4 w-4 text-cyan-600" />
+              Sửa
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!isDraftStatus(targetOrder.status)) return;
+                setDeleteTarget(targetOrder);
+                setModalMode('delete');
+                setActionMenuState(null);
+              }}
+              disabled={!isDraftStatus(targetOrder.status)}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300 cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+              Xóa
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setActionMenuState(null);
+                window.print();
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-700 transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+            >
+              <Printer className="h-4 w-4 text-slate-500" />
+              In
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }

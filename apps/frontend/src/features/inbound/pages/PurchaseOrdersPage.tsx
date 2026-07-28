@@ -24,6 +24,7 @@ import {
   Send,
   Calendar,
   User,
+  Printer,
 } from 'lucide-react';
 import InboundSectionPlaceholderPage from './InboundSectionPlaceholderPage';
 import {
@@ -35,6 +36,7 @@ import {
 } from '../../../shared/utils/warehouseAssignments';
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { PurchaseOrderFormModal } from '../components/PurchaseOrderFormModal';
+import { PrintablePurchaseOrder } from '../components/PrintablePurchaseOrder';
 
 type SupplierProduct = {
   id: string;
@@ -1779,7 +1781,7 @@ function PurchaseOrdersPageContent() {
                                   <Package className="h-4 w-4" />
                                   Đã nhận hàng
                                 </button>
-                                                                 <button
+                                 <button
                                    type="button"
                                    disabled={!canCreateOrderRow(order)}
                                    onClick={() => { 
@@ -1872,7 +1874,21 @@ function PurchaseOrdersPageContent() {
               </button>
             </div>
           ) : (
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {selectedOrder && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.print();
+                  }}
+                  className="inline-flex items-center justify-center gap-2.5 rounded-2xl border-2 border-cyan-500 bg-cyan-50 px-5 py-2.5 text-sm font-black text-cyan-700 shadow-sm transition hover:bg-cyan-100 cursor-pointer active:scale-95"
+                >
+                  <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-cyan-600 text-white shadow-sm">
+                    <Printer className="h-3.5 w-3.5" />
+                  </div>
+                  <span>In đơn mua hàng</span>
+                </button>
+              )}
               {canManagerApprove && (
                 <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder!); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-transparent bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:opacity-60">
                   <CheckCircle2 className="h-4 w-4" />
@@ -2189,6 +2205,10 @@ function PurchaseOrdersPageContent() {
             </div>
           </div>
         </div>
+      )}
+
+      {selectedOrder && (
+        <PrintablePurchaseOrder order={selectedOrder} />
       )}
     </div>
   );
