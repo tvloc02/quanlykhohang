@@ -369,7 +369,10 @@ export default function WarehouseManagement() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Quản lý kho hàng</h1>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <Warehouse className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản lý kho hàng</h1>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -404,18 +407,18 @@ export default function WarehouseManagement() {
 
       <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
             placeholder="Tìm kiếm theo mã kho, tên kho, địa chỉ"
           />
         </div>
         <select
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value)}
-          className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+          className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
         >
           <option value="all">Trạng thái: -- Chọn --</option>
           <option value="active">Đang hoạt động</option>
@@ -427,16 +430,16 @@ export default function WarehouseManagement() {
       <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1040px] border-collapse bg-white">
-            <thead className="bg-slate-50">
+            <thead className="bg-cyan-50">
               <tr className="border-b-2 border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã kho</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên kho</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Địa chỉ</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Quản lý kho</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhân viên kho</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Trạng thái</th>
-                <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Mã kho</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Tên kho</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Địa chỉ</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Quản lý kho</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Nhân viên kho</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Trạng thái</th>
+                <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -444,35 +447,35 @@ export default function WarehouseManagement() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm text-slate-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
                     Đang tải danh sách kho hàng...
                   </td>
                 </tr>
               ) : paginatedWarehouses.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm text-slate-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
                     {error ? 'Lỗi khi tải dữ liệu. Vui lòng thử lại.' : 'Chưa có kho hàng. Hãy tạo kho hàng mới.'}
                   </td>
                 </tr>
               ) : (
                 paginatedWarehouses.map((warehouse, index) => (
                   <tr key={warehouse.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {startIndex + index}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700 uppercase">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700 uppercase">
                       {warehouse.code}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {warehouse.name}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {warehouse.address || '-'}
                     </td>
-                    <td className="max-w-[220px] truncate border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    <td className="max-w-[220px] truncate border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {getNames(warehouse.managerIds)}
                     </td>
-                    <td className="max-w-[240px] truncate border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    <td className="max-w-[240px] truncate border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {getNames(warehouse.staffIds)}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
@@ -489,30 +492,30 @@ export default function WarehouseManagement() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                           aria-label="Xem kho"
                           title="Xem kho"
                           onClick={() => openWarehouseModal('view', warehouse)}
                         >
-                          <Eye size={18} strokeWidth={2} />
+                          <Eye size={18} strokeWidth={2.5} />
                         </button>
                         <button
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                           aria-label="Sửa kho"
                           title="Sửa kho"
                           onClick={() => openWarehouseModal('edit', warehouse)}
                         >
-                          <Pencil size={18} strokeWidth={2} />
+                          <Pencil size={18} strokeWidth={2.5} />
                         </button>
                         <button
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                           aria-label="Xóa kho"
                           title="Xóa kho"
                           onClick={() => openWarehouseModal('delete', warehouse)}
                         >
-                          <Trash2 size={18} strokeWidth={2} />
+                          <Trash2 size={18} strokeWidth={2.5} />
                         </button>
                       </div>
                     </td>

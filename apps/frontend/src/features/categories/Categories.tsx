@@ -546,13 +546,17 @@ export default function CategoryManagement() {
 
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
-                    <h1 className="text-2xl font-black text-cyan-950">Danh mục</h1>
+                    <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+                        <Tags className="h-5 w-5 text-cyan-100" />
+                        <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Danh Mục</h1>
+                    </div>
+                    <p className="mt-2 text-sm font-medium text-slate-500">Quản lý các nhóm sản phẩm và danh mục hàng hóa trong hệ thống kho.</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                     <button
                         type="button"
                         onClick={openImportModal}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50 shadow-sm"
                     >
                         <Upload className="h-4 w-4" />
                         Import
@@ -560,7 +564,7 @@ export default function CategoryManagement() {
                     <button
                         type="button"
                         onClick={openExportModal}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50 shadow-sm"
                     >
                         <Download className="h-4 w-4" />
                         Xuất Excel
@@ -568,11 +572,27 @@ export default function CategoryManagement() {
                     <button
                         type="button"
                         onClick={openCreateModal}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
                     >
                         <Plus className="h-4 w-4" />
                         Thêm danh mục
                     </button>
+                </div>
+            </div>
+
+            {/* Metric Summary Cards */}
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+                <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+                    <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{categories.length}<br/>TỔNG DANH MỤC</p>
+                </div>
+                <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+                    <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{categories.filter((c) => c.status === 'active').length}<br/>ĐANG SỬ DỤNG</p>
+                </div>
+                <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+                    <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{categories.filter((c) => c.status === 'inactive').length}<br/>NGỪNG SỬ DỤNG</p>
+                </div>
+                <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+                    <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{Object.values(productCounts).reduce((a, b) => a + b, 0)}<br/>SP LIÊN KẾT</p>
                 </div>
             </div>
 
@@ -581,11 +601,11 @@ export default function CategoryManagement() {
                     <div className="relative flex-1">
                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Từ khóa tìm kiếm</label>
                         <div className="relative">
-                            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
                             <input
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
-                                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
                                 placeholder="Tìm kiếm mã, tên hoặc ý nghĩa danh mục..."
                             />
                         </div>
@@ -596,15 +616,15 @@ export default function CategoryManagement() {
                         <button
                             type="button"
                             onClick={() => setIsStatusOpen(!isStatusOpen)}
-                            className="relative z-20 flex h-11 w-full items-center justify-between rounded-xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition hover:bg-slate-100 focus:border-cyan-500"
+                            className="relative z-20 flex h-11 w-full items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition hover:bg-cyan-50 focus:border-cyan-600 shadow-sm"
                         >
                             <span>
                                 {statusOptions.find((s) => s.value === statusFilter)?.label || 'Tất cả'}
                             </span>
-                            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isStatusOpen ? 'rotate-180' : ''}`} />
+                            <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform ${isStatusOpen ? 'rotate-180' : ''}`} />
                         </button>
                         {isStatusOpen && (
-                            <ul className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-xl border-2 border-slate-100 bg-white p-2 shadow-xl">
+                            <ul className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-xl border-2 border-cyan-500 bg-white p-2 shadow-xl">
                                 {statusOptions.map((status) => (
                                     <li
                                         key={status.value}
@@ -627,13 +647,13 @@ export default function CategoryManagement() {
             </div>
 
             {selectedIds.length > 0 && (
-                <div className="mt-5 flex items-center justify-between rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 shadow-sm">
+                <div className="mt-5 flex items-center justify-between rounded-xl border-2 border-cyan-500 bg-cyan-50 px-4 py-3 shadow-sm">
           <span className="text-sm font-bold text-cyan-800">
             Đã chọn <b>{selectedIds.length}</b> danh mục trên trang này
           </span>
                     <button
                         onClick={() => setModalMode('mass-delete')}
-                        className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700"
+                        className="inline-flex items-center gap-2 rounded-lg border-2 border-red-500 bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-red-700"
                     >
                         <Trash2 className="h-4 w-4" />
                         Xóa đã chọn
@@ -641,12 +661,12 @@ export default function CategoryManagement() {
                 </div>
             )}
 
-            <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
+            <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[1120px] border-collapse bg-white">
-                        <thead className="bg-slate-50">
-                        <tr className="border-b-2 border-slate-200">
-                            <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">
+                        <thead className="bg-cyan-50">
+                        <tr className="border-b border-slate-200">
+                            <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
                                 <input
                                     title="Chọn tất cả"
                                     type="checkbox"
@@ -658,16 +678,16 @@ export default function CategoryManagement() {
                                             setSelectedIds([]);
                                         }
                                     }}
-                                    className="h-4 w-4 cursor-pointer rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                                    className="h-4 w-4 cursor-pointer rounded border-cyan-500 text-cyan-600 focus:ring-cyan-500"
                                 />
                             </th>
-                            <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã danh mục</th>
-                            <th className="w-56 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên danh mục</th>
-                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Số lượng SP</th>
-                            <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ghi chú</th>
-                            <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Trạng thái</th>
-                            <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                            <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
+                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã danh mục</th>
+                            <th className="w-56 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên danh mục</th>
+                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số lượng SP</th>
+                            <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ghi chú</th>
+                            <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Trạng thái</th>
+                            <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
                                 THAO TÁC
                             </th>
                         </tr>
@@ -937,7 +957,7 @@ export default function CategoryManagement() {
                                             value={form.code}
                                             onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
                                             readOnly={modalMode === 'view'}
-                                            className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                                            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold uppercase outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm read-only:bg-slate-50 read-only:border-slate-200 read-only:focus:border-slate-200 read-only:focus:ring-0"
                                             placeholder="VD: QUAN_AO, ĐIEN_THOAI"
                                             required
                                         />
@@ -948,7 +968,7 @@ export default function CategoryManagement() {
                                             value={form.name}
                                             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                                             readOnly={modalMode === 'view'}
-                                            className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                                            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm read-only:bg-slate-50 read-only:border-slate-200 read-only:focus:border-slate-200 read-only:focus:ring-0"
                                             placeholder="VD: Quần áo, Điện thoại"
                                             required
                                         />
@@ -960,7 +980,7 @@ export default function CategoryManagement() {
                                             onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
                                             readOnly={modalMode === 'view'}
                                             rows={2}
-                                            className="w-full resize-none rounded-xl border-2 border-slate-200 px-4 py-3 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                                            className="w-full resize-none rounded-xl border-2 border-cyan-500 bg-white px-4 py-3 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm read-only:bg-slate-50 read-only:border-slate-200 read-only:focus:border-slate-200 read-only:focus:ring-0"
                                             placeholder="Thông tin thêm (nếu có)"
                                         />
                                     </div>
@@ -970,7 +990,7 @@ export default function CategoryManagement() {
                                             value={form.status}
                                             onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as CatalogCategoryStatus }))}
                                             disabled={modalMode === 'view'}
-                                            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50"
+                                            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm disabled:bg-slate-50 disabled:border-slate-200"
                                         >
                                             <option value="active">Đang dùng</option>
                                             <option value="inactive">Ngừng dùng</option>
@@ -983,7 +1003,7 @@ export default function CategoryManagement() {
                                         {modalMode === 'view' ? 'Đóng' : 'Hủy'}
                                     </button>
                                     {modalMode !== 'view' && (
-                                        <button type="submit" className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700">
+                                        <button type="submit" className="rounded-xl border-2 border-cyan-500 bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-md transition hover:bg-cyan-700">
                                             {modalMode === 'create' ? 'Thêm danh mục' : 'Lưu thay đổi'}
                                         </button>
                                     )}

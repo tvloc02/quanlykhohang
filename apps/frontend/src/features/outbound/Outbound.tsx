@@ -421,10 +421,10 @@ export default function Outbound() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Quản lý đơn đặt hàng</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
-            Theo dõi và quản lý các đơn đặt hàng xuất kho cho khách hàng.
-          </p>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <Truck className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản lý Đơn Đặt Hàng</h1>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -449,32 +449,47 @@ export default function Outbound() {
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{orders.length} TỔNG ĐƠN SO</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{orders.filter(o => o.status === 'pending').length} CHỜ XỬ LÝ</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{orders.filter(o => o.status === 'picking').length} ĐANG LẤY HÀNG</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{orders.filter(o => o.status === 'shipped').length} ĐÃ GIAO HÀNG</p>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
           <input
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
             placeholder="Tìm kiếm đơn đặt hàng theo mã SO, khách hàng..."
           />
         </div>
-        <div className="flex justify-start xl:justify-end">
-          <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
-            <Filter size={18} className="text-slate-500" />
+        <div className="flex items-center gap-3">
+          <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-5 text-sm font-bold text-cyan-600 transition hover:bg-cyan-50 shadow-sm">
+            <Filter size={18} className="text-cyan-500" />
             Lọc đơn đặt hàng
           </button>
         </div>
       </div>
 
       {/* Wrapper chứa bảng + phân trang dính liền nhau */}
-      <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
+      <div className="mt-5 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1040px] border-collapse bg-white">
-            <thead className="bg-slate-50">
+            <thead className="bg-cyan-50">
               <tr className="border-b-2 border-slate-200">
-                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center">
+                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
@@ -482,13 +497,13 @@ export default function Outbound() {
                     onChange={toggleSelectAll}
                   />
                 </th>
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã SO</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Khách hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày hạn chót</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Số hàng hóa</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Trạng thái</th>
-                <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã SO</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Khách hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày hạn chót</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số hàng hóa</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Trạng thái</th>
+                <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -517,16 +532,16 @@ export default function Outbound() {
                         onChange={() => toggleSelectOrder(order.id)}
                       />
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {startIndex + index}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-800">
                       {order.orderNo}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-medium text-slate-700">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {order.customer}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {order.dueDate ? new Date(order.dueDate).toLocaleDateString('vi-VN') : '-'}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700 font-bold">
@@ -541,7 +556,7 @@ export default function Outbound() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                           aria-label="Xem chi tiết"
                           title="Xem chi tiết"
                           onClick={() => openModal('view', order)}
@@ -550,7 +565,7 @@ export default function Outbound() {
                         </button>
                         <button
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                           aria-label="Sửa đơn đặt hàng"
                           title="Sửa đơn đặt hàng"
                           onClick={() => openModal('edit', order)}
@@ -559,7 +574,7 @@ export default function Outbound() {
                         </button>
                         <button
                           type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                           aria-label="Xóa đơn đặt hàng"
                           title="Xóa đơn đặt hàng"
                           onClick={() => openModal('delete', order)}

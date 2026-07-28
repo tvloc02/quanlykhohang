@@ -122,10 +122,6 @@ function getStatusLabel(status: SupplierStatus) {
   return status === 'active' ? 'Đang hợp tác' : 'Ngừng hợp tác';
 }
 
-function getPriorityLabel(priority: PriorityLevel) {
-  return priority === 'strategic' ? 'NCC chiến lược' : 'NCC phụ';
-}
-
 function formatMoney(value: string, currency: string) {
   const amount = Number(value || 0);
   try {
@@ -332,7 +328,7 @@ export default function Suppliers() {
 
   const modalTitle =
     modalMode === 'create'
-      ? 'Tạo tài khoản nhà cung cấp'
+      ? 'Tạo nhà cung cấp'
       : modalMode === 'view'
         ? 'Chi tiết nhà cung cấp'
         : modalMode === 'edit'
@@ -352,7 +348,10 @@ export default function Suppliers() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Quản lý nhà cung cấp</h1>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <Building2 className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản lý nhà cung cấp</h1>
+          </div>
         </div>
 
         <button
@@ -361,27 +360,23 @@ export default function Suppliers() {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Tạo tài khoản NCC
+          Tạo nhà cung cấp
         </button>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-xl border-2 border-slate-200 bg-white p-4">
-          <p className="text-xs font-black uppercase text-slate-500">Tổng NCC</p>
-          <p className="mt-2 text-2xl font-black text-slate-900">{suppliers.length}</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{suppliers.length} TỔNG NCC</p>
         </div>
-        <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4">
-          <p className="text-xs font-black uppercase text-emerald-600">Đang hợp tác</p>
-          <p className="mt-2 text-2xl font-black text-emerald-700">{activeCount}</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{activeCount} ĐANG HỢP TÁC</p>
         </div>
-        <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-4">
-          <p className="text-xs font-black uppercase text-slate-500">Ngừng hợp tác</p>
-          <p className="mt-2 text-2xl font-black text-slate-700">{inactiveCount}</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{inactiveCount} NGỪNG HỢP TÁC</p>
         </div>
-        <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 p-4">
-          <p className="text-xs font-black uppercase text-cyan-600">Link sản phẩm</p>
-          <p className="mt-2 text-2xl font-black text-cyan-700">
-            {suppliers.reduce((total, supplier) => total + (supplier.productCount || 0), 0)}
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">
+            {suppliers.reduce((total, supplier) => total + (supplier.productCount || 0), 0)} SẢN PHẨM LIÊN KẾT
           </p>
         </div>
       </div>
@@ -389,19 +384,19 @@ export default function Suppliers() {
       <div className="mt-5 rounded-xl border-2 border-slate-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_0.7fr]">
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
             <input
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+              className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
               placeholder="Tìm theo mã NCC, tên, MST, người liên hệ, email, số điện thoại..."
             />
           </div>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as 'all' | SupplierStatus)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-cyan-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
           >
             <option value="all">Trạng thái: Tất cả</option>
             <option value="active">Trạng thái: Đang hợp tác</option>
@@ -412,17 +407,19 @@ export default function Suppliers() {
 
       <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1240px] border-collapse bg-white">
-            <thead className="bg-slate-50">
+          <table className="w-full min-w-[1500px] border-collapse bg-white">
+            <thead className="bg-cyan-50">
               <tr className="border-b-2 border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Identity</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Liên hệ</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Lead time</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-left text-sm font-black uppercase text-slate-700">Thanh toán</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Sản phẩm</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Trạng thái</th>
-                <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Mã NCC</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Tên NCC</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Mã số thuế</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Người liên hệ</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">SĐT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Email</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Số lượng SP</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Trạng thái</th>
+                <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -430,57 +427,31 @@ export default function Suppliers() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
                     Đang tải dữ liệu nhà cung cấp...
                   </td>
                 </tr>
               ) : paginatedSuppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
                     Chưa có nhà cung cấp phù hợp.
                   </td>
                 </tr>
               ) : (
                 paginatedSuppliers.map((supplier, index) => (
                   <tr key={supplier.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {startIndex + index}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-left">
-                      <p className="text-sm font-black text-slate-900">{supplier.supplierCode}</p>
-                      <p className="mt-1 text-sm font-bold text-slate-700">{supplier.name}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">MST: {supplier.taxCode || '-'}</p>
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-left text-sm text-slate-700">
-                      <div className="space-y-1.5">
-                        <p className="flex items-center gap-2 font-bold">
-                          <User className="h-4 w-4 text-slate-400" />
-                          {supplier.contactPerson || '-'}
-                        </p>
-                        <p className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-slate-400" />
-                          {supplier.phone || '-'}
-                        </p>
-                        <p className="flex items-center gap-2">
-                          <Mail className="h-4 w-4 text-slate-400" />
-                          {supplier.email || '-'}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center">
-                      <span className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-700">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.supplierCode}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.name}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.taxCode || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.contactPerson || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.phone || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.email || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                      <span className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">
                         <Clock className="h-3.5 w-3.5" />
-                        {supplier.leadTimeDays || 0} ngày
-                      </span>
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-left text-sm text-slate-700">
-                      <p className="font-bold">{supplier.paymentTerms || '-'}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">
-                        {supplier.currency || 'VND'} · {getPriorityLabel(supplier.priorityLevel)}
-                      </p>
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                      <span className="inline-flex rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 shadow-sm">
                         {supplier.productCount || 0}
                       </span>
                     </td>
@@ -497,14 +468,29 @@ export default function Suppliers() {
                     </td>
                     <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
                       <div className="flex items-center justify-center gap-2">
-                        <button type="button" onClick={() => openModal('view', supplier)} title="Xem chi tiết" className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100">
-                          <Eye size={18} strokeWidth={2} />
+                        <button
+                          type="button"
+                          onClick={() => openModal('view', supplier)}
+                          title="Xem chi tiết"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                        >
+                          <Eye size={18} strokeWidth={2.5} />
                         </button>
-                        <button type="button" onClick={() => openModal('edit', supplier)} title="Sửa nhà cung cấp" className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100">
-                          <Pencil size={18} strokeWidth={2} />
+                        <button
+                          type="button"
+                          onClick={() => openModal('edit', supplier)}
+                          title="Sửa nhà cung cấp"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                        >
+                          <Pencil size={18} strokeWidth={2.5} />
                         </button>
-                        <button type="button" onClick={() => openModal('delete', supplier)} title="Xóa nhà cung cấp" className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100">
-                          <Trash2 size={18} strokeWidth={2} />
+                        <button
+                          type="button"
+                          onClick={() => openModal('delete', supplier)}
+                          title="Xóa nhà cung cấp"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                        >
+                          <Trash2 size={18} strokeWidth={2.5} />
                         </button>
                       </div>
                     </td>
@@ -557,7 +543,7 @@ export default function Suppliers() {
                 <div>
                   <h2 className="text-xl font-black text-slate-800">{modalTitle}</h2>
                   <p className="text-sm font-medium text-slate-500">
-                    Identity, liên hệ, nghiệp vụ mua hàng và tài khoản đăng nhập của NCC.
+                    Thông tin cơ bản, liên hệ và tài khoản đăng nhập của nhà cung cấp.
                   </p>
                 </div>
               </div>
@@ -613,11 +599,44 @@ export default function Suppliers() {
                           <option value="inactive">Ngừng hợp tác</option>
                         </select>
                       </div>
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Tài khoản đăng nhập</label>
-                        <input value={form.accountEmail} onChange={(event) => setForm((current) => ({ ...current, accountEmail: event.target.value }))} readOnly={modalMode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50" placeholder="login@ncc.com" />
-                      </div>
                     </div>
+
+                    {modalMode !== 'view' && (
+                      <div className="mt-5 rounded-xl border-2 border-cyan-100 bg-cyan-50 p-4">
+                        <div className="mb-4 flex items-center gap-2">
+                          <Mail className="h-5 w-5 text-cyan-600" />
+                          <h3 className="font-black text-slate-900">Tài khoản portal cho NCC</h3>
+                        </div>
+                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-slate-700">Gmail</label>
+                            <input type="email" value={form.accountEmail} onChange={(event) => setForm((current) => ({ ...current, accountEmail: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-cyan-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="gmail@ncc.com" />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-slate-700">
+                              Mật khẩu {modalMode === 'create' && <span className="text-red-500">*</span>}
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={form.accountPassword}
+                                onChange={(event) => setForm((current) => ({ ...current, accountPassword: event.target.value }))}
+                                className="h-11 w-full rounded-xl border-2 border-cyan-200 bg-white px-4 pr-12 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                                placeholder={modalMode === 'create' ? 'Tạo mật khẩu ban đầu' : 'Để trống nếu không tạo tài khoản mới'}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowPassword((current) => !current)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
+                                aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                              >
+                                <Eye className="h-5 w-5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </section>
 
                   <section>
@@ -644,71 +663,6 @@ export default function Suppliers() {
                       </div>
                     </div>
                   </section>
-
-                  <section>
-                    <div className="mb-4 flex items-center gap-2">
-                      <Truck className="h-5 w-5 text-cyan-600" />
-                      <h3 className="font-black text-slate-900">Thông tin kho & mua hàng</h3>
-                    </div>
-                    <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Lead time (ngày)</label>
-                        <input type="number" min={0} value={form.leadTimeDays} onChange={(event) => setForm((current) => ({ ...current, leadTimeDays: event.target.value }))} readOnly={modalMode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50" />
-                      </div>
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Điều khoản thanh toán</label>
-                        <input value={form.paymentTerms} onChange={(event) => setForm((current) => ({ ...current, paymentTerms: event.target.value }))} readOnly={modalMode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50" placeholder="Thanh toán ngay, Công nợ 30 ngày" />
-                      </div>
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Tiền tệ</label>
-                        <input value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))} readOnly={modalMode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50" placeholder="VND" />
-                      </div>
-                      <div>
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Mức ưu tiên</label>
-                        <select value={form.priorityLevel} onChange={(event) => setForm((current) => ({ ...current, priorityLevel: event.target.value as PriorityLevel }))} disabled={modalMode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50">
-                          <option value="strategic">NCC chiến lược</option>
-                          <option value="secondary">NCC phụ</option>
-                        </select>
-                      </div>
-                    </div>
-                  </section>
-
-                  {modalMode !== 'view' && (
-                    <section className="rounded-xl border-2 border-cyan-100 bg-cyan-50 p-4">
-                      <div className="mb-4 flex items-center gap-2">
-                        <KeyRound className="h-5 w-5 text-cyan-600" />
-                        <h3 className="font-black text-slate-900">Tài khoản portal cho NCC</h3>
-                      </div>
-                      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                        <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Email đăng nhập</label>
-                          <input type="email" value={form.accountEmail} onChange={(event) => setForm((current) => ({ ...current, accountEmail: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-cyan-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="Mặc định dùng email nhận PO" />
-                        </div>
-                        <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">
-                            Mật khẩu {modalMode === 'create' && <span className="text-red-500">*</span>}
-                          </label>
-                          <div className="relative">
-                            <input
-                              type={showPassword ? 'text' : 'password'}
-                              value={form.accountPassword}
-                              onChange={(event) => setForm((current) => ({ ...current, accountPassword: event.target.value }))}
-                              className="h-11 w-full rounded-xl border-2 border-cyan-200 bg-white px-4 pr-12 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                              placeholder={modalMode === 'create' ? 'Tạo mật khẩu ban đầu' : 'Để trống nếu không tạo tài khoản mới'}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowPassword((current) => !current)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
-                              aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                            >
-                              <Eye className="h-5 w-5" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-                  )}
 
                   {modalMode === 'view' && (
                     <section>
@@ -762,7 +716,7 @@ export default function Suppliers() {
                   </button>
                   {modalMode !== 'view' && (
                     <button type="submit" disabled={saving} className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
-                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo tài khoản NCC' : 'Lưu thay đổi'}
+                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo nhà cung cấp' : 'Lưu thay đổi'}
                     </button>
                   )}
                 </div>

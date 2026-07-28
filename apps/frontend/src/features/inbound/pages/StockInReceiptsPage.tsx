@@ -415,11 +415,11 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
             placeholder="Tìm theo mã biên bản, nguồn, diễn giải..."
           />
         </div>
@@ -427,7 +427,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
           <select
             value={timeFilter}
             onChange={(event) => setTimeFilter(event.target.value as 'all' | 'this-month' | '7-days')}
-            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            className="h-11 min-w-[200px] rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           >
             <option value="this-month">Thời gian: Tháng này</option>
             <option value="7-days">Thời gian: 7 ngày gần đây</option>
@@ -436,7 +436,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            className="h-11 min-w-[200px] rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           >
             <option value="all">Tình trạng: Tất cả</option>
             <option value="DRAFT">Tình trạng: Chưa chốt (Nháp)</option>

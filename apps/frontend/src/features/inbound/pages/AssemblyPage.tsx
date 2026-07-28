@@ -475,20 +475,18 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">
-            {mode === 'production' ? 'Sản xuất thành phẩm' : 'Phân phối bán hàng'}
-          </h1>
-          {mode === 'production' && (
-            <p className="mt-1 text-sm font-medium text-slate-500">
-              Chọn các mặt hàng từ Lệnh nhập kho đã hoàn thành để sản xuất.
-            </p>
-          )}
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <Package className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">
+              {mode === 'production' ? 'Sản Xuất Thành Phẩm' : 'Phân Phối Bán Hàng'}
+            </h1>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={loadData}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 shadow-sm"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 transition hover:bg-cyan-50 shadow-sm"
           >
             <RefreshCw className="h-4 w-4" />
           </button>
@@ -496,7 +494,7 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
             <button
               type="button"
               onClick={() => alert('Chức năng Export đang phát triển')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-900"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
             >
               <Download className="h-4 w-4" />
               Export
@@ -506,7 +504,7 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
             <button
               type="button"
               onClick={openProductionModal}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
             >
               <PlusCircle className="h-4 w-4" />
               Tạo lệnh sản xuất
@@ -515,13 +513,28 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{rows.length} TỔNG MẶT HÀNG</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{rows.reduce((sum, r) => sum + r.actualQty, 0)} TỔNG ĐÃ NHẬP</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{rows.reduce((sum, r) => sum + r.remainingQty, 0)} KHẢ DỤNG</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{selectedDetailIds.size} ĐÃ CHỌN</p>
+        </div>
+      </div>
+
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
             placeholder="Tìm theo mã lệnh, mã PO, SKU, tên sản phẩm..."
           />
         </div>
@@ -530,7 +543,7 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1200px] border-collapse bg-white">
-            <thead className="bg-slate-50">
+            <thead className="bg-cyan-50">
               <tr className="border-b border-slate-200">
                 <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
                   <input 
@@ -540,14 +553,14 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
                     className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" 
                   />
                 </th>
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã Đơn / Lệnh</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên sản phẩm</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày nhập hàng gần nhất</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Kho hàng</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">SL Đã nhập</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Còn lại</th>
-                <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã Đơn / Lệnh</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên sản phẩm</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày nhập hàng gần nhất</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho hàng</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">SL Đã nhập</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Còn lại</th>
+                <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>

@@ -538,7 +538,10 @@ export default function Products() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Quản lý sản phẩm</h1>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <Package className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản lý sản phẩm</h1>
+          </div>
         </div>
 
         <button
@@ -551,16 +554,40 @@ export default function Products() {
         </button>
       </div>
 
+      {/* 4 Button tổng hợp */}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            {products.length} TỔNG SẢN PHẨM
+          </p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            {products.reduce((sum, p) => sum + (p.stock || 0), 0).toLocaleString('vi-VN')} TỔNG SỐ LƯỢNG SẢN PHẨM
+          </p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            {products.filter((p) => (p.stock || 0) > 0).reduce((sum, p) => sum + (p.stock || 0), 0).toLocaleString('vi-VN')} SL MỚI NHẬP KHO
+          </p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            {products.filter((p) => (p.stock || 0) === 0).length} SL VỪA XUẤT BÁN
+          </p>
+        </div>
+      </div>
+
       {/* Search & Toolbar */}
       <div className="mt-6 flex flex-col gap-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
             <input
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+              className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
               placeholder="Tìm kiếm sản phẩm theo tên, SKU, danh mục, kho, nhà cung cấp..."
             />
           </div>
@@ -698,52 +725,52 @@ export default function Products() {
       <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] border-collapse bg-white">
-            <thead className="bg-slate-50">
+            <thead className="bg-cyan-50">
               <tr className="border-b-2 border-slate-200">
                 <th className="w-10 border-x border-slate-200 px-3 py-4 text-center">
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
                 </th>
                 {isColVisible('stt') && (
-                  <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
+                  <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
                 )}
                 {isColVisible('image') && (
-                  <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ảnh</th>
+                  <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ảnh</th>
                 )}
                 {isColVisible('sku') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã sản phẩm</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã sản phẩm</th>
                 )}
                 {isColVisible('name') && (
-                  <th className="min-w-[200px] border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên hàng hóa</th>
+                  <th className="min-w-[200px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên hàng hóa</th>
                 )}
                 {isColVisible('category') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Danh mục</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Danh mục</th>
                 )}
                 {isColVisible('unit') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">ĐV Tính</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">ĐV Tính</th>
                 )}
                 {isColVisible('price') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Giá</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Giá</th>
                 )}
                 {isColVisible('stock') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tồn kho</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tồn kho</th>
                 )}
                 {isColVisible('defaultWarehouse') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Kho mặc định</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho mặc định</th>
                 )}
                 {isColVisible('location') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Vị trí</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Vị trí</th>
                 )}
                 {isColVisible('managementType') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Quản lý</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Quản lý</th>
                 )}
                 {isColVisible('supplier') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nhà cung cấp</th>
                 )}
                 {isColVisible('isVisible') && (
-                  <th className="w-28 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 leading-tight">Hiện trên Shop</th>
+                  <th className="w-28 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 leading-tight">Hiện trên Shop</th>
                 )}
                 {isColVisible('actions') && (
-                  <th className="sticky right-0 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)] min-w-[200px]">
+                  <th className="sticky right-0 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)] min-w-[200px]">
                     THAO TÁC
                   </th>
                 )}
@@ -770,7 +797,7 @@ export default function Products() {
                     </td>
 
                     {isColVisible('stt') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-900 font-medium">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-700 font-semibold">
                         {startIndex + index}
                       </td>
                     )}
@@ -788,31 +815,31 @@ export default function Products() {
                     )}
 
                     {isColVisible('sku') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.sku}
                       </td>
                     )}
 
                     {isColVisible('name') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-sm font-medium text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.name}
                       </td>
                     )}
 
                     {isColVisible('category') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.category || '-'}
                       </td>
                     )}
 
                     {isColVisible('unit') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.unit || '-'}
                       </td>
                     )}
 
                     {isColVisible('price') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.price.toLocaleString('vi-VN')} ₫
                       </td>
                     )}
@@ -826,25 +853,25 @@ export default function Products() {
                     )}
 
                     {isColVisible('defaultWarehouse') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.defaultWarehouse || '-'}
                       </td>
                     )}
 
                     {isColVisible('location') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.location || '-'}
                       </td>
                     )}
 
                     {isColVisible('managementType') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.managementType || '-'}
                       </td>
                     )}
 
                     {isColVisible('supplier') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                         {product.supplier || '-'}
                       </td>
                     )}
