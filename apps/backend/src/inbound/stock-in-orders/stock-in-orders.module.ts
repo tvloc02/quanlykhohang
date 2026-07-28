@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditLogModule } from '../../audit-log/audit-log.module';
+import { NotificationsModule } from '../../notifications/notifications.module';
 import { Product } from '../../entities/product.entity';
 import { StockBalance } from '../../inventory/entities/stock-balance.entity';
 import { InboundDetail } from '../entities/inbound-detail.entity';
@@ -19,6 +20,7 @@ import { StockInOrderAssembliesService } from './stock-in-order-assemblies.servi
   imports: [
     TypeOrmModule.forFeature([StockInOrder, StockInOrderDetail, InboundReceipt, InboundDetail, Product, StockBalance, Assembly, AssemblyDetail]),
     AuditLogModule,
+    NotificationsModule,
     StockInReceiptsModule,
   ],
   controllers: [StockInOrdersController, StockInOrderAssembliesController],

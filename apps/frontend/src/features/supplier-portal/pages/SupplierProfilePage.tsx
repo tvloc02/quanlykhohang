@@ -255,7 +255,7 @@ export default function SupplierProfilePage() {
     try {
       const [profileResponse, inboundResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/suppliers/me`, { headers: authHeaders() }),
-        fetch(`${API_BASE_URL}/inbound`, { headers: authHeaders() }),
+        fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers: authHeaders() }),
       ]);
 
       if (!profileResponse.ok) {
@@ -270,11 +270,14 @@ export default function SupplierProfilePage() {
       if (inboundResponse.ok) {
         const receipts = (await inboundResponse.json()) as InboundReceipt[];
         setInboundReceipts(
-          receipts.filter(
-            (receipt) =>
-              receipt.supplier?.id === nextProfile.id ||
-              receipt.supplier?.supplierCode === nextProfile.supplierCode,
-          ),
+          receipts.filter((receipt) => {
+            if (!nextProfile) return true;
+            const mId = receipt.supplier?.id && nextProfile.id && receipt.supplier.id === nextProfile.id;
+            const mCode = receipt.supplier?.supplierCode && nextProfile.supplierCode && receipt.supplier.supplierCode === nextProfile.supplierCode;
+            const mName1 = receipt.supplierName && nextProfile.name && receipt.supplierName.toLowerCase().trim() === nextProfile.name.toLowerCase().trim();
+            const mName2 = receipt.supplier?.name && nextProfile.name && receipt.supplier.name.toLowerCase().trim() === nextProfile.name.toLowerCase().trim();
+            return mId || mCode || mName1 || mName2 || !receipt.supplier;
+          }),
         );
       }
     } catch (err) {
@@ -317,15 +320,18 @@ export default function SupplierProfilePage() {
         setProfile(nextProfile);
         setProfileForm(buildProfileForm(nextProfile));
 
-        const inboundResponse = await fetch(`${API_BASE_URL}/inbound`, { headers: authHeaders() });
+        const inboundResponse = await fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers: authHeaders() });
         if (inboundResponse.ok) {
           const receipts = (await inboundResponse.json()) as InboundReceipt[];
           setInboundReceipts(
-            receipts.filter(
-              (receipt) =>
-                receipt.supplier?.id === nextProfile.id ||
-                receipt.supplier?.supplierCode === nextProfile.supplierCode,
-            ),
+            receipts.filter((receipt) => {
+              if (!nextProfile) return true;
+              const mId = receipt.supplier?.id && nextProfile.id && receipt.supplier.id === nextProfile.id;
+              const mCode = receipt.supplier?.supplierCode && nextProfile.supplierCode && receipt.supplier.supplierCode === nextProfile.supplierCode;
+              const mName1 = receipt.supplierName && nextProfile.name && receipt.supplierName.toLowerCase().trim() === nextProfile.name.toLowerCase().trim();
+              const mName2 = receipt.supplier?.name && nextProfile.name && receipt.supplier.name.toLowerCase().trim() === nextProfile.name.toLowerCase().trim();
+              return mId || mCode || mName1 || mName2 || !receipt.supplier;
+            }),
           );
         }
       } catch {

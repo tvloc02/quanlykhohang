@@ -75,6 +75,8 @@ export type ProductForm = {
 
 export type InboundReceipt = {
   id: string;
+  poNumber?: string;
+  orderDate?: string;
   expectedDate?: string;
   status?: string;
   description?: string;
@@ -82,6 +84,7 @@ export type InboundReceipt = {
   approverName?: string;
   creatorName?: string;
   creatorPhone?: string;
+  supplierName?: string;
   supplier?: {
     id: string;
     supplierCode?: string;
@@ -95,6 +98,7 @@ export type InboundReceipt = {
     warehouseCode?: string;
     expectedQty: number;
     receivedQty: number;
+    unitPrice?: number;
     product?: ProductSummary | null;
   }>;
 };

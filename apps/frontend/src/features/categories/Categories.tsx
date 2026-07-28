@@ -12,6 +12,7 @@ import {
     X,
     Check,
     ChevronDown,
+    History,
 } from 'lucide-react';
 const XLSX: any = (typeof window !== 'undefined' && (window as any).XLSX) || {
   read: () => ({ SheetNames: [], Sheets: {} }),
@@ -270,8 +271,6 @@ export default function CategoryManagement() {
     const paginatedCategories = filteredCategories.slice((currentPage - 1) * pageSize, currentPage * pageSize);
     const startIndex = (currentPage - 1) * pageSize + 1;
     const endIndex = Math.min(currentPage * pageSize, totalItems);
-    const activeCount = categories.filter((category) => category.status === 'active').length;
-    const inactiveCount = categories.filter((category) => category.status === 'inactive').length;
 
     const closeModal = () => {
         setModalMode(null);
@@ -577,39 +576,9 @@ export default function CategoryManagement() {
                 </div>
             </div>
 
-            <div className="mt-6 flex flex-wrap items-center gap-3 border-b-2 border-slate-100">
-                <button
-                    type="button"
-                    onClick={() => setStatusFilter('all')}
-                    className={`border-b-2 px-3 pb-3 text-sm font-black ${
-                        statusFilter === 'all' ? 'border-cyan-600 text-cyan-600' : 'border-transparent text-slate-500'
-                    }`}
-                >
-                    Tất cả ({categories.length})
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setStatusFilter('active')}
-                    className={`border-b-2 px-3 pb-3 text-sm font-bold ${
-                        statusFilter === 'active' ? 'border-cyan-600 text-cyan-600' : 'border-transparent text-slate-500'
-                    }`}
-                >
-                    Đang dùng ({activeCount})
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setStatusFilter('inactive')}
-                    className={`border-b-2 px-3 pb-3 text-sm font-bold ${
-                        statusFilter === 'inactive' ? 'border-cyan-600 text-cyan-600' : 'border-transparent text-slate-500'
-                    }`}
-                >
-                    Ngừng dùng ({inactiveCount})
-                </button>
-            </div>
-
             <div className="mt-4 rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr_1fr] items-end">
-                    <div className="relative">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div className="relative flex-1">
                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Từ khóa tìm kiếm</label>
                         <div className="relative">
                             <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -622,16 +591,16 @@ export default function CategoryManagement() {
                         </div>
                     </div>
 
-                    <div className="relative" ref={statusDropdownRef}>
+                    <div className="relative w-full sm:w-64" ref={statusDropdownRef}>
                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Trạng thái</label>
                         <button
                             type="button"
                             onClick={() => setIsStatusOpen(!isStatusOpen)}
                             className="relative z-20 flex h-11 w-full items-center justify-between rounded-xl border-2 border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition hover:bg-slate-100 focus:border-cyan-500"
                         >
-              <span>
-                {statusOptions.find((s) => s.value === statusFilter)?.label || 'Tất cả'}
-              </span>
+                            <span>
+                                {statusOptions.find((s) => s.value === statusFilter)?.label || 'Tất cả'}
+                            </span>
                             <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isStatusOpen ? 'rotate-180' : ''}`} />
                         </button>
                         {isStatusOpen && (
@@ -644,7 +613,7 @@ export default function CategoryManagement() {
                                             setIsStatusOpen(false);
                                         }}
                                         className={`flex cursor-pointer items-center justify-between rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors hover:bg-cyan-50 ${
-                                            statusFilter === status.value ? 'bg-cyan-50 text-cyan-700' : 'text-slate-700'
+                                            statusFilter === status.value ? 'bg-cyan-50 text-cyan-700 font-bold' : 'text-slate-700'
                                         }`}
                                     >
                                         {status.label}
@@ -699,7 +668,7 @@ export default function CategoryManagement() {
                             <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ghi chú</th>
                             <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Trạng thái</th>
                             <th className="sticky right-0 w-36 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
-                                Thao tác
+                                THAO TÁC
                             </th>
                         </tr>
                         </thead>
@@ -749,14 +718,37 @@ export default function CategoryManagement() {
                                     </td>
                                     <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
                                         <div className="flex items-center justify-center gap-2">
-                                            <button type="button" onClick={() => openCategoryModal('view', category)} title="Xem" className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100">
-                                                <Eye size={18} strokeWidth={2} />
+                                            <button
+                                                type="button"
+                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                                                title="Thêm mới / Chi tiết"
+                                                onClick={() => openCategoryModal('view', category)}
+                                            >
+                                                <Plus size={18} strokeWidth={2.5} />
                                             </button>
-                                            <button type="button" onClick={() => openCategoryModal('edit', category)} title="Sửa" className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100">
-                                                <Pencil size={18} strokeWidth={2} />
+                                            <button
+                                                type="button"
+                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                                                title="Chi tiết danh mục"
+                                                onClick={() => openCategoryModal('view', category)}
+                                            >
+                                                <History size={18} strokeWidth={2.5} />
                                             </button>
-                                            <button type="button" onClick={() => openCategoryModal('delete', category)} title="Xóa" className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100">
-                                                <Trash2 size={18} strokeWidth={2} />
+                                            <button
+                                                type="button"
+                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                                                title="Sửa danh mục"
+                                                onClick={() => openCategoryModal('edit', category)}
+                                            >
+                                                <Pencil size={18} strokeWidth={2.5} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                                                title="Xóa danh mục"
+                                                onClick={() => openCategoryModal('delete', category)}
+                                            >
+                                                <Trash2 size={18} strokeWidth={2.5} />
                                             </button>
                                         </div>
                                     </td>

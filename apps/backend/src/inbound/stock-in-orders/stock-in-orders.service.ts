@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLogService } from '../../audit-log/audit-log.service';
 import { StockBalance } from '../../inventory/entities/stock-balance.entity';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { Product } from '../../entities/product.entity';
 import { InboundReceipt } from '../entities/inbound-receipt.entity';
 import { InboundDetail } from '../entities/inbound-detail.entity';
@@ -51,6 +52,7 @@ export class StockInOrdersService {
     @InjectRepository(StockBalance) private readonly balanceRepo: Repository<StockBalance>,
     private readonly stockInReceiptsService: StockInReceiptsService,
     private readonly auditLogService: AuditLogService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async findAll() {
@@ -77,18 +79,19 @@ export class StockInOrdersService {
       throw new NotFoundException('Purchase order not found');
     }
 
-    const status = String(purchaseOrder.status || '').toUpperCase();
-    if (status !== 'SUPPLIER_APPROVED' && status !== 'PARTIALLY_RECEIVED' && status !== 'RECEIVED') {
+    const purchaseOrderStatus = String(purchaseOrder.status || '').toUpperCase();
+    if (purchaseOrderStatus !== 'SUPPLIER_APPROVED' && purchaseOrderStatus !== 'PARTIALLY_RECEIVED' && purchaseOrderStatus !== 'RECEIVED') {
       throw new BadRequestException('Purchase order must be approved by supplier before creating stock in order');
     }
 
-    const orderCode = await this.generateOrderCode(dto.orderCode);
+    const orderCode = await this.generateOrderCode(dto.orderCode, purchaseOrder.poNumber);
+    const createStatus = this.normalizeCreateStatus(dto.status);
     const savedOrder = await this.orderRepo.save(
       this.orderRepo.create({
         orderCode,
         sourcePurchaseOrder: purchaseOrder,
         sourcePurchaseOrderNo: purchaseOrder.poNumber,
-        status: (dto as any).status || 'DRAFT',
+        status: createStatus,
         currentStepUserEmail: dto.currentStepUserEmail?.trim() || user?.email,
         note: dto.note?.trim() || undefined,
       }),
@@ -122,7 +125,7 @@ export class StockInOrdersService {
   async update(id: string, dto: UpdateStockInOrderDto, user?: UserContext) {
     const order = await this.findOrderEntity(id);
 
-    if (order.status === 'COMPLETED' || order.status === 'CANCELLED') {
+    if (order.status === 'READY' || order.status === 'COMPLETED' || order.status === 'CANCELLED') {
       throw new BadRequestException('Cannot update a finished stock in order');
     }
 
@@ -179,8 +182,8 @@ export class StockInOrdersService {
   async transition(id: string, dto: { nextStepUserEmail?: string; note?: string }, user?: UserContext) {
     const order = await this.findOrderEntity(id);
 
-    if (order.status === 'COMPLETED') {
-      throw new BadRequestException('Cannot transition a completed stock in order');
+    if (order.status !== 'READY') {
+      throw new BadRequestException('Can only transition an approved stock in order');
     }
 
     order.currentStepUserEmail = dto.nextStepUserEmail?.trim() || undefined;
@@ -201,8 +204,8 @@ export class StockInOrdersService {
   async complete(id: string, dto: CompleteStockInOrderDto, user?: UserContext) {
     const order = await this.findOrderEntity(id);
 
-    if (order.status === 'COMPLETED') {
-      return this.serializeOrder(order, true);
+    if (order.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('Can only complete a stock in order after entering quantities');
     }
 
     const invalid = order.details.find((detail) => toNumber(detail.actualQty) > toNumber(detail.requestedQty));
@@ -290,8 +293,49 @@ export class StockInOrdersService {
 
   async remove(id: string) {
     const order = await this.findOrderEntity(id);
+    if (order.status !== 'DRAFT') {
+      throw new BadRequestException('Only draft stock in orders can be deleted');
+    }
     await this.orderRepo.remove(order);
     return { deleted: true };
+  }
+
+  async notifyAssignees(id: string, user?: UserContext) {
+    const order = await this.findOrderEntity(id);
+    if (order.status !== 'READY') {
+      throw new BadRequestException('Notifications can only be sent for approved stock in orders');
+    }
+
+    const identifiers = (order.currentStepUserEmail || '')
+      .split(',')
+      .map((email) => email.trim())
+      .filter(Boolean);
+
+    if (identifiers.length === 0) {
+      throw new BadRequestException('No assigned staff found for this stock in order');
+    }
+
+    const results = await Promise.all(
+      identifiers.map((identifier) =>
+        this.notificationsService.notifyUserByIdentifier(identifier, {
+          title: `Lệnh nhập kho ${order.orderCode} cần nhập số lượng`,
+          message: `Lệnh nhập kho ${order.orderCode} đã được duyệt. Vui lòng mở lệnh để nhập số lượng kiểm kê và hoàn tất xử lý.`,
+          link: `/inbound/stock-in-orders?orderId=${order.id}`,
+          referenceType: 'stock-in-order',
+          referenceId: order.id,
+          priority: 'high',
+        }),
+      ),
+    );
+
+    await this.appendLog(id, 'workflow.notify-assignees', user, {
+      notifiedCount: results.filter(Boolean).length,
+      assignees: identifiers,
+    });
+
+    return {
+      notified: results.filter(Boolean).length,
+    };
   }
 
   private async findOrderEntity(id: string) {
@@ -347,20 +391,49 @@ export class StockInOrdersService {
     );
   }
 
-  private async generateOrderCode(preferred?: string) {
+  private normalizeCreateStatus(status?: string) {
+    return String(status || '').toUpperCase() === 'READY' ? 'READY' : 'DRAFT';
+  }
+
+  private getMonthWindow(now = new Date()) {
+    const start = new Date(now);
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 1);
+
+    return { start, end };
+  }
+
+  private normalizeOrderCodePrefix(value?: string) {
+    const trimmed = value?.trim().toUpperCase();
+    return trimmed || 'LNK';
+  }
+
+  private async generateOrderCode(preferred?: string, sourcePurchaseOrderNo?: string) {
     const requested = preferred?.trim().toUpperCase();
     if (requested) {
       const existing = await this.orderRepo.findOne({ where: { orderCode: requested } });
       if (!existing) return requested;
     }
 
-    const total = await this.orderRepo.count();
-    let index = total + 1;
-    let code = `LNK${String(index).padStart(5, '0')}`;
+    const { start, end } = this.getMonthWindow();
+    const monthlyCount = await this.orderRepo
+      .createQueryBuilder('stockInOrder')
+      .where('stockInOrder.createdAt >= :start AND stockInOrder.createdAt < :end', {
+        start: start.toISOString(),
+        end: end.toISOString(),
+      })
+      .getCount();
+
+    const prefix = this.normalizeOrderCodePrefix(sourcePurchaseOrderNo);
+    let index = monthlyCount + 1;
+    let code = `${prefix}-${String(index).padStart(4, '0')}`;
 
     while (await this.orderRepo.findOne({ where: { orderCode: code } })) {
       index += 1;
-      code = `LNK${String(index).padStart(5, '0')}`;
+      code = `${prefix}-${String(index).padStart(4, '0')}`;
     }
 
     return code;

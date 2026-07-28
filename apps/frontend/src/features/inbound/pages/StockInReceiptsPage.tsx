@@ -540,7 +540,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                               <MoreHorizontal className="h-4 w-4" />
                             </button>
                             {activeDropdown === r.id && (
-                              <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left">
+                              <div className={`absolute right-0 ${i >= paginatedReceipts.length - 4 ? 'bottom-full mb-2' : 'top-full mt-2'} w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left`}>
                                 <button
                                   type="button"
                                   disabled={r.status !== 'CHECKED'}
@@ -616,12 +616,6 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
                     </tr>
                   )
                 })}
-                {/* Spacer row to prevent overflow clipping of the dropdown */}
-                {activeDropdown && (
-                  <tr>
-                    <td colSpan={11} className="p-0" style={{ height: '180px' }}></td>
-                  </tr>
-                )}
                 </>
               )}
             </tbody>
