@@ -1276,8 +1276,8 @@ export default function StockInOrdersPage() {
       { }
       {/* POPUP XEM CHI TIẾT VÀ SỬA */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-900/60 px-4 py-6 backdrop-blur-sm">
-          <div className="my-auto flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="relative flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             {/* HEADER */}
             <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
                 <div className="flex items-start gap-3">
@@ -1308,8 +1308,8 @@ export default function StockInOrdersPage() {
               </div>
             </div>
 
-            <div className="flex flex-1 overflow-hidden min-h-0">
-              <div className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
+              <div className="flex flex-1 overflow-hidden min-h-0">
+              <div className="overflow-y-auto flex-1 px-8 py-6 pb-32 space-y-6">
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
                   {/* PHẦN TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
                   <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
@@ -1474,7 +1474,7 @@ export default function StockInOrdersPage() {
               </div>
 
               <div className="w-[420px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto flex flex-col">
-                <div className="flex flex-col h-full p-6">
+                <div className="flex flex-col h-full p-6 pb-32">
                   <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Lệnh Nhập Kho</h3>
                   <div className="space-y-6 flex-1">
                     <div>
@@ -1559,43 +1559,43 @@ export default function StockInOrdersPage() {
                   </div>
                 </div>
 
-                <div className="border-t border-slate-200 p-6 bg-white shrink-0 flex flex-col gap-3">
-                  <div className="flex gap-3">
-                    <button type="button" onClick={() => { setTimeout(() => { window.print(); }, 100); }} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
-                      <Printer className="h-4 w-4" /> In
-                    </button>
-                    {isDraftStatus(selectedOrder?.status) && (
-                      <button type="button" onClick={saveCurrentOrder} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
-                        Lưu nháp
-                      </button>
-                    )}
-                    {isDraftStatus(selectedOrder?.status) && (
-                      <button type="button" onClick={approveOrder} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
-                        Duyệt lệnh nhập kho
-                      </button>
-                    )}
-                    {isReadyStatus(selectedOrder?.status) && (
-                      <button type="button" onClick={sendNotification} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-indigo-200 bg-indigo-50 px-5 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-100 disabled:opacity-60">
-                        <Bell className="h-4 w-4" /> Gửi thông báo
-                      </button>
-                    )}
-                    {isReadyStatus(selectedOrder?.status) && (
-                      <button type="button" onClick={startReceiving} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-sky-200 bg-sky-50 px-5 py-2.5 text-sm font-bold text-sky-700 shadow-sm transition hover:bg-sky-100 disabled:opacity-60">
-                        <Workflow className="h-4 w-4" /> Nhập số lượng kiểm kê
-                      </button>
-                    )}
-                    {isInProgressStatus(selectedOrder?.status) && (
-                      <button type="button" onClick={saveCurrentOrder} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
-                        Lưu kiểm kê
-                      </button>
-                    )}
-                    {isInProgressStatus(selectedOrder?.status) && (
-                      <button type="button" onClick={completeOrder} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60">
-                        <CheckCircle2 className="h-4 w-4" /> Tick hoàn thành
-                      </button>
-                    )}
-                  </div>
-                </div>
+            <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur-sm">
+              <div className="flex flex-wrap justify-end gap-3">
+                <button type="button" onClick={() => { setTimeout(() => { window.print(); }, 100); }} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
+                  <Printer className="h-4 w-4" /> In
+                </button>
+                {isDraftStatus(selectedOrder?.status) && (
+                  <button type="button" onClick={saveCurrentOrder} disabled={saving} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
+                    Lưu nháp
+                  </button>
+                )}
+                {isDraftStatus(selectedOrder?.status) && (
+                  <button type="button" onClick={approveOrder} disabled={saving} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
+                    Duyệt lệnh nhập kho
+                  </button>
+                )}
+                {isReadyStatus(selectedOrder?.status) && (
+                  <button type="button" onClick={sendNotification} disabled={saving} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl border-2 border-indigo-200 bg-indigo-50 px-5 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-100 disabled:opacity-60">
+                    <Bell className="h-4 w-4" /> Gửi thông báo
+                  </button>
+                )}
+                {isReadyStatus(selectedOrder?.status) && (
+                  <button type="button" onClick={startReceiving} disabled={saving} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl border-2 border-sky-200 bg-sky-50 px-5 py-2.5 text-sm font-bold text-sky-700 shadow-sm transition hover:bg-sky-100 disabled:opacity-60">
+                    <Workflow className="h-4 w-4" /> Nhập số lượng kiểm kê
+                  </button>
+                )}
+                {isInProgressStatus(selectedOrder?.status) && (
+                  <button type="button" onClick={saveCurrentOrder} disabled={saving} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
+                    Lưu kiểm kê
+                  </button>
+                )}
+                {isInProgressStatus(selectedOrder?.status) && (
+                  <button type="button" onClick={completeOrder} disabled={saving} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60">
+                    <CheckCircle2 className="h-4 w-4" /> Tick hoàn thành
+                  </button>
+                )}
+              </div>
+            </div>
               </div>
             </div>
             </div>
@@ -1604,8 +1604,8 @@ export default function StockInOrdersPage() {
 
       { }
       {modalMode === 'create' && (
-        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-slate-900/60 px-4 py-6 backdrop-blur-sm">
-          <form onSubmit={createFromPurchaseOrder} className="my-auto flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-slate-950/70 p-4 backdrop-blur-sm">
+          <form onSubmit={createFromPurchaseOrder} className="relative flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             {(() => {
               const selectedPO = purchaseOrders.find((po) => po.id === createForm.sourceId);
 
@@ -1647,7 +1647,7 @@ export default function StockInOrdersPage() {
                   </div>
 
                   <div className="flex flex-1 overflow-hidden min-h-0">
-                    <div className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
+                    <div className="overflow-y-auto flex-1 px-8 py-6 pb-32 space-y-6">
                       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
                         {/* PHẦN TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
                         <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
@@ -1806,7 +1806,7 @@ export default function StockInOrdersPage() {
                     </div>
 
                     <div className="w-[420px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto flex flex-col">
-                      <div className="flex flex-col h-full p-6">
+                      <div className="flex flex-col h-full p-6 pb-32">
                           <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Lệnh Nhập Kho</h3>
                         <div className="space-y-6 flex-1">
                           <div>
@@ -1880,16 +1880,16 @@ export default function StockInOrdersPage() {
                         </div>
                       </div>
 
-                      <div className="border-t border-slate-200 p-6 bg-white shrink-0 flex flex-col gap-3">
-                        <div className="flex gap-3">
-                          <button type="button" onClick={closeModal} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
-                            Hủy
-                          </button>
-                          <button type="submit" disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
-                            {createForm.status === 'DRAFT' ? 'Tạo lệnh nháp' : 'Tạo lệnh mới'}
-                          </button>
-                        </div>
-                      </div>
+            <div className="absolute inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur-sm">
+              <div className="flex flex-wrap justify-end gap-3">
+                <button type="button" onClick={closeModal} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
+                  Hủy
+                </button>
+                <button type="submit" disabled={saving} className="inline-flex flex-none items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
+                  {createForm.status === 'DRAFT' ? 'Tạo lệnh nháp' : 'Tạo lệnh mới'}
+                </button>
+              </div>
+            </div>
               </div>
             </div>
                 </>

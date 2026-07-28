@@ -971,14 +971,14 @@ export default function PersonnelManagement() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Quản lý nhân sự</h1>
+          <h1 className="text-3xl font-black tracking-tight text-cyan-950">Quản lý nhân sự</h1>
         </div>
 
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
             onClick={handleImportClick}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-600 px-4 py-2.5 text-sm font-bold text-cyan-600 transition hover:bg-cyan-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-50"
           >
             <Upload className="h-4 w-4" />
             Import
@@ -986,7 +986,7 @@ export default function PersonnelManagement() {
           <button
             type="button"
             onClick={downloadPersonnelImportTemplate}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-600 px-4 py-2.5 text-sm font-bold text-cyan-600 transition hover:bg-cyan-50"
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
           >
             <UserPlus className="h-4 w-4" />
             Tải mẫu
@@ -994,7 +994,7 @@ export default function PersonnelManagement() {
           <button
             type="button"
             onClick={handleExportClick}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-600 px-4 py-2.5 text-sm font-bold text-cyan-600 transition hover:bg-cyan-50"
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
           >
             <Download className="h-4 w-4" />
             Export
@@ -1135,30 +1135,30 @@ export default function PersonnelManagement() {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
                             aria-label="Xem chi tiết"
                             title="Xem chi tiết"
                             onClick={() => openUserModal('view', user)}
                           >
-                            <Eye size={18} strokeWidth={2} />
+                            <Eye size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
                             aria-label="Sửa nhân sự"
                             title="Sửa nhân sự"
                             onClick={() => openUserModal('edit', user)}
                           >
-                            <Pencil size={18} strokeWidth={2} />
+                            <Pencil size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
                             aria-label="Xóa nhân sự"
                             title="Xóa nhân sự"
                             onClick={() => openUserModal('delete', user)}
                           >
-                            <Trash2 size={18} strokeWidth={2} />
+                            <Trash2 size={18} strokeWidth={2.5} />
                           </button>
                         </div>
                       </td>
