@@ -106,7 +106,7 @@ function Input({
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+        className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
       />
     </div>
   );
@@ -129,7 +129,7 @@ function Select({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+        className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -199,13 +199,16 @@ export default function TransferRequestsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Yêu cầu điều chuyển</h1>
-          <p className="mt-2 text-sm text-slate-500">Tạo yêu cầu chuyển hàng từ kho này sang kho kia và gửi duyệt.</p>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <Package className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Yêu Cầu Điều Chuyển</h1>
+          </div>
+          <p className="mt-2 text-sm font-medium text-slate-500">Tạo yêu cầu chuyển hàng từ kho này sang kho kia và gửi duyệt.</p>
         </div>
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+          className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
           Tạo yêu cầu điều chuyển
@@ -213,31 +216,27 @@ export default function TransferRequestsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg text-white">
-          <p className="text-sm uppercase tracking-wide">Tổng yêu cầu</p>
-          <p className="mt-3 text-3xl font-black">{requests.length}</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{requests.length}<br/>TỔNG YÊU CẦU</p>
         </div>
-        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg text-white">
-          <p className="text-sm uppercase tracking-wide">Chờ duyệt</p>
-          <p className="mt-3 text-3xl font-black">{requests.filter((r) => r.status === 'PENDING').length}</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{requests.filter((r) => r.status === 'PENDING').length}<br/>CHỜ DUYỆT</p>
         </div>
-        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg text-white">
-          <p className="text-sm uppercase tracking-wide">Đã duyệt</p>
-          <p className="mt-3 text-3xl font-black">{requests.filter((r) => r.status === 'APPROVED').length}</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{requests.filter((r) => r.status === 'APPROVED').length}<br/>ĐÃ DUYỆT</p>
         </div>
-        <div className="rounded-xl bg-cyan-600 p-4 shadow-lg text-white">
-          <p className="text-sm uppercase tracking-wide">Hoàn thành</p>
-          <p className="mt-3 text-3xl font-black">{requests.filter((r) => r.status === 'COMPLETED').length}</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{requests.filter((r) => r.status === 'COMPLETED').length}<br/>HOÀN THÀNH</p>
         </div>
       </div>
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
             placeholder="Tìm theo số yêu cầu, kho, người tạo..."
           />
         </div>
@@ -268,7 +267,7 @@ export default function TransferRequestsPage() {
           <button
             type="button"
             onClick={() => setShowAdvancedFilters((current) => !current)}
-            className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 transition shadow-sm ${showAdvancedFilters ? 'border-cyan-500 bg-cyan-50 text-cyan-600' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}
+            className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 transition shadow-sm ${showAdvancedFilters ? 'border-cyan-500 bg-cyan-50 text-cyan-600' : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50'}`}
             title="Tìm kiếm nâng cao"
           >
             <Filter className="h-4 w-4" />
@@ -281,7 +280,7 @@ export default function TransferRequestsPage() {
               setTimeFilter('this-month');
               setShowAdvancedFilters(false);
             }}
-            className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 shadow-sm"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-bold text-cyan-600 transition hover:bg-cyan-50 shadow-sm"
           >
             <RefreshCw className="h-4 w-4" />
             Đặt lại
@@ -290,7 +289,7 @@ export default function TransferRequestsPage() {
       </div>
 
       {showAdvancedFilters && (
-        <div className="grid grid-cols-1 gap-4 rounded-xl border border-cyan-200 bg-cyan-50/30 p-4 shadow-sm md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 rounded-xl border-2 border-cyan-500 bg-cyan-50/30 p-4 shadow-sm md:grid-cols-2 lg:grid-cols-3">
           <Input label="Ngày bắt đầu" type="date" value="" onChange={() => {}} />
           <Input label="Ngày kết thúc" type="date" value="" onChange={() => {}} />
           <Select
@@ -311,16 +310,16 @@ export default function TransferRequestsPage() {
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1180px] border-collapse bg-white">
-            <thead className="bg-slate-50">
+            <thead className="bg-cyan-50">
               <tr className="border-b border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Số yêu cầu</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Ngày tạo</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Kho nguồn</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Kho đích</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Người tạo</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700">Tình trạng</th>
-                <th className="sticky right-0 w-40 border-l border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm font-semibold uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">Hành động</th>
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số yêu cầu</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày tạo</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho nguồn</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho đích</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Người tạo</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tình trạng</th>
+                <th className="sticky right-0 w-40 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">Hành động</th>
               </tr>
             </thead>
             <tbody>

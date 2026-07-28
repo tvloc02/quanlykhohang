@@ -792,9 +792,12 @@ export default function GoodsReceiptsPage() {
         </div>
       )}
 
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Phiếu nhập kho</h1>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <Package className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Phiếu nhập kho</h1>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -816,35 +819,35 @@ export default function GoodsReceiptsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{orders.length} TỔNG PHIẾU</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{orders.length} TỔNG PHIẾU</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{draftCount} NHÁP</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{draftCount} NHÁP</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{inProgressCount} ĐANG XỬ LÝ</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{inProgressCount} ĐANG XỬ LÝ</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{completedCount} HOÀN THÀNH</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{completedCount} HOÀN THÀNH</p>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_0.9fr_0.9fr_auto]">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+              className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
               placeholder="Tìm theo mã phiếu, nguồn, nhà cung cấp, diễn giải..."
             />
           </div>
           <select
             value={timeFilter}
             onChange={(event) => setTimeFilter(event.target.value as TimeFilter)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-cyan-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
           >
             <option value="this-month">Thời gian: Tháng này</option>
             <option value="7-days">Thời gian: 7 ngày gần đây</option>
@@ -853,7 +856,7 @@ export default function GoodsReceiptsPage() {
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-cyan-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
           >
             <option value="all">Tình trạng: Tất cả</option>
             <option value="draft">Tình trạng: Nháp</option>
@@ -870,14 +873,14 @@ export default function GoodsReceiptsPage() {
                 setStatusFilter('all');
                 setTimeFilter('this-month');
               }}
-              className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+              className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-3 text-cyan-600 transition hover:bg-cyan-50"
               title="Đặt lại bộ lọc"
             >
               <RefreshCw className="h-4 w-4" />
             </button>
             <button
               type="button"
-              className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+              className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-3 text-cyan-600 transition hover:bg-cyan-50"
               title="Cài đặt"
             >
               <Filter className="h-4 w-4" />
@@ -886,24 +889,23 @@ export default function GoodsReceiptsPage() {
         </div>
       </div>
 
-      { }
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1280px] border-collapse bg-white">
-            <thead>
-              <tr className="border-b border-slate-200">
+            <thead className="bg-cyan-50">
+              <tr className="border-b-2 border-slate-200">
                 <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
                 </th>
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã Phiếu</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày tạo</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nguồn PO</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tổng SL</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tổng tiền</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tình trạng</th>
-                <th className="sticky right-0 w-32 border-l border-slate-200 bg-white px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã Phiếu</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày tạo</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nguồn PO</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nhà cung cấp</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tổng SL</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tổng tiền</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tình trạng</th>
+                <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -923,8 +925,6 @@ export default function GoodsReceiptsPage() {
                 </tr>
               ) : (
                 paginatedOrders.map((order, index) => {
-                  // Tính tổng tiền dựa vào PO source (hoặc detail order nếu có)
-                  // Tạm thời lấy từ details (nếu API có trả về unitPrice, không thì hiển thị N/A)
                   const totalAmount = order.details?.reduce((acc, detail) => acc + (Number(detail.requestedQty) * (Number(detail.unitPrice) || 0)), 0) || 0;
                   return (
                     <tr
@@ -968,10 +968,10 @@ export default function GoodsReceiptsPage() {
                               event.stopPropagation();
                               setSelectedId(order.id);
                             }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                             title="Xem"
                           >
-                            <Eye className="h-4 w-4" />
+                            <Eye size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
@@ -979,10 +979,10 @@ export default function GoodsReceiptsPage() {
                               event.stopPropagation();
                               setPrintOrder(order);
                             }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600 transition-colors hover:bg-purple-100 hover:text-purple-700"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                             title="In"
                           >
-                            <Printer className="h-4 w-4" />
+                            <Printer size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
@@ -990,10 +990,10 @@ export default function GoodsReceiptsPage() {
                               event.stopPropagation();
                               setSelectedId(order.id);
                             }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600 transition-colors hover:bg-amber-100 hover:text-amber-700"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                             title="Sửa"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
@@ -1002,10 +1002,10 @@ export default function GoodsReceiptsPage() {
                               setDeleteTarget(order);
                               setModalMode('delete');
                             }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition-colors hover:bg-red-100"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-red-500 shadow-sm transition hover:bg-red-50"
                             title="Xóa"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 size={18} strokeWidth={2.5} />
                           </button>
                         </div>
                       </td>

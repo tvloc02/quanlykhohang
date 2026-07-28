@@ -199,18 +199,23 @@ export default function SupplierProducts() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-black text-slate-900">Sản phẩm NCC</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <Package className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Sản phẩm nhà cung cấp</h1>
+          </div>
+        </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-4">
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+              className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
               placeholder="Tìm kiếm theo NCC, mã nội bộ, tên sản phẩm..."
             />
           </div>
@@ -317,18 +322,18 @@ export default function SupplierProducts() {
       <div className="mt-6 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1220px] border-collapse bg-white">
-            <thead className="bg-slate-50">
+            <thead className="bg-cyan-50">
               <tr className="border-b-2 border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ảnh</th>
-                <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã hàng hóa</th>
-                <th className="min-w-[250px] border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Tên hàng hóa</th>
-                <th className="w-64 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
-                <th className="w-32 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Số lượng</th>
-                <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Giá</th>
-                <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Đã mua</th>
-                <th className="w-52 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Lịch sử mua gần đây</th>
-                <th className="w-28 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Thao tác</th>
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
+                <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ảnh</th>
+                <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã hàng hóa</th>
+                <th className="min-w-[250px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên hàng hóa</th>
+                <th className="w-64 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nhà cung cấp</th>
+                <th className="w-32 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số lượng</th>
+                <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Giá</th>
+                <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Đã mua</th>
+                <th className="w-52 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Lịch sử mua gần đây</th>
+                <th className="w-28 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -349,7 +354,7 @@ export default function SupplierProducts() {
                   const latest = getLatestPurchase(row);
                   return (
                     <tr key={`${row.id}-${row.supplierId}`} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-900">{startIndex + index}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{startIndex + index}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center">
                         <div className="mx-auto flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                           {row.product?.image ? (
@@ -359,20 +364,20 @@ export default function SupplierProducts() {
                           )}
                         </div>
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-900 uppercase">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700 uppercase">
                         <div>{row.product?.internalSku || '-'}</div>
                         {row.supplierSku && (
                           <div className="text-[10px] font-medium text-slate-500 mt-0.5">({row.supplierSku})</div>
                         )}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-900">{row.product?.name || '-'}</td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{row.product?.name || '-'}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                         {row.supplierName} <span className="text-xs font-medium text-slate-500">({row.supplierCode})</span>
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-900">{row.quantity ?? 0}</td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-900">{formatMoney(row.purchasePrice, row.currency)}</td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-900">{row.quantitySold ?? 0}</td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-900">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{row.quantity ?? 0}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatMoney(row.purchasePrice, row.currency)}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{row.quantitySold ?? 0}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                         {latest ? (
                           <div className="text-sm">
                             <div className="font-semibold text-slate-800">{latest.id}</div>
@@ -391,10 +396,10 @@ export default function SupplierProducts() {
                             setActiveRowForHistory(row);
                             setHistoryModalOpen(true);
                           }}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-600 bg-white text-cyan-600 transition hover:bg-cyan-50"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 transition hover:bg-cyan-50"
                           title="Xem lịch sử đặt hàng"
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-4 w-4" strokeWidth={2.5} />
                         </button>
                       </td>
                     </tr>

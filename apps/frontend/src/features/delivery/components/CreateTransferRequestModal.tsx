@@ -147,7 +147,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
               <select
                 value={sourceWarehouse}
                 onChange={(e) => setSourceWarehouse(e.target.value)}
-                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-cyan-500"
+                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
               >
                 <option value="">-- Chọn kho nguồn --</option>
                 {warehouses
@@ -162,7 +162,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
               <select
                 value={destinationWarehouse}
                 onChange={(e) => setDestinationWarehouse(e.target.value)}
-                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-cyan-500"
+                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
               >
                 <option value="">-- Chọn kho đích --</option>
                 {warehouses
@@ -178,7 +178,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
                 type="datetime-local"
                 value={transferDate}
                 onChange={(e) => setTransferDate(e.target.value)}
-                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-cyan-500"
+                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
               />
             </div>
             <div>
@@ -187,7 +187,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
                 type="datetime-local"
                 value={receiveDate}
                 onChange={(e) => setReceiveDate(e.target.value)}
-                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-cyan-500"
+                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
               />
             </div>
             <div>
@@ -195,7 +195,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
               <select
                 value={managerId}
                 onChange={(e) => setManagerId(e.target.value)}
-                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-cyan-500"
+                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
               >
                 <option value="">-- Chọn người quản lý duyệt --</option>
                 {managers
@@ -215,7 +215,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Nhập lý do điều chuyển hàng hóa..."
-                className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-cyan-500"
+                className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
               />
             </div>
           </div>
@@ -226,7 +226,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
               <button
                 type="button"
                 onClick={() => setIsProductModalOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
+                className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-cyan-700 shadow-sm"
               >
                 <Plus className="h-4 w-4" />
                 Thêm sản phẩm
@@ -235,12 +235,12 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
 
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <thead className="bg-cyan-50 text-xs uppercase text-slate-800">
                   <tr className="border-b border-slate-200">
-                    <th className="px-4 py-3 font-semibold">Sản phẩm</th>
-                    <th className="px-4 py-3 font-semibold w-24">ĐVT</th>
-                    <th className="px-4 py-3 font-semibold w-40">Số lượng điều chuyển</th>
-                    <th className="px-4 py-3 font-semibold w-20 text-center">Xóa</th>
+                    <th className="px-4 py-3 font-extrabold">Sản phẩm</th>
+                    <th className="px-4 py-3 font-extrabold w-24">ĐVT</th>
+                    <th className="px-4 py-3 font-extrabold w-40">Số lượng điều chuyển</th>
+                    <th className="px-4 py-3 font-extrabold w-20 text-center">Xóa</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
