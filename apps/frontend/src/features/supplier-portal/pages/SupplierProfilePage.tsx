@@ -85,6 +85,10 @@ function buildEmptyProductForm(): ProductForm {
     supplierSku: '',
     purchasePrice: '0',
     isPrimary: false,
+    description: '',
+    quantity: '0',
+    quantityAdded: '0',
+    quantitySold: '0',
   };
 }
 
@@ -161,22 +165,22 @@ function buildProductWorkbook(rows: string[][]) {
   <Worksheet ss:Name="San pham NCC">
     <Table>
       ${rows
-        .map(
-          (row, rowIndex) => `
+      .map(
+        (row, rowIndex) => `
             <Row ss:Height="${rowIndex === 0 ? 26 : 22}">
               ${row
-                .map(
-                  (cell) => `
+            .map(
+              (cell) => `
                     <Cell${rowIndex === 0 ? ' ss:StyleID="Header"' : ''}>
                       <Data ss:Type="String">${escapeXml(cell)}</Data>
                     </Cell>
                   `,
-                )
-                .join('')}
+            )
+            .join('')}
             </Row>
           `,
-        )
-        .join('')}
+      )
+      .join('')}
     </Table>
   </Worksheet>
 </Workbook>`;
@@ -201,6 +205,22 @@ export default function SupplierProfilePage() {
   const [productForm, setProductForm] = React.useState<ProductForm>(() => buildEmptyProductForm());
   const [editingLink, setEditingLink] = React.useState<SupplierProductLink | null>(null);
   const [productModalOpen, setProductModalOpen] = React.useState(false);
+  const [quickAddModalOpen, setQuickAddModalOpen] = React.useState(false);
+  const [activeLinkForQuickAdd, setActiveLinkForQuickAdd] = React.useState<SupplierProductLink | null>(null);
+  const [quantityToAdd, setQuantityToAdd] = React.useState('0');
+  const [historyModalOpen, setHistoryModalOpen] = React.useState(false);
+  const [activeLinkForHistory, setActiveLinkForHistory] = React.useState<SupplierProductLink | null>(null);
+
+  // Bulk Add Quantity Modal State
+  const [bulkAddModalOpen, setBulkAddModalOpen] = React.useState(false);
+  const [selectedBulkIds, setSelectedBulkIds] = React.useState<string[]>([]);
+  const [bulkQuantityToAdd, setBulkQuantityToAdd] = React.useState('0');
+
+  // Quick Price Edit Modal State
+  const [editPriceModalOpen, setEditPriceModalOpen] = React.useState(false);
+  const [activeLinkForPriceEdit, setActiveLinkForPriceEdit] = React.useState<SupplierProductLink | null>(null);
+  const [newPurchasePrice, setNewPurchasePrice] = React.useState('');
+
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [toast, setToast] = React.useState<Toast | null>(null);
@@ -214,6 +234,13 @@ export default function SupplierProfilePage() {
     const timer = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  const matchingReceipts = React.useMemo(() => {
+    if (!activeLinkForHistory) return [];
+    return inboundReceipts.filter((receipt) =>
+      receipt.details?.some((d) => d.product?.id === activeLinkForHistory.product?.id)
+    );
+  }, [activeLinkForHistory, inboundReceipts]);
 
   const loadData = React.useCallback(async () => {
     const token = localStorage.getItem('token') || '';
@@ -427,26 +454,30 @@ export default function SupplierProfilePage() {
     setProductForm(
       link
         ? {
-            productImage: '',
-            productId: link.product?.id || '',
-            internalSku: link.product?.internalSku || '',
-            productName: link.product?.name || '',
-            itemGroup: link.itemGroup || '',
-            unit: link.product?.unit || '',
-            managementType: link.managementType || '',
-            storagePosition: link.storagePosition || '',
-            minimumStock: String(link.product?.minimumStock ?? 0),
-            supplierSku: link.supplierSku || '',
-            purchasePrice: String(link.purchasePrice || 0),
-            isPrimary: link.isPrimary,
-          }
+          productImage: link.product?.image || '',
+          productId: link.product?.id || '',
+          internalSku: link.product?.internalSku || '',
+          productName: link.product?.name || '',
+          itemGroup: link.itemGroup || '',
+          unit: link.product?.unit || '',
+          managementType: link.managementType || '',
+          storagePosition: link.storagePosition || '',
+          minimumStock: String(link.product?.minimumStock ?? 0),
+          supplierSku: link.supplierSku || '',
+          purchasePrice: String(link.purchasePrice || 0),
+          isPrimary: link.isPrimary,
+          description: link.description || '',
+          quantity: String(link.quantity ?? 0),
+          quantityAdded: String(link.quantityAdded ?? 0),
+          quantitySold: String(link.quantitySold ?? 0),
+        }
         : {
-            ...buildEmptyProductForm(),
-            itemGroup: latestItemGroups[0]?.name || '',
-            unit: latestCatalogCategories.filter((category) => category.type === 'unit' && category.status === 'active')[0]?.name || '',
-            managementType: latestCatalogCategories.filter((category) => category.type === 'management-attribute' && category.status === 'active')[0]?.name || '',
-            storagePosition: latestCatalogCategories.filter((category) => category.type === 'storage-position' && category.status === 'active')[0]?.name || '',
-          },
+          ...buildEmptyProductForm(),
+          itemGroup: latestItemGroups[0]?.name || '',
+          unit: latestCatalogCategories.filter((category) => category.type === 'unit' && category.status === 'active')[0]?.name || '',
+          managementType: latestCatalogCategories.filter((category) => category.type === 'management-attribute' && category.status === 'active')[0]?.name || '',
+          storagePosition: latestCatalogCategories.filter((category) => category.type === 'storage-position' && category.status === 'active')[0]?.name || '',
+        },
     );
     setProductModalOpen(true);
   };
@@ -463,11 +494,9 @@ export default function SupplierProfilePage() {
       !productForm.internalSku.trim() ||
       !productForm.productName.trim() ||
       !productForm.itemGroup.trim() ||
-      !productForm.unit.trim() ||
-      !productForm.managementType.trim() ||
-      !productForm.storagePosition.trim()
+      !productForm.unit.trim()
     ) {
-      setToast({ type: 'error', message: 'Vui lòng nhập đầy đủ mã sản phẩm, tên, nhóm hàng, ĐVT, thuộc tính và vị trí.' });
+      setToast({ type: 'error', message: 'Vui lòng nhập đầy đủ mã hàng hóa, tên hàng hóa, loại hàng hóa và ĐV Tính.' });
       return;
     }
 
@@ -492,6 +521,10 @@ export default function SupplierProfilePage() {
           supplierSku: productForm.supplierSku.trim(),
           purchasePrice: Number(productForm.purchasePrice || 0),
           isPrimary: productForm.isPrimary,
+          description: productForm.description.trim(),
+          quantity: Number(productForm.quantity || 0),
+          quantityAdded: Number(productForm.quantityAdded || 0),
+          quantitySold: Number(productForm.quantitySold || 0),
         }),
       });
 
@@ -527,6 +560,192 @@ export default function SupplierProfilePage() {
       await loadData();
     } catch (err) {
       setToast({ type: 'error', message: err instanceof Error ? err.message : 'Lỗi khi xóa mặt hàng' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleQuickAddQuantitySubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!activeLinkForQuickAdd) return;
+    const addAmt = Number(quantityToAdd || 0);
+    if (isNaN(addAmt) || addAmt <= 0) {
+      setToast({ type: 'error', message: 'Vui lòng nhập số lượng hợp lệ lớn hơn 0.' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const currentQty = activeLinkForQuickAdd.quantity || 0;
+      const currentQtyAdded = activeLinkForQuickAdd.quantityAdded || 0;
+      const nextQty = currentQty + addAmt;
+      const nextQtyAdded = currentQtyAdded + addAmt;
+
+      const response = await fetch(`${API_BASE_URL}/suppliers/me/products/${activeLinkForQuickAdd.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          productId: activeLinkForQuickAdd.product?.id,
+          productImage: activeLinkForQuickAdd.product?.image || undefined,
+          internalSku: activeLinkForQuickAdd.product?.internalSku || '',
+          productName: activeLinkForQuickAdd.product?.name || '',
+          itemGroup: activeLinkForQuickAdd.itemGroup || '',
+          unit: activeLinkForQuickAdd.product?.unit || '',
+          managementType: activeLinkForQuickAdd.managementType || '',
+          storagePosition: activeLinkForQuickAdd.storagePosition || '',
+          minimumStock: activeLinkForQuickAdd.product?.minimumStock || 0,
+          supplierSku: activeLinkForQuickAdd.supplierSku || '',
+          purchasePrice: Number(activeLinkForQuickAdd.purchasePrice || 0),
+          isPrimary: activeLinkForQuickAdd.isPrimary,
+          description: activeLinkForQuickAdd.description || '',
+          quantity: nextQty,
+          quantityAdded: nextQtyAdded,
+          quantitySold: activeLinkForQuickAdd.quantitySold || 0,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không cập nhật được số lượng');
+      }
+
+      setToast({ type: 'success', message: `Đã thêm ${addAmt} vào số lượng hàng hóa.` });
+      setQuickAddModalOpen(false);
+      setActiveLinkForQuickAdd(null);
+      setQuantityToAdd('0');
+      await loadData();
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Lỗi khi thêm số lượng' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBulkAddQuantitySubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const addAmt = Number(bulkQuantityToAdd || 0);
+    if (isNaN(addAmt) || addAmt <= 0) {
+      setToast({ type: 'error', message: 'Vui lòng nhập số lượng hợp lệ lớn hơn 0.' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await Promise.all(
+        selectedBulkIds.map(async (id) => {
+          const link = profile?.products?.find((p) => p.id === id);
+          if (!link) return;
+          const currentQty = link.quantity || 0;
+          const currentQtyAdded = link.quantityAdded || 0;
+          const nextQty = currentQty + addAmt;
+          const nextQtyAdded = currentQtyAdded + addAmt;
+
+          const response = await fetch(`${API_BASE_URL}/suppliers/me/products/${link.id}`, {
+            method: 'PUT',
+            headers: authHeaders(),
+            body: JSON.stringify({
+              productId: link.product?.id,
+              productImage: link.product?.image || undefined,
+              internalSku: link.product?.internalSku || '',
+              productName: link.product?.name || '',
+              itemGroup: link.itemGroup || '',
+              unit: link.product?.unit || '',
+              managementType: link.managementType || '',
+              storagePosition: link.storagePosition || '',
+              minimumStock: link.product?.minimumStock || 0,
+              supplierSku: link.supplierSku || '',
+              purchasePrice: Number(link.purchasePrice || 0),
+              isPrimary: link.isPrimary,
+              description: link.description || '',
+              quantity: nextQty,
+              quantityAdded: nextQtyAdded,
+              quantitySold: link.quantitySold || 0,
+            }),
+          });
+          if (!response.ok) {
+            throw new Error(`Lỗi cập nhật cho sản phẩm ${link.product?.name}`);
+          }
+        })
+      );
+      setToast({ type: 'success', message: `Đã thêm số lượng ${addAmt} hàng loạt thành công.` });
+      setBulkAddModalOpen(false);
+      setSelectedBulkIds([]);
+      setBulkQuantityToAdd('0');
+      await loadData();
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Lỗi khi thêm số lượng hàng loạt' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBulkDeleteSubmit = async (ids: string[]) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${ids.length} mặt hàng đã chọn không?`)) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await Promise.all(
+        ids.map(async (id) => {
+          const response = await fetch(`${API_BASE_URL}/suppliers/me/products/${id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+          });
+          if (!response.ok) {
+            throw new Error('Có sản phẩm không xóa được');
+          }
+        })
+      );
+      setToast({ type: 'success', message: 'Đã xóa hàng loạt các sản phẩm đã chọn.' });
+      await loadData();
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Lỗi khi xóa hàng loạt' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdatePriceSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!activeLinkForPriceEdit) return;
+    const newPrice = Number(newPurchasePrice || 0);
+    if (isNaN(newPrice) || newPrice < 0) {
+      setToast({ type: 'error', message: 'Vui lòng nhập giá bán hợp lệ.' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/suppliers/me/products/${activeLinkForPriceEdit.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          productId: activeLinkForPriceEdit.product?.id,
+          productImage: activeLinkForPriceEdit.product?.image || undefined,
+          internalSku: activeLinkForPriceEdit.product?.internalSku || '',
+          productName: activeLinkForPriceEdit.product?.name || '',
+          itemGroup: activeLinkForPriceEdit.itemGroup || '',
+          unit: activeLinkForPriceEdit.product?.unit || '',
+          managementType: activeLinkForPriceEdit.managementType || '',
+          storagePosition: activeLinkForPriceEdit.storagePosition || '',
+          minimumStock: activeLinkForPriceEdit.product?.minimumStock || 0,
+          supplierSku: activeLinkForPriceEdit.supplierSku || '',
+          purchasePrice: newPrice,
+          isPrimary: activeLinkForPriceEdit.isPrimary,
+          description: activeLinkForPriceEdit.description || '',
+          quantity: activeLinkForPriceEdit.quantity || 0,
+          quantityAdded: activeLinkForPriceEdit.quantityAdded || 0,
+          quantitySold: activeLinkForPriceEdit.quantitySold || 0,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không cập nhật được giá bán');
+      }
+      setToast({ type: 'success', message: 'Đã cập nhật giá bán mới.' });
+      setEditPriceModalOpen(false);
+      setActiveLinkForPriceEdit(null);
+      setNewPurchasePrice('');
+      await loadData();
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Lỗi khi cập nhật giá bán' });
     } finally {
       setSaving(false);
     }
@@ -678,6 +897,26 @@ export default function SupplierProfilePage() {
           onImport={() => productImportRef.current?.click()}
           onExport={exportSupplierProducts}
           onDownloadTemplate={downloadProductTemplate}
+          onAddQuantity={(link) => {
+            setActiveLinkForQuickAdd(link);
+            setQuantityToAdd('0');
+            setQuickAddModalOpen(true);
+          }}
+          onViewOrderHistory={(link) => {
+            setActiveLinkForHistory(link);
+            setHistoryModalOpen(true);
+          }}
+          onBulkAddQuantity={(ids) => {
+            setSelectedBulkIds(ids);
+            setBulkQuantityToAdd('0');
+            setBulkAddModalOpen(true);
+          }}
+          onBulkDelete={handleBulkDeleteSubmit}
+          onEditPrice={(link) => {
+            setActiveLinkForPriceEdit(link);
+            setNewPurchasePrice(String(link.purchasePrice || '0'));
+            setEditPriceModalOpen(true);
+          }}
         />
       );
     }
@@ -695,31 +934,31 @@ export default function SupplierProfilePage() {
     eyebrow: string;
     icon: React.ReactNode;
   }> = [
-    {
-      id: 'supplier-info',
-      title: 'Thông tin nhà cung cấp',
-      eyebrow: 'Identity & Contact',
-      icon: <Building2 className="h-5 w-5" />,
-    },
-    {
-      id: 'products',
-      title: 'Danh sách sản phẩm',
-      eyebrow: 'Supplier Products',
-      icon: <Package className="h-5 w-5" />,
-    },
-    {
-      id: 'purchase-orders',
-      title: 'Đặt hàng mua',
-      eyebrow: 'Purchase Orders',
-      icon: <ShoppingCart className="h-5 w-5" />,
-    },
-    {
-      id: 'integration',
-      title: 'Kết nối hệ thống',
-      eyebrow: 'Distributor System',
-      icon: <Cable className="h-5 w-5" />,
-    },
-  ];
+      {
+        id: 'supplier-info',
+        title: 'Thông tin nhà cung cấp',
+        eyebrow: 'Identity & Contact',
+        icon: <Building2 className="h-5 w-5" />,
+      },
+      {
+        id: 'products',
+        title: 'Danh sách sản phẩm',
+        eyebrow: 'Supplier Products',
+        icon: <Package className="h-5 w-5" />,
+      },
+      {
+        id: 'purchase-orders',
+        title: 'Đặt hàng mua',
+        eyebrow: 'Purchase Orders',
+        icon: <ShoppingCart className="h-5 w-5" />,
+      },
+      {
+        id: 'integration',
+        title: 'Kết nối hệ thống',
+        eyebrow: 'Distributor System',
+        icon: <Cable className="h-5 w-5" />,
+      },
+    ];
 
   const activeConfig = windows.find((item) => item.id === activeWindow);
   const inactiveWindows = windows.filter((item) => item.id !== activeWindow);
@@ -785,33 +1024,29 @@ export default function SupplierProfilePage() {
                     key={item.id}
                     type="button"
                     onClick={() => setActiveWindow(item.id)}
-                    className={`flex min-w-[200px] shrink-0 flex-col rounded-xl border-2 p-3 text-left transition-colors xl:min-w-0 ${
-                      isActive
-                        ? 'border-cyan-600 bg-cyan-50 shadow-md'
-                        : 'border-slate-200 bg-white hover:border-cyan-300 hover:bg-slate-50'
-                    }`}
+                    className={`flex min-w-[200px] shrink-0 flex-col rounded-xl border-2 p-3 text-left transition-colors xl:min-w-0 ${isActive
+                      ? 'border-cyan-600 bg-cyan-50 shadow-md'
+                      : 'border-slate-200 bg-white hover:border-cyan-300 hover:bg-slate-50'
+                      }`}
                   >
                     <div className="mb-2 flex items-center gap-2">
                       <span
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
-                          isActive ? 'bg-cyan-600 text-white' : 'bg-slate-100 text-slate-500'
-                        }`}
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${isActive ? 'bg-cyan-600 text-white' : 'bg-slate-100 text-slate-500'
+                          }`}
                       >
                         {index + 1}
                       </span>
                       <span
-                        className={`truncate text-[10px] font-black uppercase tracking-wider ${
-                          isActive ? 'text-cyan-700' : 'text-slate-500'
-                        }`}
+                        className={`truncate text-[10px] font-black uppercase tracking-wider ${isActive ? 'text-cyan-700' : 'text-slate-500'
+                          }`}
                       >
                         {item.eyebrow}
                       </span>
                     </div>
                     <div className="flex items-center gap-2.5">
                       <div
-                        className={`rounded-lg p-1.5 ${
-                          isActive ? 'bg-white text-cyan-600 shadow-sm' : 'bg-slate-50 text-slate-400'
-                        }`}
+                        className={`rounded-lg p-1.5 ${isActive ? 'bg-white text-cyan-600 shadow-sm' : 'bg-slate-50 text-slate-400'
+                          }`}
                       >
                         {item.icon}
                       </div>
@@ -864,7 +1099,6 @@ export default function SupplierProfilePage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-slate-900">{editingLink ? 'Sửa mặt hàng' : 'Thêm mặt hàng cung cấp'}</h3>
-                  <p className="text-sm font-medium text-slate-500">Khai báo SKU NCC, giá nhập và NCC chính.</p>
                 </div>
               </div>
               <button type="button" onClick={closeProductModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
@@ -903,21 +1137,21 @@ export default function SupplierProfilePage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Mã sản phẩm <span className="text-red-500">*</span></label>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">Mã hàng hóa <span className="text-red-500">*</span></label>
                     <input value={productForm.internalSku} onChange={(event) => setProductForm((current) => ({ ...current, internalSku: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="VD: SP001, HH001" required />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Tên sản phẩm <span className="text-red-500">*</span></label>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">Tên hàng hóa <span className="text-red-500">*</span></label>
                     <input value={productForm.productName} onChange={(event) => setProductForm((current) => ({ ...current, productName: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="Tên hàng hóa nhà cung cấp" required />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Nhóm hàng <span className="text-red-500">*</span></label>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">Loại hàng hóa <span className="text-red-500">*</span></label>
                     <input
                       list="item-group-options"
                       value={productForm.itemGroup}
                       onChange={(event) => setProductForm((current) => ({ ...current, itemGroup: event.target.value }))}
                       className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                      placeholder="Nhập hoặc chọn nhóm hàng"
+                      placeholder="Nhập hoặc chọn loại hàng hóa"
                       required
                     />
                     <datalist id="item-group-options">
@@ -927,13 +1161,13 @@ export default function SupplierProfilePage() {
                     </datalist>
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Đơn vị tính <span className="text-red-500">*</span></label>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">ĐV Tính <span className="text-red-500">*</span></label>
                     <input
                       list="unit-options"
                       value={productForm.unit}
                       onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value }))}
                       className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                      placeholder="Nhập hoặc chọn ĐVT"
+                      placeholder="Nhập hoặc chọn ĐV Tính"
                       required
                     />
                     <datalist id="unit-options">
@@ -943,92 +1177,35 @@ export default function SupplierProfilePage() {
                     </datalist>
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Thuộc tính quản lý <span className="text-red-500">*</span></label>
-                    <input
-                      list="management-type-options"
-                      value={productForm.managementType}
-                      onChange={(event) => setProductForm((current) => ({ ...current, managementType: event.target.value }))}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                      placeholder="Nhập hoặc chọn thuộc tính"
-                      required
-                    />
-                    <datalist id="management-type-options">
-                      {managementTypeOptions.map((category) => (
-                        <option key={category.id} value={category.name}>{category.code ? `${category.code} - ${category.name}` : category.name}</option>
-                      ))}
-                    </datalist>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Vị trí lưu trữ <span className="text-red-500">*</span></label>
-                    <input
-                      list="storage-position-options"
-                      value={productForm.storagePosition}
-                      onChange={(event) => setProductForm((current) => ({ ...current, storagePosition: event.target.value }))}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                      placeholder="Nhập hoặc chọn vị trí lưu trữ"
-                      required
-                    />
-                    <datalist id="storage-position-options">
-                      {storagePositionOptions.map((category) => (
-                        <option key={category.id} value={category.name}>{category.code ? `${category.code} - ${category.name}` : category.name}</option>
-                      ))}
-                    </datalist>
-                  </div>
-                  <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">Tồn tối thiểu</label>
                     <input type="number" min={0} value={productForm.minimumStock} onChange={(event) => setProductForm((current) => ({ ...current, minimumStock: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="0" />
                   </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">Giá SP</label>
+                    <input type="number" min={0} value={productForm.purchasePrice} onChange={(event) => setProductForm((current) => ({ ...current, purchasePrice: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="0" />
+                  </div>
+                  {editingLink && (
+                    <>
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Số lượng</label>
+                        <input type="number" min={0} value={productForm.quantity} onChange={(event) => setProductForm((current) => ({ ...current, quantity: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="0" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Số lượng thêm mới</label>
+                        <input type="number" min={0} value={productForm.quantityAdded} onChange={(event) => setProductForm((current) => ({ ...current, quantityAdded: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="0" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">Số lượng đã xuất bán</label>
+                        <input type="number" min={0} value={productForm.quantitySold} onChange={(event) => setProductForm((current) => ({ ...current, quantitySold: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="0" />
+                      </div>
+                    </>
+                  )}
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm font-bold text-slate-700">Mô tả</label>
+                    <textarea value={productForm.description} onChange={(event) => setProductForm((current) => ({ ...current, description: event.target.value }))} className="w-full rounded-xl border-2 border-slate-200 p-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="Nhập mô tả sản phẩm..." rows={3} />
+                  </div>
                 </div>
               </section>
-
-              <section>
-                <div className="mb-4 flex items-center gap-2">
-                  <ShoppingCart className="h-5 w-5 text-cyan-600" />
-                  <h4 className="font-black text-slate-900">Thông tin cung ứng</h4>
-                </div>
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Supplier SKU</label>
-                    <input value={productForm.supplierSku} onChange={(event) => setProductForm((current) => ({ ...current, supplierSku: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="Mã hàng theo NCC" />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Giá nhập hiện tại</label>
-                    <input type="number" min={0} value={productForm.purchasePrice} onChange={(event) => setProductForm((current) => ({ ...current, purchasePrice: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" />
-                  </div>
-                </div>
-                <label className="mt-5 flex items-center gap-3 rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
-                  <input type="checkbox" checked={productForm.isPrimary} onChange={(event) => setProductForm((current) => ({ ...current, isPrimary: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500" />
-                  Đánh dấu là NCC chính cho mặt hàng này
-                </label>
-              </section>
-
-              <fieldset disabled className="hidden">
-              <div>
-                <label className="mb-2 block text-sm font-bold text-slate-700">Mặt hàng <span className="text-red-500">*</span></label>
-                <select value={productForm.productId} onChange={(event) => setProductForm((current) => ({ ...current, productId: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" required>
-                  <option value="">Chọn mặt hàng</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.internalSku} - {product.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Supplier SKU</label>
-                  <input value={productForm.supplierSku} onChange={(event) => setProductForm((current) => ({ ...current, supplierSku: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="Mã hàng theo NCC" />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Giá nhập hiện tại</label>
-                  <input type="number" min={0} value={productForm.purchasePrice} onChange={(event) => setProductForm((current) => ({ ...current, purchasePrice: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" />
-                </div>
-              </div>
-              <label className="flex items-center gap-3 rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
-                <input type="checkbox" checked={productForm.isPrimary} onChange={(event) => setProductForm((current) => ({ ...current, isPrimary: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500" />
-                Đánh dấu là NCC chính cho mặt hàng này
-              </label>
-              </fieldset>
             </div>
 
             <div className="flex justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
@@ -1040,6 +1217,253 @@ export default function SupplierProfilePage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Quick Add Quantity Modal */}
+      {quickAddModalOpen && activeLinkForQuickAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-[420px] rounded-2xl bg-white shadow-2xl transition-all border border-slate-100">
+            <div className="border-b-2 border-slate-100 px-6 py-4">
+              <h3 className="text-lg font-black text-slate-900">Thêm số lượng hàng hóa</h3>
+            </div>
+            <form onSubmit={handleQuickAddQuantitySubmit}>
+              <div className="p-6 space-y-4">
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Hàng hóa</p>
+                  <p className="text-sm font-bold text-slate-900 mt-1">
+                    [{activeLinkForQuickAdd.product?.internalSku}] - {activeLinkForQuickAdd.product?.name}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Số lượng hiện tại</p>
+                  <p className="text-lg font-black text-cyan-600 mt-0.5">
+                    {activeLinkForQuickAdd.quantity ?? 0} {activeLinkForQuickAdd.product?.unit}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Số lượng thêm mới</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={quantityToAdd}
+                    onChange={(e) => setQuantityToAdd(e.target.value)}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                    placeholder="VD: 10, 50, 100"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickAddModalOpen(false);
+                    setActiveLinkForQuickAdd(null);
+                  }}
+                  className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-cyan-700 disabled:opacity-60"
+                >
+                  {saving ? 'Đang cập nhật...' : 'Xác nhận'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Order History Modal */}
+      {historyModalOpen && activeLinkForHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-[800px] max-w-[90%] rounded-2xl bg-white shadow-2xl border border-slate-100 flex flex-col max-h-[85vh]">
+            <div className="border-b-2 border-slate-100 px-6 py-4 flex items-center justify-between">
+              <h3 className="text-lg font-black text-slate-900">Lịch sử đơn đặt hàng</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryModalOpen(false);
+                  setActiveLinkForHistory(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase">Hàng hóa</p>
+                <p className="text-base font-black text-slate-900 mt-1">
+                  [{activeLinkForHistory.product?.internalSku}] - {activeLinkForHistory.product?.name}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full border-collapse bg-white">
+                  <thead className="bg-slate-50">
+                    <tr className="border-b border-slate-200">
+                      <th className="px-4 py-3 text-center text-xs font-black uppercase text-slate-600">STT</th>
+                      <th className="px-4 py-3 text-center text-xs font-black uppercase text-slate-600">Mã đơn hàng</th>
+                      <th className="px-4 py-3 text-center text-xs font-black uppercase text-slate-600">Ngày dự kiến</th>
+                      <th className="px-4 py-3 text-center text-xs font-black uppercase text-slate-600">SL yêu cầu</th>
+                      <th className="px-4 py-3 text-center text-xs font-black uppercase text-slate-600">SL thực nhập</th>
+                      <th className="px-4 py-3 text-center text-xs font-black uppercase text-slate-600">Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {matchingReceipts.length ? (
+                      matchingReceipts.map((receipt, index) => {
+                        const detail = receipt.details?.find((d) => d.product?.id === activeLinkForHistory.product?.id);
+                        return (
+                          <tr key={receipt.id} className="border-t border-slate-200 text-sm hover:bg-slate-50/50">
+                            <td className="px-4 py-3 text-center text-slate-500 font-semibold">{index + 1}</td>
+                            <td className="px-4 py-3 text-center font-bold text-slate-800">{receipt.id}</td>
+                            <td className="px-4 py-3 text-center text-slate-600 font-medium">
+                              {receipt.expectedDate ? new Date(receipt.expectedDate).toLocaleDateString('vi-VN') : '-'}
+                            </td>
+                            <td className="px-4 py-3 text-center font-bold text-slate-700">{detail?.expectedQty ?? 0}</td>
+                            <td className="px-4 py-3 text-center font-bold text-cyan-700">{detail?.receivedQty ?? 0}</td>
+                            <td className="px-4 py-3 text-center">
+                              <span className="inline-flex rounded-lg px-2.5 py-1 text-xs font-bold bg-cyan-50 text-cyan-700 border border-cyan-100">
+                                {receipt.status || 'Chờ xử lý'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-slate-400 font-semibold">
+                          Chưa có lịch sử đơn đặt hàng cho sản phẩm này.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4 bg-slate-50">
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryModalOpen(false);
+                  setActiveLinkForHistory(null);
+                }}
+                className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 font-bold text-slate-700 hover:bg-slate-50"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Add Quantity Modal */}
+      {bulkAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-[420px] rounded-2xl bg-white shadow-2xl transition-all border border-slate-100">
+            <div className="border-b-2 border-slate-100 px-6 py-4">
+              <h3 className="text-lg font-black text-slate-900">Thêm số lượng hàng loạt</h3>
+            </div>
+            <form onSubmit={handleBulkAddQuantitySubmit}>
+              <div className="p-6 space-y-4">
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Số lượng mặt hàng đã chọn</p>
+                  <p className="text-lg font-black text-cyan-600 mt-0.5">
+                    {selectedBulkIds.length} mặt sản phẩm
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Số lượng thêm mới cho mỗi loại</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={bulkQuantityToAdd}
+                    onChange={(e) => setBulkQuantityToAdd(e.target.value)}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                    placeholder="VD: 10, 50, 100"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkAddModalOpen(false);
+                    setSelectedBulkIds([]);
+                  }}
+                  className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-cyan-700 disabled:opacity-60"
+                >
+                  {saving ? 'Đang cập nhật...' : 'Xác nhận'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Price Edit Modal */}
+      {editPriceModalOpen && activeLinkForPriceEdit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-[420px] rounded-2xl bg-white shadow-2xl transition-all border border-slate-100">
+            <div className="border-b-2 border-slate-100 px-6 py-4">
+              <h3 className="text-lg font-black text-slate-900">Thay đổi giá sản phẩm</h3>
+            </div>
+            <form onSubmit={handleUpdatePriceSubmit}>
+              <div className="p-6 space-y-4">
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Sản phẩm</p>
+                  <p className="text-sm font-bold text-slate-900 mt-1">
+                    [{activeLinkForPriceEdit.product?.internalSku}] - {activeLinkForPriceEdit.product?.name}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Giá sản phẩm mới ({profile?.currency || 'VND'})</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newPurchasePrice}
+                    onChange={(e) => setNewPurchasePrice(e.target.value)}
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                    placeholder="Nhập giá mới..."
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditPriceModalOpen(false);
+                    setActiveLinkForPriceEdit(null);
+                  }}
+                  className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-cyan-700 disabled:opacity-60"
+                >
+                  {saving ? 'Đang cập nhật...' : 'Xác nhận'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

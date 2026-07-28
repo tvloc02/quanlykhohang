@@ -235,25 +235,31 @@ function getCurrentUserId() {
 }
 
 function isWarehouseAssignedToUser(userId: string, warehouse: WarehouseRecord) {
-  return warehouse.managerIds.includes(userId) || warehouse.staffIds.includes(userId);
+  if (!warehouse || !userId) return false;
+  const managers = Array.isArray(warehouse.managerIds) ? warehouse.managerIds : [];
+  const staff = Array.isArray(warehouse.staffIds) ? warehouse.staffIds : [];
+  return managers.includes(userId) || staff.includes(userId);
 }
 
 function getWarehouseOptionsForUser(userId: string, warehouses: WarehouseRecord[]) {
-  if (!userId) return warehouses;
-  return warehouses.filter((warehouse) => isWarehouseAssignedToUser(userId, warehouse));
+  if (!userId) return warehouses || [];
+  return (warehouses || []).filter((warehouse) => isWarehouseAssignedToUser(userId, warehouse));
 }
 
 function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: PurchaseOrderUser[]) {
   if (!warehouse) return [];
+  const managers = Array.isArray(warehouse.managerIds) ? warehouse.managerIds : [];
+  const staff = Array.isArray(warehouse.staffIds) ? warehouse.staffIds : [];
   const approvedWarehouseIds = new Set([
-    ...warehouse.managerIds.map(String),
-    ...warehouse.staffIds.map(String),
+    ...managers.map(String),
+    ...staff.map(String),
   ]);
-  return users.filter(
+  return (users || []).filter(
     (user) =>
+      user &&
       approvedWarehouseIds.has(String(user.id)) &&
       Array.isArray(user.roles) &&
-      user.roles.some((role) => String(role?.name).toLowerCase() === 'manager'),
+      user.roles.some((role) => role && String(role?.name || '').toLowerCase() === 'manager'),
   );
 }
 
@@ -433,10 +439,10 @@ function PurchaseOrdersPageContent() {
   }, []);
   const currentUserId = React.useMemo(() => getCurrentUserId(), []);
 
-  const supplierProducts = suppliers.find((supplier) => supplier.id === form.supplierId)?.products || [];
+  const supplierProducts = (suppliers || []).find((supplier) => supplier && form && supplier.id === form.supplierId)?.products || [];
 
   const selectedOrder = React.useMemo(
-    () => (selectedOrderDetails?.id === selectedId ? selectedOrderDetails : orders.find((order) => order.id === selectedId)) || null,
+    () => (selectedOrderDetails?.id === selectedId ? selectedOrderDetails : (orders || []).find((order) => order && order.id === selectedId)) || null,
     [orders, selectedId, selectedOrderDetails],
   );
 

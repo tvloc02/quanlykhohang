@@ -152,6 +152,10 @@ export class SuppliersService {
         storagePosition: dto.storagePosition?.trim(),
         purchasePrice: String(dto.purchasePrice ?? 0),
         isPrimary: Boolean(dto.isPrimary),
+        description: dto.description?.trim(),
+        quantity: Number(dto.quantity || 0),
+        quantityAdded: Number(dto.quantityAdded || 0),
+        quantitySold: Number(dto.quantitySold || 0),
       });
 
       return await this.supplierProductRepo.save(supplierProduct);
@@ -172,6 +176,10 @@ export class SuppliersService {
       storagePosition: dto.storagePosition?.trim(),
       purchasePrice: String(dto.purchasePrice ?? 0),
       isPrimary: Boolean(dto.isPrimary),
+      description: dto.description?.trim(),
+      quantity: Number(dto.quantity || 0),
+      quantityAdded: Number(dto.quantityAdded || 0),
+      quantitySold: Number(dto.quantitySold || 0),
     });
 
     return this.supplierProductRepo.save(supplierProduct);
@@ -194,6 +202,19 @@ export class SuppliersService {
     supplierProduct.storagePosition = dto.storagePosition?.trim();
     supplierProduct.purchasePrice = String(dto.purchasePrice ?? 0);
     supplierProduct.isPrimary = Boolean(dto.isPrimary);
+    
+    if (dto.description !== undefined) {
+      supplierProduct.description = dto.description?.trim();
+    }
+    if (dto.quantity !== undefined) {
+      supplierProduct.quantity = Number(dto.quantity || 0);
+    }
+    if (dto.quantityAdded !== undefined) {
+      supplierProduct.quantityAdded = Number(dto.quantityAdded || 0);
+    }
+    if (dto.quantitySold !== undefined) {
+      supplierProduct.quantitySold = Number(dto.quantitySold || 0);
+    }
 
     return this.supplierProductRepo.save(supplierProduct);
   }
@@ -253,6 +274,9 @@ export class SuppliersService {
     product.unit = dto.unit?.trim();
     product.minimumStock = dto.minimumStock ?? 0;
     product.supplier = supplier;
+    if (dto.productImage !== undefined) {
+      product.images = dto.productImage ? [dto.productImage] : undefined;
+    }
 
     return this.productRepo.save(product);
   }
@@ -281,6 +305,10 @@ export class SuppliersService {
         storagePosition: link.storagePosition,
         purchasePrice: link.purchasePrice,
         isPrimary: link.isPrimary,
+        description: link.description,
+        quantity: link.quantity || 0,
+        quantityAdded: link.quantityAdded || 0,
+        quantitySold: link.quantitySold || 0,
         product: link.product
           ? {
               id: link.product.id,
@@ -288,6 +316,7 @@ export class SuppliersService {
               name: link.product.name,
               unit: link.product.unit,
               minimumStock: link.product.minimumStock,
+              image: link.product.images?.[0] || '',
             }
           : null,
       })),

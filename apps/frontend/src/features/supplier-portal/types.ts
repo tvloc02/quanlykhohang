@@ -7,6 +7,7 @@ export type ProductSummary = {
   name: string;
   unit?: string;
   minimumStock?: number;
+  image?: string;
 };
 
 export type SupplierProductLink = {
@@ -18,6 +19,10 @@ export type SupplierProductLink = {
   purchasePrice: string;
   isPrimary: boolean;
   product: ProductSummary | null;
+  description?: string;
+  quantity: number;
+  quantityAdded: number;
+  quantitySold: number;
 };
 
 export type SupplierProfile = {
@@ -62,6 +67,10 @@ export type ProductForm = {
   supplierSku: string;
   purchasePrice: string;
   isPrimary: boolean;
+  description: string;
+  quantity: string;
+  quantityAdded: string;
+  quantitySold: string;
 };
 
 export type InboundReceipt = {

@@ -107,4 +107,24 @@ export class UpsertSupplierProductDto {
   @IsOptional()
   @IsBoolean()
   isPrimary?: boolean;
+
+  @IsOptional()
+  @IsString()
+  productImage?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsNumber()
+  quantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  quantityAdded?: number;
+
+  @IsOptional()
+  @IsNumber()
+  quantitySold?: number;
 }
