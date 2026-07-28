@@ -54,6 +54,11 @@ export class StockInOrdersController {
     return this.service.complete(id, dto, user);
   }
 
+  @Post(':id/notify-assignees')
+  notifyAssignees(@Param('id') id: string, @CurrentUser() user: { id?: string; email?: string }) {
+    return this.service.notifyAssignees(id, user);
+  }
+
   @Post(':id/details/:detailId/distribute')
   distribute(
     @Param('id') id: string,

@@ -1,7 +1,8 @@
-import React from 'react';
+﻿import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
+  Bell,
   Eye,
   Building2,
   Calendar,
@@ -20,6 +21,7 @@ import {
   Clock3,
   ArrowRight,
   FileText,
+  MoreHorizontal,
   Printer,
   Pencil
 } from 'lucide-react';
@@ -86,6 +88,45 @@ export function getStoredWarehouses(): WarehouseRecord[] {
   } catch {
     return [];
   }
+}
+
+function getWarehouseLabel(warehouses: WarehouseRecord[], code?: string) {
+  const normalizedCode = code?.trim();
+  if (!normalizedCode) {
+    return 'KHO-NVL';
+  }
+
+  const warehouse = warehouses.find((item) => item.code === normalizedCode || item.id === normalizedCode);
+  if (!warehouse) {
+    return normalizedCode;
+  }
+
+  return `${warehouse.code} - ${warehouse.name}`;
+}
+
+function isDraftStatus(status?: string) {
+  return String(status || 'DRAFT').toUpperCase() === 'DRAFT';
+}
+
+function isReadyStatus(status?: string) {
+  return String(status || '').toUpperCase() === 'READY';
+}
+
+function isInProgressStatus(status?: string) {
+  return String(status || '').toUpperCase() === 'IN_PROGRESS';
+}
+
+function isLockedStatus(status?: string) {
+  const normalized = String(status || '').toUpperCase();
+  return normalized === 'READY' || normalized === 'IN_PROGRESS' || normalized === 'COMPLETED' || normalized === 'CANCELLED';
+}
+
+function getAllowedActionState(status?: string) {
+  const normalized = String(status || 'DRAFT').toUpperCase();
+  if (normalized === 'DRAFT') return 'draft';
+  if (normalized === 'READY') return 'ready';
+  if (normalized === 'IN_PROGRESS') return 'in-progress';
+  return 'locked';
 }
 
 type Supplier = {
@@ -244,7 +285,7 @@ function statusLabel(status?: string) {
     case 'IN_PROGRESS':
       return 'Đang xử lý';
     case 'READY':
-      return 'Tạo mới (Chờ duyệt)';
+      return 'Tạo lệnh mới';
     case 'COMPLETED':
       return 'Hoàn thành';
     case 'CANCELLED':
@@ -361,10 +402,18 @@ export default function StockInOrdersPage() {
 
   const [users, setUsers] = React.useState<Array<{ id: string; email: string; fullName?: string; roles?: any[] }>>([]);
   const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
+  const [actionMenuId, setActionMenuId] = React.useState<string | null>(null);
+
+  const resetFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+    setTimeFilter('this-month');
+  };
 
   const [createForm, setCreateForm] = React.useState({ sourceId: '', currentStepUserEmail: '', note: '', orderCode: '', expectedDate: '', status: 'DRAFT' });
   const [draft, setDraft] = React.useState<DraftState>(() => makeDraft(null));
   const autoOpenSourcePurchaseOrderId = (location.state as { sourcePurchaseOrderId?: string } | null)?.sourcePurchaseOrderId;
+  const autoOpenOrderId = React.useMemo(() => new URLSearchParams(location.search).get('orderId') || '', [location.search]);
 
   React.useEffect(() => {
     if (!toast) return;
@@ -419,6 +468,14 @@ export default function StockInOrdersPage() {
     [orders, selectedId],
   );
 
+  React.useEffect(() => {
+    if (!autoOpenOrderId || orders.length === 0) return;
+    const target = orders.find((order) => order.id === autoOpenOrderId);
+    if (target && selectedId !== target.id) {
+      setSelectedId(target.id);
+    }
+  }, [autoOpenOrderId, orders, selectedId]);
+
   const fullSourcePO = React.useMemo(
     () => selectedOrder?.sourcePurchaseOrderId ? purchaseOrders.find((po) => po.id === selectedOrder.sourcePurchaseOrderId) || null : null,
     [selectedOrder, purchaseOrders]
@@ -430,7 +487,15 @@ export default function StockInOrdersPage() {
       newDraft.expectedDate = new Date(fullSourcePO.expectedDate).toISOString().slice(0, 16);
     }
     setDraft(newDraft);
-  }, [selectedOrder, fullSourcePO]);
+
+    if (selectedOrder) {
+      const emails = (selectedOrder.currentStepUserEmail || '').split(',').map((e) => e.trim()).filter(Boolean);
+      const matchedIds = users.filter((u) => emails.includes(u.email)).map((u) => u.id);
+      setSelectedStaffIds(matchedIds);
+    } else {
+      setSelectedStaffIds([]);
+    }
+  }, [selectedOrder, fullSourcePO, users]);
 
   React.useEffect(() => {
     setCurrentPage(1);
@@ -501,6 +566,7 @@ export default function StockInOrdersPage() {
   const openCreate = (sourceId?: string) => {
     const defaultSourceId = sourceId || purchaseOrders.find((po) => isApprovedPurchaseOrder(po) && !usedPurchaseOrderIds.has(po.id))?.id || '';
     const selectedSourcePO = purchaseOrders.find(po => po.id === defaultSourceId);
+    setSelectedStaffIds([]);
     setCreateForm({
       sourceId: defaultSourceId,
       currentStepUserEmail: '',
@@ -515,10 +581,10 @@ export default function StockInOrdersPage() {
   React.useEffect(() => {
     if (!autoOpenSourcePurchaseOrderId) return;
 
-    if (usedPurchaseOrderIds.has(autoOpenSourcePurchaseOrderId)) {
+      if (usedPurchaseOrderIds.has(autoOpenSourcePurchaseOrderId)) {
       const existingOrder = orders.find(o => o.sourcePurchaseOrderId === autoOpenSourcePurchaseOrderId);
       if (existingOrder) {
-        setToast({ type: 'error', message: 'Đã có Lệnh nhập kho cho đơn mua hàng này' });
+        setToast({ type: 'error', message: 'Đã có lệnh nhập kho cho đơn mua hàng này' });
         setSelectedId(existingOrder.id);
         window.history.replaceState({}, document.title);
       }
@@ -558,7 +624,9 @@ export default function StockInOrdersPage() {
         body: JSON.stringify({
           sourcePurchaseOrderId: createForm.sourceId,
           note: createForm.note || undefined,
-          currentStepUserEmail: createForm.currentStepUserEmail || undefined,
+          currentStepUserEmail: selectedStaffIds.length > 0
+            ? users.filter((u: any) => selectedStaffIds.includes(u.id)).map((u: any) => u.email).join(',')
+            : undefined,
           orderCode: createForm.orderCode || undefined,
           status: createForm.status || 'DRAFT',
         }),
@@ -594,24 +662,115 @@ export default function StockInOrdersPage() {
     }));
   };
 
-  const saveOrder = async () => {
+  const buildOrderDetailsPayload = () => selectedOrder?.details.map((detail) => {
+    const row = draft.rows[detail.id];
+    return {
+      id: detail.id,
+      warehouseCode: row?.warehouseCode || detail.warehouseCode,
+      requestedQty: parseNumber(row?.requestedQty ?? String(detail.requestedQty)),
+      actualQty: parseNumber(row?.actualQty ?? String(detail.actualQty)),
+      unitPrice: parseNumber(row?.unitPrice ?? String(detail.unitPrice)),
+    };
+  }) || [];
+
+  const buildRowOrderDetailsPayload = (order: StockInOrder) => order.details.map((detail) => ({
+    id: detail.id,
+    warehouseCode: detail.warehouseCode,
+    requestedQty: Number(detail.requestedQty) || 0,
+    actualQty: Number(detail.actualQty) || 0,
+    unitPrice: Number(detail.unitPrice) || 0,
+  }));
+
+  const approveOrderById = async (order: StockInOrder) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${order.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          currentStepUserEmail: order.currentStepUserEmail || undefined,
+          note: order.note || undefined,
+          status: 'READY',
+          details: buildRowOrderDetailsPayload(order),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không duyệt được lệnh nhập kho');
+      }
+
+      setToast({ type: 'success', message: 'Đã duyệt lệnh nhập kho' });
+      setActionMenuId(null);
+      await loadData();
+      setSelectedId(order.id);
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi duyệt lệnh' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendNotificationById = async (order: StockInOrder) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${order.id}/notify-assignees`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không gửi được thông báo');
+      }
+
+      setToast({ type: 'success', message: 'Đã gửi thông báo đến nhân viên được giao' });
+      setActionMenuId(null);
+      await loadData();
+      setSelectedId(order.id);
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi gửi thông báo' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startReceivingById = async (order: StockInOrder) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${order.id}/transition`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          note: order.note || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không chuyển sang bước nhập số lượng');
+      }
+
+      setToast({ type: 'success', message: 'Đã chuyển sang bước nhập số lượng kiểm kê' });
+      setActionMenuId(null);
+      await loadData();
+      setSelectedId(order.id);
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi chuyển bước nhập số lượng' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveCurrentOrder = async () => {
     if (!selectedOrder) return;
     setSaving(true);
     try {
       const payload = {
         currentStepUserEmail: users.filter((u: any) => selectedStaffIds.includes(u.id)).map((u: any) => u.email).join(',') || undefined,
         note: draft.note || undefined,
-        status: draft.status || selectedOrder.status,
-        details: selectedOrder.details.map((detail) => {
-          const row = draft.rows[detail.id];
-          return {
-            id: detail.id,
-            warehouseCode: row?.warehouseCode || detail.warehouseCode,
-            requestedQty: parseNumber(row?.requestedQty ?? String(detail.requestedQty)),
-            actualQty: parseNumber(row?.actualQty ?? String(detail.actualQty)),
-            unitPrice: parseNumber(row?.unitPrice ?? String(detail.unitPrice)),
-          };
-        }),
+        status: selectedOrder?.status,
+        details: buildOrderDetailsPayload(),
       };
 
       const response = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${selectedOrder.id}`, {
@@ -634,52 +793,84 @@ export default function StockInOrdersPage() {
     }
   };
 
-  const transitionOrder = async () => {
+  const approveOrder = async () => {
     if (!selectedOrder) return;
     setSaving(true);
     try {
       const payload = {
         currentStepUserEmail: users.filter((u: any) => selectedStaffIds.includes(u.id)).map((u: any) => u.email).join(',') || undefined,
         note: draft.note || undefined,
-        status: draft.status || selectedOrder.status,
-        details: selectedOrder.details.map((detail) => {
-          const row = draft.rows[detail.id];
-          return {
-            id: detail.id,
-            warehouseCode: row?.warehouseCode || detail.warehouseCode,
-            requestedQty: parseNumber(row?.requestedQty ?? String(detail.requestedQty)),
-            actualQty: parseNumber(row?.actualQty ?? String(detail.actualQty)),
-            unitPrice: parseNumber(row?.unitPrice ?? String(detail.unitPrice)),
-          };
-        }),
+        status: 'READY',
+        details: buildOrderDetailsPayload(),
       };
-      const saveResponse = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${selectedOrder.id}`, {
+
+      const response = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${selectedOrder.id}`, {
         method: 'PUT',
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
-      if (!saveResponse.ok) {
-        throw new Error('Lỗi khi cập nhật dữ liệu phiếu');
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không duyệt được lệnh nhập kho');
       }
 
+      setToast({ type: 'success', message: 'Đã duyệt lệnh nhập kho' });
+      setActionMenuId(null);
+      await loadData();
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi duyệt lệnh' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendNotification = async () => {
+    if (!selectedOrder) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${selectedOrder.id}/notify-assignees`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không gửi được thông báo');
+      }
+
+      setToast({ type: 'success', message: 'Đã gửi thông báo đến nhân viên được giao' });
+      setActionMenuId(null);
+      await loadData();
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi gửi thông báo' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startReceiving = async () => {
+    if (!selectedOrder) return;
+    setSaving(true);
+    try {
       const response = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${selectedOrder.id}/transition`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({
-          nextStepUserEmail: draft.nextStepUserEmail || undefined,
           note: draft.note || undefined,
         }),
       });
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không chuyển bước được');
+        throw new Error(data?.message || 'Không chuyển sang bước nhập số lượng');
       }
 
-      setToast({ type: 'success', message: 'Đã chuyển bước xử lý' });
+      setToast({ type: 'success', message: 'Đã chuyển sang bước nhập số lượng kiểm kê' });
+      setActionMenuId(null);
       await loadData();
     } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi chuyển bước' });
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi chuyển bước nhập số lượng' });
     } finally {
       setSaving(false);
     }
@@ -687,6 +878,10 @@ export default function StockInOrdersPage() {
 
   const completeOrder = async () => {
     if (!selectedOrder) return;
+    if (!isInProgressStatus(selectedOrder?.status)) {
+      setToast({ type: 'error', message: 'Chỉ có thể hoàn thành lệnh sau khi đã nhập số lượng kiểm kê' });
+      return;
+    }
     const hasDifference = selectedOrder.details.some((detail) => {
       const row = draft.rows[detail.id];
       const actualQty = parseNumber(row?.actualQty ?? String(detail.actualQty));
@@ -703,26 +898,9 @@ export default function StockInOrdersPage() {
       const payload = {
         currentStepUserEmail: users.filter((u: any) => selectedStaffIds.includes(u.id)).map((u: any) => u.email).join(',') || undefined,
         note: draft.note || undefined,
-        status: draft.status || selectedOrder.status,
-        details: selectedOrder.details.map((detail) => {
-          const row = draft.rows[detail.id];
-          return {
-            id: detail.id,
-            warehouseCode: row?.warehouseCode || detail.warehouseCode,
-            requestedQty: parseNumber(row?.requestedQty ?? String(detail.requestedQty)),
-            actualQty: parseNumber(row?.actualQty ?? String(detail.actualQty)),
-            unitPrice: parseNumber(row?.unitPrice ?? String(detail.unitPrice)),
-          };
-        }),
+        status: selectedOrder?.status,
+        details: buildOrderDetailsPayload(),
       };
-      const saveResponse = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${selectedOrder.id}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify(payload),
-      });
-      if (!saveResponse.ok) {
-        throw new Error('Lỗi khi cập nhật dữ liệu phiếu trước khi duyệt');
-      }
 
       const response = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${selectedOrder.id}/complete`, {
         method: 'POST',
@@ -740,6 +918,7 @@ export default function StockInOrdersPage() {
       }
 
       setToast({ type: 'success', message: 'Đã duyệt lệnh nhập kho' });
+      setActionMenuId(null);
       await loadData();
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi duyệt phiếu' });
@@ -779,7 +958,7 @@ export default function StockInOrdersPage() {
     : 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {toast && (
         <div className={`fixed right-4 top-4 z-[9999] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
           {toast.type === 'error' ? <XCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
@@ -792,7 +971,7 @@ export default function StockInOrdersPage() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Lệnh nhập kho</h1>
+          <h1 className="text-3xl font-black tracking-tight text-cyan-950">Lệnh nhập kho</h1>
         </div>
         <button
           type="button"
@@ -805,35 +984,35 @@ export default function StockInOrdersPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{orders.length} TỔNG LỆNH</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{orders.length} TỔNG LỆNH</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{draftCount} NHÁP</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{draftCount} NHÁP</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{inProgressCount} ĐANG XỬ LÝ</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{inProgressCount} ĐANG XỬ LÝ</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{completedCount} HOÀN THÀNH</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{completedCount} HOÀN THÀNH</p>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_0.9fr_0.9fr_auto]">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-              placeholder="Tìm theo mã lệnh, nguồn, nhà cung cấp, diễn giải..."
-            />
-          </div>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            placeholder="Tìm theo mã lệnh, nguồn, nhà cung cấp, diễn giải..."
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={timeFilter}
             onChange={(event) => setTimeFilter(event.target.value as TimeFilter)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           >
             <option value="this-month">Thời gian: Tháng này</option>
             <option value="7-days">Thời gian: 7 ngày gần đây</option>
@@ -842,36 +1021,23 @@ export default function StockInOrdersPage() {
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-            className="h-11 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+            className="h-11 min-w-[200px] rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           >
             <option value="all">Tình trạng: Tất cả</option>
             <option value="draft">Tình trạng: Nháp</option>
             <option value="in_progress">Tình trạng: Đang xử lý</option>
-            <option value="ready">Tình trạng: Sẵn sàng</option>
+            <option value="ready">Tình trạng: Tạo lệnh mới</option>
             <option value="completed">Tình trạng: Hoàn thành</option>
             <option value="cancelled">Tình trạng: Đã hủy</option>
           </select>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setSearch('');
-                setStatusFilter('all');
-                setTimeFilter('this-month');
-              }}
-              className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              title="Đặt lại bộ lọc"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              title="Cài đặt"
-            >
-              <Filter className="h-4 w-4" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700 shadow-sm"
+            title="Đặt lại bộ lọc"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -885,7 +1051,7 @@ export default function StockInOrdersPage() {
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
                 </th>
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã Lệnh</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Mã lệnh</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Ngày tạo</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nguồn PO</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">Nhà cung cấp</th>
@@ -913,7 +1079,7 @@ export default function StockInOrdersPage() {
               ) : (
                 paginatedOrders.map((order, index) => {
                   // Tính tổng tiền dựa vào PO source (hoặc detail order nếu có)
-                  // Tạm thời lấy từ details (nếu API có trả về unitPrice, không thì hiển thị N/A)
+                  // Tạm thời lấy từ details (nếu API có trả về unitPrice, không thể hiện N/A)
                   const totalAmount = order.details?.reduce((acc, detail) => acc + (Number(detail.requestedQty) * (Number(detail.unitPrice) || 0)), 0) || 0;
                   return (
                     <tr
@@ -948,43 +1114,114 @@ export default function StockInOrdersPage() {
                         <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(order.status)}`}>
                           {statusLabel(order.status)}
                         </span>
-                      </td>
-                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
-                        <div className="flex items-center justify-center gap-2">
+                      </td>                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                        <div className="relative flex items-center justify-center gap-2">
                           <button
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
                               setSelectedId(order.id);
                             }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                             title="Xem"
                           >
-                            <Eye className="h-4 w-4" />
+                            <Eye size={18} strokeWidth={2.5} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async (event) => {
+                              event.stopPropagation();
+                              if (!isDraftStatus(order.status)) return;
+                              await approveOrderById(order);
+                            }}
+                            disabled={!isDraftStatus(order.status) || saving}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300"
+                            title="Duyệt lệnh nhập kho"
+                          >
+                            <CheckCircle2 size={18} strokeWidth={2.5} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async (event) => {
+                              event.stopPropagation();
+                              if (!isReadyStatus(order.status)) return;
+                              await sendNotificationById(order);
+                            }}
+                            disabled={!isReadyStatus(order.status) || saving}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300"
+                            title="Gửi thông báo"
+                          >
+                            <Bell size={18} strokeWidth={2.5} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async (event) => {
+                              event.stopPropagation();
+                              if (!isReadyStatus(order.status)) return;
+                              await startReceivingById(order);
+                            }}
+                            disabled={!isReadyStatus(order.status) || saving}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300"
+                            title="Nhập số lượng kiểm kê"
+                          >
+                            <Workflow size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              setSelectedId(order.id);
+                              setActionMenuId((current) => (current === order.id ? null : order.id));
                             }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600 transition-colors hover:bg-amber-100 hover:text-amber-700"
-                            title="Sửa"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                            title="Thêm thao tác"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <MoreHorizontal size={18} strokeWidth={2.5} />
                           </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setDeleteTarget(order);
-                              setModalMode('delete');
-                            }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition-colors hover:bg-red-100"
-                            title="Xóa"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+
+                          {actionMenuId === order.id && (
+                            <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-xl">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedId(order.id);
+                                  setActionMenuId(null);
+                                }}
+                                disabled={!isDraftStatus(order.status) && !isReadyStatus(order.status) && !isInProgressStatus(order.status)}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300"
+                              >
+                                <Pencil className="h-4 w-4" />
+                                Sửa
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  if (!isDraftStatus(order.status)) return;
+                                  setDeleteTarget(order);
+                                  setModalMode('delete');
+                                  setActionMenuId(null);
+                                }}
+                                disabled={!isDraftStatus(order.status)}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Xóa
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setActionMenuId(null);
+                                  window.print();
+                                }}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                              >
+                                <Printer className="h-4 w-4" />
+                                In
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1020,13 +1257,13 @@ export default function StockInOrdersPage() {
                 «
               </button>
               <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                ‹
+                ⬹
               </button>
               <button type="button" className="flex h-9 min-w-9 items-center justify-center rounded-lg bg-cyan-600 px-3 text-sm font-bold text-white">
                 {currentPage}
               </button>
               <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
-                ›
+                ⬺
               </button>
               <button type="button" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40">
                 »
@@ -1039,42 +1276,42 @@ export default function StockInOrdersPage() {
       { }
       {/* POPUP XEM CHI TIẾT VÀ SỬA */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[94vh] w-[95vw] max-w-[1500px] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col">
+        <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-slate-900/60 px-4 py-6 backdrop-blur-sm">
+          <div className="my-auto flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             {/* HEADER */}
             <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
-              <div className="flex items-start gap-3">
-                <div className="rounded-xl bg-cyan-100 p-2 text-cyan-700">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-cyan-100 p-2 text-cyan-700">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900">
                     Chi tiết Lệnh Nhập Kho {selectedOrder.orderCode}
-                  </h3>
-                  <p className="text-sm font-medium text-slate-500">
+                    </h3>
+                    <p className="text-sm font-medium text-slate-500">
                     Từ đơn mua hàng: {selectedOrder.sourcePurchaseOrderNo || '-'}
-                  </p>
+                    </p>
+                  </div>
                 </div>
-              </div>
               <div className="flex items-center gap-3">
-                <span className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${statusClass(selectedOrder.status)}`}>
-                  {statusLabel(selectedOrder.status)}
+                <span className={`rounded-lg border px-3 py-1.5 text-sm font-bold ${statusClass(selectedOrder?.status)}`}>
+                  {statusLabel(selectedOrder?.status)}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(null)}
-                  className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 transition"
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(null)}
+                    className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 transition"
                   title="Đóng"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
               </div>
             </div>
 
             <div className="flex flex-1 overflow-hidden min-h-0">
               <div className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-                  {/* PHÍA TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
+                  {/* PHẦN TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
                   <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
                     {(() => {
                       const warehouseCode2 = fullSourcePO?.warehouseCode || fullSourcePO?.details?.[0]?.warehouseCode;
@@ -1139,7 +1376,7 @@ export default function StockInOrdersPage() {
                     })()}
                   </div>
 
-                  {/* PHÍA GIỮA: THÔNG TIN ĐƠN HÀNG */}
+                  {/* PHẦN GIỮA: THÔNG TIN ĐƠN HÀNG */}
                   <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
                     <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin đơn hàng</h4>
                     <div className="grid grid-cols-1 gap-6">
@@ -1208,13 +1445,17 @@ export default function StockInOrdersPage() {
                                   {detail.product?.internalSku || '-'} - {detail.product?.name || '-'}
                                 </td>
                                 <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">
-                                  {detail.warehouseCode || 'KHO-NVL'}
+                                  {getWarehouseLabel(warehouses, detail.warehouseCode)}
                                 </td>
                                 <td className="px-3 py-3 text-center text-sm font-black text-cyan-700">
                                   {formatNumber(requestedQty)}
                                 </td>
                                 <td className="px-3 py-3 text-center text-sm font-black text-emerald-600">
-                                  {formatNumber(Number(draft.rows[detail.id]?.actualQty || detail.actualQty || 0))}
+                                  {isInProgressStatus(selectedOrder?.status) ? (
+                                    <input type="number" min={0} value={draft.rows[detail.id]?.actualQty ?? String(detail.actualQty || 0)} onChange={(event) => updateDraftRow(detail.id, { actualQty: event.target.value })} className="h-9 w-full rounded-lg border border-emerald-200 bg-white px-3 text-center text-sm font-black text-emerald-700 outline-none transition focus:border-emerald-500" />
+                                  ) : (
+                                    formatNumber(Number(draft.rows[detail.id]?.actualQty || detail.actualQty || 0))
+                                  )}
                                 </td>
                                 <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">
                                   {formatMoney(unitPrice)}
@@ -1238,23 +1479,23 @@ export default function StockInOrdersPage() {
                   <div className="space-y-6 flex-1">
                     <div>
                       <label className="mb-2 block text-sm font-bold text-slate-700">Mã lệnh nhập kho</label>
-                      <input type="text" value={draft.orderCode || ''} onChange={(e) => setDraft((current) => ({ ...current, orderCode: e.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
+                      <input type="text" value={draft.orderCode || ''} onChange={(e) => setDraft((current) => ({ ...current, orderCode: e.target.value }))} disabled={!isDraftStatus(selectedOrder?.status)} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:cursor-not-allowed disabled:bg-slate-50" />
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái lệnh</label>
                       <select
                         value={draft.status || 'DRAFT'}
                         onChange={(e) => setDraft((current) => ({ ...current, status: e.target.value }))}
-                        disabled={selectedOrder.status === 'COMPLETED' || selectedOrder.status === 'CANCELLED' || selectedOrder.status === 'IN_PROGRESS'}
+                        disabled={!isDraftStatus(selectedOrder?.status)}
                         className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed"
                       >
-                        {selectedOrder.status === 'IN_PROGRESS' && <option value="IN_PROGRESS">Đang xử lý</option>}
-                        {selectedOrder.status === 'COMPLETED' && <option value="COMPLETED">Hoàn thành</option>}
-                        {selectedOrder.status === 'CANCELLED' && <option value="CANCELLED">Đã hủy</option>}
-                        {selectedOrder.status !== 'IN_PROGRESS' && selectedOrder.status !== 'COMPLETED' && selectedOrder.status !== 'CANCELLED' && (
+                        {selectedOrder?.status === 'IN_PROGRESS' && <option value="IN_PROGRESS">Đang xử lý</option>}
+                        {selectedOrder?.status === 'COMPLETED' && <option value="COMPLETED">Hoàn thành</option>}
+                        {selectedOrder?.status === 'CANCELLED' && <option value="CANCELLED">Đã hủy</option>}
+                        {selectedOrder?.status !== 'IN_PROGRESS' && selectedOrder?.status !== 'COMPLETED' && selectedOrder?.status !== 'CANCELLED' && (
                           <>
-                            <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
-                            <option value="READY">Tạo mới (Chờ duyệt)</option>
+                            <option value="DRAFT">Nháp</option>
+                            <option value="READY">Tạo lệnh mới</option>
                           </>
                         )}
                       </select>
@@ -1264,9 +1505,9 @@ export default function StockInOrdersPage() {
                         <CalendarDays className="h-4 w-4 text-cyan-600" />
                         Thời gian nhập kho (Dự kiến)
                       </label>
-                      <input type="datetime-local" value={draft.expectedDate || ''} onChange={(e) => setDraft((current) => ({ ...current, expectedDate: e.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500" />
+                      <input type="datetime-local" value={draft.expectedDate || ''} onChange={(e) => setDraft((current) => ({ ...current, expectedDate: e.target.value }))} disabled={!isDraftStatus(selectedOrder?.status)} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:cursor-not-allowed disabled:bg-slate-50" />
                     </div>
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col min-h-[250px] max-h-[300px]">
+                          <div className={`rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col min-h-[250px] max-h-[300px] ${!isDraftStatus(selectedOrder?.status) ? 'pointer-events-none opacity-60' : ''}`}>
                             <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
                               <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
                                 Nhân viên kho
@@ -1313,40 +1554,58 @@ export default function StockInOrdersPage() {
                           </div>
                     <div>
                       <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
-                      <textarea value={draft.note || ''} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))} rows={3} className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 resize-none" placeholder="Ví dụ: Kiểm tra kỹ tem mác..." />
+                      <textarea value={draft.note || ''} onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))} rows={3} disabled={!isDraftStatus(selectedOrder?.status)} className="w-full rounded-xl border-2 border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 resize-none disabled:cursor-not-allowed disabled:bg-slate-50" placeholder="Ví dụ: Kiểm tra kỹ tem mác..." />
                     </div>
                   </div>
                 </div>
 
                 <div className="border-t border-slate-200 p-6 bg-white shrink-0 flex flex-col gap-3">
-                  {selectedOrder.status === 'READY' && (
-                    <button type="button" onClick={async () => { if (window.confirm('Bạn có chắc chắn muốn duyệt lệnh nhập kho này?')) { await completeOrder(); } }} disabled={saving} className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
-                      Duyệt lệnh nhập kho
-                    </button>
-                  )}
-
                   <div className="flex gap-3">
                     <button type="button" onClick={() => { setTimeout(() => { window.print(); }, 100); }} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
                       <Printer className="h-4 w-4" /> In
                     </button>
-                    <button type="button" onClick={() => { setDraft(d => ({...d, status: 'DRAFT'})); saveOrder(); }} disabled={saving || selectedOrder.status === 'COMPLETED'} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
-                      Lưu nháp
-                    </button>
-                    <button type="button" onClick={() => { setDraft(d => ({...d, status: 'READY'})); saveOrder(); }} disabled={saving || selectedOrder.status === 'COMPLETED'} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a165] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b08e56] disabled:opacity-60">
-                      Cập nhật & Giao việc
-                    </button>
+                    {isDraftStatus(selectedOrder?.status) && (
+                      <button type="button" onClick={saveCurrentOrder} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
+                        Lưu nháp
+                      </button>
+                    )}
+                    {isDraftStatus(selectedOrder?.status) && (
+                      <button type="button" onClick={approveOrder} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
+                        Duyệt lệnh nhập kho
+                      </button>
+                    )}
+                    {isReadyStatus(selectedOrder?.status) && (
+                      <button type="button" onClick={sendNotification} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-indigo-200 bg-indigo-50 px-5 py-2.5 text-sm font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-100 disabled:opacity-60">
+                        <Bell className="h-4 w-4" /> Gửi thông báo
+                      </button>
+                    )}
+                    {isReadyStatus(selectedOrder?.status) && (
+                      <button type="button" onClick={startReceiving} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-sky-200 bg-sky-50 px-5 py-2.5 text-sm font-bold text-sky-700 shadow-sm transition hover:bg-sky-100 disabled:opacity-60">
+                        <Workflow className="h-4 w-4" /> Nhập số lượng kiểm kê
+                      </button>
+                    )}
+                    {isInProgressStatus(selectedOrder?.status) && (
+                      <button type="button" onClick={saveCurrentOrder} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 shadow-sm transition hover:bg-amber-100 disabled:opacity-60">
+                        Lưu kiểm kê
+                      </button>
+                    )}
+                    {isInProgressStatus(selectedOrder?.status) && (
+                      <button type="button" onClick={completeOrder} disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60">
+                        <CheckCircle2 className="h-4 w-4" /> Tick hoàn thành
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+            </div>
+            </div>
       )}
 
       { }
       {modalMode === 'create' && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <form onSubmit={createFromPurchaseOrder} className="max-h-[94vh] w-[95vw] max-w-[1500px] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col">
+        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-slate-900/60 px-4 py-6 backdrop-blur-sm">
+          <form onSubmit={createFromPurchaseOrder} className="my-auto flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             {(() => {
               const selectedPO = purchaseOrders.find((po) => po.id === createForm.sourceId);
 
@@ -1390,7 +1649,7 @@ export default function StockInOrdersPage() {
                   <div className="flex flex-1 overflow-hidden min-h-0">
                     <div className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
                       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-                        {/* PHÍA TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
+                        {/* PHẦN TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
                         <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
                           <div>
                             <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin nhà cung cấp</h4>
@@ -1445,12 +1704,11 @@ export default function StockInOrdersPage() {
                           </div>
                         </div>
 
-                        {/* PHÍA GIỮA: THÔNG TIN ĐƠN HÀNG */}
                         <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
-                          <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin đơn hàng</h4>
+                    <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin đơn hàng</h4>
                           <div className="grid grid-cols-1 gap-6">
                             <div>
-                              <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Đơn mua hàng tham chiếu <span className="text-red-600">*</span></label>
+                        <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Đơn mua hàng tham chiếu <span className="text-red-600">*</span></label>
                               <select
                                 value={createForm.sourceId}
                                 onChange={(event) => {
@@ -1464,25 +1722,25 @@ export default function StockInOrdersPage() {
                                 }}
                                 className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-bold text-blue-600 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
                               >
-                                <option value="">Chọn đơn mua hàng</option>
+                                 <option value="">Chọn đơn mua hàng</option>
                                 {purchaseOrders.map((po) => (
                                   <option key={po.id} value={po.id} disabled={usedPurchaseOrderIds.has(po.id) || !isApprovedPurchaseOrder(po)}>
-                                    {po.poNumber} {usedPurchaseOrderIds.has(po.id) ? '(đã tạo)' : !isApprovedPurchaseOrder(po) ? '(chưa duyệt)' : ''}
+                                     {po.poNumber} {usedPurchaseOrderIds.has(po.id) ? '(đã tạo)' : !isApprovedPurchaseOrder(po) ? '(chưa duyệt)' : ''}
                                   </option>
                                 ))}
                               </select>
                             </div>
                             <div>
-                              <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Ngày tạo đơn</label>
+                        <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Ngày tạo đơn</label>
                               <input type="text" value={selectedPO?.orderDate ? new Date(selectedPO.orderDate).toLocaleString('vi-VN') : '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
                             </div>
                             <div>
-                              <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Ngày giao hàng dự kiến</label>
+                        <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Ngày giao hàng dự kiến</label>
                               <input type="text" value={selectedPO?.expectedDate ? new Date(selectedPO.expectedDate).toLocaleString('vi-VN') : '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
                             </div>
                             <div>
-                              <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Trạng thái đơn hàng</label>
-                              <input type="text" value={selectedPO?.status === 'SUPPLIER_APPROVED' ? 'NCC đã xác nhận' : selectedPO?.status === 'PARTIALLY_RECEIVED' ? 'Nhận một phần' : selectedPO?.status === 'RECEIVED' ? 'Đã nhận đủ' : selectedPO?.status || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                        <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Trạng thái đơn hàng</label>
+                        <input type="text" value={selectedPO?.status === 'SUPPLIER_APPROVED' ? 'NCC đã xác nhận' : selectedPO?.status === 'PARTIALLY_RECEIVED' ? 'Nhận một phần' : selectedPO?.status === 'RECEIVED' ? 'Đã nhận đủ' : selectedPO?.status || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
                             </div>
 
                             <div className="mt-2 rounded-2xl bg-cyan-50 p-5 border border-cyan-100 flex-1 flex flex-col justify-center">
@@ -1526,7 +1784,7 @@ export default function StockInOrdersPage() {
                                     <tr key={detail.id} className="hover:bg-slate-50 transition">
                                       <td className="px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
                                       <td className="px-3 py-3 text-sm font-bold text-slate-800">{detail.product?.internalSku || '-'} - {detail.product?.name || '-'}</td>
-                                      <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">{detail.warehouseCode || 'KHO-NVL'}</td>
+                                      <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">{getWarehouseLabel(warehouses, detail.warehouseCode)}</td>
                                       <td className="px-3 py-3 text-center text-sm font-black text-cyan-700">{formatNumber(detail.expectedQty)}</td>
                                       <td className="px-3 py-3 text-center text-sm font-black text-emerald-600">{formatNumber(detail.receivedQty)}</td>
                                       <td className="px-3 py-3 text-center text-sm font-semibold text-slate-700">{formatMoney(detail.unitPrice)}</td>
@@ -1549,7 +1807,7 @@ export default function StockInOrdersPage() {
 
                     <div className="w-[420px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto flex flex-col">
                       <div className="flex flex-col h-full p-6">
-                        <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Lệnh Nhập Kho</h3>
+                          <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Lệnh Nhập Kho</h3>
                         <div className="space-y-6 flex-1">
                           <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">Mã lệnh nhập kho</label>
@@ -1558,8 +1816,8 @@ export default function StockInOrdersPage() {
                           <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái lệnh</label>
                             <select value={createForm.status} onChange={(e) => setCreateForm((current) => ({ ...current, status: e.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500">
-                              <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
-                              <option value="READY">Tạo mới (Sẵn sàng duyệt)</option>
+                              <option value="DRAFT">Tạo lệnh nháp</option>
+                              <option value="READY">Tạo lệnh mới</option>
                             </select>
                           </div>
                           <div>
@@ -1615,7 +1873,7 @@ export default function StockInOrdersPage() {
                                 </label>
                               ))}
                               {users.filter((u: any) => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length === 0 && (
-                                 <p className="text-sm text-slate-500 italic mt-4 text-center">Không có nhân viên kho nào</p>
+                                  <p className="text-sm text-slate-500 italic mt-4 text-center">Không có nhân viên kho nào</p>
                               )}
                             </div>
                           </div>
@@ -1623,20 +1881,17 @@ export default function StockInOrdersPage() {
                       </div>
 
                       <div className="border-t border-slate-200 p-6 bg-white shrink-0 flex flex-col gap-3">
-                        <button type="button" onClick={closeModal} className="w-full inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
-                          Đóng
-                        </button>
                         <div className="flex gap-3">
-                          <button type="button" onClick={() => { setCreateForm(c => ({...c, status: 'DRAFT'})); setTimeout(() => document.getElementById('create-order-form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })), 50); }} disabled={saving || !createForm.sourceId} className="flex-1 inline-flex items-center justify-center rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60">
-                            Lưu nháp
+                          <button type="button" onClick={closeModal} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
+                            Hủy
                           </button>
-                          <button type="submit" onClick={() => setCreateForm(c => ({...c, status: 'READY'}))} disabled={saving || !createForm.sourceId} className="flex-1 inline-flex items-center justify-center rounded-xl bg-[#c5a165] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b08e56] disabled:opacity-60">
-                            Tạo mới & Giao việc
+                          <button type="submit" disabled={saving} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
+                            {createForm.status === 'DRAFT' ? 'Tạo lệnh nháp' : 'Tạo lệnh mới'}
                           </button>
                         </div>
                       </div>
-                    </div>
-                  </div>
+              </div>
+            </div>
                 </>
               );
             })()}
@@ -1645,8 +1900,8 @@ export default function StockInOrdersPage() {
       )}
 
       {modalMode === 'delete' && deleteTarget && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-6 backdrop-blur-sm">
+          <div className="my-auto w-full max-w-lg rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Xóa lệnh nhập kho</h3>
@@ -1679,3 +1934,11 @@ export default function StockInOrdersPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+

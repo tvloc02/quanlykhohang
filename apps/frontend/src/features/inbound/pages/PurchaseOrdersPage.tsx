@@ -11,7 +11,9 @@ import {
   Filter,
   Package,
   Pencil,
+  Plus,
   PlusCircle,
+  History,
   RefreshCw,
   Search,
   Trash2,
@@ -75,6 +77,7 @@ type PurchaseOrderLine = {
   expectedQty: number;
   receivedQty: number;
   unitPrice: number;
+  supplierPrice?: number | null;
   totalLineAmount: number;
   product?: {
     id: string;
@@ -278,13 +281,22 @@ function parseDateForInput(dateString?: string) {
   return toLocalDatetimeString(d);
 }
 
-function buildEmptyForm(supplierId = '', warehouseCode = ''): OrderForm {
+function buildEmptyForm(supplierId = '', warehouseCode = '', existingOrders: PurchaseOrder[] = []): OrderForm {
   const now = new Date();
   const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const randomId = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+  
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  const dateStr = `${day}${month}${year}`;
+  const prefix = `DH${dateStr}-`;
+
+  const countToday = (existingOrders || []).filter(o => o.poNumber && o.poNumber.startsWith(prefix)).length;
+  const seq = String(countToday + 1).padStart(4, '0');
+  const poNumber = `${prefix}${seq}`;
 
   return {
-    poNumber: `PO-${randomId}`,
+    poNumber,
     supplierId,
     orderDate: toLocalDatetimeString(now),
     expectedDate: toLocalDatetimeString(nextWeek),
@@ -316,7 +328,9 @@ function parseMoney(value: string) {
 function statusLabel(status?: string) {
   switch ((status || 'CREATED').toUpperCase()) {
     case 'DRAFT':
-      return 'Nháp';
+      return 'Đơn nháp';
+    case 'CREATED':
+      return 'Đơn đặt hàng mới';
     case 'APPROVED':
       return 'Chờ NCC xác nhận';
     case 'SUPPLIER_APPROVED':
@@ -327,8 +341,10 @@ function statusLabel(status?: string) {
       return 'Hoàn thành';
     case 'CANCELLED':
       return 'Đã hủy';
+    case 'REJECTED':
+      return 'Từ chối / Phản hồi giá';
     default:
-      return 'Chờ duyệt';
+      return 'Đơn đặt hàng mới';
   }
 }
 
@@ -345,6 +361,8 @@ function statusClass(status?: string) {
     case 'RECEIVED':
       return 'border-emerald-200 bg-emerald-50 text-emerald-700';
     case 'CANCELLED':
+      return 'border-red-200 bg-red-50 text-red-600';
+    case 'REJECTED':
       return 'border-red-200 bg-red-50 text-red-600';
     default:
       return 'border-amber-200 bg-amber-50 text-amber-700';
@@ -371,7 +389,7 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <label className="mb-2 block text-sm font-bold text-slate-700">{label}</label>
-      <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
+      <div className="flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 whitespace-pre-line">
         {value || '-'}
       </div>
     </div>
@@ -756,7 +774,7 @@ function PurchaseOrdersPageContent() {
       console.error('Failed to fetch profile', e);
     }
     
-    setForm(buildEmptyForm(fallbackSupplier, defaultWarehouse));
+    setForm(buildEmptyForm(fallbackSupplier, defaultWarehouse, orders));
     setForm((current) => ({ ...current, creatorName, creatorPhone, warehouseCode: defaultWarehouse }));
     setModalMode('create');
   };
@@ -816,6 +834,7 @@ function PurchaseOrdersPageContent() {
               expectedQty: String(detail.expectedQty || 0),
               receivedQty: String(detail.receivedQty || 0),
               unitPrice: String(detail.unitPrice || 0),
+              supplierPrice: detail.supplierPrice ? String(detail.supplierPrice) : undefined,
             }))
             : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
         creatorName: (full as any).creatorName || '',
@@ -881,6 +900,7 @@ function PurchaseOrdersPageContent() {
               expectedQty: String(detail.expectedQty || 0),
               receivedQty: String(detail.receivedQty || 0),
               unitPrice: String(detail.unitPrice || 0),
+              supplierPrice: detail.supplierPrice ? String(detail.supplierPrice) : undefined,
             }))
             : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
         creatorName: (full as any).creatorName || '',
@@ -1233,6 +1253,7 @@ function PurchaseOrdersPageContent() {
               receivedQty: String(detail.receivedQty || 0),
               inventoryQty: String(Math.max((detail.expectedQty || 0) - (detail.receivedQty || 0), 0)),
               unitPrice: String(detail.unitPrice || 0),
+              supplierPrice: detail.supplierPrice ? String(detail.supplierPrice) : undefined,
             }))
           : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
         creatorName: (full as any).creatorName || '',
@@ -1338,14 +1359,20 @@ function PurchaseOrdersPageContent() {
   }
 
   const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
-  const canManagerApprove = selectedOrderStatus === 'CREATED' && currentUserIsManager;
+  const canManagerApprove = (selectedOrderStatus === 'CREATED' || selectedOrderStatus === 'REJECTED') && currentUserIsManager;
   
   const canReceiveRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
   const canCreateOrderRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
   const canCreateReceiptRow = (order: PurchaseOrder) => ['PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
 
   const canApproveRow = (order: PurchaseOrder) => {
-    return (order.status || 'CREATED').toUpperCase() === 'CREATED' && currentUserIsManager;
+    const status = (order.status || 'CREATED').toUpperCase();
+    return (status === 'CREATED' || status === 'REJECTED') && currentUserIsManager;
+  };
+
+  const canEditOrder = (order: PurchaseOrder) => {
+    const status = (order.status || '').toUpperCase();
+    return status === 'DRAFT' || status === 'REJECTED';
   };
 
   const canDelete = (order: PurchaseOrder) => {
@@ -1450,7 +1477,7 @@ function PurchaseOrdersPageContent() {
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Đơn mua hàng</h1>
+          <h1 className="text-3xl font-black tracking-tight text-cyan-950">Đơn mua hàng</h1>
         </div>
         <button
           type="button"
@@ -1463,17 +1490,17 @@ function PurchaseOrdersPageContent() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{orders.length} TỔNG PO</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{orders.length} TỔNG PO</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{draftCount} CHỜ DUYỆT</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{draftCount} CHỜ DUYỆT</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{approvedCount} ĐÃ DUYỆT</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{approvedCount} ĐÃ DUYỆT</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm">
-          <p className="text-lg font-bold text-white uppercase">{completedCount} HOÀN THÀNH</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{completedCount} HOÀN THÀNH</p>
         </div>
       </div>
 
@@ -1631,7 +1658,7 @@ function PurchaseOrdersPageContent() {
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                       {order.supplier?.name || order.supplierName || order.supplier?.supplierCode || '-'}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.description || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-left text-sm font-semibold text-slate-700 whitespace-pre-line">{order.description || '-'}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatMoney(order.totalAmount)}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(order.status)}`}>
@@ -1646,23 +1673,34 @@ function PurchaseOrdersPageContent() {
                             event.stopPropagation();
                             openView(order);
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 transition-colors hover:bg-cyan-100 hover:text-cyan-700"
-                          title="Xem"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                          title="Thêm mới / Chi tiết"
                         >
-                          <ArrowUpRight className="h-4 w-4" />
+                          <Plus size={18} strokeWidth={2.5} />
                         </button>
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            if (order.status !== 'DRAFT') return;
+                            openView(order);
+                          }}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                          title="Lịch sử đơn hàng"
+                        >
+                          <History size={18} strokeWidth={2.5} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (!canEditOrder(order)) return;
                             openEdit(order);
                           }}
-                          disabled={order.status !== 'DRAFT'}
-                          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${order.status === 'DRAFT' ? 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100 hover:text-cyan-700' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                          disabled={!canEditOrder(order)}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${canEditOrder(order) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
                           title="Sửa"
                         >
-                          <Pencil className="h-4 w-4" />
+                          <Pencil size={18} strokeWidth={2.5} />
                         </button>
                         <button
                           type="button"
@@ -1673,94 +1711,102 @@ function PurchaseOrdersPageContent() {
                             setModalMode('delete');
                           }}
                           disabled={!canDelete(order)}
-                          className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${canDelete(order) ? 'bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700' : 'bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${canDelete(order) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
                           title="Xóa"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 size={18} strokeWidth={2.5} />
                         </button>
-                        <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        {order.status === 'DRAFT' ? (
                           <button
                             type="button"
-                            onClick={() => setActiveDropdown(activeDropdown === order.id ? null : order.id)}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800"
-                            title="Thao tác khác"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              submitDraftOrder(order);
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-cyan-50 text-cyan-600 shadow-sm transition hover:bg-cyan-100"
+                            title="Tạo mới đơn đặt hàng"
                           >
-                            <MoreHorizontal className="h-4 w-4" />
+                            <Send size={18} strokeWidth={2.5} />
                           </button>
-                          {activeDropdown === order.id && (
-                            <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left">
-                              <button
-                                type="button"
-                                disabled={order.status !== 'DRAFT'}
-                                onClick={() => { submitDraftOrder(order); setActiveDropdown(null); }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
-                              >
-                                <Send className="h-4 w-4" />
-                                Gửi duyệt (Tạo mới)
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!canApproveRow(order)}
-                                onClick={() => { 
-                                  if (window.confirm('Bạn có chắc chắn muốn duyệt đơn hàng này?')) {
-                                    approveOrder(order); 
-                                  }
-                                  setActiveDropdown(null); 
-                                }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
-                              >
-                                <CheckCircle2 className="h-4 w-4" />
-                                Duyệt đơn hàng
-                              </button>
-                              <div className="my-1 border-t border-slate-100"></div>
-                              <button
-                                type="button"
-                                disabled={!canReceiveRow(order)}
-                                onClick={() => { 
-                                  openReceive(order);
-                                  setActiveDropdown(null); 
-                                }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
-                              >
-                                <Package className="h-4 w-4" />
-                                Đã nhận hàng
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!canCreateReceiptRow(order)}
-                                onClick={() => { 
-                                  navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
-                                }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
-                              >
-                                <FileText className="h-4 w-4" />
-                                Tạo phiếu nhập kho
-                              </button>
+                        ) : (
+                          <div className="relative" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setActiveDropdown(activeDropdown === order.id ? null : order.id)}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                              title="Thao tác khác"
+                            >
+                              <MoreHorizontal size={18} strokeWidth={2.5} />
+                            </button>
+                            {activeDropdown === order.id && (
+                              <div className={`absolute right-0 ${index >= paginatedOrders.length - 4 ? 'bottom-full mb-2' : 'top-full mt-2'} w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left`}>
                                 <button
                                   type="button"
-                                  disabled={!canCreateOrderRow(order)}
-                                  onClick={() => {
-                                    openCreateStockIn(order);
-                                    setActiveDropdown(null);
-                                  }}
-                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                  disabled={order.status !== 'DRAFT'}
+                                  onClick={() => { submitDraftOrder(order); setActiveDropdown(null); }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
                                 >
-                                <Clock3 className="h-4 w-4" />
-                                Tạo lệnh nhập kho
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                                  <Send className="h-4 w-4" />
+                                  Tạo mới đơn đặt hàng
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!canApproveRow(order)}
+                                  onClick={() => { 
+                                    if (window.confirm('Bạn có chắc chắn muốn duyệt đơn hàng này?')) {
+                                      approveOrder(order); 
+                                    }
+                                    setActiveDropdown(null); 
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                >
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  Duyệt đơn hàng
+                                </button>
+                                <div className="my-1 border-t border-slate-100"></div>
+                                <button
+                                  type="button"
+                                  disabled={!canReceiveRow(order)}
+                                  onClick={() => { 
+                                    openReceive(order);
+                                    setActiveDropdown(null); 
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                >
+                                  <Package className="h-4 w-4" />
+                                  Đã nhận hàng
+                                </button>
+                                                                 <button
+                                   type="button"
+                                   disabled={!canCreateOrderRow(order)}
+                                   onClick={() => { 
+                                     navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
+                                   }}
+                                   className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                 >
+                                   <Clock3 className="h-4 w-4" />
+                                   Tạo lệnh nhập kho
+                                 </button>
+                                 <button
+                                   type="button"
+                                   disabled={!canCreateReceiptRow(order)}
+                                   onClick={() => {
+                                     openCreateStockIn(order);
+                                     setActiveDropdown(null);
+                                   }}
+                                   className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                 >
+                                   <FileText className="h-4 w-4" />
+                                   Tạo phiếu nhập kho
+                                 </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
                 ))}
-                {/* Spacer row to prevent overflow clipping of the dropdown */}
-                {activeDropdown && (
-                  <tr>
-                    <td colSpan={10} className="p-0" style={{ height: '220px' }}></td>
-                  </tr>
-                )}
                 </>
               )}
             </tbody>
@@ -1827,7 +1873,7 @@ function PurchaseOrdersPageContent() {
               {canManagerApprove && (
                 <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder!); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-transparent bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:opacity-60">
                   <CheckCircle2 className="h-4 w-4" />
-                  Duyệt đơn hàng
+                  {selectedOrderStatus === 'REJECTED' ? 'Đồng ý giá đề xuất' : 'Duyệt đơn hàng'}
                 </button>
               )}
               {selectedOrder && canReceiveRow(selectedOrder) && (
@@ -1841,7 +1887,7 @@ function PurchaseOrdersPageContent() {
                   Đã nhận hàng
                 </button>
               )}
-              {selectedOrder && canCreateReceiptRow(selectedOrder) && (
+              {selectedOrder && canCreateOrderRow(selectedOrder) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1849,21 +1895,21 @@ function PurchaseOrdersPageContent() {
                     navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: selectedOrder.id } });
                   }}
                   disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
-                >
-                  <FileText className="h-4 w-4" />
-                  Tạo phiếu nhập kho
-                </button>
-              )}
-              {selectedOrder && canCreateOrderRow(selectedOrder) && (
-                <button
-                  type="button"
-                  onClick={() => openCreateStockIn(selectedOrder)}
-                  disabled={saving}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
                 >
                   <Clock3 className="h-4 w-4" />
                   Tạo lệnh nhập kho
+                </button>
+              )}
+              {selectedOrder && canCreateReceiptRow(selectedOrder) && (
+                <button
+                  type="button"
+                  onClick={() => openCreateStockIn(selectedOrder)}
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
+                >
+                  <FileText className="h-4 w-4" />
+                  Tạo phiếu nhập kho
                 </button>
               )}
             </div>

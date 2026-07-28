@@ -1,4 +1,4 @@
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsIn } from 'class-validator';
 
 export class CreateStockInOrderDto {
   @IsString()
@@ -19,4 +19,8 @@ export class CreateStockInOrderDto {
   @IsString()
   @IsOptional()
   orderCode?: string;
+
+  @IsIn(['DRAFT', 'READY'])
+  @IsOptional()
+  status?: 'DRAFT' | 'READY';
 }

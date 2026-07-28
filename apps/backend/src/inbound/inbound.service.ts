@@ -65,7 +65,7 @@ function normalizeStatus(status?: string) {
 
 export function isEditablePurchaseOrderStatus(status?: string) {
   const norm = normalizeStatus(status);
-  return !status || norm === 'CREATED' || norm === 'DRAFT';
+  return !status || norm === 'CREATED' || norm === 'DRAFT' || norm === 'REJECTED';
 }
 
 function isManagerApprovalReady(status?: string) {
@@ -235,6 +235,7 @@ export class InboundService {
           exist.expectedQty = parseNumber(item.expectedQty ?? exist.expectedQty);
           exist.receivedQty = Math.min(parseNumber(item.receivedQty ?? exist.receivedQty), exist.expectedQty);
           exist.unitPrice = (parseNumber(item.unitPrice ?? parseNumber(exist.unitPrice))).toFixed(2);
+          exist.supplierPrice = null; // Clear supplier proposed price on manager update/counter-propose
           exist.totalLineAmount = (parseNumber(exist.unitPrice) * parseNumber(exist.expectedQty)).toFixed(2);
 
           await this.detailRepo.save(exist);
@@ -242,6 +243,7 @@ export class InboundService {
         } else {
           // create new detail
           const detail = await this.buildDetail(receipt, item);
+          detail.supplierPrice = null;
           const saved = await this.detailRepo.save(detail);
           incomingIds.add(String(saved.id));
         }
@@ -299,8 +301,67 @@ export class InboundService {
 
   async approveReceipt(id: string, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
+
+    if (receipt.status === 'REJECTED') {
+      const details = receipt.details || [];
+      let hasSupplierPrices = false;
+      for (const d of details) {
+        if (d.supplierPrice && Number(d.supplierPrice) > 0) {
+          hasSupplierPrices = true;
+          break;
+        }
+      }
+      if (hasSupplierPrices) {
+        // Manager agreed to supplier prices
+        for (const detail of details) {
+          if (detail.supplierPrice && Number(detail.supplierPrice) > 0) {
+            detail.unitPrice = detail.supplierPrice;
+            detail.totalLineAmount = (Number(detail.unitPrice) * detail.expectedQty).toFixed(2);
+            await this.detailRepo.save(detail);
+          }
+        }
+        await this.recalculateTotalAmount(receipt.id);
+        receipt.status = 'SUPPLIER_APPROVED';
+        await this.receiptRepo.save(receipt);
+
+        if (receipt.supplier?.id) {
+          await this.notificationsService.notifySupplier(receipt.supplier.id, {
+            title: `Đơn mua hàng ${receipt.poNumber} đã thống nhất giá`,
+            message: `Quản lý đã chấp nhận giá đề xuất của bạn cho đơn hàng ${receipt.poNumber}. Đơn hàng đã được duyệt hoàn tất.`,
+            link: '/supplier-portal',
+            referenceType: 'purchase-order',
+            referenceId: receipt.id,
+            priority: 'high',
+          });
+        }
+        return this.serializeReceipt(await this.findReceiptEntity(id, user));
+      }
+    }
+
     receipt.status = 'APPROVED';
     await this.receiptRepo.save(receipt);
+
+    // Thông báo cho nhà cung cấp khi Quản lý đã duyệt đơn
+    if (receipt.supplier?.id) {
+      await this.notificationsService.notifySupplier(receipt.supplier.id, {
+        title: `Đơn mua hàng ${receipt.poNumber} đã được quản lý duyệt`,
+        message: `Quản lý đã duyệt đơn mua hàng ${receipt.poNumber}. Vui lòng kiểm tra, xác nhận hoặc gửi báo giá phản hồi.`,
+        link: '/supplier-portal',
+        referenceType: 'purchase-order',
+        referenceId: receipt.id,
+        priority: 'high',
+      });
+    } else {
+      await this.notificationsService.notifyRole('supplier', {
+        title: `Đơn mua hàng mới ${receipt.poNumber} cần xác nhận`,
+        message: `Đơn mua hàng ${receipt.poNumber} đã được quản lý duyệt. Vui lòng vào Cổng nhà cung cấp để kiểm tra.`,
+        link: '/supplier-portal',
+        referenceType: 'purchase-order',
+        referenceId: receipt.id,
+        priority: 'high',
+      });
+    }
+
     return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
@@ -318,29 +379,100 @@ export class InboundService {
 
     receipt.status = 'RECEIVED';
     await this.receiptRepo.save(receipt);
+
+    await this.notificationsService.notifyRole('manager', {
+      title: `Đơn mua hàng ${receipt.poNumber} đã hoàn thành`,
+      message: `Đơn mua hàng ${receipt.poNumber} đã được nhập kho đầy đủ và hoàn thành.`,
+      link: '/inbound/purchase-orders',
+      referenceType: 'purchase-order',
+      referenceId: receipt.id,
+    });
+
     return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
   async supplierApproveReceipt(id: string, body: { expectedDate?: string; description?: string }, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
     if (receipt.status !== 'APPROVED') {
-      throw new BadRequestException('Only APPROVED receipts can be accepted by supplier');
+      throw new BadRequestException('Chỉ có thể duyệt đơn hàng đang ở trạng thái Chờ NCC xác nhận');
     }
     receipt.status = 'SUPPLIER_APPROVED';
     if (body.expectedDate) receipt.expectedDate = new Date(body.expectedDate);
     if (body.description) receipt.description = body.description;
     await this.receiptRepo.save(receipt);
+
+    // Thông báo cho Quản lý / Bên mua
+    await this.notificationsService.notifyRole('manager', {
+      title: `NCC đã xác nhận đơn hàng ${receipt.poNumber}`,
+      message: `Nhà cung cấp ${receipt.supplierName || receipt.supplier?.name || ''} đã duyệt và xác nhận đơn mua hàng ${receipt.poNumber}.`,
+      link: '/inbound/purchase-orders',
+      referenceType: 'purchase-order',
+      referenceId: receipt.id,
+      priority: 'high',
+    });
+
     return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
   async supplierRejectReceipt(id: string, body: { reason?: string }, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
     if (receipt.status !== 'APPROVED') {
-      throw new BadRequestException('Only APPROVED receipts can be rejected by supplier');
+      throw new BadRequestException('Chỉ có thể từ chối đơn hàng đang ở trạng thái Chờ NCC xác nhận');
     }
     receipt.status = 'REJECTED';
-    if (body.reason) receipt.description = (receipt.description ? receipt.description + '\n' : '') + `Rejected reason: ${body.reason}`;
+    if (body.reason) receipt.description = (receipt.description ? receipt.description + '\n' : '') + `Lý do từ chối: ${body.reason}`;
     await this.receiptRepo.save(receipt);
+
+    // Thông báo cho Quản lý
+    await this.notificationsService.notifyRole('manager', {
+      title: `NCC từ chối đơn hàng ${receipt.poNumber}`,
+      message: `Nhà cung cấp ${receipt.supplierName || receipt.supplier?.name || ''} đã từ chối đơn hàng ${receipt.poNumber}. Lý do: ${body.reason || 'Không rõ'}`,
+      link: '/inbound/purchase-orders',
+      referenceType: 'purchase-order',
+      referenceId: receipt.id,
+      priority: 'high',
+    });
+
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
+  }
+
+  async supplierNegotiateReceipt(id: string, body: { items?: Array<{ detailId: string; supplierPrice: number }>; reason?: string }, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
+    if (receipt.status !== 'APPROVED' && receipt.status !== 'CREATED') {
+      throw new BadRequestException('Chỉ có thể phản hồi giá với đơn hàng chưa chốt');
+    }
+    
+    let priceNotes = '';
+    if (body.items?.length) {
+      for (const item of body.items) {
+        const detail = await this.detailRepo.findOne({ where: { id: item.detailId }, relations: ['product'] });
+        if (detail) {
+          const oldPrice = Number(detail.unitPrice || 0);
+          const newPrice = Number(item.supplierPrice || 0);
+
+          detail.supplierPrice = newPrice.toFixed(2);
+          await this.detailRepo.save(detail);
+
+          priceNotes += `• ${detail.product?.name || 'Mặt hàng'}: Báo giá NCC ${newPrice.toLocaleString('vi-VN')} VNĐ (Giá mua ${oldPrice.toLocaleString('vi-VN')} VNĐ)\n`;
+        }
+      }
+    }
+
+    const note = body.reason || 'Nhà cung cấp gửi phản hồi điều chỉnh báo giá.';
+    receipt.description = `[PHẢN HỒI BÁO GIÁ TỪ NCC]: ${note}\n${priceNotes}` + (receipt.description ? `\n---\n${receipt.description}` : '');
+    receipt.status = 'REJECTED';
+    await this.receiptRepo.save(receipt);
+
+    // Thông báo cho Quản lý
+    await this.notificationsService.notifyRole('manager', {
+      title: `Phản hồi giá từ NCC cho đơn hàng ${receipt.poNumber}`,
+      message: `Nhà cung cấp ${receipt.supplierName || receipt.supplier?.name || ''} vừa gửi phản hồi giá cho đơn hàng ${receipt.poNumber}. Vui lòng kiểm tra và duyệt lại giá.`,
+      link: '/inbound/purchase-orders',
+      referenceType: 'purchase-order',
+      referenceId: receipt.id,
+      priority: 'high',
+    });
+
     return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
@@ -614,6 +746,7 @@ export class InboundService {
       expectedQty: parseNumber(detail.expectedQty),
       receivedQty: parseNumber(detail.receivedQty),
       unitPrice: parseNumber(detail.unitPrice),
+      supplierPrice: detail.supplierPrice ? parseNumber(detail.supplierPrice) : null,
       totalLineAmount: parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty),
       product: detail.product
         ? {

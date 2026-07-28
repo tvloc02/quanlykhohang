@@ -23,6 +23,9 @@ export class InboundDetail extends BaseEntity {
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   unitPrice: string;
 
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
+  supplierPrice?: string | null;
+
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalLineAmount: string;
 }

@@ -70,6 +70,7 @@ type FormLine = {
   receivedQty: string;
   inventoryQty?: string;
   unitPrice: string;
+  supplierPrice?: string;
 };
 
 type OrderForm = {
@@ -554,8 +555,9 @@ export function PurchaseOrderFormModal({
                     disabled={mode === 'view'}
                     placeholder="Chọn trạng thái"
                     options={[
-                      { value: 'DRAFT', label: 'Nháp' },
-                      { value: 'CREATED', label: 'Tạo mới (Chờ duyệt)' },
+                      { value: 'DRAFT', label: 'Đơn nháp' },
+                      { value: 'CREATED', label: 'Đơn đặt hàng mới' },
+                      { value: 'REJECTED', label: 'Từ chối / Phản hồi giá' },
                       ...((mode === 'view' || mode === ('create_order' as any))
                         ? [
                             { value: 'APPROVED', label: 'Chờ NCC xác nhận' },
@@ -563,7 +565,6 @@ export function PurchaseOrderFormModal({
                             { value: 'PARTIALLY_RECEIVED', label: 'Nhận một phần' },
                             { value: 'RECEIVED', label: 'Hoàn thành' },
                             { value: 'COMPLETED', label: 'Hoàn thành' },
-                            { value: 'REJECTED', label: 'Từ chối' },
                             { value: 'CANCELLED', label: 'Đã hủy' },
                           ]
                         : []),
@@ -684,6 +685,11 @@ export function PurchaseOrderFormModal({
                       <th className="w-40 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Đơn giá
                       </th>
+                      {form.items.some((i) => i.supplierPrice) && (
+                        <th className="w-40 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
+                          Giá NCC đề xuất
+                        </th>
+                      )}
                       <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">
                         Thành tiền
                       </th>
@@ -787,6 +793,17 @@ export function PurchaseOrderFormModal({
                               <span className="text-sm font-medium text-slate-700">{formatMoney(parseMoney(item.unitPrice))}</span>
                             )}
                           </td>
+                          {form.items.some((i) => i.supplierPrice) && (
+                            <td className="border border-slate-200 px-3 py-3 text-center">
+                              {item.supplierPrice ? (
+                                <span className="text-sm font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg">
+                                  {formatMoney(parseMoney(item.supplierPrice))}
+                                </span>
+                              ) : (
+                                <span className="text-sm text-slate-400 font-semibold">-</span>
+                              )}
+                            </td>
+                          )}
                           <td className="border border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
                             {formatMoney(expectedQty * unitPrice)}
                           </td>
@@ -819,28 +836,47 @@ export function PurchaseOrderFormModal({
         </div>
 
         {/* FOOTER */}
-        <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
+        <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
           <button
             type="button"
             onClick={onClose}
             className="rounded-2xl border-2 border-slate-200 px-6 py-2.5 font-bold text-slate-700 hover:bg-slate-100 transition"
           >
-            Đóng
+            Hủy
           </button>
           {mode === 'view' || mode === ('create_order' as any) ? (
             customActions
           ) : (
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-2xl bg-cyan-600 px-8 py-2.5 font-bold text-white shadow-lg hover:bg-cyan-700 disabled:opacity-60 transition"
-            >
-              {saving
-                ? 'Đang lưu...'
-                : mode === 'edit'
-                  ? 'Lưu thay đổi'
-                  : 'Tạo đơn mua hàng'}
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(e) => {
+                  onFormChange({ ...form, status: 'DRAFT' });
+                  setTimeout(() => {
+                    const formEl = (e.target as HTMLElement).closest('form');
+                    if (formEl) formEl.requestSubmit();
+                  }, 0);
+                }}
+                className="rounded-2xl border-2 border-slate-300 bg-white px-6 py-2.5 font-bold text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-60 transition"
+              >
+                {saving ? 'Đang lưu...' : 'Tạo đơn đặt hàng nháp'}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(e) => {
+                  onFormChange({ ...form, status: 'CREATED' });
+                  setTimeout(() => {
+                    const formEl = (e.target as HTMLElement).closest('form');
+                    if (formEl) formEl.requestSubmit();
+                  }, 0);
+                }}
+                className="rounded-2xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-lg hover:bg-cyan-700 disabled:opacity-60 transition"
+              >
+                {saving ? 'Đang lưu...' : mode === 'edit' ? 'Lưu thay đổi' : 'Tạo mới đơn đặt hàng'}
+              </button>
+            </>
           )}
         </div>
       </form>
