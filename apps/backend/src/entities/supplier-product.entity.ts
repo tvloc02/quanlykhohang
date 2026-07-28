@@ -29,4 +29,16 @@ export class SupplierProduct extends BaseEntity {
 
   @Column({ default: false })
   isPrimary: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  description?: string;
+
+  @Column({ type: 'int', default: 0 })
+  quantity: number;
+
+  @Column({ type: 'int', default: 0 })
+  quantityAdded: number;
+
+  @Column({ type: 'int', default: 0 })
+  quantitySold: number;
 }

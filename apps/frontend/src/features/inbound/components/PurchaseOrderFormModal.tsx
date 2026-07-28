@@ -11,7 +11,10 @@ import {
   FileText,
   Clock,
   CheckCircle2,
+  ChevronDown,
+  Search,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import type { ScannedProduct } from '../../../shared/components/BarcodeScanner';
 
 type SupplierProduct = {
@@ -109,6 +112,74 @@ interface PurchaseOrderFormModalProps {
 const modalSelectClass =
   'h-11 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 pr-10 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 text-slate-700 font-medium';
 
+interface CustomSelectProps {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+export function CustomSelect({
+  value,
+  onChange,
+  options,
+  placeholder = 'Chọn...',
+  disabled,
+}: CustomSelectProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value);
+
+  return (
+    <div ref={containerRef} className="relative w-full z-[10000]">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative h-11 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 pr-10 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 text-slate-700 font-bold text-left flex items-center disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer"
+      >
+        <span className="truncate block pr-2">{selectedOption ? selectedOption.label : placeholder}</span>
+        <ChevronDown className={`absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && !disabled && (
+        <div className="absolute left-0 right-0 mt-2 max-h-60 overflow-y-auto rounded-2xl border-2 border-slate-100 bg-white py-1.5 shadow-2xl z-[99999] animate-in fade-in slide-in-from-top-1 duration-100">
+          {options.length === 0 ? (
+            <div className="px-4 py-3 text-sm font-semibold text-slate-400 text-center">Không có lựa chọn</div>
+          ) : (
+            options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  onChange(option.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-4 py-2.5 text-left text-sm font-bold transition hover:bg-slate-50 ${
+                  option.value === value ? 'bg-cyan-50 text-cyan-700' : 'text-slate-700'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const modalInputClass =
   'h-11 w-full rounded-2xl border-2 border-slate-200 bg-white px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 text-slate-700 font-medium';
 
@@ -149,25 +220,84 @@ export function PurchaseOrderFormModal({
   customWidthClass,
 }: PurchaseOrderFormModalProps) {
   const [selectedRows, setSelectedRows] = React.useState<string[]>([]);
+  const [selectingProductRowId, setSelectingProductRowId] = React.useState<string | null>(null);
+  const [productSearch, setProductSearch] = React.useState('');
+  const [mounted, setMounted] = React.useState(false);
 
-  if (!isOpen) return null;
+  React.useEffect(() => {
+    if (isOpen) {
+      setMounted(true);
+    } else {
+      setMounted(false);
+    }
+  }, [isOpen]);
 
-  const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
+  const selectedSupplier = form ? (suppliers || []).find((s) => s.id === form.supplierId) : null;
   const supplierProducts = selectedSupplier?.products || [];
-  const selectedWarehouse = warehouses.find(
-    (w) => w.code === form.warehouseCode || w.id === form.warehouseCode
-  );
+ 
+  const allSelectableProducts = React.useMemo(() => {
+    const list: Array<{ id: string; internalSku: string; name: string; unit?: string; price?: string }> = [];
+    
+    // Add supplier products
+    (supplierProducts || []).forEach((sp) => {
+      if (sp && sp.product) {
+        list.push({
+          id: sp.product.id,
+          internalSku: sp.product.internalSku,
+          name: sp.product.name,
+          unit: sp.product.unit,
+          price: sp.purchasePrice,
+        });
+      }
+    });
+
+    // Add scanned products that aren't already in list
+    (scannedProducts || []).forEach((sp) => {
+      if (sp && !list.some((item) => item.id === sp.id)) {
+        list.push({
+          id: sp.id,
+          internalSku: sp.internalSku || '',
+          name: sp.name || '',
+          unit: sp.unit,
+          price: sp.purchasePrice !== undefined ? String(sp.purchasePrice) : '0',
+        });
+      }
+    });
+
+    return list;
+  }, [supplierProducts, scannedProducts]);
+
+  const filteredSupplierProducts = React.useMemo(() => {
+    const query = productSearch.toLowerCase().trim();
+    if (!query) return allSelectableProducts;
+    return allSelectableProducts.filter(
+      (p) =>
+        p &&
+        ((p.name || '').toLowerCase().includes(query) ||
+          (p.internalSku || '').toLowerCase().includes(query))
+    );
+  }, [allSelectableProducts, productSearch]);
+
+  const selectedWarehouse = form ? (warehouses || []).find(
+    (w) => w && (w.code === form.warehouseCode || w.id === form.warehouseCode)
+  ) : null;
+
   const approversForWarehouse = selectedWarehouse
-    ? users.filter(
+    ? (users || []).filter(
       (user) =>
+        user &&
+        selectedWarehouse.managerIds &&
+        selectedWarehouse.staffIds &&
+        Array.isArray(selectedWarehouse.managerIds) &&
+        Array.isArray(selectedWarehouse.staffIds) &&
         (selectedWarehouse.managerIds.includes(user.id) ||
           selectedWarehouse.staffIds.includes(user.id)) &&
         Array.isArray(user.roles) &&
-        user.roles.some((role) => String(role?.name).toLowerCase() === 'manager')
+        user.roles.some((role) => role && String(role?.name || '').toLowerCase() === 'manager')
     )
     : [];
 
-  const validItems = form.items.filter(item => item.productId);
+  const validItems = form ? (form.items || []).filter(item => item && item.productId) : [];
 
   const totalAmount = validItems.reduce((sum, item) => {
     const expectedQty = parseMoney(item.expectedQty);
@@ -178,8 +308,11 @@ export function PurchaseOrderFormModal({
   const totalProducts = validItems.length;
   const totalQuantity = validItems.reduce((sum, item) => sum + parseMoney(item.expectedQty), 0);
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+  if (!isOpen || !mounted || !form || typeof document === 'undefined' || !document.body) return null;
+
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
       <form
         onSubmit={onSubmit}
         className={`max-h-[94vh] ${customWidthClass || 'w-2/3'} overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col`}
@@ -225,45 +358,39 @@ export function PurchaseOrderFormModal({
                     <label className="mb-2 block text-sm font-bold text-slate-700">
                       Nhà cung cấp <span className="text-red-600">*</span>
                     </label>
-                    <select
+                    <CustomSelect
                       value={form.supplierId}
-                      onChange={(event) => {
+                      onChange={(value) => {
                         onFormChange({
                           ...form,
-                          supplierId: event.target.value,
+                          supplierId: value,
                         });
                       }}
-                      className={modalSelectClass}
-                    >
-                      <option value="">Chọn nhà cung cấp</option>
-                      {suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={suppliers.map((supplier) => ({
+                        value: supplier.id,
+                        label: supplier.name,
+                      }))}
+                      placeholder="Chọn nhà cung cấp"
+                    />
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">
                       Mã số thuế
                     </label>
-                    <select
+                    <CustomSelect
                       value={form.supplierId}
-                      onChange={(event) => {
+                      onChange={(value) => {
                         onFormChange({
                           ...form,
-                          supplierId: event.target.value,
+                          supplierId: value,
                         });
                       }}
-                      className={modalSelectClass}
-                    >
-                      <option value="">Chọn theo mã số thuế</option>
-                      {suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.taxCode || 'Chưa cập nhật'}
-                        </option>
-                      ))}
-                    </select>
+                      options={suppliers.map((supplier) => ({
+                        value: supplier.id,
+                        label: supplier.taxCode || 'Chưa cập nhật',
+                      }))}
+                      placeholder="Chọn theo mã số thuế"
+                    />
                   </div>
                 </div>
 
@@ -326,39 +453,33 @@ export function PurchaseOrderFormModal({
                     <label className="mb-2 block text-sm font-bold text-slate-700">
                       Kho hàng <span className="text-red-600">*</span>
                     </label>
-                    <select
-                      value={form.warehouseCode}
-                      onChange={(event) => {
-                        onFormChange({ ...form, warehouseCode: event.target.value, approverId: '' });
+                    <CustomSelect
+                      value={form.warehouseCode || ''}
+                      onChange={(value) => {
+                        onFormChange({ ...form, warehouseCode: value, approverId: '' });
                       }}
-                      className={modalSelectClass}
-                    >
-                      <option value="">Chọn kho</option>
-                      {warehouses.map((warehouse) => (
-                        <option key={warehouse.id} value={warehouse.code}>
-                          {warehouse.name} ({warehouse.code})
-                        </option>
-                      ))}
-                    </select>
+                      options={warehouses.map((warehouse) => ({
+                        value: warehouse.code,
+                        label: `${warehouse.name} (${warehouse.code})`,
+                      }))}
+                      placeholder="Chọn kho"
+                    />
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">
                       Quản lý (Người duyệt) <span className="text-red-600">*</span>
                     </label>
-                    <select
-                      value={form.approverId}
-                      onChange={(event) =>
-                        onFormChange({ ...form, approverId: event.target.value })
+                    <CustomSelect
+                      value={form.approverId || ''}
+                      onChange={(value) =>
+                        onFormChange({ ...form, approverId: value })
                       }
-                      className={modalSelectClass}
-                    >
-                      <option value="">Chọn quản lý</option>
-                      {approversForWarehouse.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.fullName || user.email}
-                        </option>
-                      ))}
-                    </select>
+                      options={approversForWarehouse.map((user) => ({
+                        value: user.id,
+                        label: user.fullName || user.email,
+                      }))}
+                      placeholder="Chọn quản lý"
+                    />
                   </div>
                 </div>
 
@@ -427,26 +548,27 @@ export function PurchaseOrderFormModal({
                   <label className="mb-2 block text-xs font-bold uppercase text-slate-600">
                     Trạng thái đơn hàng
                   </label>
-                  <select
+                  <CustomSelect
                     value={form.status || 'CREATED'}
-                    onChange={(e) => onFormChange({ ...form, status: e.target.value as any })}
-                    className={modalSelectClass}
+                    onChange={(value) => onFormChange({ ...form, status: value as any })}
                     disabled={mode === 'view'}
-                  >
-                    <option value="DRAFT">Nháp</option>
-                    <option value="CREATED">Tạo mới (Chờ duyệt)</option>
-                    {(mode === 'view' || mode === ('create_order' as any)) && (
-                      <>
-                        <option value="APPROVED">Chờ NCC xác nhận</option>
-                        <option value="SUPPLIER_APPROVED">NCC đã xác nhận</option>
-                        <option value="PARTIALLY_RECEIVED">Nhận một phần</option>
-                        <option value="RECEIVED">Hoàn thành</option>
-                        <option value="COMPLETED">Hoàn thành</option>
-                        <option value="REJECTED">Từ chối</option>
-                        <option value="CANCELLED">Đã hủy</option>
-                      </>
-                    )}
-                  </select>
+                    placeholder="Chọn trạng thái"
+                    options={[
+                      { value: 'DRAFT', label: 'Nháp' },
+                      { value: 'CREATED', label: 'Tạo mới (Chờ duyệt)' },
+                      ...((mode === 'view' || mode === ('create_order' as any))
+                        ? [
+                            { value: 'APPROVED', label: 'Chờ NCC xác nhận' },
+                            { value: 'SUPPLIER_APPROVED', label: 'NCC đã xác nhận' },
+                            { value: 'PARTIALLY_RECEIVED', label: 'Nhận một phần' },
+                            { value: 'RECEIVED', label: 'Hoàn thành' },
+                            { value: 'COMPLETED', label: 'Hoàn thành' },
+                            { value: 'REJECTED', label: 'Từ chối' },
+                            { value: 'CANCELLED', label: 'Đã hủy' },
+                          ]
+                        : []),
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -599,42 +721,24 @@ export function PurchaseOrderFormModal({
                           </td>
                           <td className="border border-slate-200 px-3 py-3">
                             {mode === 'create' || mode === 'edit' ? (
-                              <select
-                                value={item.productId}
-                                onChange={(event) =>
-                                  onProductChange(item.rowId, event.target.value)
-                                }
-                                className="h-11 w-full bg-transparent px-2 text-sm outline-none font-medium text-slate-700"
-                              >
-                                <option value="">Chọn sản phẩm</option>
-                                {supplierProducts.map((supplierProduct) => (
-                                  <option
-                                    key={supplierProduct.id}
-                                    value={supplierProduct.product?.id || ''}
+                              (() => {
+                                const selectedProduct = allSelectableProducts.find((p) => p.id === item.productId);
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectingProductRowId(item.rowId)}
+                                    className="h-11 w-full bg-transparent px-3 text-left text-sm outline-none font-bold text-slate-700 hover:bg-slate-100/50 rounded-xl transition flex items-center justify-between group border border-dashed border-slate-300 hover:border-cyan-500 cursor-pointer"
                                   >
-                                    {supplierProduct.product?.internalSku} -{' '}
-                                    {supplierProduct.product?.name}
-                                  </option>
-                                ))}
-                                {scannedProducts.map((sp) => {
-                                  if (
-                                    !supplierProducts.some(
-                                      (p) => p.product?.id === sp.id
-                                    )
-                                  ) {
-                                    return (
-                                      <option key={sp.id} value={sp.id}>
-                                        {sp.internalSku} - {sp.name} (Mới quét)
-                                      </option>
-                                    );
-                                  }
-                                  return null;
-                                })}
-                              </select>
+                                    <span className="truncate">
+                                      {selectedProduct ? `${selectedProduct.internalSku} - ${selectedProduct.name}` : 'Chọn sản phẩm...'}
+                                    </span>
+                                    <Search className="h-4 w-4 text-slate-400 group-hover:text-cyan-600 transition shrink-0 ml-1" />
+                                  </button>
+                                );
+                              })()
                             ) : (
                               <div className="text-sm font-medium text-slate-700">
-                                {supplierProducts.find((p) => p.product?.id === item.productId)?.product?.name ||
-                                  scannedProducts.find((p) => p.id === item.productId)?.name ||
+                                {allSelectableProducts.find((p) => p.id === item.productId)?.name ||
                                   item.productId}
                               </div>
                             )}
@@ -741,5 +845,123 @@ export function PurchaseOrderFormModal({
         </div>
       </form>
     </div>
+
+    {/* PRODUCT SEARCH MODAL */}
+    {selectingProductRowId && (
+      <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl flex flex-col max-h-[80vh] overflow-hidden border border-slate-100 animate-in fade-in zoom-in duration-200">
+          {/* Search Header */}
+          <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
+            <div className="flex items-center gap-2.5">
+              <div className="rounded-xl bg-cyan-50 p-2 text-cyan-600">
+                <Package className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-black text-slate-900">Tìm kiếm & Chọn sản phẩm</h4>
+                <p className="text-xs font-semibold text-slate-500">Tìm nhanh sản phẩm theo tên hoặc mã SKU</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setProductSearch('');
+                setSelectingProductRowId(null);
+              }}
+              className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 transition cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+            <div className="relative flex items-center rounded-2xl border-2 border-slate-200 bg-white px-4 h-11 transition-all focus-within:border-cyan-500 focus-within:ring-4 focus-within:ring-cyan-500/10">
+              <Search className="h-4 w-4 text-slate-400 mr-2.5" />
+              <input
+                type="text"
+                placeholder="Nhập tên sản phẩm hoặc mã SKU..."
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                className="w-full border-none bg-transparent text-sm font-semibold text-slate-700 outline-none placeholder-slate-400"
+                autoFocus
+              />
+              {productSearch && (
+                <button
+                  type="button"
+                  onClick={() => setProductSearch('')}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Product List */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {filteredSupplierProducts.length === 0 ? (
+              <div className="text-center py-10 text-slate-400">
+                <Package className="h-10 w-10 mx-auto mb-2.5 opacity-40" />
+                <p className="text-sm font-bold">Không tìm thấy sản phẩm nào</p>
+                <p className="text-xs font-semibold mt-0.5">Vui lòng kiểm tra lại từ khóa tìm kiếm</p>
+              </div>
+            ) : (
+              filteredSupplierProducts.map((p) => {
+                const isSelected = form.items.find(item => item.rowId === selectingProductRowId)?.productId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      onProductChange(selectingProductRowId, p.id);
+                      // also update price if it's set on supplierProduct
+                      const supProd = supplierProducts.find(sp => sp.product?.id === p.id);
+                      if (supProd) {
+                        onUpdateRow(selectingProductRowId, {
+                          unitPrice: String(parseMoney(supProd.purchasePrice) || 0)
+                        });
+                      }
+                      setProductSearch('');
+                      setSelectingProductRowId(null);
+                    }}
+                    className={`w-full flex items-center justify-between p-3.5 rounded-2xl border-2 text-left transition cursor-pointer ${
+                      isSelected
+                        ? 'border-cyan-500 bg-cyan-50/50'
+                        : 'border-slate-100 bg-white hover:border-slate-300 hover:shadow-sm'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-sm font-black text-slate-800">{p.name}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          SKU: {p.internalSku}
+                        </span>
+                        {p.unit && (
+                          <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                            Đơn vị: {p.unit}
+                          </span>
+                        )}
+                        {p.price && (
+                          <span className="text-xs font-bold text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded-md">
+                            Đơn giá: {formatMoney(parseMoney(p.price))}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className={`h-6 w-6 rounded-full border-2 flex items-center justify-center transition ${
+                      isSelected ? 'border-cyan-500 bg-cyan-500 text-white' : 'border-slate-300'
+                    }`}>
+                      {isSelected && <CheckCircle2 className="h-4 w-4" />}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>,
+    document.body
   );
 }
