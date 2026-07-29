@@ -1,20 +1,23 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   ChevronDown,
   Clock3,
+  CheckCircle2,
   Eye,
   FileText,
   Filter,
   Package,
   Pencil,
   PlusCircle,
+  MoreHorizontal,
   RefreshCw,
   Search,
   Trash2,
   X,
 } from 'lucide-react';
 import CreateTransferRequestModal from '../components/CreateTransferRequestModal';
+import TransferOrderModal from '../components/TransferOrderModal';
+import { getStoredWarehouses, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
 
 type Toast = {
   type: 'success' | 'error';
@@ -47,10 +50,25 @@ type TimeFilter = 'this-month' | '7-days' | 'all';
 type StatusFilter = 'all' | 'draft' | 'pending' | 'approved' | 'completed' | 'rejected';
 type ModalMode = 'view' | 'create' | null;
 
-const sampleRequests: TransferRequest[] = [];
+function formatDateTime(value: string) {
+  if (!value) return '-';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString('vi-VN');
+}
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('vi-VN');
+function renderWarehouse(wh?: string, warehousesList: WarehouseRecord[] = []) {
+  if (!wh) return '-';
+  const found = warehousesList.find(
+    (w) => w.code === wh || w.id === wh || w.name === wh
+  );
+  if (found) {
+    if (found.name && found.code && found.name !== found.code) {
+      return `${found.name} (${found.code})`;
+    }
+    return found.name || found.code;
+  }
+  return wh;
 }
 
 function formatStatus(status: TransferRequest['status']) {
@@ -192,15 +210,86 @@ function Select({
 }
 
 export default function TransferRequestsPage() {
-  const navigate = useNavigate();
   const [toast, setToast] = React.useState<Toast | null>(null);
   const [search, setSearch] = React.useState('');
   const [timeFilter, setTimeFilter] = React.useState<TimeFilter>('this-month');
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>('all');
   const [showAdvancedFilters, setShowAdvancedFilters] = React.useState(false);
-  const [requests] = React.useState<TransferRequest[]>([]);
+  const [requests, setRequests] = React.useState<TransferRequest[]>([]);
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [selectedRequest, setSelectedRequest] = React.useState<TransferRequest | null>(null);
+  const [transferOrderRequest, setTransferOrderRequest] = React.useState<TransferRequest | null>(null);
+  const [isTransferOrderModalOpen, setIsTransferOrderModalOpen] = React.useState(false);
+  const [activeActionMenuId, setActiveActionMenuId] = React.useState<string | null>(null);
+  const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
+
+  React.useEffect(() => {
+    async function loadWarehouses() {
+      try {
+        const res = await fetch('http://localhost:3000/api/warehouses', {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setWarehouses(data);
+          }
+        }
+      } catch (e) {
+        console.error('Lỗi tải danh sách kho', e);
+      }
+    }
+    loadWarehouses();
+  }, []);
+
+  const loadRequests = React.useCallback(() => {
+    try {
+      const raw = localStorage.getItem('wms_transfer_requests');
+      if (raw) {
+        setRequests(JSON.parse(raw));
+      } else {
+        setRequests([]);
+      }
+    } catch {
+      setRequests([]);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  React.useEffect(() => {
+    function handleDocumentMouseDown(event: MouseEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target && !target.closest('[data-action-menu]')) {
+        setActiveActionMenuId(null);
+      }
+    }
+
+    document.addEventListener('mousedown', handleDocumentMouseDown);
+    return () => document.removeEventListener('mousedown', handleDocumentMouseDown);
+  }, []);
+
+  const handleDeleteRequest = (id: string) => {
+    const updated = requests.filter((r) => r.id !== id);
+    setRequests(updated);
+    localStorage.setItem('wms_transfer_requests', JSON.stringify(updated));
+    setToast({ type: 'success', message: 'Đã xóa yêu cầu điều chuyển!' });
+  };
+
+  const approveRequest = (request: TransferRequest) => {
+    const updated = requests.map((item) =>
+      item.id === request.id ? { ...item, status: 'APPROVED' as const } : item
+    );
+    setRequests(updated);
+    localStorage.setItem('wms_transfer_requests', JSON.stringify(updated));
+    setToast({ type: 'success', message: 'Đã duyệt yêu cầu điều chuyển!' });
+    setActiveActionMenuId(null);
+  };
 
   React.useEffect(() => {
     if (!toast) return;
@@ -227,6 +316,19 @@ export default function TransferRequestsPage() {
     return matchesSearch && matchesStatus;
   });
 
+  const [pageSize, setPageSize] = React.useState(20);
+  const [currentPage, setCurrentPage] = React.useState(1);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, timeFilter]);
+
+  const totalItems = filteredRequests.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endIndex = Math.min(currentPage * pageSize, totalItems);
+  const paginatedRequests = filteredRequests.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   const openCreate = () => {
     setModalMode('create');
   };
@@ -234,10 +336,13 @@ export default function TransferRequestsPage() {
   const openView = (request: TransferRequest) => {
     setSelectedRequest(request);
     setModalMode('view');
+    setActiveActionMenuId(null);
   };
 
-  const approveAndCreateTransferOrder = (request: TransferRequest) => {
-    navigate('/delivery/create-transfer-order', { state: { request } });
+  const openTransferOrderModal = (request: TransferRequest) => {
+    setTransferOrderRequest(request);
+    setIsTransferOrderModalOpen(true);
+    setActiveActionMenuId(null);
   };
 
   const closeModal = () => {
@@ -266,16 +371,16 @@ export default function TransferRequestsPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{requests.length}<br/>TỔNG YÊU CẦU</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{requests.length} TỔNG YÊU CẦU</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{requests.filter((r) => r.status === 'PENDING').length}<br/>CHỜ DUYỆT</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{requests.filter((r) => r.status === 'PENDING').length} CHỜ DUYỆT</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{requests.filter((r) => r.status === 'APPROVED').length}<br/>ĐÃ DUYỆT</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{requests.filter((r) => r.status === 'APPROVED').length} ĐÃ DUYỆT</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{requests.filter((r) => r.status === 'COMPLETED').length}<br/>HOÀN THÀNH</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{requests.filter((r) => r.status === 'COMPLETED').length} HOÀN THÀNH</p>
         </div>
       </div>
 
@@ -370,55 +475,90 @@ export default function TransferRequestsPage() {
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho đích</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Người tạo</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tình trạng</th>
-                <th className="sticky right-0 w-40 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">Hành động</th>
+                <th className="sticky right-0 w-44 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRequests.length === 0 ? (
+              {paginatedRequests.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Hiện không có yêu cầu điều chuyển. Hãy tạo yêu cầu mới hoặc chuyển sang lập phiếu điều chuyển.
                   </td>
                 </tr>
               ) : (
-                filteredRequests.map((request, index) => (
-                  <tr key={request.id} className="group border-b border-slate-200 transition hover:bg-slate-50">
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{index + 1}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{request.requestNumber}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{formatDate(request.createdDate)}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{request.sourceWarehouse}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{request.destinationWarehouse}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{request.createdBy}</td>
+                paginatedRequests.map((request, index) => (
+                  <tr key={request.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                      {startIndex + index}
+                    </td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{request.requestNumber}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatDateTime(request.createdDate)}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{renderWarehouse(request.sourceWarehouse, warehouses)}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{renderWarehouse(request.destinationWarehouse, warehouses)}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{request.createdBy}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(request.status)}`}>
                         {formatStatus(request.status)}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-slate-50">
-                      <div className="flex items-center justify-center gap-2">
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                      <div className="flex items-center justify-center gap-2" data-action-menu>
                         <button
                           type="button"
                           onClick={() => openView(request)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-cyan-600 transition hover:bg-cyan-50 hover:text-cyan-700"
-                          title="Xem"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                          title="Xem chi tiết"
                         >
-                          <Eye className="h-5 w-5" />
+                          <Eye className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => approveAndCreateTransferOrder(request)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-50 hover:text-slate-900"
-                          title="Lập phiếu điều chuyển"
-                        >
-                          <Package className="h-5 w-5" />
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-red-600 transition hover:bg-red-50 hover:text-red-700"
-                          title="Xóa"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
+                        {request.status === 'PENDING' && (
+                          <button
+                            type="button"
+                            onClick={() => approveRequest(request)}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                            title="Duyệt yêu cầu"
+                          >
+                            <CheckCircle2 className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
+                          </button>
+                        )}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setActiveActionMenuId((current) => (current === request.id ? null : request.id))}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                            title="Thao tác khác"
+                          >
+                            <MoreHorizontal className="h-4 w-4 text-cyan-600" strokeWidth={2.5} />
+                          </button>
+                          {activeActionMenuId === request.id && (
+                            <div className={`absolute right-0 ${index >= paginatedRequests.length - 3 ? 'bottom-full mb-2' : 'top-full mt-2'} w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-xl z-50`}>
+                              {request.status === 'APPROVED' && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    openTransferOrderModal(request);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-50 text-left"
+                                >
+                                  <Pencil className="h-4 w-4" strokeWidth={2.2} />
+                                  Lập phiếu điều chuyển
+                                </button>
+                              )}
+                              <div className="my-1 border-t border-slate-100" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleDeleteRequest(request.id);
+                                  setActiveActionMenuId(null);
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-50 text-left"
+                              >
+                                <Trash2 className="h-4 w-4" strokeWidth={2.2} />
+                                Xóa yêu cầu
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -426,6 +566,87 @@ export default function TransferRequestsPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Section matching system UI */}
+        <div className="flex flex-col items-center justify-between border-t border-slate-200 bg-white px-6 py-3 sm:flex-row">
+          <div className="text-sm font-medium text-slate-600">
+            Tổng số: <b className="font-bold text-slate-900">{totalItems}</b>{' '}
+            {totalItems > 0 && (
+              <span className="ml-2 text-slate-500">
+                Hiển thị {startIndex} - {endIndex}
+              </span>
+            )}
+          </div>
+          <div className="mt-4 flex items-center gap-2 sm:mt-0">
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                «
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ‹
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .slice(
+                  Math.max(0, currentPage - 2),
+                  Math.min(totalPages, currentPage + 1)
+                )
+                .map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${
+                      page === currentPage
+                        ? 'bg-cyan-600 text-white'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                »
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -452,15 +673,15 @@ export default function TransferRequestsPage() {
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-slate-500">Ngày tạo</div>
-                      <div className="mt-1 text-sm font-bold text-slate-900">{formatDate(selectedRequest.createdDate)}</div>
+                      <div className="mt-1 text-sm font-bold text-slate-900">{formatDateTime(selectedRequest.createdDate)}</div>
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-slate-500">Kho nguồn</div>
-                      <div className="mt-1 text-sm font-bold text-slate-900">{selectedRequest.sourceWarehouse}</div>
+                      <div className="mt-1 text-sm font-bold text-slate-900">{renderWarehouse(selectedRequest.sourceWarehouse, warehouses)}</div>
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-slate-500">Kho đích</div>
-                      <div className="mt-1 text-sm font-bold text-slate-900">{selectedRequest.destinationWarehouse}</div>
+                      <div className="mt-1 text-sm font-bold text-slate-900">{renderWarehouse(selectedRequest.destinationWarehouse, warehouses)}</div>
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-slate-500">Người tạo</div>
@@ -518,8 +739,8 @@ export default function TransferRequestsPage() {
                             <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{item.productName}</td>
                             <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{item.unit}</td>
                             <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{item.quantity}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{item.sourceWarehouse}</td>
-                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{item.destinationWarehouse}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{renderWarehouse(item.sourceWarehouse, warehouses)}</td>
+                            <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{renderWarehouse(item.destinationWarehouse, warehouses)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -534,10 +755,10 @@ export default function TransferRequestsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => selectedRequest && approveAndCreateTransferOrder(selectedRequest)}
+                onClick={() => selectedRequest && openTransferOrderModal(selectedRequest)}
                 className="rounded-xl bg-cyan-600 px-5 py-2.5 font-bold text-white hover:bg-cyan-700"
               >
-                Duyệt & lập phiếu điều chuyển
+                Lập phiếu điều chuyển
               </button>
             </div>
           </div>
@@ -549,11 +770,26 @@ export default function TransferRequestsPage() {
           onClose={closeModal}
           onSuccess={() => {
             closeModal();
-            // Optional: trigger data reload here if we had real API
+            loadRequests();
           }}
           setToast={setToast}
         />
       )}
+
+      <TransferOrderModal
+        open={isTransferOrderModalOpen}
+        request={transferOrderRequest}
+        onClose={() => {
+          setIsTransferOrderModalOpen(false);
+          setTransferOrderRequest(null);
+        }}
+        onSaved={() => {
+          setIsTransferOrderModalOpen(false);
+          setTransferOrderRequest(null);
+          loadRequests();
+        }}
+        setToast={setToast}
+      />
 
       {toast && (
         <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>

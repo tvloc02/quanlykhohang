@@ -113,7 +113,7 @@ const menuItems = [
     allowedRoles: ['manager', 'staff'],
     children: [
       { icon: FileText, label: 'Yêu cầu điều chuyển', path: '/delivery/transfer-requests' },
-      { icon: ClipboardList, label: 'Lập phiếu điều chuyển', path: '/delivery/create-transfer-order' },
+      { icon: ClipboardList, label: 'Phiếu điều chuyển', path: '/delivery/create-transfer-order' },
       { icon: Truck, label: 'Điều chuyển', path: '/delivery' },
     ],
   },

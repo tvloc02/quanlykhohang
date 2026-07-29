@@ -1,46 +1,78 @@
 import React from 'react';
-import { Plus, Search, Filter, Eye, Truck, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { Plus, Search, Filter, Truck, CheckCircle, Clock, AlertCircle, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import Button from '../../shared/components/Button';
-import IconButton from '../../shared/components/IconButton';
+import TransferOrderModal from './components/TransferOrderModal';
+import { deliveryApi, type TransferOrder } from './api/deliveryApi';
 
-interface Delivery {
-  id: string;
-  transferNo: string;
-  requestNo: string;
-  sourceWarehouse: string;
-  destinationWarehouse: string;
-  status: 'pending' | 'in_transit' | 'delivered' | 'cancelled';
-  scheduledDate: string;
-  amount: number;
+const statusConfig: Record<string, { color: string; label: string }> = {
+  DRAFT: { color: 'border-slate-200 bg-slate-50 text-slate-700', label: 'Nháp' },
+  PENDING: { color: 'border-amber-200 bg-amber-50 text-amber-700', label: 'Chờ duyệt' },
+  APPROVED: { color: 'border-cyan-200 bg-cyan-50 text-cyan-700', label: 'Đã duyệt' },
+  IN_TRANSIT: { color: 'border-blue-200 bg-blue-50 text-blue-700', label: 'Đang điều chuyển' },
+  DELIVERED: { color: 'border-emerald-200 bg-emerald-50 text-emerald-700', label: 'Hoàn thành' },
+  CANCELLED: { color: 'border-red-200 bg-red-50 text-red-700', label: 'Đã hủy' },
+};
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString('vi-VN');
 }
 
 export default function Delivery() {
   const navigate = useNavigate();
-  const [deliveries] = React.useState<Delivery[]>([]);
+  const [orders, setOrders] = React.useState<TransferOrder[]>([]);
+  const [search, setSearch] = React.useState('');
+  const [pageSize, setPageSize] = React.useState(20);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [showModal, setShowModal] = React.useState(false);
+  const [toast, setToast] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const statusConfig = {
-    pending: {
-      color: 'border-amber-200 bg-amber-50 text-amber-700',
-      label: 'Chờ giao hàng',
-      icon: Clock,
-    },
-    in_transit: {
-      color: 'border-cyan-200 bg-cyan-50 text-cyan-700',
-      label: 'Đang giao',
-      icon: Truck,
-    },
-    delivered: {
-      color: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-      label: 'Đã giao',
-      icon: CheckCircle,
-    },
-    cancelled: {
-      color: 'border-red-200 bg-red-50 text-red-700',
-      label: 'Hủy',
-      icon: AlertCircle,
-    },
-  };
+  const loadOrders = React.useCallback(async () => {
+    try {
+      const data = await deliveryApi.listTransferOrders();
+      setOrders(data);
+    } catch (error) {
+      console.error(error);
+      setToast({ type: 'error', message: 'Không tải được phiếu điều chuyển' });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
+
+  React.useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [search, pageSize]);
+
+  const filteredOrders = orders.filter((order) => {
+    const q = search.trim().toLowerCase();
+    return (
+      !q ||
+      order.transferNo.toLowerCase().includes(q) ||
+      (order.requestNumber || '').toLowerCase().includes(q) ||
+      (order.sourceWarehouse || '').toLowerCase().includes(q) ||
+      (order.destinationWarehouse || '').toLowerCase().includes(q)
+    );
+  });
+
+  const total = orders.length;
+  const pending = orders.filter((order) => order.status === 'PENDING').length;
+  const moving = orders.filter((order) => order.status === 'IN_TRANSIT').length;
+  const done = orders.filter((order) => order.status === 'DELIVERED').length;
+
+  const totalItems = filteredOrders.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endIndex = Math.min(currentPage * pageSize, totalItems);
+  const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="space-y-6">
@@ -50,30 +82,39 @@ export default function Delivery() {
             <Truck className="h-5 w-5 text-cyan-100" />
             <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Điều Chuyển</h1>
           </div>
-          <p className="mt-2 text-sm font-medium text-slate-500">Quản lý luồng điều chuyển hàng giữa các kho và khoáy số liệu tồn.</p>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate('/delivery/create-transfer-order')}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
-        >
-          <Plus className="h-4 w-4" />
-          Lập phiếu điều chuyển
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
+          >
+            <Plus className="h-4 w-4" />
+            Lập phiếu điều chuyển
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/delivery/create-transfer-order')}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-5 py-2.5 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+          >
+            <ArrowRight className="h-4 w-4" />
+            Xem danh sách
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{deliveries.length}<br/>TỔNG PHIẾU</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{total} TỔNG PHIẾU</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{deliveries.filter((d) => d.status === 'pending').length}<br/>CHỜ XỬ LÝ</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{pending} CHỜ XỬ LÝ</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{deliveries.filter((d) => d.status === 'in_transit').length}<br/>ĐANG ĐIỀU CHUYỂN</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{moving} ĐANG ĐIỀU CHUYỂN</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{deliveries.filter((d) => d.status === 'delivered').length}<br/>HOÀN THÀNH</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{done} HOÀN THÀNH</p>
         </div>
       </div>
 
@@ -82,6 +123,8 @@ export default function Delivery() {
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
           <input
             type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Tìm kiếm phiếu điều chuyển kho..."
             className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           />
@@ -105,41 +148,31 @@ export default function Delivery() {
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số yêu cầu</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho xuất</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho nhập</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày dự kiến</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày lập</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Trạng thái</th>
-                <th className="sticky right-0 w-32 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Hành động</th>
               </tr>
             </thead>
             <tbody>
-              {deliveries.length === 0 ? (
+              {paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    <p className="text-base font-bold text-slate-800 mb-1">Chưa có dữ liệu điều chuyển</p>
-                    Hãy tạo phiếu điều chuyển mới hoặc liên kết từ yêu cầu điều chuyển để theo dõi luồng hàng hóa.
+                  <td colSpan={7} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                    <p className="mb-1 text-base font-bold text-slate-800">Chưa có phiếu điều chuyển</p>
+                    Hãy tạo phiếu điều chuyển bằng popup để bắt đầu.
                   </td>
                 </tr>
               ) : (
-                deliveries.map((delivery, index) => (
-                  <tr key={delivery.id} className="group border-b border-slate-200 transition hover:bg-slate-50">
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{index + 1}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-900">{delivery.transferNo}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{delivery.requestNo}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{delivery.sourceWarehouse}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{delivery.destinationWarehouse}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-600">{delivery.scheduledDate}</td>
+                paginatedOrders.map((order, index) => (
+                  <tr key={order.id} className="border-b border-slate-200 transition hover:bg-cyan-50/50">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{startIndex + index}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.transferNo}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.requestNumber || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.sourceWarehouse}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.destinationWarehouse}</td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatDateTime(order.createdAt)}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                      <span className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold ${statusConfig[delivery.status]?.color || ''}`}>
-                        {statusConfig[delivery.status]?.label || delivery.status}
+                      <span className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold ${statusConfig[order.status]?.color || ''}`}>
+                        {statusConfig[order.status]?.label || order.status}
                       </span>
-                    </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle group-hover:bg-slate-50">
-                      <button
-                        type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 transition hover:bg-cyan-50"
-                        title="Xem chi tiết"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
                     </td>
                   </tr>
                 ))
@@ -147,7 +180,99 @@ export default function Delivery() {
             </tbody>
           </table>
         </div>
+        <div className="flex flex-col items-center justify-between gap-4 border-t border-slate-200 bg-slate-50/60 px-6 py-3 sm:flex-row">
+          <div className="text-sm font-medium text-slate-600">
+            Tổng số: <b className="font-bold text-slate-900">{totalItems}</b>{' '}
+            {totalItems > 0 && (
+              <span className="ml-2 text-slate-500">
+                Hiển thị {startIndex} - {endIndex}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setCurrentPage(1);
+              }}
+              className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                «
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ‹
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .slice(Math.max(0, currentPage - 2), Math.min(totalPages, currentPage + 1))
+                .map((page) => (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(page)}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${
+                      page === currentPage
+                        ? 'bg-cyan-600 text-white'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages || totalPages === 0}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                »
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {toast && (
+        <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
+          <p className="text-sm font-bold">{toast.message}</p>
+          <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
+            <Clock className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <TransferOrderModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onSaved={loadOrders}
+        setToast={(nextToast) => setToast(nextToast)}
+      />
     </div>
   );
 }

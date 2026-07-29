@@ -344,10 +344,19 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
         <div>
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <Move3d className="h-4 w-4 text-cyan-600" />
-            Mô Phỏng 3D Kho Nhỏ: <span className="font-bold text-cyan-700">{subWarehouse.code}</span> - {subWarehouse.name}
+            Mô Phỏng 3D Phân Khu: <span className="font-bold text-cyan-700">{subWarehouse.code}</span> - {subWarehouse.name}
+            <span
+              className={`ml-2 inline-flex rounded-lg px-2 py-0.5 text-[11px] font-bold ${
+                subWarehouse.status === 'inactive'
+                  ? 'border border-rose-200 bg-rose-50 text-rose-700'
+                  : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {subWarehouse.status === 'inactive' ? 'Không hoạt động' : 'Đang hoạt động'}
+            </span>
           </h3>
           <p className="mt-1 text-xs font-semibold text-slate-500">
-            Kích thước: <strong className="text-slate-900">{L}m</strong> Dài × <strong className="text-slate-900">{W}m</strong> Rộng × <strong className="text-slate-900">{H}m</strong> Cao | Sức chứa: <strong className="text-cyan-700">{racksCount} Kệ</strong> × <strong className="text-cyan-700">{shelvesPerRack} Tầng</strong>
+            Kích thước: <strong className="text-slate-900">{L}m</strong> Dài × <strong className="text-slate-900">{W}m</strong> Rộng × <strong className="text-slate-900">{H}m</strong> Cao | Sức chứa: <strong className="text-cyan-700">{racksCount} Kệ</strong> × <strong className="text-cyan-700">{shelvesPerRack} Tầng</strong> | Kệ tường: <strong className="text-indigo-700">{subWarehouse.wallRacksCount || 2} Kệ</strong> | Hàng kệ: <strong className="text-indigo-700">{subWarehouse.rackRowsCount || 2} Hàng</strong>
           </p>
         </div>
 

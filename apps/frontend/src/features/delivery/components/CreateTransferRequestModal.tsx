@@ -114,7 +114,7 @@ type Warehouse = {
 
 type CreateTransferRequestModalProps = {
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (newReq?: any) => void;
   setToast: (toast: { type: 'success' | 'error'; message: string }) => void;
 };
 
@@ -202,10 +202,41 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
 
     setIsSubmitting(true);
     try {
-      // Fake API call since we don't have a backend endpoint yet for creating this
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setToast({ type: 'success', message: status === 'DRAFT' ? 'Đã lưu nháp yêu cầu điều chuyển!' : 'Đã gửi yêu cầu điều chuyển thành công!' });
-      onSuccess();
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const currentUser = storedUser.fullName || storedUser.email || 'Nhân viên kho';
+
+      const newRequest = {
+        id: `trq-${Date.now()}`,
+        requestNumber: `REQ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        createdDate: new Date().toISOString(),
+        status: status,
+        description: description || `Yêu cầu điều chuyển từ ${sourceWarehouse} sang ${destinationWarehouse}`,
+        createdBy: currentUser,
+        sourceWarehouse: sourceWarehouse,
+        destinationWarehouse: destinationWarehouse,
+        items: items.map(i => ({
+          id: `tri-${Date.now()}-${i.productId}`,
+          productCode: i.product.internalSku,
+          productName: i.product.name,
+          unit: i.product.unit || 'Cái',
+          quantity: i.quantity,
+          sourceWarehouse: sourceWarehouse,
+          destinationWarehouse: destinationWarehouse,
+        })),
+      };
+
+      const existingRaw = localStorage.getItem('wms_transfer_requests');
+      const existing = existingRaw ? JSON.parse(existingRaw) : [];
+      const updated = [newRequest, ...existing];
+      localStorage.setItem('wms_transfer_requests', JSON.stringify(updated));
+
+      setToast({ 
+        type: 'success', 
+        message: status === 'DRAFT' ? 'Đã lưu nháp yêu cầu điều chuyển!' : 'Đã gửi yêu cầu điều chuyển thành công!' 
+      });
+      onSuccess(newRequest);
     } catch (error: any) {
       setToast({ type: 'error', message: error.message || 'Lỗi hệ thống' });
     } finally {
@@ -239,7 +270,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
               placeholder="-- Chọn kho nguồn --"
               options={warehouses
                 .filter(w => w.code !== destinationWarehouse)
-                .map(w => ({ value: w.code, label: w.name }))}
+                .map(w => ({ value: w.code, label: `${w.name} (${w.code})` }))}
             />
             <CustomSelect
               label="Kho đích"
@@ -249,7 +280,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
               placeholder="-- Chọn kho đích --"
               options={warehouses
                 .filter(w => w.code !== sourceWarehouse)
-                .map(w => ({ value: w.code, label: w.name }))}
+                .map(w => ({ value: w.code, label: `${w.name} (${w.code})` }))}
             />
             <div>
               <label className="mb-2 block text-sm font-bold text-slate-700">Ngày giờ xuất dự kiến <span className="text-red-500">*</span></label>

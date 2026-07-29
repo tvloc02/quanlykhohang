@@ -240,8 +240,15 @@ export default function WarehouseManagement() {
     }
   }, [error, success]);
 
-  const activeCount = warehouses.filter((w) => w.status === 'active').length;
-  const inactiveCount = warehouses.filter((w) => w.status === 'inactive').length;
+  const totalWarehousesCount = warehouses.length;
+  const activeWarehousesCount = warehouses.filter((w) => w.status === 'active').length;
+  const totalZonesCount = warehouses.reduce((acc, w) => acc + (w.subWarehouses?.length || 0), 0);
+  const activeZonesCount = warehouses.reduce(
+    (acc, w) => acc + (w.subWarehouses?.filter((s) => s.status !== 'inactive').length || 0),
+    0,
+  );
+
+  const [cardFilter, setCardFilter] = useState<'all-warehouses' | 'all-zones' | 'active-warehouses' | 'active-zones'>('all-warehouses');
 
   const filteredWarehouses = warehouses.filter((w) => {
     const keyword = search.trim().toLowerCase();
@@ -250,7 +257,20 @@ export default function WarehouseManagement() {
       w.name.toLowerCase().includes(keyword) ||
       w.code.toLowerCase().includes(keyword) ||
       w.address.toLowerCase().includes(keyword);
-    const matchesStatus = statusFilter === 'all' || w.status === statusFilter;
+
+    let matchesStatus = true;
+    if (statusFilter === 'active') {
+      matchesStatus = w.status === 'active';
+    } else if (statusFilter === 'inactive') {
+      matchesStatus = w.status === 'inactive';
+    }
+
+    if (cardFilter === 'all-zones') {
+      return matchesKeyword && (w.subWarehouses?.length || 0) > 0;
+    }
+    if (cardFilter === 'active-zones') {
+      return matchesKeyword && (w.subWarehouses?.some((s) => s.status !== 'inactive') || false);
+    }
 
     return matchesKeyword && matchesStatus;
   });
@@ -300,14 +320,17 @@ export default function WarehouseManagement() {
     const newSub: SubWarehouse = {
       id: newId,
       code: `ZONE-${String.fromCharCode(65 + form.subWarehouses.length)}`,
-      name: `Kho Nhỏ Phân Khu ${form.subWarehouses.length + 1}`,
+      name: `Phân Khu ${form.subWarehouses.length + 1}`,
+      status: 'active',
       length: 15,
       width: 10,
       height: 6,
       racksCount: 4,
       shelvesPerRack: 4,
+      wallRacksCount: 2,
+      rackRowsCount: 2,
       structure: {
-        wallType: 'Tường tôn cách nhiệt PPU',
+        wallType: 'Tường tôn cách nhiệt PU',
         ceilingType: 'Trần thạch cao chống nóng',
         floorType: 'Sàn bê tông phủ Epoxy',
         cornerInfo: 'Góc bo tròn inox',
@@ -394,7 +417,7 @@ export default function WarehouseManagement() {
       try {
         await upsertWarehouseToApi(payload, modalMode === 'create' ? 'POST' : undefined);
         await loadData();
-        setSuccess(modalMode === 'edit' ? 'Đã cập nhật kho hàng.' : 'Đã thêm kho hàng mới.');
+        setSuccess(modalMode === 'edit' ? 'Đã cập nhật kho hàng thành công.' : 'Đã thêm kho hàng mới.');
         closeModal();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Không lưu được kho hàng');
@@ -440,13 +463,13 @@ export default function WarehouseManagement() {
 
   const modalTitle =
     modalMode === 'create'
-      ? 'Thêm Kho Tổng & Tạo Kho Nhỏ Mới'
+      ? 'Thêm Kho Hàng & Tạo Phân Khu Mới'
       : modalMode === 'view'
-        ? 'Chi Tiết Kho Hàng'
+        ? 'Chi Tiết Kho Hàng & Phân Khu'
         : modalMode === 'edit'
-          ? 'Chỉnh Sửa Kho Hàng & Kho Nhỏ'
+          ? 'Chỉnh Sửa Kho Hàng & Phân Khu'
           : modalMode === 'view3d'
-            ? 'Mô Phỏng 3D Kho Nhỏ Realtime'
+            ? 'Mô Phỏng 3D Phân Khu Realtime'
             : 'Xóa Kho Hàng';
 
   return (
@@ -465,7 +488,7 @@ export default function WarehouseManagement() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border border-cyan-500/30 bg-cyan-600 px-4 py-2 text-white shadow-sm">
             <Warehouse className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-base font-bold tracking-tight text-white">Quản Lý Kho Hàng & Mô Hình 3D Kho Nhỏ</h1>
+            <h1 className="text-base font-bold tracking-tight text-white">QUẢN LÝ KHO HÀNG VÀ PHÂN KHU</h1>
           </div>
         </div>
 
@@ -485,34 +508,79 @@ export default function WarehouseManagement() {
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500 bg-cyan-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-700 cursor-pointer active:scale-95"
           >
             <PlusCircle className="h-4 w-4" />
-            Tạo Kho Tổng Mới
+            Tạo Kho Hàng Mới
           </button>
         </div>
       </div>
 
-      {/* STATUS FILTER TABS */}
-      <div className="flex border-b border-slate-200">
+      {/* 4 STAT OVERVIEW BUTTONS MATCHING SYSTEM UI */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <button
           type="button"
-          onClick={() => setStatusFilter('active')}
-          className={`px-4 pb-3 text-xs font-bold transition cursor-pointer ${
-            statusFilter === 'active' || statusFilter === 'all'
-              ? 'border-b-2 border-cyan-600 text-cyan-600'
-              : 'text-slate-500 hover:text-slate-700'
+          onClick={() => {
+            setCardFilter('all-warehouses');
+            setStatusFilter('all');
+          }}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center cursor-pointer ${
+            cardFilter === 'all-warehouses'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          Đang hoạt động ({activeCount})
+          <p className="text-base font-black uppercase">
+            {totalWarehousesCount} KHO HÀNG
+          </p>
         </button>
+
         <button
           type="button"
-          onClick={() => setStatusFilter('inactive')}
-          className={`ml-4 px-4 pb-3 text-xs font-bold transition cursor-pointer ${
-            statusFilter === 'inactive'
-              ? 'border-b-2 border-cyan-600 text-cyan-600'
-              : 'text-slate-500 hover:text-slate-700'
+          onClick={() => {
+            setCardFilter('all-zones');
+            setStatusFilter('all');
+          }}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center cursor-pointer ${
+            cardFilter === 'all-zones'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          Không hoạt động ({inactiveCount})
+          <p className="text-base font-black uppercase">
+            {totalZonesCount} PHÂN KHU
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setCardFilter('active-warehouses');
+            setStatusFilter('active');
+          }}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center cursor-pointer ${
+            cardFilter === 'active-warehouses'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
+          }`}
+        >
+          <p className="text-base font-black uppercase">
+            {activeWarehousesCount} KHO ĐANG HOẠT ĐỘNG
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setCardFilter('active-zones');
+            setStatusFilter('active');
+          }}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center cursor-pointer ${
+            cardFilter === 'active-zones'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
+          }`}
+        >
+          <p className="text-base font-black uppercase">
+            {activeZonesCount} PHÂN KHU ĐANG HOẠT ĐỘNG
+          </p>
         </button>
       </div>
 
@@ -524,7 +592,7 @@ export default function WarehouseManagement() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="h-10 w-full rounded-xl border border-cyan-500/80 bg-white pl-10 pr-4 text-xs font-medium outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20"
-            placeholder="Tìm kiếm mã kho, tên kho tổng, địa chỉ..."
+            placeholder="Tìm kiếm mã kho, tên kho, địa chỉ..."
           />
         </div>
         <select
@@ -551,10 +619,10 @@ export default function WarehouseManagement() {
                   Mã kho
                 </th>
                 <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
-                  Tên kho tổng
+                  Tên kho
                 </th>
                 <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
-                  Kho nhỏ / Phân khu
+                  Số phân khu
                 </th>
                 <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
                   Địa chỉ kho
@@ -563,7 +631,7 @@ export default function WarehouseManagement() {
                   Trạng thái
                 </th>
                 <th className="sticky right-0 w-44 border-l border-slate-200 bg-cyan-50/70 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
-                  Thao tác & 3D Kho Nhỏ
+                  Hành động
                 </th>
               </tr>
             </thead>
@@ -593,9 +661,9 @@ export default function WarehouseManagement() {
                       {w.name}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-700">
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-indigo-700 border border-indigo-200">
-                        <Layers className="h-3.5 w-3.5" />
-                        {w.subWarehouses?.length || 0} Kho nhỏ
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-cyan-50 px-2.5 py-1 text-cyan-700 border border-cyan-200">
+                        <Layers className="h-3.5 w-3.5 text-cyan-600" />
+                        {w.subWarehouses?.length || 0} Phân khu
                       </span>
                     </td>
                     <td className="max-w-[280px] truncate border-x border-slate-200 px-3 py-3.5 text-center text-xs font-medium text-slate-700">
@@ -615,42 +683,42 @@ export default function WarehouseManagement() {
                     </td>
                     <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/40">
                       <div className="flex items-center justify-center gap-1.5">
-                        {/* 3D Kho Nhỏ Button */}
+                        {/* 3D Phân Khu Button */}
                         <button
                           type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500 bg-indigo-50 text-indigo-600 shadow-sm transition hover:bg-indigo-600 hover:text-white cursor-pointer"
-                          aria-label="Xem 3D Kho Nhỏ"
-                          title="Xem 3D Kệ Kho Nhỏ"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          aria-label="Xem 3D Phân Khu"
+                          title="Xem 3D Kệ Phân Khu"
                           onClick={() => openWarehouseModal('view3d', w)}
                         >
-                          <Move3d size={16} strokeWidth={2.2} />
+                          <Move3d className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                         </button>
                         <button
                           type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                           aria-label="Xem kho"
                           title="Xem chi tiết"
                           onClick={() => openWarehouseModal('view', w)}
                         >
-                          <Eye size={16} strokeWidth={2.2} />
+                          <Eye className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                         </button>
                         <button
                           type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                           aria-label="Sửa kho"
                           title="Chỉnh sửa"
                           onClick={() => openWarehouseModal('edit', w)}
                         >
-                          <Pencil size={16} strokeWidth={2.2} />
+                          <Pencil className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                         </button>
                         <button
                           type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                           aria-label="Xóa kho"
                           title="Xóa kho"
                           onClick={() => openWarehouseModal('delete', w)}
                         >
-                          <Trash2 size={16} strokeWidth={2.2} />
+                          <Trash2 className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                         </button>
                       </div>
                     </td>
@@ -722,7 +790,7 @@ export default function WarehouseManagement() {
       {modalMode &&
         createPortal(
           <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/70 p-4 sm:p-6 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-cyan-500">
+            <div className="w-full max-w-6xl max-h-[92vh] flex flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border-2 border-cyan-500">
               {/* Modal Header */}
               <div className="flex-shrink-0 flex items-center justify-between border-b border-slate-100 bg-cyan-600 px-6 py-3.5 text-white">
                 <div className="flex items-center gap-3">
@@ -732,7 +800,7 @@ export default function WarehouseManagement() {
                   <div>
                     <h2 className="text-base font-bold tracking-tight text-white">{modalTitle}</h2>
                     <p className="text-xs text-cyan-100/90 font-normal">
-                      Cấu hình thông tin kho tổng & tạo các Tab kho nhỏ với mô phỏng 3D
+                      Cấu hình thông tin kho hàng & các phân khu với mô phỏng 3D
                     </p>
                   </div>
                 </div>
@@ -750,10 +818,9 @@ export default function WarehouseManagement() {
               {modalMode === 'delete' ? (
                 <div className="p-6">
                   <p className="text-xs font-semibold text-slate-700">
-                    Bạn có chắc chắn muốn xóa kho tổng{' '}
+                    Bạn có chắc chắn muốn xóa kho hàng{' '}
                     <span className="font-bold text-slate-950">{selectedWarehouse?.name}</span> (Mã:{' '}
-                    <span className="font-bold text-rose-600">{selectedWarehouse?.code}</span>) cùng tất cả các kho
-                    nhỏ thuộc kho này không?
+                    <span className="font-bold text-rose-600">{selectedWarehouse?.code}</span>) cùng tất cả các phân khu thuộc kho này không?
                   </p>
                   <div className="mt-6 flex justify-end gap-2.5">
                     <button
@@ -787,7 +854,7 @@ export default function WarehouseManagement() {
                       }`}
                     >
                       <Building className="h-4 w-4" />
-                      Thông Tin & Địa Chỉ Kho Tổng
+                      Thông Tin & Địa Chỉ Kho Hàng
                     </button>
 
                     {form.subWarehouses.map((sub, idx) => (
@@ -802,12 +869,12 @@ export default function WarehouseManagement() {
                           }`}
                         >
                           <Layers className="h-3.5 w-3.5" />
-                          {sub.code || `Kho Nhỏ ${idx + 1}`}
+                          {sub.code || `Phân Khu ${idx + 1}`}
                           {modalMode !== 'view' && form.subWarehouses.length > 1 && (
                             <span
                               onClick={(e) => handleDeleteSubTab(sub.id, e)}
                               className="ml-1 rounded-full p-0.5 hover:bg-black/20 text-white/80"
-                              title="Xóa kho nhỏ"
+                              title="Xóa phân khu"
                             >
                               <X className="h-3 w-3" />
                             </span>
@@ -823,7 +890,7 @@ export default function WarehouseManagement() {
                         className="inline-flex items-center gap-1 rounded-lg border border-dashed border-cyan-500 bg-cyan-50/60 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 transition cursor-pointer whitespace-nowrap"
                       >
                         <Plus className="h-3.5 w-3.5 text-cyan-600" />
-                        Thêm Kho Nhỏ Mới
+                        Thêm Phân Khu Mới
                       </button>
                     )}
                   </div>
@@ -836,7 +903,7 @@ export default function WarehouseManagement() {
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                           <div>
                             <label className="mb-1 block text-xs font-semibold text-slate-600">
-                              Mã kho tổng <span className="text-rose-500">*</span>
+                              Mã kho <span className="text-rose-500">*</span>
                             </label>
                             <input
                               value={form.code}
@@ -850,7 +917,7 @@ export default function WarehouseManagement() {
 
                           <div>
                             <label className="mb-1 block text-xs font-semibold text-slate-600">
-                              Tên kho tổng <span className="text-rose-500">*</span>
+                              Tên kho <span className="text-rose-500">*</span>
                             </label>
                             <input
                               value={form.name}
@@ -863,7 +930,7 @@ export default function WarehouseManagement() {
                           </div>
 
                           <div>
-                            <label className="mb-1 block text-xs font-semibold text-slate-600">Trạng Thái</label>
+                            <label className="mb-1 block text-xs font-semibold text-slate-600">Trạng Thái Kho</label>
                             <select
                               value={form.status}
                               onChange={(event) =>
@@ -965,19 +1032,19 @@ export default function WarehouseManagement() {
                     {/* TAB 2: SUB-WAREHOUSE DETAILED TAB & 3D SIMULATION */}
                     {currentSubWarehouse && activeTabId !== 'main' && (
                       <div className="space-y-4 animate-in fade-in duration-200">
-                        <div className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
-                          <div className="flex items-center justify-between border-b border-indigo-200/60 pb-2">
-                            <span className="text-xs font-bold text-indigo-900 uppercase">
-                              Cấu Hình Kho Nhỏ: {currentSubWarehouse.code}
+                        <div className="rounded-xl border border-cyan-200 bg-cyan-50/30 p-4 space-y-3">
+                          <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
+                            <span className="text-xs font-bold text-cyan-900 uppercase">
+                              Cấu Hình Phân Khu: {currentSubWarehouse.code}
                             </span>
-                            <span className="text-xs font-semibold text-slate-500">
-                              {currentSubWarehouse.racksCount || 4} Kệ chứa hàng × {currentSubWarehouse.shelvesPerRack || 4} Tầng
+                            <span className="text-xs font-semibold text-slate-600">
+                              {currentSubWarehouse.racksCount || 4} Kệ chứa hàng × {currentSubWarehouse.shelvesPerRack || 4} Tầng | {currentSubWarehouse.wallRacksCount || 2} Kệ Tường | {currentSubWarehouse.rackRowsCount || 2} Hàng Kệ
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                             <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Mã Kho Nhỏ</label>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Mã Phân Khu</label>
                               <input
                                 value={currentSubWarehouse.code}
                                 onChange={(e) =>
@@ -986,20 +1053,37 @@ export default function WarehouseManagement() {
                                   })
                                 }
                                 readOnly={modalMode === 'view'}
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-900 outline-none focus:border-indigo-500"
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold uppercase text-slate-900 outline-none focus:border-cyan-500"
                               />
                             </div>
 
                             <div className="sm:col-span-2">
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Tên Kho Nhỏ</label>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Tên Phân Khu</label>
                               <input
                                 value={currentSubWarehouse.name}
                                 onChange={(e) =>
                                   handleUpdateSubWarehouse(currentSubWarehouse.id, { name: e.target.value })
                                 }
                                 readOnly={modalMode === 'view'}
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
                               />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Trạng Thái Phân Khu</label>
+                              <select
+                                value={currentSubWarehouse.status || 'active'}
+                                onChange={(e) =>
+                                  handleUpdateSubWarehouse(currentSubWarehouse.id, {
+                                    status: e.target.value as 'active' | 'inactive',
+                                  })
+                                }
+                                disabled={modalMode === 'view'}
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-cyan-500"
+                              >
+                                <option value="active">Đang hoạt động</option>
+                                <option value="inactive">Không hoạt động</option>
+                              </select>
                             </div>
 
                             <div>
@@ -1013,7 +1097,7 @@ export default function WarehouseManagement() {
                                   })
                                 }
                                 readOnly={modalMode === 'view'}
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
                               />
                             </div>
 
@@ -1028,7 +1112,7 @@ export default function WarehouseManagement() {
                                   })
                                 }
                                 readOnly={modalMode === 'view'}
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
                               />
                             </div>
 
@@ -1043,7 +1127,7 @@ export default function WarehouseManagement() {
                                   })
                                 }
                                 readOnly={modalMode === 'view'}
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
                               />
                             </div>
 
@@ -1058,7 +1142,7 @@ export default function WarehouseManagement() {
                                   })
                                 }
                                 readOnly={modalMode === 'view'}
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
                               />
                             </div>
 
@@ -1073,12 +1157,42 @@ export default function WarehouseManagement() {
                                   })
                                 }
                                 readOnly={modalMode === 'view'}
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
                               />
                             </div>
 
                             <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Loại Tường / Trần</label>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Kệ Trên Tường (Wall Racks)</label>
+                              <input
+                                type="number"
+                                value={currentSubWarehouse.wallRacksCount || 2}
+                                onChange={(e) =>
+                                  handleUpdateSubWarehouse(currentSubWarehouse.id, {
+                                    wallRacksCount: Number(e.target.value),
+                                  })
+                                }
+                                readOnly={modalMode === 'view'}
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Số Hàng Kệ (Rack Rows)</label>
+                              <input
+                                type="number"
+                                value={currentSubWarehouse.rackRowsCount || 2}
+                                onChange={(e) =>
+                                  handleUpdateSubWarehouse(currentSubWarehouse.id, {
+                                    rackRowsCount: Number(e.target.value),
+                                  })
+                                }
+                                readOnly={modalMode === 'view'}
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1">Vật Liệu Tường / Trần</label>
                               <input
                                 value={currentSubWarehouse.structure?.wallType || ''}
                                 onChange={(e) =>
@@ -1091,7 +1205,7 @@ export default function WarehouseManagement() {
                                 }
                                 readOnly={modalMode === 'view'}
                                 placeholder="Panel PU cách nhiệt..."
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-indigo-500"
+                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-500"
                               />
                             </div>
                           </div>
@@ -1114,6 +1228,16 @@ export default function WarehouseManagement() {
                     >
                       {modalMode === 'view' || modalMode === 'view3d' ? 'Đóng' : 'Hủy bỏ'}
                     </button>
+                    {modalMode === 'view' && (
+                      <button
+                        type="button"
+                        onClick={() => setModalMode('edit')}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500 bg-cyan-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Chuyển Sang Chỉnh Sửa
+                      </button>
+                    )}
                     {modalMode !== 'view' && modalMode !== 'view3d' && (
                       <button
                         type="submit"
