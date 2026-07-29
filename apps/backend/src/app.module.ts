@@ -22,6 +22,7 @@ import { RolesModule } from './roles/roles.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
 import { CustomerPortalModule } from './customer-portal/customer-portal.module';
 import { ScanModule } from './scan/scan.module';
+import { DeliveryModule } from './delivery/delivery.module';
 
 import { SmartInventoryModule } from './inventory/smart-inventory/smart-inventory.module';
 
@@ -55,6 +56,7 @@ import { SmartInventoryModule } from './inventory/smart-inventory/smart-inventor
     NotificationsModule,
     CustomerPortalModule,
     ScanModule,
+    DeliveryModule,
   ],
   controllers: [],
   providers: [

@@ -2,11 +2,14 @@ export type SubWarehouse = {
   id: string;
   code: string;
   name: string;
+  status?: 'active' | 'inactive'; // Trạng thái phân khu
   length: number; // mét
   width: number;  // mét
   height: number; // mét
   racksCount: number; // số kệ
   shelvesPerRack: number; // số tầng mỗi kệ
+  wallRacksCount?: number; // kệ trên tường
+  rackRowsCount?: number; // số hàng kệ
   structure?: {
     wallType?: string;    // Tường
     ceilingType?: string; // Trần
