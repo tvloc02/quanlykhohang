@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { StockBalance } from '../entities/stock-balance.entity';
 import { Product } from '../../entities/product.entity';
@@ -54,7 +54,7 @@ export class SmartInventoryService {
     @InjectRepository(Warehouse) private warehouseRepo: Repository<Warehouse>,
     @InjectRepository(Stocktake) private stocktakeRepo: Repository<Stocktake>,
     @InjectRepository(StocktakeDetail) private stocktakeDetailRepo: Repository<StocktakeDetail>,
-    private readonly dataSource: DataSource,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   // ─── 1. SMART SLOTTING & ABC ANALYSIS ─────────────────────────

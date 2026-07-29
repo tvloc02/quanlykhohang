@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { OutboundOrder } from './entities/outbound-order.entity';
 import { OutboundDetail } from './entities/outbound-detail.entity';
@@ -61,7 +61,7 @@ export class OutboundService {
     @InjectRepository(ShippingNote) private shippingNoteRepo: Repository<ShippingNote>,
     private readonly outboxService: OutboxService,
     private readonly idempotencyService: IdempotencyService,
-    private readonly dataSource: DataSource,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async getShippingNotes() {
