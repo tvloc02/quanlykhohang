@@ -139,7 +139,6 @@ const menuItems = [
       { icon: FileText, label: 'Tạo phiên kiểm kê', path: '/inventory/stocktake/create', allowedRoles: ['admin', 'manager'] },
       { icon: ScanLine, label: 'Quét đếm kiểm kê', path: '/inventory/stocktake/scan' },
       { icon: CheckCheck, label: 'Đối chiếu & Phê duyệt', path: '/inventory/stocktake/adjustment-approval', allowedRoles: ['admin', 'manager'] },
-      { icon: Lock, label: 'Đóng băng kho', path: '/inventory/stocktake/freeze', allowedRoles: ['admin', 'manager'] },
       { icon: ClipboardList, label: 'Yêu cầu từ NV', path: '/inventory/stocktake/requests', allowedRoles: ['admin', 'manager'] },
       { icon: Package, label: 'Danh sách phiên kiểm kê', path: '/inventory/stocktake', allowedRoles: ['admin', 'manager'] },
       { icon: Package, label: 'Kiểm kê của tôi', path: '/inventory/stocktake/my-tasks', allowedRoles: ['staff'] },

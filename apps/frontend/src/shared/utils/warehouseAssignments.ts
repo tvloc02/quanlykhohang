@@ -30,6 +30,7 @@ export type WarehouseRecord = {
   latitude?: number;
   longitude?: number;
   status: 'active' | 'inactive';
+  isFrozen?: boolean;
   managerIds: string[];
   staffIds: string[];
 
@@ -97,6 +98,7 @@ export function normalizeWarehouseRecord(
     latitude: warehouse.latitude ? Number(warehouse.latitude) : undefined,
     longitude: warehouse.longitude ? Number(warehouse.longitude) : undefined,
     status: warehouse.status === 'inactive' ? 'inactive' : 'active',
+    isFrozen: Boolean(warehouse.isFrozen),
     managerIds: normalizeWarehouseIds(warehouse.managerIds),
     staffIds: normalizeWarehouseIds(warehouse.staffIds),
     length: l,

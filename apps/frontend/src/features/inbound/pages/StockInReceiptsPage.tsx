@@ -369,6 +369,8 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
     }
   };
 
+  const isReturnGoods = receiptTypeFilter === 'RETURNED_GOODS';
+
   return (
     <div className="space-y-4">
       {toast && (
@@ -383,7 +385,12 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-900">Biên Bản Nhập Kho & Kiểm Kê</h1>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <FileText className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">
+              {isReturnGoods ? 'Quản lý Hàng Trả Lại' : 'Biên Bản Nhập Kho & Kiểm Kê'}
+            </h1>
+          </div>
         </div>
         <button
           type="button"
@@ -391,25 +398,45 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Tạo biên bản nhập kho
+          {isReturnGoods ? 'Tạo phiếu hàng trả' : 'Tạo biên bản nhập kho'}
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
-          <p className="text-sm font-bold text-white uppercase leading-tight">{receipts.length}<br/>TỔNG BIÊN BẢN</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-sm font-black text-cyan-700 uppercase leading-tight">
+            {receipts.length}
+            <br />
+            {isReturnGoods ? 'TỔNG PHIẾU HÀNG TRẢ' : 'TỔNG BIÊN BẢN'}
+          </p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
-          <p className="text-sm font-bold text-white uppercase leading-tight">{draftCount}<br/>NHÁP</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-sm font-black text-cyan-700 uppercase leading-tight">
+            {draftCount}
+            <br />
+            NHÁP
+          </p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
-          <p className="text-sm font-bold text-white uppercase leading-tight">{assignedCount}<br/>ĐÃ CHỐT</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-sm font-black text-cyan-700 uppercase leading-tight">
+            {assignedCount}
+            <br />
+            ĐÃ CHỐT
+          </p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
-          <p className="text-sm font-bold text-white uppercase leading-tight">{checkedCount}<br/>ĐÃ KIỂM KÊ</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-sm font-black text-cyan-700 uppercase leading-tight">
+            {checkedCount}
+            <br />
+            ĐÃ KIỂM KÊ
+          </p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl bg-[#4295b4] px-4 shadow-sm text-center">
-          <p className="text-sm font-bold text-white uppercase leading-tight">{postedCount}<br/>HOÀN THÀNH</p>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-sm font-black text-cyan-700 uppercase leading-tight">
+            {postedCount}
+            <br />
+            HOÀN THÀNH
+          </p>
         </div>
       </div>
 
@@ -420,7 +447,7 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
-            placeholder="Tìm theo mã biên bản, nguồn, diễn giải..."
+            placeholder={isReturnGoods ? 'Tìm theo mã phiếu trả, mã tham chiếu, diễn giải...' : 'Tìm theo mã biên bản, nguồn, diễn giải...'}
           />
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -444,6 +471,18 @@ export default function StockInReceiptsPage({ receiptTypeFilter }: { receiptType
             <option value="CHECKED">Tình trạng: Đã kiểm kê</option>
             <option value="POSTED">Tình trạng: Hoàn thành</option>
           </select>
+          <button
+            type="button"
+            onClick={() => {
+              setSearch('');
+              setStatusFilter('all');
+              setTimeFilter('this-month');
+            }}
+            className="inline-flex h-11 items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-3 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+            title="Đặt lại bộ lọc"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
         </div>
       </div>
 

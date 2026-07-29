@@ -28,7 +28,6 @@ import AssemblyPage from './features/inbound/pages/AssemblyPage';
 import ProductionPage from './features/inbound/pages/ProductionPage';
 import DistributionPage from './features/inbound/pages/DistributionPage';
 import StocktakePage from './features/inventory/pages/StocktakePage';
-import StocktakeFreezePage from './features/inventory/pages/StocktakeFreezePage';
 import StocktakeScanPage from './features/inventory/pages/StocktakeScanPage';
 import AdjustmentApprovalPage from './features/inventory/pages/AdjustmentApprovalPage';
 import WarehouseVisualizerPage from './features/inventory/pages/WarehouseVisualizerPage';
@@ -483,16 +482,6 @@ function App() {
                 <StocktakePage viewMode="my-tasks" />
               </MainLayout>
             </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/inventory/stocktake/freeze"
-          element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
-              <MainLayout>
-                <StocktakeFreezePage />
-              </MainLayout>
-            </RoleRoute>
           }
         />
         <Route
