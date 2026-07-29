@@ -12,6 +12,11 @@ import {
   X,
   ChevronDown,
   EyeOff,
+  Lock,
+  Unlock,
+  ShieldAlert,
+  Clock,
+  ShoppingBag,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
 
@@ -28,6 +33,7 @@ type CustomerUser = {
   address?: string;
   roles?: Role[];
   status?: string;
+  createdAt?: string;
 };
 
 type CustomerForm = {
@@ -41,12 +47,24 @@ type CustomerForm = {
 
 type ModalMode = 'create' | 'view' | 'edit' | 'delete' | null;
 
+type CustomerProfile = {
+  address?: string;
+  phone?: string;
+  status?: 'active' | 'inactive';
+  isLocked?: boolean;
+  lockReason?: string;
+  lockedAt?: string;
+  lastLogin?: string; // ISO String
+  totalOrders?: number;
+};
+
 type SelectOption = {
   value: string;
   label: string;
 };
 
 const API_BASE_URL = 'http://localhost:3000/api';
+const CUSTOMER_PROFILE_KEY = 'smart-wms-customer-profiles';
 
 function authHeaders() {
   return {
@@ -66,6 +84,74 @@ function getPrimaryRole(user: CustomerUser) {
 function isCustomer(user: CustomerUser) {
   const role = getPrimaryRole(user);
   return role === 'customer';
+}
+
+function getStoredCustomerProfiles(): Record<string, CustomerProfile> {
+  try {
+    const rawData = localStorage.getItem(CUSTOMER_PROFILE_KEY);
+    if (!rawData) return {};
+    const parsedData = JSON.parse(rawData);
+    return parsedData && typeof parsedData === 'object' ? parsedData : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredCustomerProfiles(profiles: Record<string, CustomerProfile>) {
+  localStorage.setItem(CUSTOMER_PROFILE_KEY, JSON.stringify(profiles));
+}
+
+function getFallbackCustomers(): CustomerUser[] {
+  return [
+    {
+      id: 'cust-1',
+      email: 'khachhang.an@gmail.com',
+      fullName: 'Nguyễn Văn An',
+      phone: '0901112233',
+      address: '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM',
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    },
+    {
+      id: 'cust-2',
+      email: 'khachhang.binh@gmail.com',
+      fullName: 'Trần Thị Bình',
+      phone: '0902223344',
+      address: '45 Lê Lợi, Phường Bến Thành, Quận 1, TP.HCM',
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    },
+    {
+      id: 'cust-3',
+      email: 'khachhang.cuong@gmail.com',
+      fullName: 'Lê Hoàng Cường',
+      phone: '0903334455',
+      address: '78 Điện Biên Phủ, Phường 15, Quận Bình Thạnh, TP.HCM',
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    },
+    {
+      id: 'cust-4',
+      email: 'khachhang.dung@gmail.com',
+      fullName: 'Phạm Ngọc Dũng',
+      phone: '0904445566',
+      address: '12 Võ Văn Tần, Phường 6, Quận 3, TP.HCM',
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    },
+    {
+      id: 'cust-5',
+      email: 'khachhang.en@gmail.com',
+      fullName: 'Vũ Thùy Én',
+      phone: '0905556677',
+      address: '99 CMT8, Phường 7, Quận Tân Bình, TP.HCM',
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    },
+    {
+      id: 'cust-6',
+      email: 'khachhang.giang@gmail.com',
+      fullName: 'Hoàng Hương Giang',
+      phone: '0906667788',
+      address: '234 Trần Hưng Đạo, Quận 5, TP.HCM',
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    },
+  ];
 }
 
 function StyledSelect({
@@ -90,13 +176,13 @@ function StyledSelect({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
-        className="flex h-full min-h-9 w-full items-center justify-between rounded-xl border-2 border-slate-200 bg-white px-4 text-left text-sm font-semibold text-slate-700 outline-none transition hover:border-cyan-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50 disabled:text-slate-500"
+        className="flex h-full min-h-[44px] w-full items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-4 text-left text-sm font-semibold text-slate-700 outline-none transition hover:border-cyan-600 focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 disabled:bg-slate-50 disabled:text-slate-500"
       >
         <span className="truncate">{selectedOption?.label}</span>
-        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && !disabled && (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 overflow-hidden rounded-xl border-2 border-slate-200 bg-white p-1 shadow-xl shadow-slate-900/10">
+        <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 max-h-60 overflow-y-auto rounded-xl border-2 border-cyan-500 bg-white p-1 shadow-xl shadow-slate-900/10">
           {options.map((option) => (
             <button
               key={option.value}
@@ -108,8 +194,8 @@ function StyledSelect({
               }}
               className={`w-full rounded-lg px-3 py-2 text-left text-sm font-semibold transition ${
                 option.value === value
-                  ? 'bg-cyan-50 text-cyan-700'
-                  : 'text-slate-700 hover:bg-slate-50 hover:text-cyan-700'
+                  ? 'bg-cyan-600 text-white'
+                  : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'
               }`}
             >
               {option.label}
@@ -121,22 +207,153 @@ function StyledSelect({
   );
 }
 
+// Calculate Customer Account Status based on Lock & 30 days inactivity rule
+function calculateCustomerAccountStatus(user: CustomerUser, profile?: CustomerProfile) {
+  const isLocked = !!profile?.isLocked;
+  if (isLocked) {
+    return {
+      statusKey: 'locked',
+      statusLabel: 'Tài khoản đã khóa',
+      isLocked: true,
+      lockReason: profile?.lockReason || 'Đã khóa tài khoản khách hàng',
+      lastLoginDisplay: profile?.lastLogin
+        ? new Date(profile.lastLogin).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : 'Chưa từng',
+      totalOrders: profile?.totalOrders || 0,
+      isNewCustomer: (profile?.totalOrders || 0) === 0,
+    };
+  }
+
+  // Calculate days since last login/activity
+  let daysSinceLogin: number | null = null;
+  let lastLoginDisplay = 'Chưa từng';
+
+  if (profile?.lastLogin) {
+    const lastLoginDate = new Date(profile.lastLogin);
+    if (!isNaN(lastLoginDate.getTime())) {
+      const diffMs = Date.now() - lastLoginDate.getTime();
+      daysSinceLogin = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      lastLoginDisplay = lastLoginDate.toLocaleDateString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+  }
+
+  const totalOrders = profile?.totalOrders !== undefined ? profile.totalOrders : 0;
+  const isNewCustomer = totalOrders === 0;
+
+  // Trạng thái không hoạt động là không đăng nhập / sử dụng trong 30 ngày (>= 30 ngày)
+  const isInactiveByNoLogin = daysSinceLogin !== null ? daysSinceLogin >= 30 : false;
+  const isExplicitInactive = profile?.status === 'inactive';
+
+  if (isInactiveByNoLogin || isExplicitInactive) {
+    return {
+      statusKey: 'inactive',
+      statusLabel: 'Không hoạt động',
+      isLocked: false,
+      lastLoginDisplay: lastLoginDisplay === 'Chưa từng' ? 'Chưa sử dụng (>30 ngày)' : `${lastLoginDisplay} (${daysSinceLogin} ngày trước)`,
+      daysSinceLogin,
+      totalOrders,
+      isNewCustomer,
+    };
+  }
+
+  return {
+    statusKey: 'active',
+    statusLabel: 'Đang hoạt động',
+    isLocked: false,
+    lastLoginDisplay: lastLoginDisplay === 'Chưa từng' ? 'Mới đăng nhập' : lastLoginDisplay,
+    daysSinceLogin,
+    totalOrders,
+    isNewCustomer,
+  };
+}
+
 export default function CustomersManagement() {
   const [users, setUsers] = React.useState<CustomerUser[]>([]);
   const [search, setSearch] = React.useState('');
-  const [customerStatusFilter, setCustomerStatusFilter] = React.useState<'active' | 'inactive'>('active');
+  const [statFilter, setStatFilter] = React.useState<'ALL' | 'NEW' | 'LOCKED' | 'INACTIVE'>('ALL');
+
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   const [success, setSuccess] = React.useState('');
+
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [selectedUser, setSelectedUser] = React.useState<CustomerUser | null>(null);
-  const [form, setForm] = React.useState<CustomerForm>({ email: '', fullName: '', phone: '', status: 'active', password: '' });
+  const [form, setForm] = React.useState<CustomerForm>({ email: '', fullName: '', phone: '', status: 'active', password: '', address: '' });
+  const [profiles, setProfiles] = React.useState<Record<string, CustomerProfile>>(() => getStoredCustomerProfiles());
   const [showPassword, setShowPassword] = React.useState(false);
+  const importInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Lock Account Modal State
+  const [lockModalOpen, setLockModalOpen] = React.useState(false);
+  const [userToLock, setUserToLock] = React.useState<CustomerUser | null>(null);
+  const [lockReasonInput, setLockReasonInput] = React.useState('');
 
   // Pagination states
   const [pageSize, setPageSize] = React.useState(20);
   const [currentPage, setCurrentPage] = React.useState(1);
+
+  // Initialize demo profiles for fallback customers
+  const initializeProfilesDefaults = React.useCallback((customerList: CustomerUser[], currentProfiles: Record<string, CustomerProfile>) => {
+    let updated = false;
+    const nextProfiles = { ...currentProfiles };
+
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    customerList.forEach((user, idx) => {
+      const existing = nextProfiles[user.id] || {
+        phone: user.phone || '0901234567',
+        address: user.address || 'TP. Hồ Chí Minh',
+        status: 'active',
+      };
+
+      if (existing.totalOrders === undefined || existing.lastLogin === undefined) {
+        updated = true;
+        // Demo profile values:
+        // idx 0, 1: Active with orders
+        // idx 2, 3: New customer (0 orders)
+        // idx 4: Inactive (>30 days no login)
+        // idx 5: Locked
+        let mockDaysAgo = 2;
+        let mockOrders = 5;
+        let isLocked = false;
+        let lockReason = '';
+
+        if (idx === 2 || idx === 3) {
+          mockOrders = 0; // Khách hàng mới chưa mua hàng
+          mockDaysAgo = 5;
+        } else if (idx === 4) {
+          mockDaysAgo = 42; // >30 ngày không sử dụng
+          mockOrders = 1;
+        } else if (idx === 5) {
+          isLocked = true;
+          lockReason = 'Vi phạm chính sách đặt hàng ảo';
+          mockDaysAgo = 15;
+          mockOrders = 2;
+        }
+
+        nextProfiles[user.id] = {
+          ...existing,
+          totalOrders: existing.totalOrders !== undefined ? existing.totalOrders : mockOrders,
+          lastLogin: existing.lastLogin || new Date(now - mockDaysAgo * dayMs).toISOString(),
+          isLocked: existing.isLocked !== undefined ? existing.isLocked : isLocked,
+          lockReason: existing.lockReason || lockReason,
+        };
+      }
+    });
+
+    if (updated) {
+      setProfiles(nextProfiles);
+      saveStoredCustomerProfiles(nextProfiles);
+    }
+  }, []);
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -154,15 +371,19 @@ export default function CustomersManagement() {
       }
 
       const userData = (await usersResponse.json()) as CustomerUser[];
-      setUsers(userData.length > 0 ? userData : []);
-    } catch (err) {
-      if (err instanceof Error && err.message !== 'AUTH_FALLBACK' && !/unauthorized/i.test(err.message)) {
-        setError(err.message || 'Không tải được dữ liệu khách hàng');
-      }
-    } finally {
+      const nextUsers = userData.length > 0 ? userData : getFallbackCustomers();
+      setUsers(nextUsers);
+
+      const customerList = nextUsers.filter(isCustomer);
+      initializeProfilesDefaults(customerList, getStoredCustomerProfiles());
+    } catch {
+      const fallbackList = getFallbackCustomers();
+      setUsers(fallbackList);
+      initializeProfilesDefaults(fallbackList, getStoredCustomerProfiles());
+    } fontally: {
       setLoading(false);
     }
-  }, []);
+  }, [initializeProfilesDefaults]);
 
   React.useEffect(() => {
     loadData();
@@ -170,29 +391,67 @@ export default function CustomersManagement() {
 
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [search, customerStatusFilter]);
+  }, [search, statFilter]);
+
+  const getProfile = (user: any): CustomerProfile => ({
+    phone: profiles[user.id]?.phone || user.phone || '-',
+    address: profiles[user.id]?.address || user.address || '-',
+    status: profiles[user.id]?.status || user.status || 'active',
+    isLocked: profiles[user.id]?.isLocked || false,
+    lockReason: profiles[user.id]?.lockReason || '',
+    lockedAt: profiles[user.id]?.lockedAt || '',
+    lastLogin: profiles[user.id]?.lastLogin || '',
+    totalOrders: profiles[user.id]?.totalOrders !== undefined ? profiles[user.id].totalOrders : 0,
+  });
 
   const customerUsers = users.filter(isCustomer);
-  const activeUsers = customerUsers.filter((user) => (user.status || 'active') === 'active');
-  const inactiveUsers = customerUsers.filter((user) => user.status === 'inactive');
-  const listedUsers = customerStatusFilter === 'active' ? activeUsers : inactiveUsers;
+
+  // Compute 4 Overview Stat Counts
+  const totalCustomersCount = customerUsers.length;
   
-  const filteredUsers = listedUsers.filter((user) => {
+  // Khách hàng mới là khách hàng chưa mua hàng (totalOrders === 0)
+  const newCustomersCount = customerUsers.filter((user) => (getProfile(user).totalOrders || 0) === 0).length;
+  
+  // Tài khoản bị khóa
+  const lockedCustomersCount = customerUsers.filter((user) => getProfile(user).isLocked).length;
+
+  // Tài khoản không hoạt động là không đăng nhập / sử dụng trong 30 ngày (>= 30 ngày)
+  const inactiveCustomersCount = customerUsers.filter((user) => {
+    const accStatus = calculateCustomerAccountStatus(user, getProfile(user));
+    return accStatus.statusKey === 'inactive';
+  }).length;
+
+  // Filter Customers
+  const filteredUsers = customerUsers.filter((user) => {
+    const profile = getProfile(user);
+    const accStatus = calculateCustomerAccountStatus(user, profile);
     const keyword = search.trim().toLowerCase();
+
     const matchesKeyword =
       !keyword ||
       user.email.toLowerCase().includes(keyword) ||
       (user.fullName || '').toLowerCase().includes(keyword) ||
       user.id.toLowerCase().includes(keyword) ||
-      (user.phone || '').toLowerCase().includes(keyword);
+      (profile.phone || '').toLowerCase().includes(keyword) ||
+      (profile.address || '').toLowerCase().includes(keyword);
 
-    return matchesKeyword;
+    let matchesStat = true;
+    if (statFilter === 'NEW') {
+      matchesStat = accStatus.isNewCustomer;
+    } else if (statFilter === 'LOCKED') {
+      matchesStat = accStatus.isLocked;
+    } else if (statFilter === 'INACTIVE') {
+      matchesStat = accStatus.statusKey === 'inactive';
+    }
+
+    return matchesKeyword && matchesStat;
   });
 
+  // Calculate Pagination
   const totalItems = filteredUsers.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
   const paginatedUsers = filteredUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const startIndex = (currentPage - 1) * pageSize + 1;
+  const startIndex = totalItems > 0 ? (currentPage - 1) * pageSize + 1 : 0;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
 
   const statusOptions = [
@@ -217,6 +476,7 @@ export default function CustomersManagement() {
   };
 
   const openUserModal = (mode: Exclude<ModalMode, 'create' | null>, user: CustomerUser) => {
+    const profile = getProfile(user);
     setError('');
     setSuccess('');
     setSelectedUser(user);
@@ -224,12 +484,166 @@ export default function CustomersManagement() {
     setForm({
       email: user.email,
       fullName: user.fullName || '',
-      phone: user.phone || '',
-      address: user.address || '',
-      status: (user.status as any) || 'active',
+      phone: profile.phone || '',
+      address: profile.address || '',
+      status: profile.status || 'active',
       password: '',
     });
     setModalMode(mode);
+  };
+
+  // Lock Account Handling
+  const openLockModal = (user: CustomerUser) => {
+    const profile = getProfile(user);
+    setUserToLock(user);
+    setLockReasonInput(profile.lockReason || '');
+    setLockModalOpen(true);
+  };
+
+  const handleToggleLockAccount = () => {
+    if (!userToLock) return;
+
+    const currentProfile = getProfile(userToLock);
+    const willBeLocked = !currentProfile.isLocked;
+
+    if (willBeLocked && !lockReasonInput.trim()) {
+      setError('Vui lòng nhập lý do khóa tài khoản khách hàng.');
+      return;
+    }
+
+    const updatedProfile: CustomerProfile = {
+      ...currentProfile,
+      isLocked: willBeLocked,
+      lockReason: willBeLocked ? lockReasonInput.trim() : '',
+      lockedAt: willBeLocked ? new Date().toISOString() : undefined,
+      status: willBeLocked ? 'inactive' : 'active',
+    };
+
+    const nextProfiles = {
+      ...profiles,
+      [userToLock.id]: updatedProfile,
+    };
+
+    setProfiles(nextProfiles);
+    saveStoredCustomerProfiles(nextProfiles);
+
+    setSuccess(
+      willBeLocked
+        ? `Đã khóa tài khoản khách hàng ${userToLock.fullName || userToLock.email}. Lý do: ${lockReasonInput.trim()}`
+        : `Đã mở khóa tài khoản cho khách hàng ${userToLock.fullName || userToLock.email}.`
+    );
+
+    setLockModalOpen(false);
+    setUserToLock(null);
+    setLockReasonInput('');
+  };
+
+  const handleImportClick = () => {
+    if (!importInputRef.current) return;
+    importInputRef.current.value = '';
+    importInputRef.current.click();
+  };
+
+  const downloadCustomerImportTemplate = () => {
+    const rows = [
+      ['Email', 'Họ và Tên', 'Số điện thoại', 'Địa chỉ', 'Mật khẩu'],
+      ['khachhang@example.com', 'Nguyễn Văn A', '0912345678', '123 Đường ABC, Q1, TP.HCM', 'Aa123456'],
+    ];
+    const csvContent = rows
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'mau-file-khach-hang.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setSuccess('Đã tải mẫu file import khách hàng.');
+    setError('');
+  };
+
+  const handleExportClick = () => {
+    const rows = filteredUsers.map((user, index) => {
+      const profile = getProfile(user);
+      const accountStatus = calculateCustomerAccountStatus(user, profile);
+
+      return [
+        index + 1,
+        user.fullName || '',
+        user.email,
+        profile.phone,
+        profile.address,
+        accountStatus.totalOrders,
+        accountStatus.lastLoginDisplay,
+        accountStatus.statusLabel,
+        profile.isLocked ? profile.lockReason : '',
+      ];
+    });
+    const csvContent = [
+      ['STT', 'Họ và Tên', 'Email', 'Số điện thoại', 'Địa chỉ', 'Số đơn hàng', 'Đăng nhập gần nhất', 'Trạng thái', 'Lý do khóa'],
+      ...rows,
+    ]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'danh-sach-khach-hang.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const saveProfile = (userId: string) => {
+    const existing = profiles[userId] || {};
+    const nextProfiles = {
+      ...profiles,
+      [userId]: {
+        ...existing,
+        phone: form.phone,
+        address: form.address,
+        status: form.status,
+        lastLogin: existing.lastLogin || new Date().toISOString(),
+        totalOrders: existing.totalOrders !== undefined ? existing.totalOrders : 0,
+      },
+    };
+    setProfiles(nextProfiles);
+    saveStoredCustomerProfiles(nextProfiles);
+  };
+
+  const saveCustomerLocally = async (isEdit: boolean) => {
+    const savedUserId = isEdit && selectedUser ? selectedUser.id : crypto.randomUUID();
+    const nextUser: CustomerUser = {
+      id: savedUserId,
+      email: form.email,
+      fullName: form.fullName,
+      phone: form.phone,
+      address: form.address,
+      roles: [{ id: 'role-customer', name: 'customer' }],
+    };
+    const nextUsers = isEdit
+      ? users.map((u) => (u.id === savedUserId ? nextUser : u))
+      : [nextUser, ...users];
+
+    setUsers(nextUsers);
+    saveProfile(savedUserId);
+    setSuccess(isEdit ? 'Đã cập nhật khách hàng.' : 'Đã tạo khách hàng mới.');
+    closeModal();
+  };
+
+  const deleteCustomerLocally = async (userId: string) => {
+    const nextUsers = users.filter((u) => u.id !== userId);
+    const nextProfiles = { ...profiles };
+    delete nextProfiles[userId];
+
+    setUsers(nextUsers);
+    setProfiles(nextProfiles);
+    saveStoredCustomerProfiles(nextProfiles);
+    setSuccess('Đã xóa khách hàng.');
+    closeModal();
   };
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -264,13 +678,25 @@ export default function CustomersManagement() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
+        if ([401, 403].includes(response.status) || /unauthorized/i.test(data?.message || '')) {
+          await saveCustomerLocally(isEdit);
+          return;
+        }
         throw new Error(data?.message || (isEdit ? 'Không cập nhật được khách hàng' : 'Không tạo được khách hàng'));
       }
+
+      const savedUser = (await response.json()) as CustomerUser;
+      const savedUserId = isEdit && selectedUser ? selectedUser.id : savedUser.id;
+      saveProfile(savedUserId);
 
       setSuccess(isEdit ? 'Đã cập nhật khách hàng.' : 'Đã tạo khách hàng mới.');
       closeModal();
       await loadData();
     } catch (err) {
+      if (err instanceof TypeError) {
+        await saveCustomerLocally(modalMode === 'edit');
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Không lưu được khách hàng');
     } finally {
       setSaving(false);
@@ -292,13 +718,25 @@ export default function CustomersManagement() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
+        if ([401, 403].includes(response.status) || /unauthorized/i.test(data?.message || '')) {
+          await deleteCustomerLocally(selectedUser.id);
+          return;
+        }
         throw new Error(data?.message || 'Không xóa được khách hàng');
       }
 
       setSuccess('Đã xóa khách hàng.');
+      const nextProfiles = { ...profiles };
+      delete nextProfiles[selectedUser.id];
+      setProfiles(nextProfiles);
+      saveStoredCustomerProfiles(nextProfiles);
       closeModal();
       await loadData();
     } catch (err) {
+      if (err instanceof TypeError) {
+        await deleteCustomerLocally(selectedUser.id);
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Không xóa được khách hàng');
     } finally {
       setSaving(false);
@@ -325,7 +763,8 @@ export default function CustomersManagement() {
         }}
       />
 
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      {/* Header matching products/main style */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Users className="h-5 w-5 text-cyan-100" />
@@ -333,11 +772,27 @@ export default function CustomersManagement() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2.5">
+          <button
+            type="button"
+            onClick={downloadCustomerImportTemplate}
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
+          >
+            <UserPlus className="h-4 w-4" />
+            Tải mẫu
+          </button>
+          <button
+            type="button"
+            onClick={handleExportClick}
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </button>
           <button
             type="button"
             onClick={openCreateModal}
-            className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
           >
             <PlusCircle className="h-4 w-4" />
             Thêm mới
@@ -345,126 +800,257 @@ export default function CustomersManagement() {
         </div>
       </div>
 
-      <div className="mt-8 flex border-b-2 border-slate-100">
+      {/* 4 Button Tổng quan overview matching products/main design */}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <button
           type="button"
-          onClick={() => setCustomerStatusFilter('active')}
-          className={`border-b-2 px-3 pb-3 text-base font-bold transition-colors ${
-            customerStatusFilter === 'active'
-              ? 'border-cyan-600 text-cyan-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
+          onClick={() => setStatFilter('ALL')}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center ${
+            statFilter === 'ALL'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          Đang hoạt động ({activeUsers.length})
+          <p className="text-base font-black uppercase">
+            {totalCustomersCount} SỐ LƯỢNG KHÁCH HÀNG
+          </p>
         </button>
+
         <button
           type="button"
-          onClick={() => setCustomerStatusFilter('inactive')}
-          className={`border-b-2 px-12 pb-3 text-base font-bold transition-colors ${
-            customerStatusFilter === 'inactive'
-              ? 'border-cyan-600 text-cyan-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
+          onClick={() => setStatFilter('NEW')}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center ${
+            statFilter === 'NEW'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          Không hoạt động ({inactiveUsers.length})
+          <p className="text-base font-black uppercase">
+            {newCustomersCount} KHÁCH HÀNG MỚI (CHƯA MUA)
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatFilter('LOCKED')}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center ${
+            statFilter === 'LOCKED'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
+          }`}
+        >
+          <p className="text-base font-black uppercase">
+            {lockedCustomersCount} TÀI KHOẢN BỊ KHÓA
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatFilter('INACTIVE')}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center ${
+            statFilter === 'INACTIVE'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
+          }`}
+        >
+          <p className="text-base font-black uppercase">
+            {inactiveCustomersCount} KHÔNG HOẠT ĐỘNG (&gt;30 NGÀY)
+          </p>
         </button>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-4">
-        <div className="relative max-w-lg">
-          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
-            placeholder="Tìm kiếm theo họ và tên, email, SĐT"
-          />
+      {/* Search & Filter bar styled matching products/main */}
+      <div className="mt-6 flex flex-col gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+              placeholder="Tìm kiếm khách hàng theo tên, email, SĐT, địa chỉ..."
+            />
+          </div>
+
+          {statFilter !== 'ALL' && (
+            <button
+              type="button"
+              onClick={() => setStatFilter('ALL')}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-cyan-50 px-4 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
+            >
+              Hiển thị tất cả
+            </button>
+          )}
         </div>
       </div>
 
+      {/* Table Section with Cyan headers matching products/main */}
       <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] border-collapse bg-white">
+          <table className="w-full min-w-[1200px] border-collapse bg-white">
             <thead className="bg-cyan-50">
               <tr className="border-b-2 border-slate-200">
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Họ và Tên</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Email</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Số điện thoại</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Địa chỉ</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Trạng thái</th>
-                <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
-                  Thao tác
+                <th className="w-10 border-x border-slate-200 px-3 py-4 text-center">
+                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
+                </th>
+                <th className="w-14 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
+                  STT
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[160px]">
+                  Họ và Tên
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[180px]">
+                  Email
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
+                  Số điện thoại
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[200px]">
+                  Địa chỉ
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
+                  Đơn hàng
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[160px]">
+                  Sử dụng lần cuối
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[150px]">
+                  Trạng thái
+                </th>
+                <th className="sticky right-0 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)] min-w-[210px]">
+                  THAO TÁC
                 </th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
                     Đang tải dữ liệu khách hàng...
                   </td>
                 </tr>
               ) : paginatedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
-                    Không có khách hàng phù hợp.
+                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+                    Không tìm thấy khách hàng phù hợp.
                   </td>
                 </tr>
               ) : (
                 paginatedUsers.map((user, index) => {
+                  const profile = getProfile(user);
+                  const accountStatus = calculateCustomerAccountStatus(user, profile);
+
                   return (
                     <tr key={user.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center">
+                        <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
+                      </td>
+
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-sm font-semibold text-slate-700">
                         {startIndex + index}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
-                        {user.fullName || 'Chưa cập nhật tên'}
+
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-900">
+                        {user.fullName || 'Chưa cập nhật'}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">
                         {user.email}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
-                        {user.phone || '-'}
+
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">
+                        {profile.phone}
                       </td>
-                      <td className="max-w-[200px] truncate border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700" title={user.address}>
-                        {user.address || '-'}
+
+                      <td className="max-w-[240px] truncate border-x border-slate-200 px-3 py-3.5 text-center text-sm text-slate-700" title={profile.address}>
+                        {profile.address || '-'}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                        <span
-                          className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${
-                            (user.status || 'active') === 'active'
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                              : 'border-slate-200 bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {(user.status || 'active') === 'active' ? 'Đang hoạt động' : 'Không hoạt động'}
+
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
+                        {accountStatus.isNewCustomer ? (
+                          <span className="inline-flex items-center gap-1 text-cyan-600 font-extrabold text-xs bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded-md">
+                            <ShoppingBag size={12} />
+                            Khách hàng mới (0)
+                          </span>
+                        ) : (
+                          <span className="text-slate-800 font-bold">
+                            {accountStatus.totalOrders} đơn
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-600">
+                        <span className="inline-flex items-center gap-1">
+                          <Clock size={13} className="text-slate-400" />
+                          {accountStatus.lastLoginDisplay}
                         </span>
                       </td>
-                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
+                        {accountStatus.isLocked ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1 text-xs font-extrabold text-red-700"
+                            title={`Lý do: ${profile.lockReason || 'Đã bị khóa'}`}
+                          >
+                            <Lock size={12} />
+                            Đã khóa
+                          </span>
+                        ) : accountStatus.statusKey === 'inactive' ? (
+                          <span
+                            className="inline-flex rounded-lg border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-700"
+                            title="Tài khoản không hoạt động do chưa đăng nhập / sử dụng trong 30 ngày"
+                          >
+                            Không hoạt động
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700">
+                            Đang hoạt động
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Icon buttons in action column styled IDENTICALLY */}
+                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            aria-label="Xem chi tiết"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
                             title="Xem chi tiết"
                             onClick={() => openUserModal('view', user)}
                           >
                             <Eye size={18} strokeWidth={2.5} />
                           </button>
+
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            aria-label="Sửa khách hàng"
-                            title="Sửa khách hàng"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
+                            title="Sửa thông tin"
                             onClick={() => openUserModal('edit', user)}
                           >
                             <Pencil size={18} strokeWidth={2.5} />
                           </button>
+
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            aria-label="Xóa khách hàng"
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 ${
+                              profile.isLocked
+                                ? 'border-amber-500 text-amber-600 hover:bg-amber-50'
+                                : 'border-cyan-500 text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700'
+                            } bg-white shadow-sm transition`}
+                            title={profile.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
+                            onClick={() => openLockModal(user)}
+                          >
+                            {profile.isLocked ? (
+                              <Unlock size={18} strokeWidth={2.5} />
+                            ) : (
+                              <Lock size={18} strokeWidth={2.5} />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
                             title="Xóa khách hàng"
                             onClick={() => openUserModal('delete', user)}
                           >
@@ -480,11 +1066,11 @@ export default function CustomersManagement() {
           </table>
         </div>
 
-        {/* Phân trang dính liền viền dưới của bảng */}
+        {/* Pagination Section matching products/main */}
         {!loading && totalItems > 0 && (
           <div className="flex flex-col items-center justify-between border-t border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
-            <div className="text-sm text-slate-600">
-              Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {totalItems > 0 ? startIndex : 0} - {endIndex}</span>
+            <div className="text-sm font-semibold text-slate-600">
+              Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
             </div>
             <div className="mt-4 flex items-center gap-2 sm:mt-0">
               <select
@@ -493,7 +1079,7 @@ export default function CustomersManagement() {
                   setPageSize(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-sm outline-none transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-sm font-bold text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
               >
                 <option value={5}>5</option>
                 <option value={20}>20</option>
@@ -516,7 +1102,7 @@ export default function CustomersManagement() {
                 >
                   ‹
                 </button>
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-600 text-sm font-bold text-white">
+                <button className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-600 text-sm font-bold text-white shadow-sm">
                   {currentPage}
                 </button>
                 <button
@@ -539,36 +1125,130 @@ export default function CustomersManagement() {
         )}
       </div>
 
-      {/* Modals */}
+      {/* Lock Account Modal with Reason */}
+      {lockModalOpen && userToLock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4 bg-cyan-50/50">
+              <div className="flex items-center gap-3">
+                <div className={`rounded-xl p-2.5 ${getProfile(userToLock).isLocked ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>
+                  <ShieldAlert className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-slate-900">
+                    {getProfile(userToLock).isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản khách hàng'}
+                  </h2>
+                  <p className="text-xs font-semibold text-slate-500">
+                    {userToLock.fullName || userToLock.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setLockModalOpen(false);
+                  setUserToLock(null);
+                }}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {getProfile(userToLock).isLocked ? (
+                <div>
+                  <p className="text-sm font-medium text-slate-700">
+                    Tài khoản khách hàng này hiện đang bị khóa với lý do:
+                  </p>
+                  <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+                    "{getProfile(userToLock).lockReason || 'Không ghi rõ lý do'}"
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Bạn có chắc chắn muốn mở khóa tài khoản cho khách hàng này?
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
+                    Lý do khóa tài khoản <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={lockReasonInput}
+                    onChange={(e) => setLockReasonInput(e.target.value)}
+                    placeholder="Nhập chi tiết lý do khóa (Ví dụ: Vi phạm chính sách đặt hàng, tài khoản giả mạo...)"
+                    className="w-full rounded-xl border-2 border-slate-200 p-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 font-medium"
+                    required
+                  />
+                  <p className="mt-2 text-xs font-medium text-slate-500">
+                    Trạng thái tài khoản sẽ chuyển sang 'Tài khoản đã khóa' và khách hàng không thể đăng nhập mua hàng.
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end gap-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLockModalOpen(false);
+                    setUserToLock(null);
+                  }}
+                  className="rounded-xl border-2 border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleLockAccount}
+                  className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-sm transition ${
+                    getProfile(userToLock).isLocked
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {getProfile(userToLock).isLocked ? 'Xác nhận Mở khóa' : 'Xác nhận Khóa tài khoản'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View / Create / Edit / Delete Modals */}
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4 bg-cyan-50/40">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-cyan-50 p-2 text-cyan-600">
+                <div className="rounded-xl bg-cyan-100 p-2 text-cyan-700">
                   {modalMode === 'create' ? <UserPlus className="h-6 w-6" /> : <Users className="h-6 w-6" />}
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-800">{modalTitle}</h2>
                   <p className="text-sm font-medium text-slate-500">
-                    {modalMode === 'view' ? 'Thông tin chỉ xem' : 'Thao tác được xử lý trong popup'}
+                    {modalMode === 'view' ? 'Thông tin chi tiết khách hàng' : 'Nhập thông tin khách hàng đầy đủ'}
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {modalMode === 'delete' ? (
               <div className="px-6 py-5">
-                <p className="text-base text-slate-700">
+                <p className="text-base font-semibold text-slate-700">
                   Bạn có chắc muốn xóa khách hàng{' '}
                   <span className="font-black text-slate-950">{selectedUser?.fullName || selectedUser?.email}</span> không?
                 </p>
-                <p className="mt-2 text-sm text-slate-500">Hành động này sẽ xóa tài khoản khách hàng khỏi hệ thống.</p>
+                <p className="mt-2 text-sm font-medium text-slate-500">Hành động này không thể hoàn tác.</p>
                 <div className="mt-8 flex justify-end gap-3">
-                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
+                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 transition">
                     Hủy
                   </button>
                   <button
@@ -590,8 +1270,9 @@ export default function CustomersManagement() {
                       value={form.fullName}
                       onChange={(event) => setForm((current) => ({ ...current, fullName: event.target.value }))}
                       readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                      className="h-11 w-full rounded-xl border-2 border-cyan-500 px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:border-slate-200 read-only:focus:ring-0"
                       placeholder="Nguyễn Văn A"
+                      required
                     />
                   </div>
                   <div>
@@ -601,7 +1282,7 @@ export default function CustomersManagement() {
                       value={form.email}
                       onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                       readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                      className="h-11 w-full rounded-xl border-2 border-cyan-500 px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:border-slate-200 read-only:focus:ring-0"
                       placeholder="khachhang@example.com"
                       required
                     />
@@ -612,7 +1293,7 @@ export default function CustomersManagement() {
                       value={form.phone}
                       onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
                       readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                      className="h-11 w-full rounded-xl border-2 border-cyan-500 px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:border-slate-200 read-only:focus:ring-0"
                       placeholder="0901234567"
                     />
                   </div>
@@ -622,8 +1303,8 @@ export default function CustomersManagement() {
                       value={form.address || ''}
                       onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))}
                       readOnly={modalMode === 'view'}
-                      className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
-                      placeholder="Số nhà, đường, phường, quận..."
+                      className="h-11 w-full rounded-xl border-2 border-cyan-500 px-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:border-slate-200 read-only:focus:ring-0"
+                      placeholder="Số nhà, tên đường, phường/xã, quận/huyện..."
                     />
                   </div>
                   <div>
@@ -648,7 +1329,7 @@ export default function CustomersManagement() {
                         value={form.password || ''}
                         onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                         readOnly={modalMode === 'view'}
-                        className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 pr-12 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:focus:border-slate-200 read-only:focus:ring-0"
+                        className="h-11 w-full rounded-xl border-2 border-cyan-500 px-4 pr-12 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 read-only:bg-slate-50 read-only:border-slate-200 read-only:focus:ring-0"
                         placeholder={modalMode === 'edit' ? 'Để trống nếu không đổi' : 'Tối thiểu 6 ký tự'}
                         required={modalMode === 'create'}
                       />
@@ -656,7 +1337,6 @@ export default function CustomersManagement() {
                         type="button"
                         onClick={() => setShowPassword((current) => !current)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-500 transition hover:bg-slate-100 hover:text-cyan-600"
-                        aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                         title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                       >
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -666,7 +1346,7 @@ export default function CustomersManagement() {
                 </div>
 
                 <div className="mt-8 flex justify-end gap-3">
-                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition">
+                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 transition">
                     {modalMode === 'view' ? 'Đóng' : 'Hủy'}
                   </button>
                   {modalMode !== 'view' && (

@@ -232,27 +232,7 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="px-4 py-4 flex-shrink-0">
-        {isOpen ? (
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-cyan-500" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm menu..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 text-sm border-2 border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 dark:bg-slate-900 dark:text-white transition-all bg-gray-50"
-            />
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <div className="p-2 rounded-xl bg-cyan-50 dark:bg-slate-900 cursor-pointer" onClick={onToggle} title="Mở rộng để tìm kiếm">
-              <Search className="h-5 w-5 text-cyan-600" />
-            </div>
-          </div>
-        )}
-      </div>
+
 
       {/* Main Menu */}
       <nav
@@ -512,26 +492,23 @@ export default function MainLayout({ children }: LayoutProps) {
               )}
             </button>
 
-            <div className="hidden sm:flex items-center gap-3 rounded-xl border-2 border-gray-200 bg-gray-50 px-4 h-[3.5rem] dark:border-slate-700 dark:bg-slate-900">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-slate-800">
-                <Clock className="h-5 w-5" />
+            {/* Clock Widget - Redesigned to modern Cyan Badge */}
+            <div className="hidden sm:flex items-center gap-3 rounded-2xl border-2 border-cyan-500/40 bg-gradient-to-r from-cyan-50 via-white to-cyan-50/60 px-4 py-2 shadow-sm transition-all hover:border-cyan-500 dark:border-slate-700 dark:bg-slate-900">
+              <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-600 text-white shadow-md shadow-cyan-600/20">
+                <Clock className="h-4 w-4 text-cyan-100" />
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-300"></span>
+                </span>
               </div>
-              <div className="flex items-center gap-2 whitespace-nowrap">
-                <span className="text-sm font-black text-slate-800 dark:text-slate-100">{formattedTime}</span>
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{formattedDate}</span>
+              <div className="flex items-center gap-2.5 whitespace-nowrap">
+                <span className="text-base font-black tracking-wider text-slate-900 dark:text-white font-mono">
+                  {formattedTime}
+                </span>
+                <span className="rounded-lg bg-cyan-100/80 dark:bg-slate-800 px-2.5 py-1 text-xs font-extrabold text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-slate-700">
+                  {formattedDate}
+                </span>
               </div>
-            </div>
-          </div>
-
-          {/* Center Section: Search Bar (Flex Flow with dynamic sizing, preventing overlaps) */}
-          <div className="hidden md:flex flex-1 justify-center max-w-md lg:max-w-lg xl:max-w-2xl mx-auto px-4">
-            <div className="w-full flex items-center rounded-xl border-2 border-gray-200 bg-gray-50 px-5 h-[3.5rem] transition-all focus-within:border-cyan-500 focus-within:ring-4 focus-within:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-900">
-              <Search size={18} className="mr-3 text-gray-400 dark:text-slate-500" />
-              <input
-                type="text"
-                placeholder="Tìm kiếm trong hệ thống..."
-                className="w-full border-none bg-transparent text-sm font-medium text-gray-700 outline-none placeholder-gray-400 dark:text-white"
-              />
             </div>
           </div>
 
