@@ -38,6 +38,7 @@ import {
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { PurchaseOrderFormModal } from '../components/PurchaseOrderFormModal';
 import { PrintablePurchaseOrder } from '../components/PrintablePurchaseOrder';
+import { CreateStockInReceiptModal } from '../components/CreateStockInReceiptModal';
 
 type SupplierProduct = {
   id: string;
@@ -454,6 +455,8 @@ function PurchaseOrdersPageContent() {
   const [pendingOrderForStockIn, setPendingOrderForStockIn] = React.useState<PurchaseOrder | null>(null);
   const [printOrder, setPrintOrder] = React.useState<PurchaseOrder | null>(null);
   const [showPrintPreview, setShowPrintPreview] = React.useState(false);
+  const [createReceiptModalOpen, setCreateReceiptModalOpen] = React.useState(false);
+  const [receiptSourcePOId, setReceiptSourcePOId] = React.useState<string | null>(null);
 
   const openPrintPreview = async (order: PurchaseOrder | null) => {
     if (!order) return;
@@ -1224,75 +1227,10 @@ function PurchaseOrdersPageContent() {
     proceedWithCreateStockIn(order);
   };
 
-  const proceedWithCreateStockIn = async (order: PurchaseOrder) => {
-    setSelectedId(order.id);
-    setSelectedOrderDetails(null);
-    setReceiptCode('');
-    setSaving(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
-        headers: authHeaders(),
-      });
-      if (!response.ok) {
-        throw new Error('Không tải được chi tiết đơn mua hàng');
-      }
-      const full = (await response.json()) as PurchaseOrder;
-      setSelectedOrderDetails(full);
-
-      const detailProducts: ScannedProduct[] = (full.details || [])
-        .filter((d) => d.product?.id)
-        .map((d) => ({
-          id: d.product!.id,
-          internalSku: d.product!.internalSku || '',
-          name: d.product!.name || '',
-          unit: d.product!.unit,
-          minimumStock: 0,
-          category: null,
-          supplier: full.supplier ? { id: full.supplier.id, name: full.supplier.name } : null,
-          stockBalances: [],
-          totalStock: 0,
-        }));
-      setScannedProducts((prev) => {
-        const existingIds = new Set(prev.map((p) => p.id));
-        const newProducts = detailProducts.filter((p) => !existingIds.has(p.id));
-        return [...prev, ...newProducts];
-      });
-
-      setForm({
-        poNumber: full.poNumber,
-        supplierId: full.supplier?.id || '',
-        orderDate: full.orderDate ? parseDateForInput(full.orderDate) : toLocalDatetimeString(new Date()),
-        expectedDate: full.expectedDate ? parseDateForInput(full.expectedDate) : toLocalDatetimeString(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
-        status: (full.status?.toUpperCase() as OrderStatus) || 'CREATED',
-        description: full.description || '',
-        items: full.details?.length
-          ? full.details.map((detail) => ({
-            id: detail.id,
-            rowId: `${detail.id}-${Date.now()}`,
-            productId: detail.product?.id || '',
-            warehouseCode: detail.warehouseCode || 'KHO-NVL',
-            expectedQty: String(detail.expectedQty || 0),
-            receivedQty: String(detail.receivedQty || 0),
-            inventoryQty: String(Math.max((detail.expectedQty || 0) - (detail.receivedQty || 0), 0)),
-            unitPrice: String(detail.unitPrice || 0),
-            supplierPrice: detail.supplierPrice ? String(detail.supplierPrice) : undefined,
-          }))
-          : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
-        creatorName: (full as any).creatorName || '',
-        creatorPhone: (full as any).creatorPhone || '',
-        warehouseCode: (full as any).warehouseCode || accessibleWarehouses[0]?.code || '',
-        approverId: (full as any).approverId || '',
-      });
-
-      setModalMode('create_order' as any);
-      setReceiptDate(new Date().toISOString().slice(0, 16));
-      setSelectedStaffIds([]);
-      setStockInNote('');
-    } catch (error) {
-      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi tải dữ liệu' });
-    } finally {
-      setSaving(false);
-    }
+  const proceedWithCreateStockIn = (order: PurchaseOrder) => {
+    closeModal();
+    setReceiptSourcePOId(order.id);
+    setCreateReceiptModalOpen(true);
   };
 
   const openReceive = (order: PurchaseOrder) => {
@@ -1816,7 +1754,7 @@ function PurchaseOrdersPageContent() {
                                     type="button"
                                     disabled={!canCreateReceiptRow(order)}
                                     onClick={() => {
-                                      openCreateStockIn(order);
+                                      setReceiptSourcePOId(order.id); setCreateReceiptModalOpen(true);
                                       setActiveDropdown(null);
                                     }}
                                     className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
@@ -1977,98 +1915,8 @@ function PurchaseOrdersPageContent() {
             </div>
           )
         }
-        renderRightPanel={
-          modalMode === ('create_order' as any) && (
-            <div className="flex flex-col h-full bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-black text-slate-900 mb-6">Tạo Lệnh Nhập Kho</h3>
-
-              <div className="space-y-6 flex-1">
-                <div>
-                  <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
-                    <FileText className="h-4 w-4 text-cyan-600" />
-                    Mã lệnh nhập kho (Tùy chọn)
-                  </label>
-                  <input
-                    type="text"
-                    value={receiptCode}
-                    onChange={(e) => setReceiptCode(e.target.value)}
-                    placeholder="Bỏ trống để tự động tạo..."
-                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
-                    <Calendar className="h-4 w-4 text-cyan-600" />
-                    Thời gian nhập kho (Dự kiến)
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={receiptDate}
-                    onChange={(e) => setReceiptDate(e.target.value)}
-                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
-                  <input
-                    type="text"
-                    value={stockInNote}
-                    onChange={(e) => setStockInNote(e.target.value)}
-                    placeholder="Ví dụ: Kiểm tra kỹ tem mác..."
-                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500"
-                  />
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                    <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
-                      <User className="h-4 w-4 text-indigo-600" />
-                      Nhân viên kho
-                    </p>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer text-indigo-700 font-bold hover:text-indigo-800">
-                      <input
-                        type="checkbox"
-                        onChange={(e) => {
-                          const eligible = users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff'));
-                          if (e.target.checked) setSelectedStaffIds(eligible.map(u => u.id));
-                          else setSelectedStaffIds([]);
-                        }}
-                        checked={
-                          selectedStaffIds.length > 0 &&
-                          selectedStaffIds.length === users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length
-                        }
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
-                      />
-                      Chọn tất cả
-                    </label>
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 max-h-[300px] overflow-y-auto pr-2">
-                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u) => (
-                      <label key={u.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:border-indigo-400 transition shadow-sm">
-                        <input
-                          type="checkbox"
-                          checked={selectedStaffIds.includes(u.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
-                            else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
-                          }}
-                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
-                        />
-                        <div>
-                          <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
-                          {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
-        }
-        customWidthClass={['create', 'edit', 'view', 'create_order'].includes(modalMode || '') ? 'w-[95vw] max-w-[1500px]' : undefined}
+        renderRightPanel={undefined}
+        customWidthClass={['create', 'edit', 'view'].includes(modalMode || '') ? 'w-[95vw] max-w-[1500px]' : undefined}
         onFormChange={setForm as any}
         onSubmit={handleSubmit}
         onClose={closeModal}
@@ -2281,7 +2129,7 @@ function PurchaseOrdersPageContent() {
                 ))}
               </div>
               <p className="mt-6 text-sm font-bold text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                Bạn có chắc chắn muốn tiếp tục tạo thêm lệnh nhập kho mới không?
+                Bạn có chắc chắn muốn tiếp tục tạo thêm phiếu nhập kho mới không?
               </p>
             </div>
             <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
@@ -2382,6 +2230,19 @@ function PurchaseOrdersPageContent() {
           </div>
         </div>,
         document.body
+      )}
+      {createReceiptModalOpen && (
+        <CreateStockInReceiptModal
+          isOpen={createReceiptModalOpen}
+          onClose={() => setCreateReceiptModalOpen(false)}
+          onSuccess={() => {
+            setCreateReceiptModalOpen(false);
+            loadData();
+            setToast({ type: 'success', message: 'Tạo phiếu nhập kho thành công!' });
+          }}
+          sourcePurchaseOrderId={receiptSourcePOId}
+          mode="create"
+        />
       )}
     </div>
   );

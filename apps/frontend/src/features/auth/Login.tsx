@@ -287,8 +287,8 @@ export default function Login() {
           </div>
 
           <div className="relative z-10 flex-1 flex flex-col">
-            <div className="flex items-center gap-2 mb-12">
-              <Package size={28} className="text-cyan-300" />
+            <div className="flex items-center gap-3 mb-12">
+              <img src="/logo.png" alt="Smart WMS Logo" className="h-10 w-10 object-contain rounded-xl bg-white/20 p-1" />
               <span className="font-bold text-xl tracking-wide">Smart WMS</span>
             </div>
 
@@ -331,8 +331,8 @@ export default function Login() {
         <div className="w-full lg:w-[53%] p-10 lg:p-20 flex flex-col relative bg-white">
           <div className="max-w-[500px] w-full mx-auto flex-1 flex flex-col justify-center">
             <div className="text-center mb-10">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-cyan-50 text-cyan-700 mb-7">
-                <Package size={32} />
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-cyan-50 text-cyan-700 mb-7 shadow-sm border border-cyan-100 p-2">
+                <img src="/logo.png" alt="Smart WMS" className="w-full h-full object-contain rounded-2xl" />
               </div>
               <h2 className="text-4xl font-bold text-slate-800 mb-4">Đăng nhập vào hệ thống</h2>
               <p className="text-base text-slate-500">Vui lòng đăng nhập để tiếp tục sử dụng hệ thống</p>
