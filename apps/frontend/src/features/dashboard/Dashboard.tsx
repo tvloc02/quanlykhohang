@@ -144,23 +144,24 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Top Banner Hero Header */}
-      <div className="relative overflow-hidden rounded-3xl border-2 border-cyan-500 bg-gradient-to-r from-slate-900 via-cyan-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl">
-        <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="absolute right-1/3 -bottom-12 h-48 w-48 rounded-full bg-sky-500/10 blur-2xl" />
+      {/* Top Banner Hero Header - Bright Luxury Cyan Gradient */}
+      <div className="relative overflow-hidden rounded-3xl border-2 border-cyan-400 bg-gradient-to-r from-cyan-600 via-cyan-500 to-sky-600 p-6 sm:p-8 text-white shadow-xl shadow-cyan-600/15">
+        {/* Ambient Glow Orbs */}
+        <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-white/20 blur-3xl" />
+        <div className="absolute right-1/3 -bottom-12 h-48 w-48 rounded-full bg-sky-300/20 blur-2xl" />
 
         <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-cyan-300 backdrop-blur-md">
-              <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/15 px-3.5 py-1 text-xs font-extrabold uppercase tracking-wider text-white shadow-sm backdrop-blur-md">
+              <Sparkles className="h-3.5 w-3.5 text-cyan-100" />
               <span>Smart WMS Operational Intelligence</span>
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-              Xin chào, <span className="text-cyan-400">{getUserLabel()}</span>! 👋
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white drop-shadow-sm">
+              Xin chào, <span className="text-cyan-100 underline decoration-cyan-300 decoration-wavy underline-offset-4">{getUserLabel()}</span>! 👋
             </h1>
-            <p className="max-w-xl text-sm font-medium text-slate-300 leading-relaxed">
-              Hệ thống vận hành ổn định. Vai trò: <span className="font-bold text-cyan-300">{getUserRole()}</span>. Dữ liệu được đồng bộ trực tiếp từ các điểm lưu kho lúc <span className="font-semibold text-white">{updatedAt}</span>.
+            <p className="max-w-2xl text-sm font-semibold text-cyan-50 leading-relaxed">
+              Hệ thống vận hành ổn định. Vai trò: <span className="font-extrabold text-white bg-white/20 px-2 py-0.5 rounded-md">{getUserRole()}</span>. Dữ liệu được đồng bộ trực tiếp từ các điểm lưu kho lúc <span className="font-extrabold text-white">{updatedAt}</span>.
             </p>
           </div>
 
@@ -169,71 +170,71 @@ export default function Dashboard() {
               type="button"
               onClick={loadDashboard}
               disabled={loading}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-cyan-400/40 bg-cyan-950/60 px-5 text-sm font-bold text-cyan-200 shadow-md backdrop-blur-sm transition hover:border-cyan-400 hover:bg-cyan-900/80 hover:text-white disabled:opacity-60"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/20 px-5 text-sm font-bold text-white shadow-md backdrop-blur-md transition hover:bg-white/30 hover:border-white disabled:opacity-60"
             >
-              <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin text-cyan-400' : 'text-cyan-300'}`} />
+              <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin text-white' : 'text-cyan-100'}`} />
               Cập nhật dữ liệu
             </button>
             <Link
               to="/inventory/stocktake/create"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-cyan-400 bg-cyan-600 px-5 text-sm font-bold text-white shadow-lg transition hover:bg-cyan-500 hover:shadow-cyan-500/25"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-white px-5 text-sm font-black text-cyan-700 shadow-xl transition hover:bg-cyan-50 hover:scale-105 active:scale-95"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4 text-cyan-700" />
               Tạo phiên kiểm kê
             </Link>
           </div>
         </div>
 
         {/* Operational Status Badges Strip */}
-        <div className="relative z-10 mt-6 pt-6 border-t border-cyan-800/50 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5">
-          <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3 backdrop-blur-sm border border-white/10">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-400">
+        <div className="relative z-10 mt-6 pt-6 border-t border-white/20 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-5">
+          <div className="flex items-center gap-3 rounded-2xl bg-white/15 p-3.5 backdrop-blur-md border border-white/25 shadow-sm hover:bg-white/20 transition">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-inner">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-400">Trạng thái WMS</p>
-              <p className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" /> HOẠT ĐỘNG 100%
+              <p className="text-xs font-extrabold text-cyan-100 uppercase tracking-wide">Trạng thái WMS</p>
+              <p className="text-xs font-black text-emerald-300 flex items-center gap-1.5 mt-0.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-300 animate-pulse" /> HOẠT ĐỘNG 100%
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3 backdrop-blur-sm border border-white/10">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-400">
+          <div className="flex items-center gap-3 rounded-2xl bg-white/15 p-3.5 backdrop-blur-md border border-white/25 shadow-sm hover:bg-white/20 transition">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-inner">
               <Warehouse className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-400">Số vị trí kho</p>
+              <p className="text-xs font-extrabold text-cyan-100 uppercase tracking-wide">Số vị trí kho</p>
               <p className="text-sm font-black text-white">{overview ? formatNumber(overview.inventory.locations) : '0'} Kho</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3 backdrop-blur-sm border border-white/10">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-400">
+          <div className="flex items-center gap-3 rounded-2xl bg-white/15 p-3.5 backdrop-blur-md border border-white/25 shadow-sm hover:bg-white/20 transition">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-inner">
               <Activity className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-400">Tổng luồng phiếu</p>
+              <p className="text-xs font-extrabold text-cyan-100 uppercase tracking-wide">Tổng luồng phiếu</p>
               <p className="text-sm font-black text-white">{formatNumber(totalFlow)} Phiếu</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3 backdrop-blur-sm border border-white/10">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-400">
+          <div className="flex items-center gap-3 rounded-2xl bg-white/15 p-3.5 backdrop-blur-md border border-white/25 shadow-sm hover:bg-white/20 transition">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white shadow-inner">
               <TrendingUp className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-400">Tỉ lệ hoàn tất</p>
-              <p className="text-sm font-black text-cyan-300">{completionRate}%</p>
+              <p className="text-xs font-extrabold text-cyan-100 uppercase tracking-wide">Tỉ lệ hoàn tất</p>
+              <p className="text-sm font-black text-white">{completionRate}%</p>
             </div>
           </div>
 
-          <div className="col-span-2 sm:col-span-4 lg:col-span-1 flex items-center justify-between rounded-2xl bg-amber-500/10 p-3 backdrop-blur-sm border border-amber-500/20">
+          <div className="col-span-2 sm:col-span-4 lg:col-span-1 flex items-center justify-between rounded-2xl bg-amber-400/20 p-3.5 backdrop-blur-md border border-amber-300/40 shadow-sm">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-400" />
-              <span className="text-xs font-bold text-amber-300">Cảnh báo tồn thấp:</span>
+              <AlertTriangle className="h-4.5 w-4.5 text-amber-200" />
+              <span className="text-xs font-extrabold text-amber-100">Cảnh báo tồn thấp:</span>
             </div>
-            <span className="text-sm font-black text-amber-400 bg-amber-950/80 px-2.5 py-0.5 rounded-lg border border-amber-500/30">
+            <span className="text-sm font-black text-white bg-amber-500/90 px-3 py-1 rounded-xl border border-amber-300/50 shadow-sm">
               {overview ? overview.inventory.lowStockItems : 0} SP
             </span>
           </div>

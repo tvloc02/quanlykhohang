@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
@@ -93,11 +94,15 @@ export function getStoredWarehouses(): WarehouseRecord[] {
 function getWarehouseLabel(warehouses: WarehouseRecord[], code?: string) {
   const normalizedCode = code?.trim();
   if (!normalizedCode) {
-    return 'KHO-NVL';
+    return 'KHO-NVL - Kho nguyên vật liệu';
   }
 
-  const warehouse = warehouses.find((item) => item.code === normalizedCode || item.id === normalizedCode);
+  const warehouse = warehouses.find(
+    (item) => item.code === normalizedCode || item.id === normalizedCode || item.code?.toLowerCase() === normalizedCode?.toLowerCase()
+  );
   if (!warehouse) {
+    if (normalizedCode === 'KHO-NVL') return 'KHO-NVL - Kho nguyên vật liệu';
+    if (normalizedCode === 'KH006') return 'KH006 - Kho NVL Tổng hợp';
     return normalizedCode;
   }
 
@@ -345,11 +350,7 @@ function makeDraft(order: StockInOrder | null): DraftState {
           id: detail.id,
           warehouseCode: detail.warehouseCode || 'KHO-NVL',
           requestedQty: String(detail.requestedQty || 0),
-          actualQty: String(
-            Number(detail.actualQty) === 0 && order?.status !== 'COMPLETED' && order?.status !== 'CANCELLED'
-              ? detail.requestedQty
-              : detail.actualQty || 0
-          ),
+          actualQty: String(detail.actualQty || 0),
           unitPrice: String(detail.unitPrice || 0),
         },
       ]),
@@ -437,10 +438,11 @@ export default function StockInOrdersPage() {
   const loadData = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [ordersResponse, purchaseOrdersResponse, usersResponse] = await Promise.all([
+      const [ordersResponse, purchaseOrdersResponse, usersResponse, warehousesResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers: authHeaders() }),
         fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers: authHeaders() }),
         fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }),
+        fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }),
       ]);
 
       if (!ordersResponse.ok) {
@@ -455,10 +457,14 @@ export default function StockInOrdersPage() {
       const ordersData = (await ordersResponse.json()) as StockInOrder[];
       const purchaseOrdersData = (await purchaseOrdersResponse.json()) as PurchaseOrder[];
       const usersData = usersResponse.ok ? await usersResponse.json() : [];
+      const warehousesData = warehousesResponse.ok ? await warehousesResponse.json() : [];
 
       setOrders(ordersData);
       setPurchaseOrders(purchaseOrdersData);
       setUsers(Array.isArray(usersData) ? usersData : usersData.data || []);
+      if (Array.isArray(warehousesData) && warehousesData.length > 0) {
+        setWarehouses(warehousesData);
+      }
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi tải dữ liệu lệnh nhập kho' });
     } finally {
@@ -1253,9 +1259,9 @@ export default function StockInOrdersPage() {
 
       { }
       {/* POPUP XEM CHI TIẾT VÀ SỬA */}
-      {selectedOrder && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-hidden bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="relative flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+      {selectedOrder && createPortal(
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
+          <div className="relative flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl my-auto">
             {/* HEADER */}
             <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
                 <div className="flex items-start gap-3">
@@ -1396,6 +1402,19 @@ export default function StockInOrdersPage() {
                       <Package className="h-5 w-5 text-cyan-600" />
                       <h4 className="font-black text-slate-900">Chi tiết hàng hóa dự kiến</h4>
                     </div>
+                    {isInProgressStatus(selectedOrder?.status) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          selectedOrder.details.forEach((detail) => {
+                            updateDraftRow(detail.id, { actualQty: String(detail.requestedQty || 0) });
+                          });
+                        }}
+                        className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 transition"
+                      >
+                        Nhập đủ theo số lượng yêu cầu
+                      </button>
+                    )}
                   </div>
 
                   <div className="overflow-hidden rounded-2xl border-2 border-slate-200">
@@ -1405,7 +1424,7 @@ export default function StockInOrdersPage() {
                           <tr className="border-b border-slate-200">
                             <th className="w-12 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">STT</th>
                             <th className="px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Mặt hàng</th>
-                            <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Kho</th>
+                            <th className="min-w-[180px] w-52 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Kho</th>
                             <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL yêu cầu</th>
                             <th className="w-24 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL đã nhận</th>
                             <th className="w-32 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Đơn giá</th>
@@ -1576,14 +1595,15 @@ export default function StockInOrdersPage() {
             </div>
               </div>
             </div>
-            </div>
-            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
-      { }
-      {modalMode === 'create' && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-slate-950/70 p-4 backdrop-blur-sm">
-          <form onSubmit={createFromPurchaseOrder} className="relative flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+      {/* POPUP TẠO LỆNH NHẬP KHO */}
+      {modalMode === 'create' && createPortal(
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
+          <form onSubmit={createFromPurchaseOrder} className="relative flex h-[95vh] w-[95vw] max-w-[1700px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl my-auto">
             {(() => {
               const selectedPO = purchaseOrders.find((po) => po.id === createForm.sourceId);
 
@@ -1874,12 +1894,13 @@ export default function StockInOrdersPage() {
               );
             })()}
           </form>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {modalMode === 'delete' && deleteTarget && (
-        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-6 backdrop-blur-sm">
-          <div className="my-auto w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+      {modalMode === 'delete' && deleteTarget && createPortal(
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="my-auto w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200">
             <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
               <div>
                 <h3 className="text-lg font-black text-slate-900">Xóa lệnh nhập kho</h3>
@@ -1903,7 +1924,8 @@ export default function StockInOrdersPage() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {selectedOrder && (

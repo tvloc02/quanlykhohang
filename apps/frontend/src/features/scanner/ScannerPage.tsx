@@ -4,6 +4,26 @@ import GoodsReceiptModal from './GoodsReceiptModal';
 import OutboundReceiptModal from './OutboundReceiptModal';
 import StocktakeReceiptModal from './StocktakeReceiptModal';
 import { saveOfflineReceipt, getOfflineReceipts, deleteOfflineReceipt } from '../offline-sync/db/indexedDb';
+import {
+  QrCode,
+  Camera,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ClipboardList,
+  CheckCircle2,
+  Trash2,
+  Plus,
+  Minus,
+  X,
+  AlertCircle,
+  Loader2,
+  RefreshCw,
+  ScanLine,
+  Package,
+  Layers,
+  Building2,
+  Check,
+} from 'lucide-react';
 
 // ──── Types ────────────────────────────────────────────────────
 
@@ -24,138 +44,6 @@ function authHeaders() {
   };
 }
 
-// ──── Styles ───────────────────────────────────────────────────
-
-const pageStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  background: 'linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-  color: '#e2e8f0',
-  fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
-};
-
-const containerStyle: React.CSSProperties = {
-  maxWidth: '900px',
-  margin: '0 auto',
-  padding: '24px 16px',
-};
-
-const headerStyle: React.CSSProperties = {
-  textAlign: 'center' as const,
-  marginBottom: '32px',
-};
-
-const titleStyle: React.CSSProperties = {
-  fontSize: '28px',
-  fontWeight: 700,
-  background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
-  WebkitBackgroundClip: 'text',
-  WebkitTextFillColor: 'transparent',
-  marginBottom: '8px',
-};
-
-const subtitleStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#64748b',
-};
-
-const modeBarStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '8px',
-  justifyContent: 'center',
-  marginBottom: '28px',
-  flexWrap: 'wrap' as const,
-};
-
-const modeBtnBase: React.CSSProperties = {
-  padding: '12px 24px',
-  borderRadius: '12px',
-  border: '2px solid transparent',
-  fontSize: '14px',
-  fontWeight: 600,
-  cursor: 'pointer',
-  transition: 'all 0.2s',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-};
-
-const scanAreaStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column' as const,
-  alignItems: 'center',
-  gap: '20px',
-  padding: '40px 20px',
-  background: 'rgba(255,255,255,0.03)',
-  borderRadius: '16px',
-  border: '1px solid rgba(255,255,255,0.06)',
-  marginBottom: '24px',
-};
-
-const listHeaderStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: '16px',
-};
-
-const cardStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  borderRadius: '12px',
-  padding: '16px',
-  marginBottom: '10px',
-  transition: 'all 0.2s',
-};
-
-const badgeStyle = (mode: ScanMode): React.CSSProperties => {
-  const colors = {
-    inbound: { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', text: '#4ade80' },
-    outbound: { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.3)', text: '#f87171' },
-    stocktake: { bg: 'rgba(59,130,246,0.12)', border: 'rgba(59,130,246,0.3)', text: '#60a5fa' },
-  };
-  const c = colors[mode];
-  return {
-    padding: '4px 10px',
-    borderRadius: '6px',
-    fontSize: '11px',
-    fontWeight: 600,
-    background: c.bg,
-    border: `1px solid ${c.border}`,
-    color: c.text,
-  };
-};
-
-const actionBtnStyle: React.CSSProperties = {
-  padding: '12px 28px',
-  borderRadius: '12px',
-  border: 'none',
-  fontSize: '15px',
-  fontWeight: 700,
-  cursor: 'pointer',
-  background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-  color: '#fff',
-  transition: 'all 0.2s',
-  boxShadow: '0 4px 16px rgba(34,197,94,0.25)',
-};
-
-const toastStyle = (type: 'success' | 'error'): React.CSSProperties => ({
-  position: 'fixed' as const,
-  bottom: '24px',
-  left: '50%',
-  transform: 'translateX(-50%)',
-  padding: '14px 28px',
-  borderRadius: '12px',
-  fontSize: '14px',
-  fontWeight: 600,
-  color: '#fff',
-  zIndex: 10001,
-  animation: 'scannerFadeIn 0.3s ease-out',
-  background: type === 'success' ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #ef4444, #dc2626)',
-  boxShadow: type === 'success' ? '0 8px 32px rgba(34,197,94,0.3)' : '0 8px 32px rgba(239,68,68,0.3)',
-});
-
-// ──── Component ────────────────────────────────────────────────
-
 export default function ScannerPage() {
   const [mode, setMode] = useState<ScanMode>('inbound');
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -166,30 +54,59 @@ export default function ScannerPage() {
   const [showOutboundModal, setShowOutboundModal] = useState(false);
   const [showStocktakeModal, setShowStocktakeModal] = useState(false);
 
-  const modeLabels: Record<ScanMode, { icon: string; label: string; desc: string }> = {
-    inbound: { icon: '📥', label: 'Nhập kho', desc: 'Quét sản phẩm để tạo phiếu nhập kho' },
-    outbound: { icon: '📤', label: 'Xuất kho', desc: 'Quét sản phẩm để tạo phiếu xuất kho' },
-    stocktake: { icon: '📋', label: 'Kiểm kê', desc: 'Quét sản phẩm để thêm vào phiên kiểm kê' },
+  const modeConfigs: Record<
+    ScanMode,
+    {
+      icon: React.ReactNode;
+      label: string;
+      desc: string;
+      colorClass: string;
+      badgeClass: string;
+    }
+  > = {
+    inbound: {
+      icon: <ArrowDownToLine className="h-5 w-5" />,
+      label: 'Nhập kho',
+      desc: 'Quét mã vạch sản phẩm để lập phiếu nhập kho nhanh',
+      colorClass: 'bg-emerald-500 text-white',
+      badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    },
+    outbound: {
+      icon: <ArrowUpFromLine className="h-5 w-5" />,
+      label: 'Xuất kho',
+      desc: 'Quét mã vạch sản phẩm để lập phiếu xuất kho',
+      colorClass: 'bg-amber-500 text-white',
+      badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+    },
+    stocktake: {
+      icon: <ClipboardList className="h-5 w-5" />,
+      label: 'Kiểm kê kho',
+      desc: 'Quét mã vạch sản phẩm để đối soát số lượng tồn kho',
+      colorClass: 'bg-indigo-500 text-white',
+      badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    },
   };
 
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     setToast({ type, message });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const handleProductFound = useCallback((product: ScannedProduct, qty: number) => {
-    // Check if product already in list -> increase qty
-    setScannedItems((prev) => {
-      const existing = prev.findIndex((item) => item.product.id === product.id);
-      if (existing >= 0) {
-        const updated = [...prev];
-        updated[existing] = { ...updated[existing], qty: updated[existing].qty + qty };
-        return updated;
-      }
-      return [{ product, qty, timestamp: new Date() }, ...prev];
-    });
-    showToast('success', `✓ ${product.name} — SL: ${qty}`);
-  }, [showToast]);
+  const handleProductFound = useCallback(
+    (product: ScannedProduct, qty: number) => {
+      setScannedItems((prev) => {
+        const existing = prev.findIndex((item) => item.product.id === product.id);
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = { ...updated[existing], qty: updated[existing].qty + qty };
+          return updated;
+        }
+        return [{ product, qty, timestamp: new Date() }, ...prev];
+      });
+      showToast('success', `Đã thêm ${product.name} — Số lượng: ${qty}`);
+    },
+    [showToast]
+  );
 
   const removeItem = (index: number) => {
     setScannedItems((prev) => prev.filter((_, i) => i !== index));
@@ -208,7 +125,7 @@ export default function ScannerPage() {
     setScannedItems([]);
   };
 
-  // ──── Submit to backend ────────────────────────────────────
+  // ──── Automatic Offline Synchronization ─────────────────────
 
   const syncOfflineReceipts = useCallback(async () => {
     try {
@@ -225,16 +142,16 @@ export default function ScannerPage() {
             body: JSON.stringify({
               items: receipt.items,
               supplierName: receipt.supplierName,
-              supplierId: receipt.supplierId
-            })
+              supplierId: receipt.supplierId,
+            }),
           });
         } else if (receipt.type === 'outbound') {
           res = await fetch(`${API_BASE_URL}/outbounds`, {
             method: 'POST',
             headers: authHeaders(),
             body: JSON.stringify({
-              details: receipt.items
-            })
+              details: receipt.items,
+            }),
           });
         } else if (receipt.type === 'stocktake') {
           res = await fetch(`${API_BASE_URL}/inventory/stocktakes`, {
@@ -242,8 +159,8 @@ export default function ScannerPage() {
             headers: authHeaders(),
             body: JSON.stringify({
               locationCode: receipt.locationCode || 'DEFAULT',
-              productIds: receipt.productIds
-            })
+              productIds: receipt.productIds,
+            }),
           });
         }
 
@@ -256,7 +173,7 @@ export default function ScannerPage() {
       }
 
       if (successCount > 0) {
-        showToast('success', `✓ Đã tự động đồng bộ ${successCount} phiếu lưu trữ ngoại tuyến lên hệ thống!`);
+        showToast('success', `Đã tự động đồng bộ ${successCount} phiếu lưu ngoại tuyến lên hệ thống!`);
       }
     } catch (err) {
       console.warn('Lỗi khi tự động đồng bộ offline receipts:', err);
@@ -278,6 +195,8 @@ export default function ScannerPage() {
     };
   }, [syncOfflineReceipts]);
 
+  // ──── Submit Handlers ───────────────────────────────────────
+
   const submitInbound = async () => {
     if (scannedItems.length === 0) return;
     setSubmitting(true);
@@ -290,13 +209,13 @@ export default function ScannerPage() {
           items: scannedItems.map((item) => ({
             productId: item.product.id,
             expectedQty: item.qty,
-            receivedQty: 0
+            receivedQty: 0,
           })),
           supplierName: firstSupplier?.name,
           supplierId: firstSupplier?.id,
-          type: 'inbound'
+          type: 'inbound',
         });
-        showToast('success', '⚠️ Đang ngoại tuyến. Phiếu nhập kho đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
+        showToast('success', 'Đang ngoại tuyến. Phiếu nhập kho đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
         setScannedItems([]);
         setShowReceiptModal(false);
         return;
@@ -321,11 +240,11 @@ export default function ScannerPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Lỗi tạo phiếu nhập kho');
-      showToast('success', `✓ Đã tạo phiếu nhập kho với ${scannedItems.length} sản phẩm`);
+      showToast('success', `Đã tạo phiếu nhập kho với ${scannedItems.length} sản phẩm`);
       setScannedItems([]);
       setShowReceiptModal(false);
     } catch (err: any) {
-      showToast('error', err.message || 'Lỗi tạo phiếu');
+      showToast('error', err.message || 'Lỗi tạo phiếu nhập kho');
     } finally {
       setSubmitting(false);
     }
@@ -340,11 +259,11 @@ export default function ScannerPage() {
           timestamp: Date.now(),
           items: scannedItems.map((item) => ({
             productId: item.product.id,
-            requiredQty: item.qty
+            requiredQty: item.qty,
           })),
-          type: 'outbound'
+          type: 'outbound',
         });
-        showToast('success', '⚠️ Đang ngoại tuyến. Phiếu xuất kho đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
+        showToast('success', 'Đang ngoại tuyến. Phiếu xuất kho đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
         setScannedItems([]);
         return;
       }
@@ -361,10 +280,10 @@ export default function ScannerPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Lỗi tạo phiếu xuất kho');
-      showToast('success', `✓ Đã tạo phiếu xuất kho với ${scannedItems.length} sản phẩm`);
+      showToast('success', `Đã tạo phiếu xuất kho với ${scannedItems.length} sản phẩm`);
       setScannedItems([]);
     } catch (err: any) {
-      showToast('error', err.message || 'Lỗi tạo phiếu');
+      showToast('error', err.message || 'Lỗi tạo phiếu xuất kho');
     } finally {
       setSubmitting(false);
     }
@@ -380,9 +299,9 @@ export default function ScannerPage() {
           items: [],
           productIds: scannedItems.map((item) => item.product.id),
           locationCode: 'DEFAULT',
-          type: 'stocktake'
+          type: 'stocktake',
         });
-        showToast('success', '⚠️ Đang ngoại tuyến. Phiếu kiểm kê đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
+        showToast('success', 'Đang ngoại tuyến. Phiếu kiểm kê đã được lưu cục bộ và sẽ tự động đồng bộ khi có kết nối.');
         setScannedItems([]);
         return;
       }
@@ -397,7 +316,7 @@ export default function ScannerPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error('Lỗi tạo phiên kiểm kê');
-      showToast('success', `✓ Đã tạo phiên kiểm kê với ${scannedItems.length} sản phẩm`);
+      showToast('success', `Đã tạo phiên kiểm kê với ${scannedItems.length} sản phẩm`);
       setScannedItems([]);
     } catch (err: any) {
       showToast('error', err.message || 'Lỗi tạo phiên kiểm kê');
@@ -420,206 +339,233 @@ export default function ScannerPage() {
   const totalItems = scannedItems.reduce((sum, item) => sum + item.qty, 0);
 
   return (
-    <div style={pageStyle}>
-      <div style={containerStyle}>
-        {/* Header */}
-        <div style={headerStyle}>
-          <h1 style={titleStyle}>📱 Quét mã vạch / QR</h1>
-          <p style={subtitleStyle}>Quét sản phẩm bằng camera để nhập kho, xuất kho, hoặc kiểm kê</p>
-        </div>
-
-        {/* Mode Selector */}
-        <div style={modeBarStyle}>
-          {(Object.keys(modeLabels) as ScanMode[]).map((m) => (
-            <button
-              key={m}
-              style={{
-                ...modeBtnBase,
-                background: mode === m ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)',
-                borderColor: mode === m ? '#6366f1' : 'rgba(255,255,255,0.08)',
-                color: mode === m ? '#a5b4fc' : '#94a3b8',
-              }}
-              onClick={() => setMode(m)}
-            >
-              <span>{modeLabels[m].icon}</span>
-              {modeLabels[m].label}
-            </button>
-          ))}
-        </div>
-
-        {/* Scan Area */}
-        <div style={scanAreaStyle}>
-          <div style={{ fontSize: '48px', marginBottom: '8px' }}>
-            {modeLabels[mode].icon}
+    <div className="space-y-6 pb-12">
+      {/* HEADER SECTION - CYAN DESIGN SYSTEM */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <QrCode className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Trạm Quét Mã Vạch / QR Code</h1>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '15px', textAlign: 'center' }}>
-            {modeLabels[mode].desc}
-          </p>
-          <ScanBarcodeButton
-            onClick={() => setScannerOpen(true)}
-            label="Bắt đầu quét"
-          />
-          <p style={{ color: '#475569', fontSize: '12px' }}>
-            Hỗ trợ: QR Code, EAN-13, Code-128, UPC-A, và nhiều định dạng khác
-          </p>
+
         </div>
 
-        {/* Scanned Items List */}
-        {scannedItems.length > 0 && (
-          <>
-            <div style={listHeaderStyle}>
-              <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0 }}>
-                Danh sách đã quét ({scannedItems.length} SP · {totalItems} đơn vị)
-              </h2>
+        {/* MODE SELECTOR */}
+        <div className="inline-flex rounded-2xl border-2 border-slate-200 bg-white p-1.5 shadow-sm">
+          {(Object.keys(modeConfigs) as ScanMode[]).map((m) => {
+            const cfg = modeConfigs[m];
+            const isActive = mode === m;
+            return (
               <button
-                onClick={clearAll}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(239,68,68,0.3)',
-                  background: 'rgba(239,68,68,0.08)',
-                  color: '#f87171',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all cursor-pointer ${isActive
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
               >
-                🗑 Xóa tất cả
+                {cfg.icon}
+                {cfg.label}
               </button>
-            </div>
+            );
+          })}
+        </div>
+      </div>
 
+      {/* SCAN ACTION BANNER CARD */}
+      <div className="relative overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white p-8 text-center shadow-lg">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl border-2 border-cyan-200 bg-cyan-50 text-cyan-600 shadow-inner">
+          <ScanLine className="h-10 w-10 animate-pulse" />
+        </div>
+
+        <h2 className="mt-4 text-xl font-black text-slate-900">
+          Chế độ hiện tại: <span className="text-cyan-600">{modeConfigs[mode].label}</span>
+        </h2>
+        <p className="mt-1 text-sm font-medium text-slate-500">{modeConfigs[mode].desc}</p>
+
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+          <ScanBarcodeButton onClick={() => setScannerOpen(true)} label="Bắt đầu quét Camera" />
+        </div>
+
+        <p className="mt-4 text-xs font-semibold text-slate-400">
+          Định dạng hỗ trợ: QR Code, EAN-13, Code-128, UPC-A, Data Matrix và các mã vạch nhà cung cấp
+        </p>
+
+        {/* Decorative background glow */}
+        <div className="absolute -bottom-10 -right-10 h-40 w-40 rounded-full bg-cyan-500/5 blur-2xl pointer-events-none" />
+      </div>
+
+      {/* SCANNED ITEMS LIST */}
+      {scannedItems.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+            <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Package className="h-5 w-5 text-cyan-600" />
+              Danh Sách Đã Quét ({scannedItems.length} Mặt hàng · {totalItems} Đơn vị)
+            </h2>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-100 cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+              Xóa tất cả
+            </button>
+          </div>
+
+          <div className="space-y-3">
             {scannedItems.map((item, index) => (
-              <div key={`${item.product.id}-${index}`} style={cardStyle}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                      <span style={{ fontWeight: 600, fontSize: '15px' }}>{item.product.name}</span>
-                      <span style={badgeStyle(mode)}>{modeLabels[mode].label}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: '#94a3b8', flexWrap: 'wrap' }}>
-                      <span>SKU: <strong style={{ color: '#cbd5e1' }}>{item.product.internalSku}</strong></span>
-                      {item.product.supplierBarcode && (
-                        <span>Barcode: <strong style={{ color: '#cbd5e1' }}>{item.product.supplierBarcode}</strong></span>
-                      )}
-                      <span>Tồn kho: <strong style={{ color: item.product.totalStock > 0 ? '#4ade80' : '#f87171' }}>{item.product.totalStock}</strong></span>
-                    </div>
+              <div
+                key={`${item.product.id}-${index}`}
+                className="group relative flex flex-col gap-3 rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm transition hover:border-cyan-500 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-black text-slate-900 text-base">{item.product.name}</span>
+                    <span className={`rounded-lg border px-2 py-0.5 text-xs font-bold ${modeConfigs[mode].badgeClass}`}>
+                      {modeConfigs[mode].label}
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <button
-                      onClick={() => updateQty(index, item.qty - 1)}
-                      style={{
-                        width: '28px', height: '28px', borderRadius: '6px',
-                        border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.06)',
-                        color: '#94a3b8', cursor: 'pointer', fontSize: '16px',
-                      }}
-                    >−</button>
-                    <input
-                      type="number"
-                      value={item.qty}
-                      onChange={(e) => updateQty(index, parseInt(e.target.value) || 1)}
-                      style={{
-                        width: '50px', textAlign: 'center' as const, padding: '4px',
-                        borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)',
-                        background: 'rgba(255,255,255,0.04)', color: '#e2e8f0', fontSize: '14px',
-                      }}
-                      min={1}
-                    />
-                    <button
-                      onClick={() => updateQty(index, item.qty + 1)}
-                      style={{
-                        width: '28px', height: '28px', borderRadius: '6px',
-                        border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.06)',
-                        color: '#94a3b8', cursor: 'pointer', fontSize: '16px',
-                      }}
-                    >+</button>
-                    <button
-                      onClick={() => removeItem(index)}
-                      style={{
-                        width: '28px', height: '28px', borderRadius: '6px',
-                        border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.08)',
-                        color: '#f87171', cursor: 'pointer', fontSize: '14px', marginLeft: '4px',
-                      }}
-                    >✕</button>
+
+                  <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-500">
+                    <span>
+                      SKU: <strong className="text-slate-800">{item.product.internalSku}</strong>
+                    </span>
+                    {item.product.supplierBarcode && (
+                      <span>
+                        Barcode: <strong className="text-slate-800">{item.product.supplierBarcode}</strong>
+                      </span>
+                    )}
+                    <span>
+                      Tồn kho hiện tại:{' '}
+                      <strong className={item.product.totalStock > 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                        {item.product.totalStock}
+                      </strong>
+                    </span>
                   </div>
+                </div>
+
+                {/* QUANTITY CONTROLS */}
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                  <button
+                    type="button"
+                    onClick={() => updateQty(index, item.qty - 1)}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-200 bg-slate-50 font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <input
+                    type="number"
+                    value={item.qty}
+                    onChange={(e) => updateQty(index, parseInt(e.target.value) || 1)}
+                    min={1}
+                    className="h-9 w-16 rounded-xl border-2 border-slate-200 text-center font-black text-slate-900 focus:border-cyan-500 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => updateQty(index, item.qty + 1)}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-200 bg-slate-50 font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    className="ml-2 flex h-9 w-9 items-center justify-center rounded-xl border-2 border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 cursor-pointer"
+                    title="Xóa sản phẩm này"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             ))}
-
-            {/* Submit Button */}
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '20px' }}>
-              <button
-                onClick={() => setScannerOpen(true)}
-                style={{
-                  padding: '12px 28px',
-                  borderRadius: '12px',
-                  border: '2px solid rgba(99,102,241,0.3)',
-                  background: 'rgba(99,102,241,0.08)',
-                  color: '#a5b4fc',
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                }}
-              >
-                📷 Quét thêm
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                style={{
-                  ...actionBtnStyle,
-                  opacity: submitting ? 0.7 : 1,
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {submitting ? '⏳ Đang xử lý...' : `✓ Tạo phiếu ${modeLabels[mode].label}`}
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* Scanner Modal */}
-        <BarcodeScanner
-          isOpen={scannerOpen}
-          onClose={() => setScannerOpen(false)}
-          onProductFound={handleProductFound}
-          title={`Quét ${modeLabels[mode].label}`}
-          allowQuickAdd={mode === 'inbound'}
-        />
-
-        {/* Goods Receipt Preview Modal (Inbound) */}
-        <GoodsReceiptModal
-          isOpen={showReceiptModal}
-          onClose={() => setShowReceiptModal(false)}
-          onConfirm={submitInbound}
-          items={scannedItems}
-          isSubmitting={submitting}
-        />
-
-        {/* Outbound Receipt Preview Modal */}
-        <OutboundReceiptModal
-          isOpen={showOutboundModal}
-          onClose={() => setShowOutboundModal(false)}
-          onConfirm={() => { setShowOutboundModal(false); submitOutbound(); }}
-          items={scannedItems}
-          isSubmitting={submitting}
-        />
-
-        {/* Stocktake Receipt Preview Modal */}
-        <StocktakeReceiptModal
-          isOpen={showStocktakeModal}
-          onClose={() => setShowStocktakeModal(false)}
-          onConfirm={() => { setShowStocktakeModal(false); submitStocktake(); }}
-          items={scannedItems}
-          isSubmitting={submitting}
-        />
-
-        {/* Toast */}
-        {toast && (
-          <div style={toastStyle(toast.type)}>
-            {toast.message}
           </div>
-        )}
-      </div>
+
+          {/* SUBMIT ACTIONS BAR */}
+          <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
+            <button
+              type="button"
+              onClick={() => setScannerOpen(true)}
+              className="inline-flex items-center gap-2 rounded-2xl border-2 border-cyan-500 bg-cyan-50 px-6 py-3 font-bold text-cyan-700 shadow-sm transition hover:bg-cyan-100 cursor-pointer"
+            >
+              <Camera className="h-5 w-5" />
+              Quét thêm sản phẩm
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-2xl border-2 border-cyan-500 bg-cyan-600 px-8 py-3 font-bold text-white shadow-md transition hover:bg-cyan-700 disabled:opacity-50 cursor-pointer active:scale-95"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Đang xử lý...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="h-5 w-5" />
+                  <span>Tạo Phiếu {modeConfigs[mode].label}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* SCANNER MODAL */}
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onProductFound={handleProductFound}
+        title={`Quét ${modeConfigs[mode].label}`}
+        allowQuickAdd={mode === 'inbound'}
+      />
+
+      {/* MODALS PREVIEW */}
+      <GoodsReceiptModal
+        isOpen={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+        onConfirm={submitInbound}
+        items={scannedItems}
+        isSubmitting={submitting}
+      />
+
+      <OutboundReceiptModal
+        isOpen={showOutboundModal}
+        onClose={() => setShowOutboundModal(false)}
+        onConfirm={() => {
+          setShowOutboundModal(false);
+          submitOutbound();
+        }}
+        items={scannedItems}
+        isSubmitting={submitting}
+      />
+
+      <StocktakeReceiptModal
+        isOpen={showStocktakeModal}
+        onClose={() => setShowStocktakeModal(false)}
+        onConfirm={() => {
+          setShowStocktakeModal(false);
+          submitStocktake();
+        }}
+        items={scannedItems}
+        isSubmitting={submitting}
+      />
+
+      {/* TOAST NOTIFICATION */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[10001] flex items-center gap-2.5 rounded-2xl px-6 py-3.5 font-bold text-white shadow-2xl animate-in fade-in slide-in-from-bottom-5 border-2 ${toast.type === 'success' ? 'bg-emerald-600 border-emerald-400' : 'bg-rose-600 border-rose-400'
+            }`}
+        >
+          {toast.type === 'success' ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+          <span>{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }

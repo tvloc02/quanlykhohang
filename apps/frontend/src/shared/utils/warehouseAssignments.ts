@@ -1,11 +1,48 @@
+export type SubWarehouse = {
+  id: string;
+  code: string;
+  name: string;
+  length: number; // mét
+  width: number;  // mét
+  height: number; // mét
+  racksCount: number; // số kệ
+  shelvesPerRack: number; // số tầng mỗi kệ
+  structure?: {
+    wallType?: string;    // Tường
+    ceilingType?: string; // Trần
+    floorType?: string;   // Sàn
+    cornerInfo?: string;  // Góc kho
+  };
+  note?: string;
+};
+
 export type WarehouseRecord = {
   id: string;
   code: string;
   name: string;
   address: string;
+  province?: string;
+  ward?: string;
+  detailAddress?: string;
+  latitude?: number;
+  longitude?: number;
   status: 'active' | 'inactive';
   managerIds: string[];
   staffIds: string[];
+
+  // Kích thước & Vật liệu kho tổng
+  length?: number; // m
+  width?: number;  // m
+  height?: number; // m
+  totalArea?: number; // m2
+  totalVolume?: number; // m3
+  wallSpec?: string;
+  ceilingSpec?: string;
+  floorSpec?: string;
+  doorSpec?: string;
+
+  // Danh sách kho nhỏ / Phân khu bên trong
+  subWarehouses?: SubWarehouse[];
 };
 
 const STORAGE_KEY = 'smart-wms-warehouses';
@@ -42,14 +79,33 @@ export function normalizeWarehouseIds(value: unknown): string[] {
 export function normalizeWarehouseRecord(
   warehouse: Partial<WarehouseRecord> & Pick<WarehouseRecord, 'id' | 'code' | 'name'>,
 ): WarehouseRecord {
+  const l = Number(warehouse.length) || 50;
+  const w = Number(warehouse.width) || 30;
+  const h = Number(warehouse.height) || 12;
+
   return {
     id: String(warehouse.id),
     code: String(warehouse.code ?? '').trim().toUpperCase(),
     name: String(warehouse.name ?? '').trim(),
     address: String(warehouse.address ?? '').trim(),
+    province: warehouse.province ? String(warehouse.province) : '',
+    ward: warehouse.ward ? String(warehouse.ward) : '',
+    detailAddress: warehouse.detailAddress ? String(warehouse.detailAddress) : '',
+    latitude: warehouse.latitude ? Number(warehouse.latitude) : undefined,
+    longitude: warehouse.longitude ? Number(warehouse.longitude) : undefined,
     status: warehouse.status === 'inactive' ? 'inactive' : 'active',
     managerIds: normalizeWarehouseIds(warehouse.managerIds),
     staffIds: normalizeWarehouseIds(warehouse.staffIds),
+    length: l,
+    width: w,
+    height: h,
+    totalArea: Number(warehouse.totalArea) || l * w,
+    totalVolume: Number(warehouse.totalVolume) || l * w * h,
+    wallSpec: warehouse.wallSpec ? String(warehouse.wallSpec) : 'Tường gạch 220mm, sơn Epoxy',
+    ceilingSpec: warehouse.ceilingSpec ? String(warehouse.ceilingSpec) : 'Trần tôn PU cách nhiệt',
+    floorSpec: warehouse.floorSpec ? String(warehouse.floorSpec) : 'Sàn bê tông chịu lực phủ Epoxy',
+    doorSpec: warehouse.doorSpec ? String(warehouse.doorSpec) : 'Cửa cuộn tự động & cửa dock xuất nhập',
+    subWarehouses: Array.isArray(warehouse.subWarehouses) ? warehouse.subWarehouses : [],
   };
 }
 
@@ -168,6 +224,9 @@ function mergeWarehouseRecord(base: WarehouseRecord, fallback?: WarehouseRecord)
     status: normalizedBase.status || normalizedFallback?.status || 'active',
     managerIds: baseManagers.length > 0 ? baseManagers : normalizedFallback?.managerIds || [],
     staffIds: baseStaff.length > 0 ? baseStaff : normalizedFallback?.staffIds || [],
+    subWarehouses: (normalizedBase.subWarehouses && normalizedBase.subWarehouses.length > 0)
+      ? normalizedBase.subWarehouses
+      : normalizedFallback?.subWarehouses || [],
   };
 }
 

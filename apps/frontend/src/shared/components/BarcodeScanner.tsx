@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Camera, CheckCircle2, AlertCircle, Loader2, X, QrCode, Link, Plus } from 'lucide-react';
 import './BarcodeScanner.css';
 
 // ──── Types (theo format response tài liệu thiết kế) ──────────
@@ -569,11 +570,11 @@ export default function BarcodeScanner({
         {/* Header */}
         <div className="scanner-header">
           <h3>
-            <span className="scanner-icon">📷</span>
+            <Camera className="h-5 w-5 text-cyan-500" />
             {title}
           </h3>
           <button className="scanner-close-btn" onClick={onClose} title="Đóng">
-            ✕
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -601,7 +602,7 @@ export default function BarcodeScanner({
               fontSize: '14px',
               gap: '8px',
             }}>
-              <span style={{ fontSize: '40px' }}>📷</span>
+              <Camera className="h-10 w-10 text-slate-400" />
               <span>Camera chưa sẵn sàng</span>
               <span style={{ fontSize: '12px', color: '#475569' }}>Sử dụng nhập thủ công bên dưới</span>
             </div>
@@ -619,7 +620,7 @@ export default function BarcodeScanner({
         {/* Loading */}
         {loading && (
           <div className="scanner-status">
-            <span style={{ animation: 'pulse 1s ease-in-out infinite' }}>⏳</span>
+            <Loader2 className="h-4 w-4 animate-spin text-cyan-500" />
             Đang tra cứu sản phẩm...
           </div>
         )}
@@ -628,7 +629,7 @@ export default function BarcodeScanner({
         {error && (
           <div className="scanner-error" style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="error-icon">❌</span>
+              <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
               <span>{error}</span>
             </div>
             {error.includes('Không tìm thấy') && lastScannedRef.current && (
@@ -672,7 +673,7 @@ export default function BarcodeScanner({
         {mode === 'scan' && scannedBarcode && (
           <div className="scanner-result">
             <div className="scanner-result-header">
-              <div className="check-icon">✓</div>
+              <div className="check-icon"><CheckCircle2 className="h-4 w-4" /></div>
               <span className="product-name">Đã nhận diện mã vạch</span>
             </div>
             <div className="scanner-result-details">
@@ -687,7 +688,7 @@ export default function BarcodeScanner({
         {mode === 'lookup' && foundProduct && !foundProduct.isExternal && (
           <div className="scanner-result">
             <div className="scanner-result-header">
-              <div className="check-icon">✓</div>
+              <div className="check-icon"><CheckCircle2 className="h-4 w-4" /></div>
               <span className="product-name">{foundProduct.name}</span>
             </div>
             <div className="scanner-result-details">
@@ -993,9 +994,13 @@ export function ScanBarcodeButton({
   label?: string;
 }) {
   return (
-    <button type="button" className="scan-barcode-btn" onClick={onClick}>
-      <span className="scan-icon">📷</span>
-      {label}
+    <button
+      type="button"
+      className="inline-flex items-center gap-2 rounded-2xl bg-cyan-600 px-6 py-3 font-bold text-white shadow-md hover:bg-cyan-700 active:scale-95 transition cursor-pointer"
+      onClick={onClick}
+    >
+      <Camera className="h-5 w-5 text-white" />
+      <span>{label}</span>
     </button>
   );
 }
