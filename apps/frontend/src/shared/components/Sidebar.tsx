@@ -112,9 +112,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     >
       <div className="p-4 border-b-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800 flex justify-center lg:justify-start">
         <div className={`flex items-center gap-3 w-full ${!isOpen ? 'justify-center' : ''}`}>
-          <div className="p-2 rounded-xl bg-cyan-50 dark:bg-slate-900 flex-shrink-0">
-            <Box className="h-6 w-6 text-cyan-600" />
-          </div>
+          <img src="/logo.png" alt="Smart WMS" className="h-11 w-11 object-cover rounded-xl shadow-sm flex-shrink-0" />
           {isOpen && (
             <div className="flex-1 overflow-hidden">
               <h1 className="font-bold text-lg text-gray-800 dark:text-white truncate">Smart WMS</h1>

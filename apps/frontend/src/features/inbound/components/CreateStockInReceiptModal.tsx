@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, User as UserIcon, Building2, Clock3, CheckCircle2 } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Building2, Clock3, CheckCircle2, Printer, FileText } from 'lucide-react';
 const API_BASE_URL = 'http://localhost:3000/api';
 
 function authHeaders() {
@@ -21,6 +21,70 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat('vi-VN').format(value || 0);
 }
 
+function formatDate(value?: string) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('vi-VN');
+}
+
+export function numberToVietnameseWords(amount: number): string {
+  if (!amount || Number.isNaN(amount) || amount === 0) return 'Không đồng';
+  
+  const units = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+  
+  function readBlock(num: number, showHundreds: boolean): string {
+    let hundred = Math.floor(num / 100);
+    let ten = Math.floor((num % 100) / 10);
+    let unit = num % 10;
+    let str = '';
+
+    if (hundred > 0 || showHundreds) {
+      str += units[hundred] + ' trăm ';
+    }
+
+    if (ten > 1) {
+      str += units[ten] + ' mươi ';
+      if (unit === 1) str += 'mốt';
+      else if (unit === 5) str += 'lăm';
+      else if (unit > 0) str += units[unit];
+    } else if (ten === 1) {
+      str += 'mười ';
+      if (unit === 5) str += 'lăm';
+      else if (unit > 0) str += units[unit];
+    } else {
+      if (showHundreds && unit > 0) str += 'lẻ ';
+      if (unit > 0) str += units[unit];
+    }
+
+    return str.trim();
+  }
+
+  const bigUnits = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ', 'triệu tỷ'];
+  let strNum = Math.floor(Math.abs(amount)).toString();
+  let blocks: number[] = [];
+
+  while (strNum.length > 0) {
+    blocks.push(parseInt(strNum.slice(-3), 10));
+    strNum = strNum.slice(0, -3);
+  }
+
+  let parts: string[] = [];
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    let b = blocks[i];
+    if (b > 0) {
+      let bStr = readBlock(b, i < blocks.length - 1);
+      let uStr = bigUnits[i];
+      parts.push(`${bStr} ${uStr}`.trim());
+    }
+  }
+
+  let result = parts.join(' ').trim();
+  if (!result) return 'Không đồng';
+  
+  result = result.charAt(0).toUpperCase() + result.slice(1) + ' đồng';
+  return result.replace(/\s+/g, ' ');
+}
+
 export function CreateStockInReceiptModal({
   isOpen,
   onClose,
@@ -40,6 +104,7 @@ export function CreateStockInReceiptModal({
 }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   
   const [users, setUsers] = useState<any[]>([]);
   const [sourceData, setSourceData] = useState<any>(null);
@@ -54,6 +119,11 @@ export function CreateStockInReceiptModal({
   const [receiptCode, setReceiptCode] = useState('');
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 16));
   const [description, setDescription] = useState('');
+  const [delivererName, setDelivererName] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [accountDebit, setAccountDebit] = useState('156');
+  const [accountCredit, setAccountCredit] = useState('331');
   const [status, setStatus] = useState<'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED'>('DRAFT');
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [staffCounts, setStaffCounts] = useState<Record<string, number>>({});
@@ -346,7 +416,11 @@ export function CreateStockInReceiptModal({
                         </div>
                         <div className="flex justify-between items-center pt-3 border-t border-cyan-200/50">
                           <span className="text-xs font-bold uppercase text-cyan-800">Tổng tiền</span>
-                          <span className="font-black text-cyan-700 text-xl">{formatMoney(totalAmount)} ₫</span>
+                          <span className="font-black text-cyan-700 text-xl">{formatMoney(totalAmount)}</span>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-cyan-200/50">
+                          <span className="text-[11px] font-bold uppercase text-cyan-800">Bằng chữ:</span>
+                          <p className="text-xs font-bold text-cyan-900 italic mt-0.5">{numberToVietnameseWords(totalAmount)}</p>
                         </div>
                       </div>
                     </div>
@@ -412,14 +486,14 @@ export function CreateStockInReceiptModal({
             <div className="flex flex-col h-full p-6">
               <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Phiếu Nhập Kho</h3>
               
-              <div className="space-y-6 flex-1">
+              <div className="space-y-4 flex-1">
                 <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Mã phiếu nhập kho</label>
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Mã phiếu nhập kho</label>
                   <input type="text" value={receiptCode} onChange={(e) => setReceiptCode(e.target.value)} disabled={mode === 'view'} placeholder="Để trống để tự động tạo..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
                 </div>
                 
                 <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Trạng thái phiếu</label>
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Trạng thái phiếu</label>
                   <select value={status} onChange={(e) => setStatus(e.target.value as any)} disabled={mode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed">
                     <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
                     <option value="ASSIGNED">Đang giao việc (Chờ kiểm kê)</option>
@@ -429,19 +503,42 @@ export function CreateStockInReceiptModal({
                 </div>
 
                 <div>
-                  <label className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-700">
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-bold text-slate-700">
                     <Calendar className="h-4 w-4 text-cyan-600" />
                     Thời gian nhập kho
                   </label>
                   <input type="datetime-local" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} disabled={mode === 'view'} required className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
                 </div>
+
+                {/* THÔNG TIN CHỨNG TỪ KẾ TOÁN (Theo Mẫu 01-VT) */}
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700">Họ tên người giao</label>
+                    <input type="text" value={delivererName} onChange={(e) => setDelivererName(e.target.value)} disabled={mode === 'view'} placeholder={supplier.contactPerson || supplier.name || 'Người giao'} className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700">Theo hóa đơn số</label>
+                    <input type="text" value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} disabled={mode === 'view'} placeholder={sourceData?.poNumber || 'Số hóa đơn'} className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700">Tài khoản Nợ</label>
+                    <input type="text" value={accountDebit} onChange={(e) => setAccountDebit(e.target.value)} disabled={mode === 'view'} placeholder="156" className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700">Tài khoản Có</label>
+                    <input type="text" value={accountCredit} onChange={(e) => setAccountCredit(e.target.value)} disabled={mode === 'view'} placeholder="331" className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
+                  </div>
+                </div>
                 
                 <div>
-                  <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
+                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
                   <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} disabled={mode === 'view'} placeholder="Ví dụ: Kiểm tra kỹ tem mác..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
                 </div>
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col min-h-[250px] max-h-[300px]">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col min-h-[200px] max-h-[260px]">
                   <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
                     <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
                       <UserIcon className="h-4 w-4 text-indigo-600" />
@@ -496,7 +593,6 @@ export function CreateStockInReceiptModal({
                               const val = Number(e.target.value);
                               setStaffCounts(prev => {
                                 const next = { ...prev, [u.id]: val };
-                                // Automatically sync total to item 0's inventoryQty for convenience
                                 if (items.length > 0) {
                                   const total = Object.values(next).reduce<number>((a, b) => a + (Number(b) || 0), 0);
                                   const newItems = [...items];
@@ -520,6 +616,15 @@ export function CreateStockInReceiptModal({
             </div>
 
             <div className="border-t border-slate-200 p-6 flex flex-col gap-3 bg-white">
+            <button
+              type="button"
+              onClick={() => setIsPrinting(true)}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-cyan-50 px-5 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
+            >
+              <Printer className="h-4 w-4" />
+              In Phiếu Nhập Kho (Mẫu 01-VT)
+            </button>
+
             {mode === 'view' && status === 'DRAFT' && (
               <button
                 type="button"
@@ -627,6 +732,113 @@ export function CreateStockInReceiptModal({
           </div>
         </div>
       </form>
+
+      {/* PRINT PREVIEW MODAL FOR PHIẾU NHẬP KHO (Mẫu 01-VT) */}
+      {isPrinting && (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl text-slate-900">
+            <div className="flex justify-between items-start mb-6 border-b border-slate-300 pb-4">
+              <div>
+                <h4 className="font-black text-slate-900 uppercase tracking-wide text-base">CÔNG TY CỔ PHẦN KHO HÀNG VIỆT NAM</h4>
+                <p className="text-xs text-slate-600">Địa chỉ: Số 123 Đường Kho Hàng, Q. Cầu Giấy, Hà Nội</p>
+              </div>
+              <div className="text-right">
+                <p className="font-bold text-xs">Mẫu số 01 - VT</p>
+                <p className="text-[11px] text-slate-500 italic">(Ban hành theo Thông tư số 133/2016/TT-BTC<br/>ngày 26/08/2016 của Bộ Tài chính)</p>
+              </div>
+            </div>
+
+            <div className="text-center my-6">
+              <h2 className="text-2xl font-black tracking-wide text-slate-900 uppercase">PHIẾU NHẬP KHO</h2>
+              <p className="text-xs italic text-slate-600 mt-1">
+                {receiptDate ? `Ngày ${new Date(receiptDate).getDate()} tháng ${new Date(receiptDate).getMonth() + 1} năm ${new Date(receiptDate).getFullYear()}` : 'Ngày ... tháng ... năm ...'}
+              </p>
+              <div className="flex justify-center gap-8 text-xs font-semibold mt-3">
+                <span>Số: <strong>{receiptCode || sourceData?.poNumber || 'PNK-AUTO'}</strong></span>
+                <span>Nợ: <strong>{accountDebit || '156'}</strong></span>
+                <span>Có: <strong>{accountCredit || '331'}</strong></span>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-sm text-slate-800 mb-6">
+              <p>- Họ và tên người giao: <strong>{delivererName || supplier.contactPerson || supplier.name || '...'}</strong></p>
+              <p>- Theo Hóa đơn/Chứng từ số: <strong>{invoiceNo || sourceData?.poNumber || '...'}</strong> {invoiceDate ? `ngày ${formatDate(invoiceDate)}` : (sourceData?.orderDate ? `ngày ${formatDate(sourceData.orderDate)}` : '')} của <strong>{supplier.name || '...'}</strong></p>
+              <p>- Nhập tại kho: <strong>{warehouseName}</strong></p>
+              <p>- Diễn giải: <strong>{description || sourceData?.description || 'Nhập kho mua hàng theo hợp đồng/PO'}</strong></p>
+            </div>
+
+            <table className="w-full border-collapse border border-slate-900 text-xs mb-4">
+              <thead>
+                <tr className="bg-slate-100">
+                  <th rowSpan={2} className="border border-slate-900 px-2 py-2 text-center w-10">STT</th>
+                  <th rowSpan={2} className="border border-slate-900 px-2 py-2 text-left">Tên, nhãn hiệu, quy cách vật tư, hàng hóa</th>
+                  <th rowSpan={2} className="border border-slate-900 px-2 py-2 text-center w-24">Mã số SKU</th>
+                  <th rowSpan={2} className="border border-slate-900 px-2 py-2 text-center w-16">ĐVT</th>
+                  <th colSpan={2} className="border border-slate-900 px-2 py-1 text-center">Số lượng</th>
+                  <th rowSpan={2} className="border border-slate-900 px-2 py-2 text-right w-28">Đơn giá</th>
+                  <th rowSpan={2} className="border border-slate-900 px-2 py-2 text-right w-32">Thành tiền</th>
+                </tr>
+                <tr className="bg-slate-100">
+                  <th className="border border-slate-900 px-2 py-1 text-center w-20">Theo chứng từ</th>
+                  <th className="border border-slate-900 px-2 py-1 text-center w-20">Thực nhập</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item, idx) => (
+                  <tr key={idx}>
+                    <td className="border border-slate-900 px-2 py-1.5 text-center">{idx + 1}</td>
+                    <td className="border border-slate-900 px-2 py-1.5 font-bold">{item.product?.name || item.productId}</td>
+                    <td className="border border-slate-900 px-2 py-1.5 text-center font-mono">{item.product?.internalSku || '-'}</td>
+                    <td className="border border-slate-900 px-2 py-1.5 text-center">{item.product?.unit || 'Cái'}</td>
+                    <td className="border border-slate-900 px-2 py-1.5 text-center">{formatNumber(parseMoney(item.expectedQty))}</td>
+                    <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{formatNumber(parseMoney(item.inventoryQty || item.receivedQty || item.expectedQty))}</td>
+                    <td className="border border-slate-900 px-2 py-1.5 text-right">{formatNumber(parseMoney(item.unitPrice))}</td>
+                    <td className="border border-slate-900 px-2 py-1.5 text-right font-bold">{formatNumber(parseMoney(item.expectedQty) * parseMoney(item.unitPrice))}</td>
+                  </tr>
+                ))}
+                <tr className="font-bold bg-slate-50">
+                  <td colSpan={4} className="border border-slate-900 px-2 py-2 text-center">Cộng</td>
+                  <td className="border border-slate-900 px-2 py-2 text-center">{formatNumber(totalQuantity)}</td>
+                  <td className="border border-slate-900 px-2 py-2 text-center">{formatNumber(totalQuantity)}</td>
+                  <td className="border border-slate-900 px-2 py-2 text-right">x</td>
+                  <td className="border border-slate-900 px-2 py-2 text-right text-sm font-black">{formatMoney(totalAmount)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p className="text-xs text-slate-800 font-semibold mb-6">
+              - Tổng số tiền (viết bằng chữ): <em className="font-bold text-slate-900">{numberToVietnameseWords(totalAmount)}</em>
+            </p>
+
+            <div className="grid grid-cols-4 gap-4 text-center text-xs mt-8 mb-12">
+              <div>
+                <p className="font-bold uppercase">Người lập phiếu</p>
+                <p className="italic text-slate-500">(Ký, họ tên)</p>
+              </div>
+              <div>
+                <p className="font-bold uppercase">Người giao hàng</p>
+                <p className="italic text-slate-500">(Ký, họ tên)</p>
+              </div>
+              <div>
+                <p className="font-bold uppercase">Thủ kho</p>
+                <p className="italic text-slate-500">(Ký, họ tên)</p>
+              </div>
+              <div>
+                <p className="font-bold uppercase">Kế toán trưởng</p>
+                <p className="italic text-slate-500">(Ký, họ tên)</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-slate-200 pt-4 no-print">
+              <button type="button" onClick={() => setIsPrinting(false)} className="px-5 py-2.5 rounded-xl border-2 border-slate-300 font-bold text-slate-700 hover:bg-slate-100 transition">Đóng</button>
+              <button type="button" onClick={() => window.print()} className="px-5 py-2.5 rounded-xl bg-cyan-600 text-white font-bold hover:bg-cyan-700 transition flex items-center gap-2">
+                <Printer className="h-4 w-4" />
+                In phiếu ngay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

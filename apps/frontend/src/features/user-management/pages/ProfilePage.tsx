@@ -67,10 +67,14 @@ function authHeaders() {
 }
 
 function formatRole(role?: string) {
-  if (role === 'admin') return 'Quản trị viên';
-  if (role === 'manager') return 'Quản lý kho';
-  if (role === 'staff') return 'Nhân viên kho';
-  return role || 'Người dùng';
+  if (!role) return 'Quản trị viên';
+  const r = role.toLowerCase();
+  if (r === 'admin' || r === 'administrator') return 'Quản trị viên';
+  if (r === 'manager' || r === 'warehouse_manager') return 'Quản lý kho';
+  if (r === 'staff' || r === 'inventory_staff' || r === 'warehouse_staff') return 'Nhân viên kho';
+  if (r === 'customer') return 'Khách hàng';
+  if (r === 'supplier') return 'Nhà cung cấp';
+  return role;
 }
 
 function getInitials(name: string, email: string) {

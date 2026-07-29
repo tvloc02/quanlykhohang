@@ -220,9 +220,7 @@ function Sidebar({ isOpen, onToggle }: SidebarProps) {
       {/* Header & Logo */}
       <div className="p-4 border-b-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800 flex justify-center lg:justify-start">
         <div className={`flex items-center gap-3 w-full ${!isOpen ? 'justify-center' : ''}`}>
-          <div className="p-2 rounded-xl bg-cyan-50 dark:bg-slate-900 flex-shrink-0">
-            <Box className="h-6 w-6 text-cyan-600" />
-          </div>
+          <img src="/logo.png" alt="Smart WMS" className="h-11 w-11 object-cover rounded-xl shadow-sm flex-shrink-0" />
           {isOpen && (
             <div className="flex-1 overflow-hidden">
               <h1 className="font-bold text-lg text-gray-800 dark:text-white truncate">Smart WMS</h1>
@@ -393,7 +391,19 @@ export default function MainLayout({ children }: LayoutProps) {
   }, []);
   const userName = storedUser.fullName || 'Dương Ngọc Anh';
   const userEmail = storedUser.email || 'admin@smartwms.vn';
-  const userRole = storedUser.role === 'admin' ? 'Quản trị viên' : storedUser.role || 'Quản trị viên';
+  const formatUserRoleDisplay = (role?: string) => {
+    if (!role) return 'Quản trị viên';
+    const lower = String(role).trim().toLowerCase();
+    if (lower === 'admin' || lower === 'administrator') return 'Quản trị viên';
+    if (lower === 'manager' || lower === 'warehouse_manager' || lower === 'quản lý kho') return 'Quản lý kho';
+    if (lower === 'staff' || lower === 'inventory_staff' || lower === 'warehouse_staff' || lower === 'nhân viên kho' || lower === 'nhân viên kiểm kho') return 'Nhân viên kiểm kho';
+    if (lower === 'customer') return 'Khách hàng';
+    if (lower === 'supplier') return 'Nhà cung cấp';
+    return role;
+  };
+  const rawRole = storedUser.role || ((storedUser as any).roles && (storedUser as any).roles[0]?.name) || '';
+  const userRole = formatUserRoleDisplay(rawRole);
+  const userInitials = userName.trim().split(/\s+/).map((n) => n[0]).join('').slice(0, 3).toUpperCase() || 'WMS';
 
   // States cho Header Dropdowns
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -474,7 +484,7 @@ export default function MainLayout({ children }: LayoutProps) {
 
         {/* Header */}
         <header
-          className="relative bg-white dark:bg-slate-950 border-b-2 border-gray-200 dark:border-slate-800 flex items-center justify-between px-6 z-10 transition-all duration-300 shadow-sm"
+          className="relative bg-white dark:bg-slate-950 border-b-2 border-gray-200 dark:border-slate-800 flex items-center justify-between px-6 z-20 transition-all duration-300 shadow-sm"
           style={{ height: '80px' }}
         >
           {/* Left Section: Toggle & Clock */}
@@ -538,7 +548,7 @@ export default function MainLayout({ children }: LayoutProps) {
               </div>
 
               {notificationDropdownOpen && (
-                <div className="fixed left-3 right-3 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[30rem] bg-white dark:bg-slate-900 rounded-xl shadow-2xl border-2 border-gray-200 dark:border-slate-700 z-50 max-h-[calc(100vh-96px)] sm:max-h-[36rem] overflow-hidden">
+                <div className="fixed left-3 right-3 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[30rem] bg-white dark:bg-slate-950 rounded-xl shadow-2xl border-2 border-gray-200 dark:border-slate-700 z-40 max-h-[calc(100vh-96px)] sm:max-h-[36rem] overflow-hidden">
                   <div className="px-4 py-3 border-b-2 border-gray-200 dark:border-slate-700 bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900">
                     <div className="flex items-center justify-between">
                       <div>
@@ -639,7 +649,7 @@ export default function MainLayout({ children }: LayoutProps) {
                 className="flex items-center space-x-2 p-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-cyan-50 dark:hover:bg-slate-800 transition-colors border-2 border-gray-200 dark:border-slate-700 h-[3.5rem]"
               >
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md overflow-hidden bg-gradient-to-br from-cyan-400 to-cyan-600 text-white font-bold text-sm">
-                  DNA
+                  {userInitials}
                 </div>
                 <div className="hidden sm:block text-left">
                   <p className="text-sm font-bold text-gray-900 dark:text-slate-100">{userName}</p>
@@ -649,7 +659,7 @@ export default function MainLayout({ children }: LayoutProps) {
               </button>
 
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-2xl py-2 z-50 border-2 border-gray-200 dark:border-slate-700">
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-2xl py-2 z-40 border-2 border-gray-200 dark:border-slate-700">
                   <div className="px-4 pb-2 mb-2 border-b-2 border-gray-200 dark:border-slate-700">
                     <p className="text-sm font-bold text-gray-900 dark:text-slate-100 truncate">{userName}</p>
                     <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{userEmail}</p>
