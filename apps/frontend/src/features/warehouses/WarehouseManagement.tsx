@@ -16,6 +16,9 @@ import {
   Plus,
   Check,
   Globe,
+  Lock,
+  Unlock,
+  AlertTriangle,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
 import {
@@ -240,15 +243,74 @@ export default function WarehouseManagement() {
     }
   }, [error, success]);
 
+  const [freezeModalTarget, setFreezeModalTarget] = useState<WarehouseRecord | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchActionType, setBatchActionType] = useState<'freeze' | 'unfreeze' | 'delete' | null>(null);
+
+  const handleConfirmToggleFreeze = async (wh: WarehouseRecord) => {
+    const action = wh.isFrozen ? 'unfreeze' : 'freeze';
+    const actionText = wh.isFrozen ? 'Mở khóa kho' : 'Đóng băng kho';
+
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/warehouses/${wh.id}/${action}`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+      if (!res.ok) throw new Error(`Không thể ${actionText}`);
+      setSuccess(`Đã ${actionText} thành công!`);
+      setFreezeModalTarget(null);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || `Lỗi khi ${actionText}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExecuteBatchAction = async () => {
+    if (!batchActionType || selectedIds.length === 0) return;
+    setSaving(true);
+    try {
+      if (batchActionType === 'delete') {
+        for (const id of selectedIds) {
+          await fetch(`${API_BASE_URL}/warehouses/${id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+          });
+        }
+        setSuccess(`Đã xóa thành công ${selectedIds.length} kho hàng!`);
+      } else {
+        const action = batchActionType;
+        const actionText = action === 'freeze' ? 'đóng băng' : 'mở khóa';
+        for (const id of selectedIds) {
+          await fetch(`${API_BASE_URL}/warehouses/${id}/${action}`, {
+            method: 'POST',
+            headers: authHeaders(),
+          });
+        }
+        setSuccess(`Đã ${actionText} thành công ${selectedIds.length} kho hàng!`);
+      }
+      setSelectedIds([]);
+      setBatchActionType(null);
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || 'Lỗi khi thực hiện thao tác hàng loạt');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const totalWarehousesCount = warehouses.length;
   const activeWarehousesCount = warehouses.filter((w) => w.status === 'active').length;
+  const frozenWarehousesCount = warehouses.filter((w) => w.isFrozen).length;
   const totalZonesCount = warehouses.reduce((acc, w) => acc + (w.subWarehouses?.length || 0), 0);
   const activeZonesCount = warehouses.reduce(
     (acc, w) => acc + (w.subWarehouses?.filter((s) => s.status !== 'inactive').length || 0),
     0,
   );
 
-  const [cardFilter, setCardFilter] = useState<'all-warehouses' | 'all-zones' | 'active-warehouses' | 'active-zones'>('all-warehouses');
+  const [cardFilter, setCardFilter] = useState<'all-warehouses' | 'all-zones' | 'active-warehouses' | 'frozen-warehouses' | 'active-zones'>('all-warehouses');
 
   const filteredWarehouses = warehouses.filter((w) => {
     const keyword = search.trim().toLowerCase();
@@ -263,6 +325,8 @@ export default function WarehouseManagement() {
       matchesStatus = w.status === 'active';
     } else if (statusFilter === 'inactive') {
       matchesStatus = w.status === 'inactive';
+    } else if (statusFilter === 'frozen') {
+      matchesStatus = Boolean(w.isFrozen);
     }
 
     if (cardFilter === 'all-zones') {
@@ -270,6 +334,9 @@ export default function WarehouseManagement() {
     }
     if (cardFilter === 'active-zones') {
       return matchesKeyword && (w.subWarehouses?.some((s) => s.status !== 'inactive') || false);
+    }
+    if (cardFilter === 'frozen-warehouses') {
+      return matchesKeyword && Boolean(w.isFrozen);
     }
 
     return matchesKeyword && matchesStatus;
@@ -513,39 +580,22 @@ export default function WarehouseManagement() {
         </div>
       </div>
 
-      {/* 4 STAT OVERVIEW BUTTONS MATCHING SYSTEM UI */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 5 STAT OVERVIEW BUTTONS MATCHING SYSTEM UI */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <button
           type="button"
           onClick={() => {
             setCardFilter('all-warehouses');
             setStatusFilter('all');
           }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center cursor-pointer ${
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
             cardFilter === 'all-warehouses'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <p className="text-base font-black uppercase">
+          <p className="text-xs sm:text-sm font-black uppercase leading-tight">
             {totalWarehousesCount} KHO HÀNG
-          </p>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setCardFilter('all-zones');
-            setStatusFilter('all');
-          }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center cursor-pointer ${
-            cardFilter === 'all-zones'
-              ? 'bg-cyan-600 text-white'
-              : 'bg-white text-cyan-700 hover:bg-cyan-50'
-          }`}
-        >
-          <p className="text-base font-black uppercase">
-            {totalZonesCount} PHÂN KHU
           </p>
         </button>
 
@@ -555,14 +605,49 @@ export default function WarehouseManagement() {
             setCardFilter('active-warehouses');
             setStatusFilter('active');
           }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center cursor-pointer ${
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
             cardFilter === 'active-warehouses'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <p className="text-base font-black uppercase">
-            {activeWarehousesCount} KHO ĐANG HOẠT ĐỘNG
+          <p className="text-xs sm:text-sm font-black uppercase leading-tight">
+            {activeWarehousesCount} KHO HOẠT ĐỘNG
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setCardFilter('frozen-warehouses');
+            setStatusFilter('frozen');
+          }}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
+            cardFilter === 'frozen-warehouses'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
+          }`}
+        >
+          <p className="text-xs sm:text-sm font-black uppercase leading-tight flex items-center justify-center gap-1">
+            <Lock className="h-4 w-4" />
+            {frozenWarehousesCount} KHO ĐÓNG BĂNG
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setCardFilter('all-zones');
+            setStatusFilter('all');
+          }}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
+            cardFilter === 'all-zones'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
+          }`}
+        >
+          <p className="text-xs sm:text-sm font-black uppercase leading-tight">
+            {totalZonesCount} PHÂN KHU
           </p>
         </button>
 
@@ -572,17 +657,59 @@ export default function WarehouseManagement() {
             setCardFilter('active-zones');
             setStatusFilter('active');
           }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center cursor-pointer ${
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
             cardFilter === 'active-zones'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <p className="text-base font-black uppercase">
-            {activeZonesCount} PHÂN KHU ĐANG HOẠT ĐỘNG
+          <p className="text-xs sm:text-sm font-black uppercase leading-tight">
+            {activeZonesCount} PHÂN KHU HOẠT ĐỘNG
           </p>
         </button>
       </div>
+
+      {/* BATCH ACTION BAR IF ITEMS SELECTED */}
+      {selectedIds.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-cyan-500 bg-cyan-50/90 p-4 shadow-md animate-in fade-in duration-150">
+          <div className="flex items-center gap-2 text-xs font-bold text-cyan-950">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-600 text-xs font-black text-white">
+              {selectedIds.length}
+            </span>
+            <span>Kho hàng đang được chọn</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setBatchActionType('freeze')}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-700 shadow-xs transition hover:bg-amber-100 cursor-pointer"
+            >
+              <Lock className="h-3.5 w-3.5" /> Đóng Băng Đã Chọn
+            </button>
+            <button
+              type="button"
+              onClick={() => setBatchActionType('unfreeze')}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500 bg-emerald-50 px-3.5 py-2 text-xs font-bold text-emerald-700 shadow-xs transition hover:bg-emerald-100 cursor-pointer"
+            >
+              <Unlock className="h-3.5 w-3.5" /> Mở Khóa Đã Chọn
+            </button>
+            <button
+              type="button"
+              onClick={() => setBatchActionType('delete')}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-500 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-700 shadow-xs transition hover:bg-red-100 cursor-pointer"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Xóa Đã Chọn
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds([])}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-100 cursor-pointer"
+            >
+              Bỏ Chọn
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* SEARCH AND FILTERS */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -603,16 +730,34 @@ export default function WarehouseManagement() {
           <option value="all">Tất cả trạng thái kho</option>
           <option value="active">Đang hoạt động</option>
           <option value="inactive">Không hoạt động</option>
+          <option value="frozen">Đóng băng kiểm kê</option>
         </select>
       </div>
 
       {/* MAIN DATA TABLE */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[950px] border-collapse bg-white">
+          <table className="w-full min-w-[1000px] border-collapse bg-white">
             <thead className="bg-cyan-50/70">
               <tr className="border-b border-slate-200">
-                <th className="w-14 border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="w-10 border-x border-slate-200 px-2 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    checked={
+                      paginatedWarehouses.length > 0 &&
+                      paginatedWarehouses.every((w) => selectedIds.includes(w.id))
+                    }
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedIds(paginatedWarehouses.map((w) => w.id));
+                      } else {
+                        setSelectedIds([]);
+                      }
+                    }}
+                  />
+                </th>
+                <th className="w-12 border-x border-slate-200 px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
                   STT
                 </th>
                 <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
@@ -630,7 +775,10 @@ export default function WarehouseManagement() {
                 <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
                   Trạng thái
                 </th>
-                <th className="sticky right-0 w-44 border-l border-slate-200 bg-cyan-50/70 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Đóng băng
+                </th>
+                <th className="sticky right-0 w-48 border-l border-slate-200 bg-cyan-50/70 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Hành động
                 </th>
               </tr>
@@ -638,23 +786,35 @@ export default function WarehouseManagement() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
                     Đang tải danh sách kho hàng...
                   </td>
                 </tr>
               ) : paginatedWarehouses.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
                     {error ? 'Lỗi khi tải dữ liệu. Vui lòng thử lại.' : 'Chưa có kho hàng. Hãy tạo kho hàng mới.'}
                   </td>
                 </tr>
               ) : (
                 paginatedWarehouses.map((w, index) => (
-                  <tr key={w.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/40">
-                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-700">
+                  <tr key={w.id} className={`group border-b border-slate-200 transition ${w.isFrozen ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-cyan-50/40'}`}>
+                    <td className="border-x border-slate-200 px-2 py-3.5 text-center align-middle">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                        checked={selectedIds.includes(w.id)}
+                        onChange={() => {
+                          setSelectedIds((prev) =>
+                            prev.includes(w.id) ? prev.filter((id) => id !== w.id) : [...prev, w.id]
+                          );
+                        }}
+                      />
+                    </td>
+                    <td className="border-x border-slate-200 px-2 py-3.5 text-center text-xs font-bold text-slate-700">
                       {startIndex + index}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-cyan-700 uppercase">
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-cyan-700 uppercase font-mono">
                       {w.code}
                     </td>
                     <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-900">
@@ -672,7 +832,7 @@ export default function WarehouseManagement() {
                     </td>
                     <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
                       <span
-                        className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${
+                        className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-bold ${
                           w.status === 'active'
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                             : 'border-slate-200 bg-slate-100 text-slate-600'
@@ -681,8 +841,29 @@ export default function WarehouseManagement() {
                         {w.status === 'active' ? 'Đang hoạt động' : 'Không hoạt động'}
                       </span>
                     </td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
+                      {w.isFrozen ? (
+                        <span className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-700 animate-pulse">
+                          <Lock className="h-3.5 w-3.5 text-red-600" /> Đóng băng
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200/60 bg-emerald-50/50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                          <Unlock className="h-3.5 w-3.5 text-emerald-600" /> Bình thường
+                        </span>
+                      )}
+                    </td>
                     <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/40">
                       <div className="flex items-center justify-center gap-1.5">
+                        {/* Lock / Unlock Freeze Toggle Button - Styled Cyan */}
+                        <button
+                          type="button"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          aria-label={w.isFrozen ? 'Mở khóa kho' : 'Đóng băng kho kiểm kê'}
+                          title={w.isFrozen ? 'Mở khóa kho (Cho phép nhập/xuất trở lại)' : 'Đóng băng kho kiểm kê (Khóa nhập/xuất)'}
+                          onClick={() => setFreezeModalTarget(w)}
+                        >
+                          {w.isFrozen ? <Unlock className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} /> : <Lock className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />}
+                        </button>
                         {/* 3D Phân Khu Button */}
                         <button
                           type="button"
@@ -1251,6 +1432,169 @@ export default function WarehouseManagement() {
                   </div>
                 </form>
               )}
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* FREEZE / UNFREEZE WARNING CONFIRMATION MODAL */}
+      {freezeModalTarget &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl border-2 border-cyan-500">
+              {/* Modal Header */}
+              <div className="flex min-h-[72px] items-center justify-between border-b border-slate-100 bg-cyan-600 px-6 py-5 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-white/20 p-2.5 text-white flex-shrink-0">
+                    {freezeModalTarget.isFrozen ? <Unlock className="h-6 w-6" /> : <Lock className="h-6 w-6" />}
+                  </div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-wide leading-snug">
+                    {freezeModalTarget.isFrozen ? 'Mở Khóa Kho Hàng' : 'Cảnh Báo Đóng Băng Kho Kiểm Kê'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFreezeModalTarget(null)}
+                  className="rounded-xl p-2 text-white/80 transition hover:bg-white/20 hover:text-white cursor-pointer flex-shrink-0"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className={`flex items-start gap-4 rounded-2xl border-2 p-5 shadow-xs ${freezeModalTarget.isFrozen ? 'border-emerald-300 bg-emerald-50/80 text-emerald-950' : 'border-amber-300 bg-amber-50/90 text-amber-950'}`}>
+                  <AlertTriangle className={`h-7 w-7 flex-shrink-0 mt-0.5 ${freezeModalTarget.isFrozen ? 'text-emerald-600' : 'text-amber-600'}`} />
+                  <div className="space-y-2 text-sm sm:text-base leading-relaxed font-semibold">
+                    <p className="text-base sm:text-lg font-black text-slate-900">
+                      Kho: <span className="text-cyan-700 font-extrabold">{freezeModalTarget.name}</span> <span className="font-mono text-cyan-800">({freezeModalTarget.code})</span>
+                    </p>
+                    {freezeModalTarget.isFrozen ? (
+                      <p className="text-slate-800 font-medium leading-relaxed">
+                        Bạn đang thực hiện thao tác mở khóa cho kho hàng này. Khi kho được mở khóa, toàn bộ các chức năng tạo phiếu nhập kho & xuất kho sẽ <b>được cho phép hoạt động bình thường trở lại</b>.
+                      </p>
+                    ) : (
+                      <p className="text-slate-800 font-medium leading-relaxed">
+                        <b>Cơ chế đóng băng kho:</b> Khi kho ở trạng thái đóng băng, hệ thống WMS sẽ <b>tạm ngưng và ngăn chặn tất cả giao dịch tạo phiếu nhập kho & xuất kho</b> tại kho này. Việc này nhằm giữ cố định lượng tồn kho trong suốt quá trình đếm kiểm kê.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-base sm:text-lg font-black text-slate-800 text-center py-2 border-t border-b border-slate-100">
+                  {freezeModalTarget.isFrozen
+                    ? 'Bạn có chắc chắn muốn mở khóa hoạt động cho kho này?'
+                    : 'Bạn có chắc chắn muốn đóng băng kho này để bắt đầu kiểm kê?'}
+                </p>
+
+                {/* Modal Footer Actions */}
+                <div className="flex items-center justify-end gap-3.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setFreezeModalTarget(null)}
+                    className="rounded-xl border-2 border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100 cursor-pointer active:scale-95"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => handleConfirmToggleFreeze(freezeModalTarget)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-7 py-3 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 disabled:opacity-50 cursor-pointer active:scale-95"
+                  >
+                    {saving ? (
+                      'Đang xử lý...'
+                    ) : freezeModalTarget.isFrozen ? (
+                      <>
+                        <Unlock className="h-5 w-5" /> Đồng Ý Mở Khóa Kho
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-5 w-5" /> Đồng Ý Đóng Băng Kho
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* BATCH ACTION CONFIRMATION MODAL */}
+      {batchActionType &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl border-2 border-cyan-500">
+              <div className="flex min-h-[72px] items-center justify-between border-b border-slate-100 bg-cyan-600 px-6 py-5 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-white/20 p-2.5 text-white flex-shrink-0">
+                    {batchActionType === 'delete' ? (
+                      <Trash2 className="h-6 w-6" />
+                    ) : batchActionType === 'freeze' ? (
+                      <Lock className="h-6 w-6" />
+                    ) : (
+                      <Unlock className="h-6 w-6" />
+                    )}
+                  </div>
+                  <h3 className="text-lg font-black text-white uppercase tracking-wide leading-snug">
+                    Xác Nhận Thao Tác Hàng Loạt
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBatchActionType(null)}
+                  className="rounded-xl p-2 text-white/80 transition hover:bg-white/20 hover:text-white cursor-pointer flex-shrink-0"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className={`flex items-start gap-4 rounded-2xl border-2 p-5 shadow-xs ${batchActionType === 'delete' ? 'border-red-300 bg-red-50/80 text-red-950' : batchActionType === 'freeze' ? 'border-amber-300 bg-amber-50/90 text-amber-950' : 'border-emerald-300 bg-emerald-50/80 text-emerald-950'}`}>
+                  <AlertTriangle className="h-7 w-7 flex-shrink-0 mt-0.5" />
+                  <div className="space-y-2 text-sm sm:text-base leading-relaxed font-semibold">
+                    <p className="text-base sm:text-lg font-black text-slate-900">
+                      Thao tác cho <span className="text-cyan-700 font-extrabold">{selectedIds.length} kho hàng</span> đã chọn
+                    </p>
+                    {batchActionType === 'delete' ? (
+                      <p className="text-slate-800 font-medium leading-relaxed">
+                        Hành động này sẽ <b>xóa vĩnh viễn</b> danh sách {selectedIds.length} kho hàng khỏi hệ thống WMS. Hãy kiểm tra chắc chắn trước khi xác nhận.
+                      </p>
+                    ) : batchActionType === 'freeze' ? (
+                      <p className="text-slate-800 font-medium leading-relaxed">
+                        Hệ thống sẽ thực hiện <b>đóng băng toàn bộ {selectedIds.length} kho hàng</b> đã chọn, khóa các giao dịch tạo phiếu nhập & xuất kho phục vụ kiểm kê.
+                      </p>
+                    ) : (
+                      <p className="text-slate-800 font-medium leading-relaxed">
+                        Hệ thống sẽ <b>mở khóa hoạt động cho {selectedIds.length} kho hàng</b> đã chọn, cho phép tạo phiếu nhập kho và xuất kho trở lại bình thường.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3.5 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setBatchActionType(null)}
+                    className="rounded-xl border-2 border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100 cursor-pointer active:scale-95"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={handleExecuteBatchAction}
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl border-2 px-7 py-3 text-sm font-bold text-white shadow-md transition disabled:opacity-50 cursor-pointer active:scale-95 ${
+                      batchActionType === 'delete'
+                        ? 'border-red-500 bg-red-600 hover:bg-red-700'
+                        : 'border-cyan-500 bg-cyan-600 hover:bg-cyan-700'
+                    }`}
+                  >
+                    {saving ? 'Đang xử lý...' : 'Đồng Ý Thực Hiện'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>,
           document.body,

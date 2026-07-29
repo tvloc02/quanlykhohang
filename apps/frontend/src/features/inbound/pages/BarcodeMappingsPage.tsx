@@ -1,13 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Link2,
-  Plus,
+  PlusCircle,
   Search,
   Trash2,
   RefreshCw,
   Package,
   ScanLine,
   X,
+  CheckCircle2,
+  XCircle,
+  QrCode,
+  ShieldCheck,
+  Tag,
 } from 'lucide-react';
 
 const API_BASE_URL = 'http://localhost:3000/api';
@@ -39,18 +44,26 @@ export default function BarcodeMappingsPage() {
   const [newBarcode, setNewBarcode] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [mappingsRes, productsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/inbound/barcode-mappings`, { headers: authHeaders() }).then((r) => r.ok ? r.json() : []),
-        fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).then((r) => r.ok ? r.json() : []),
+        fetch(`${API_BASE_URL}/inbound/barcode-mappings`, { headers: authHeaders() }).then((r) => (r.ok ? r.json() : [])),
+        fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).then((r) => (r.ok ? r.json() : [])),
       ]);
       setMappings(mappingsRes || []);
       setProducts(productsRes || []);
     } catch (err) {
       console.error(err);
+      setToast({ type: 'error', message: 'Lỗi tải dữ liệu ánh xạ mã vạch' });
     } finally {
       setLoading(false);
     }
@@ -60,9 +73,10 @@ export default function BarcodeMappingsPage() {
     fetchData();
   }, [fetchData]);
 
-  const handleCreate = async () => {
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!newBarcode.trim() || !selectedProductId) {
-      alert('Vui lòng nhập đầy đủ mã vạch và chọn sản phẩm');
+      setToast({ type: 'error', message: 'Vui lòng nhập đầy đủ mã vạch và chọn sản phẩm' });
       return;
     }
     setSaving(true);
@@ -75,32 +89,35 @@ export default function BarcodeMappingsPage() {
           productId: selectedProductId,
         }),
       });
-      if (!res.ok) throw new Error('Không thể tạo ánh xạ mã vạch');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || 'Không thể tạo ánh xạ mã vạch');
+      }
 
-      alert('Tạo liên kết mã vạch thành công!');
+      setToast({ type: 'success', message: 'Tạo liên kết mã vạch thành công!' });
       setModalOpen(false);
       setNewBarcode('');
       setSelectedProductId('');
       await fetchData();
     } catch (err: any) {
-      alert(err.message || 'Lỗi');
+      setToast({ type: 'error', message: err.message || 'Có lỗi xảy ra khi tạo liên kết' });
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (id: string, barcode: string) => {
-    if (!window.confirm(`Xóa liên kết cho mã vạch "${barcode}"?`)) return;
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa liên kết cho mã vạch "${barcode}"?`)) return;
     try {
       const res = await fetch(`${API_BASE_URL}/inbound/barcode-mappings/${id}`, {
         method: 'DELETE',
         headers: authHeaders(),
       });
-      if (!res.ok) throw new Error('Lỗi xóa');
-      alert('Đã xóa liên kết thành công!');
+      if (!res.ok) throw new Error('Không thể xóa liên kết');
+      setToast({ type: 'success', message: 'Đã xóa liên kết mã vạch thành công!' });
       await fetchData();
     } catch (err: any) {
-      alert(err.message || 'Lỗi');
+      setToast({ type: 'error', message: err.message || 'Lỗi khi xóa liên kết' });
     }
   };
 
@@ -113,132 +130,209 @@ export default function BarcodeMappingsPage() {
     );
   });
 
+  const uniqueProductIds = new Set(mappings.map((m) => m.product?.id).filter(Boolean));
+
   return (
-    <div style={{ padding: 24, background: '#f8fafc', minHeight: '100%' }}>
-      {/* Top Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+    <div className="space-y-6">
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${
+            toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'
+          }`}
+        >
+          {toast.type === 'error' ? <XCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+          <p className="text-sm font-bold">{toast.message}</p>
+          <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Top Header Banner */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Ánh xạ Mã Vạch Ngoại Lệ</h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: 13, color: '#64748b' }}>
-            Quản lý các mã vạch phụ/mã lạ từ nhà cung cấp ánh xạ với SKU hệ thống
-          </p>
+          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+            <ScanLine className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-lg font-bold tracking-tight text-white">Ánh Xạ Mã Vạch Ngoại Lệ</h1>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={fetchData}
-            style={{ padding: '8px 16px', background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#475569' }}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-cyan-50"
+            title="Tải lại dữ liệu"
           >
-            <RefreshCw style={{ width: 14, height: 14 }} /> Làm mới
+            <RefreshCw className="h-4 w-4 text-cyan-600" />
+            Làm mới
           </button>
           <button
+            type="button"
             onClick={() => setModalOpen(true)}
-            style={{ padding: '8px 18px', background: '#06b6d4', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
           >
-            <Plus style={{ width: 16, height: 16 }} /> Thêm liên kết
+            <PlusCircle className="h-4 w-4" />
+            Thêm liên kết mã vạch
           </button>
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div style={{ marginBottom: 16, position: 'relative', maxWidth: 400 }}>
-        <Search style={{ position: 'absolute', left: 12, top: 10, width: 16, height: 16, color: '#94a3b8' }} />
-        <input
-          type="text"
-          placeholder="Tìm mã vạch, SKU, tên sản phẩm..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ width: '100%', height: 36, paddingLeft: 36, paddingRight: 12, borderRadius: 10, border: '1px solid #cbd5e1', fontSize: 13, outline: 'none', background: 'white' }}
-        />
+      {/* Metric Cards Header */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{mappings.length} TỔNG MÃ VẠCH</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">{uniqueProductIds.size} SẢN PHẨM KHÁC NHAU</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">SẴN SÀNG QUÉT</p>
+        </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
+          <p className="text-lg font-black text-cyan-700 uppercase">WMS SYNCED</p>
+        </div>
       </div>
 
-      {/* Table */}
-      <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden', background: 'white' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ background: '#f8fafc' }}>
-            <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', width: 60 }}>STT</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Mã vạch ngoại lệ</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>SKU Nội bộ</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Tên Sản Phẩm Liên Kết</th>
-              <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', width: 100 }}>Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Đang tải...</td>
+      {/* Search and Filters */}
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
+            placeholder="Tìm theo mã vạch phụ, mã SKU nội bộ, tên sản phẩm..."
+          />
+        </div>
+      </div>
+
+      {/* Table Section */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] border-collapse bg-white">
+            <thead className="bg-slate-50">
+              <tr className="border-b border-slate-200">
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">
+                  STT
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">
+                  Mã vạch ngoại lệ / Nhà cung cấp
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">
+                  Mã SKU Nội Bộ
+                </th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-700">
+                  Tên Sản Phẩm Liên Kết System
+                </th>
+                <th className="sticky right-0 w-28 border-l border-slate-200 bg-white px-3 py-4 text-center text-sm font-black uppercase text-slate-700 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                  Thao tác
+                </th>
               </tr>
-            ) : filtered.length === 0 ? (
-              <tr>
-                <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Không tìm thấy liên kết nào.</td>
-              </tr>
-            ) : (
-              filtered.map((m, index) => (
-                <tr key={m.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>{index + 1}</td>
-                  <td style={{ padding: '14px 16px', fontSize: 14, fontWeight: 800, color: '#06b6d4', fontFamily: 'monospace' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <ScanLine style={{ width: 16, height: 16 }} />
-                      {m.barcode}
-                    </div>
-                  </td>
-                  <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: '#475569' }}>
-                    {m.product?.internalSku || '-'}
-                  </td>
-                  <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
-                    {m.product?.name || 'Sản phẩm đã bị xóa'}
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                    <button
-                      onClick={() => handleDelete(m.id, m.barcode)}
-                      style={{ padding: 6, border: 'none', background: '#fef2f2', color: '#dc2626', borderRadius: 8, cursor: 'pointer' }}
-                      title="Xóa liên kết"
-                    >
-                      <Trash2 style={{ width: 16, height: 16 }} />
-                    </button>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                    Đang tải danh sách ánh xạ mã vạch...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                    Không tìm thấy liên kết mã vạch nào.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((m, index) => (
+                  <tr key={m.id} className="border-b border-slate-200 transition hover:bg-cyan-50/50">
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                      {index + 1}
+                    </td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-cyan-600 font-mono">
+                      <div className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-50 px-3 py-1 border border-cyan-200">
+                        <ScanLine className="h-4 w-4 text-cyan-600" />
+                        <span>{m.barcode}</span>
+                      </div>
+                    </td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-800 font-mono">
+                      {m.product?.internalSku || '-'}
+                    </td>
+                    <td className="border-x border-slate-200 px-3 py-4 text-left text-sm font-bold text-slate-900">
+                      {m.product?.name || <span className="text-slate-400 font-normal italic">Sản phẩm đã bị xóa</span>}
+                    </td>
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                      <div className="flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(m.id, m.barcode)}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition hover:bg-red-100 hover:text-red-700"
+                          title="Xóa liên kết"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Modal Add New Mapping */}
       {modalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
-          <div style={{ width: '100%', maxWidth: 460, background: 'white', borderRadius: 16, padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Thêm liên kết mã vạch</h3>
-              <button onClick={() => setModalOpen(false)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#64748b' }}>
-                <X style={{ width: 20, height: 20 }} />
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
+                  <Link2 className="h-5 w-5" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Thêm liên kết mã vạch ngoại lệ</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+              >
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Modal Body Form */}
+            <form onSubmit={handleCreate} className="p-6 space-y-4">
               <div>
-                <label style={{ fontSize: 13, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 6 }}>
-                  Mã vạch nhà cung cấp / mã lạ <span style={{ color: '#ef4444' }}>*</span>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Mã vạch phụ / mã vạch NCC <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="Nhập mã vạch lạ..."
-                  value={newBarcode}
-                  onChange={(e) => setNewBarcode(e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 14, outline: 'none' }}
-                />
+                <div className="relative">
+                  <ScanLine className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Nhập hoặc quét mã vạch lạ..."
+                    value={newBarcode}
+                    onChange={(e) => setNewBarcode(e.target.value)}
+                    required
+                    className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
               </div>
 
               <div>
-                <label style={{ fontSize: 13, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 6 }}>
-                  Chọn sản phẩm hệ thống <span style={{ color: '#ef4444' }}>*</span>
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Chọn sản phẩm hệ thống liên kết <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={selectedProductId}
                   onChange={(e) => setSelectedProductId(e.target.value)}
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 14, outline: 'none', background: 'white' }}
+                  required
+                  className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
                 >
-                  <option value="">-- Chọn sản phẩm --</option>
+                  <option value="">-- Chọn sản phẩm từ danh mục --</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.internalSku} - {p.name}
@@ -247,22 +341,23 @@ export default function BarcodeMappingsPage() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 12 }}>
+              <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-100 pt-4">
                 <button
+                  type="button"
                   onClick={() => setModalOpen(false)}
-                  style={{ padding: '8px 16px', borderRadius: 8, background: 'white', border: '1px solid #cbd5e1', color: '#475569', fontWeight: 600, cursor: 'pointer' }}
+                  className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
                 >
                   Hủy
                 </button>
                 <button
-                  onClick={handleCreate}
+                  type="submit"
                   disabled={saving}
-                  style={{ padding: '8px 20px', borderRadius: 8, background: '#06b6d4', border: 'none', color: 'white', fontWeight: 700, cursor: 'pointer' }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-50"
                 >
                   {saving ? 'Đang lưu...' : 'Lưu liên kết'}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}
