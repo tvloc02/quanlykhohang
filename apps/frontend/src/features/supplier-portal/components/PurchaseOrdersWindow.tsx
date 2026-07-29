@@ -680,52 +680,83 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
   const selectedReceived = displayReceipt ? sumReceived(displayReceipt) : 0;
   const selectedRate = selectedExpected > 0 ? Math.min(100, Math.round((selectedReceived / selectedExpected) * 100)) : 0;
 
+  const totalPoValue = receipts.reduce((sum, receipt) => {
+    const receiptAmount = (receipt.details || []).reduce(
+      (dSum, detail) => dSum + (detail.expectedQty || 0) * (detail.unitPrice || 0),
+      0,
+    );
+    return sum + receiptAmount;
+  }, 0);
+
   if (compact) {
     return (
       <div className="flex h-full flex-col gap-3">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <p className="text-xs font-black uppercase text-amber-600">Chờ nhập kho</p>
-            <p className="mt-2 text-2xl font-black text-amber-700">{waitingCount}</p>
+        {/* Metric Cards Header */}
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Chờ nhập kho</p>
+            <p className="mt-1 text-xl font-bold text-amber-900">{waitingCount}</p>
           </div>
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-            <p className="text-xs font-black uppercase text-blue-600">Đang giao</p>
-            <p className="mt-2 text-2xl font-black text-blue-700">{transitCount}</p>
+          <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Đang giao</p>
+            <p className="mt-1 text-xl font-bold text-blue-900">{transitCount}</p>
           </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-            <p className="text-xs font-black uppercase text-emerald-600">Hoàn thành</p>
-            <p className="mt-2 text-2xl font-black text-emerald-700">{completedCount}</p>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Hoàn thành</p>
+            <p className="mt-1 text-xl font-bold text-emerald-900">{completedCount}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-700">Tổng giá trị PO</p>
+            <p className="mt-1 text-sm font-bold text-cyan-900 truncate">{formatCurrency(totalPoValue)}</p>
           </div>
         </div>
 
-        <div className="space-y-2">
-          {receipts.slice(0, 3).map((receipt, index) => {
+        {/* PO List */}
+        <div className="space-y-2 overflow-y-auto max-h-[220px] pr-1">
+          {receipts.slice(0, 4).map((receipt, index) => {
             const expected = sumExpected(receipt);
             const received = sumReceived(receipt);
+            const poAmount = (receipt.details || []).reduce(
+              (dSum, detail) => dSum + (detail.expectedQty || 0) * (detail.unitPrice || 0),
+              0,
+            );
 
             return (
               <button
                 key={receipt.id}
                 type="button"
                 onClick={() => setSelectedId(receipt.id)}
-                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-cyan-300 hover:bg-cyan-50/50"
+                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-cyan-400 hover:bg-cyan-50/40 shadow-2xs"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-black text-slate-900">{receiptNumber(receipt, index)}</p>
-                  <span className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${statusClass(receipt.status)}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-900 text-sm">{receiptNumber(receipt, index)}</span>
+                    <span className="text-xs font-normal text-slate-500">
+                      ({(receipt.details || []).length} mặt hàng)
+                    </span>
+                  </div>
+                  <span className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${statusClass(receipt.status)}`}>
                     {statusLabel(receipt.status)}
                   </span>
                 </div>
-                <p className="mt-1 text-sm font-semibold text-slate-500">{supplierLabel(receipt)}</p>
-                <p className="mt-1 text-xs font-semibold text-slate-400">
-                  {formatDate(receipt.expectedDate)} · SL {formatQuantity(received)}/{formatQuantity(expected)}
-                </p>
+
+                <div className="mt-2 flex items-center justify-between text-xs border-t border-slate-100 pt-2">
+                  <div className="text-slate-600 font-normal">
+                    Dự kiến giao: <span className="font-semibold text-slate-800">{formatDate(receipt.expectedDate)}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold text-cyan-700">{formatCurrency(poAmount)}</span>
+                    <span className="ml-2 font-normal text-slate-500">
+                      SL: {formatQuantity(received)}/{formatQuantity(expected)}
+                    </span>
+                  </div>
+                </div>
               </button>
             );
           })}
 
           {receipts.length === 0 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm font-semibold text-slate-500">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm font-normal text-slate-500">
               Chưa có đơn mua hàng nào được đồng bộ.
             </div>
           )}

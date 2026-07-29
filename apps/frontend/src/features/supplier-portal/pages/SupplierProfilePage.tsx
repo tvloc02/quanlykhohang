@@ -414,10 +414,6 @@ export default function SupplierProfilePage() {
           phone: profileForm.phone.trim(),
           email: profileForm.email.trim(),
           address: profileForm.address.trim(),
-          leadTimeDays: Number(profileForm.leadTimeDays || 0),
-          paymentTerms: profileForm.paymentTerms.trim(),
-          currency: profileForm.currency.trim().toUpperCase() || 'VND',
-          priorityLevel: profileForm.priorityLevel,
         }),
       });
 

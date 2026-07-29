@@ -19,20 +19,55 @@ function statusClass(status: string) {
 export default function DistributorIntegrationWindow({ compact }: DistributorIntegrationWindowProps) {
   if (compact) {
     return (
-      <div className="grid h-full grid-cols-1 gap-3 md:grid-cols-2">
-        {connectors.map((connector) => (
-          <div key={connector.name} className="rounded-xl border border-slate-200 bg-white p-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-black text-slate-900">{connector.name}</p>
-              <span className={`rounded-lg border px-2.5 py-1 text-xs font-bold ${statusClass(connector.status)}`}>{connector.status}</span>
-            </div>
-            <p className="mt-2 text-sm font-semibold text-slate-500">{connector.type}</p>
-            <p className="mt-1 text-xs font-bold text-slate-400">{connector.lastSync}</p>
+      <div className="flex h-full flex-col gap-3">
+        {/* Metric Cards Header */}
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">API Gateway</p>
+            <p className="mt-1 text-sm font-bold text-emerald-900">REST API v2</p>
           </div>
-        ))}
-        <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3">
-          <p className="text-xs font-black uppercase text-cyan-600">Sandbox</p>
-          <p className="mt-2 text-sm font-bold text-cyan-800">Màn hình mô phỏng kết nối hệ thống nhà phân phối.</p>
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-700">Tần suất Sync</p>
+            <p className="mt-1 text-sm font-bold text-cyan-900">Tự động (Realtime)</p>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Kênh kết nối</p>
+            <p className="mt-1 text-sm font-bold text-blue-900">3 / 3 Hoạt động</p>
+          </div>
+          <div className="rounded-xl border border-purple-200 bg-purple-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-purple-700">Chuẩn bảo mật</p>
+            <p className="mt-1 text-sm font-bold text-purple-900">OAuth2 / TLS 1.3</p>
+          </div>
+        </div>
+
+        {/* Integration Cards Grid */}
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          {connectors.map((connector) => (
+            <div key={connector.name} className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-bold text-slate-900 text-sm">{connector.name}</p>
+                <span className={`rounded-lg border px-2 py-0.5 text-xs font-semibold ${statusClass(connector.status)}`}>
+                  {connector.status}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-2">
+                <span>Giao thức: <b className="text-slate-700">{connector.type}</b></span>
+                <span>Lần sync: <b className="text-slate-700">{connector.lastSync}</b></span>
+              </div>
+            </div>
+          ))}
+
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50/40 p-3 shadow-2xs">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-bold text-cyan-900 text-sm">Sandbox mô phỏng WMS</p>
+              <span className="rounded-lg border border-cyan-300 bg-cyan-100/80 px-2 py-0.5 text-xs font-bold text-cyan-800">
+                Active
+              </span>
+            </div>
+            <p className="mt-1.5 text-xs font-normal text-cyan-800">
+              Đang thử nghiệm luồng dữ liệu tự động giữa NCC & Hệ thống quản lý kho tổng.
+            </p>
+          </div>
         </div>
       </div>
     );
