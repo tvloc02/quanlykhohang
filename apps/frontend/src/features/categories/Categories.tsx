@@ -14,10 +14,7 @@ import {
     ChevronDown,
     History,
 } from 'lucide-react';
-const XLSX: any = (typeof window !== 'undefined' && (window as any).XLSX) || {
-  read: () => ({ SheetNames: [], Sheets: {} }),
-  utils: { sheet_to_json: () => [] },
-};
+import * as XLSX from 'xlsx';
 import Toast from '../../shared/components/Toast';
 import {
     CATALOG_CATEGORY_TYPES,
@@ -373,8 +370,12 @@ export default function CategoryManagement() {
             const rawRows = (XLSX.utils.sheet_to_json(sheet, { header: 1 }) || []) as any[];
             
             if (rawRows.length > 0) {
-                // Find header row dynamically
-                const headerRowIndex = rawRows.findIndex((r: any) => r && r.length > 0 && String(r[0] || '').toLowerCase().includes('mã') || String(r[1] || '').toLowerCase().includes('mã'));
+                const headerRowIndex = rawRows.findIndex((r: any) =>
+                    Array.isArray(r) && r.some((cell: any) => {
+                        const str = String(cell || '').trim().toLowerCase();
+                        return str.includes('mã') || str.includes('tên') || str.includes('danh mục');
+                    })
+                );
                 const headerRow = headerRowIndex >= 0 ? rawRows[headerRowIndex] : rawRows[0];
                 const actualRows = headerRowIndex >= 0 ? rawRows.slice(headerRowIndex + 1) : rawRows.slice(1);
 
@@ -579,20 +580,59 @@ export default function CategoryManagement() {
                 </div>
             </div>
 
-            {/* Metric Summary Cards */}
+            {/* Metric Summary Cards / Buttons */}
             <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-                <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-                    <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{categories.length}<br/>TỔNG DANH MỤC</p>
-                </div>
-                <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-                    <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{categories.filter((c) => c.status === 'active').length}<br/>ĐANG SỬ DỤNG</p>
-                </div>
-                <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-                    <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{categories.filter((c) => c.status === 'inactive').length}<br/>NGỪNG SỬ DỤNG</p>
-                </div>
-                <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-                    <p className="text-sm font-bold text-cyan-700 uppercase leading-tight text-center">{Object.values(productCounts).reduce((a, b) => a + b, 0)}<br/>SP LIÊN KẾT</p>
-                </div>
+                <button
+                    type="button"
+                    onClick={() => setStatusFilter('all')}
+                    className={`flex h-[72px] items-center justify-center rounded-xl border-2 px-4 shadow-sm transition-all hover:bg-cyan-50/80 ${
+                        statusFilter === 'all'
+                            ? 'border-cyan-500 bg-cyan-100/60 text-cyan-950 font-black'
+                            : 'border-cyan-400 bg-white text-cyan-800 font-extrabold hover:border-cyan-500'
+                    }`}
+                >
+                    <span className="text-sm font-black tracking-wide uppercase">
+                        {categories.length} TỔNG DANH MỤC
+                    </span>
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setStatusFilter('active')}
+                    className={`flex h-[72px] items-center justify-center rounded-xl border-2 px-4 shadow-sm transition-all hover:bg-cyan-50/80 ${
+                        statusFilter === 'active'
+                            ? 'border-cyan-500 bg-cyan-100/60 text-cyan-950 font-black'
+                            : 'border-cyan-400 bg-white text-cyan-800 font-extrabold hover:border-cyan-500'
+                    }`}
+                >
+                    <span className="text-sm font-black tracking-wide uppercase">
+                        {categories.filter((c) => c.status === 'active').length} DANH MỤC ĐANG SỬ DỤNG
+                    </span>
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setStatusFilter('inactive')}
+                    className={`flex h-[72px] items-center justify-center rounded-xl border-2 px-4 shadow-sm transition-all hover:bg-cyan-50/80 ${
+                        statusFilter === 'inactive'
+                            ? 'border-cyan-500 bg-cyan-100/60 text-cyan-950 font-black'
+                            : 'border-cyan-400 bg-white text-cyan-800 font-extrabold hover:border-cyan-500'
+                    }`}
+                >
+                    <span className="text-sm font-black tracking-wide uppercase">
+                        {categories.filter((c) => c.status === 'inactive').length} DANH MỤC NGỪNG SỬ DỤNG
+                    </span>
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => setStatusFilter('all')}
+                    className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-400 bg-white px-4 text-cyan-800 font-extrabold shadow-sm transition-all hover:bg-cyan-50/80 hover:border-cyan-500"
+                >
+                    <span className="text-sm font-black tracking-wide uppercase">
+                        {Object.values(productCounts).reduce((a, b) => a + b, 0)} SẢN PHẨM LIÊN KẾT
+                    </span>
+                </button>
             </div>
 
             <div className="mt-4 rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">

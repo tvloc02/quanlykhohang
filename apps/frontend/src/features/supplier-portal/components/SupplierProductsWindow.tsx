@@ -79,49 +79,66 @@ export default function SupplierProductsWindow({
   const paginatedLinks = filteredLinks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const primaryCount = links.filter((link) => link.isPrimary).length;
 
+  const totalStockQuantityCompact = links.reduce((sum, link) => sum + (link.quantity || 0), 0);
+  const totalSoldQuantityCompact = links.reduce((sum, link) => sum + (link.quantitySold || 0), 0);
+  const totalRevenueCompact = links.reduce((sum, link) => sum + (link.quantitySold || 0) * Number(link.purchasePrice || 0), 0);
+
   if (compact) {
     return (
       <div className="flex h-full flex-col gap-3">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-black uppercase text-slate-500">Tổng SP</p>
-            <p className="mt-2 text-2xl font-black text-slate-900">{links.length}</p>
+        {/* Metric Cards Header */}
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-700">Tổng mặt hàng</p>
+            <p className="mt-1 text-xl font-bold text-slate-900">{links.length}</p>
           </div>
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-            <p className="text-xs font-black uppercase text-emerald-600">NCC chính</p>
-            <p className="mt-2 text-2xl font-black text-emerald-700">{primaryCount}</p>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Tổng tồn kho</p>
+            <p className="mt-1 text-xl font-bold text-slate-900">{totalStockQuantityCompact}</p>
           </div>
-          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3">
-            <p className="text-xs font-black uppercase text-cyan-600">Tiền tệ</p>
-            <p className="mt-2 text-2xl font-black text-cyan-700">{profile?.currency || 'VND'}</p>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Đã bán ra</p>
+            <p className="mt-1 text-xl font-bold text-emerald-800">{totalSoldQuantityCompact}</p>
+          </div>
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-2.5 shadow-2xs">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-700">Thu nhập tích lũy</p>
+            <p className="mt-1 text-sm font-bold text-cyan-900 truncate">
+              {formatMoney(String(totalRevenueCompact), profile?.currency || 'VND')}
+            </p>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200">
-          <table className="w-full border-collapse bg-white">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="border-x border-slate-200 px-3 py-3 text-left text-xs font-black uppercase text-slate-600">Mặt hàng</th>
-                <th className="border-x border-slate-200 px-3 py-3 text-left text-xs font-black uppercase text-slate-600">Nhóm</th>
-                <th className="border-x border-slate-200 px-3 py-3 text-right text-xs font-black uppercase text-slate-600">Số lượng</th>
+
+        {/* Product Table */}
+        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+          <table className="w-full border-collapse">
+            <thead className="bg-slate-50 text-xs font-bold text-slate-600 uppercase">
+              <tr className="border-b border-slate-200">
+                <th className="px-3 py-2.5 text-left">Mặt hàng & Mã</th>
+                <th className="px-3 py-2.5 text-left">Loại hàng</th>
+                <th className="px-3 py-2.5 text-right">Giá nhập</th>
+                <th className="px-3 py-2.5 text-right">Tồn kho</th>
+                <th className="px-3 py-2.5 text-right">Đã bán</th>
               </tr>
             </thead>
-            <tbody>
-              {links.slice(0, 4).map((link) => (
-                <tr key={link.id} className="border-t border-slate-200">
-                  <td className="border-x border-slate-200 px-3 py-3 text-sm">
-                    <p className="font-black text-slate-800">{link.product?.internalSku || '-'}</p>
-                    <p className="truncate font-semibold text-slate-600">{link.product?.name || '-'}</p>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {links.slice(0, 5).map((link) => (
+                <tr key={link.id} className="hover:bg-slate-50/80 transition">
+                  <td className="px-3 py-2">
+                    <p className="font-bold text-slate-900">{link.product?.internalSku || '-'}</p>
+                    <p className="truncate font-normal text-slate-600 max-w-[140px]">{link.product?.name || '-'}</p>
                   </td>
-                  <td className="border-x border-slate-200 px-3 py-3 text-sm font-semibold text-slate-600">{link.itemGroup || '-'}</td>
-                  <td className="border-x border-slate-200 px-3 py-3 text-right text-sm font-bold text-slate-700">
-                    {link.quantity ?? 0}
+                  <td className="px-3 py-2 font-normal text-slate-600">{link.itemGroup || '-'}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-cyan-700">
+                    {formatMoney(String(link.purchasePrice || 0), profile?.currency || 'VND')}
                   </td>
+                  <td className="px-3 py-2 text-right font-bold text-slate-800">{link.quantity ?? 0}</td>
+                  <td className="px-3 py-2 text-right font-bold text-emerald-700">{link.quantitySold ?? 0}</td>
                 </tr>
               ))}
               {links.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-sm font-semibold text-slate-500">
-                    Chưa có mặt hàng cung cấp.
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm font-normal text-slate-500">
+                    Chưa có mặt hàng cung cấp trong danh mục.
                   </td>
                 </tr>
               )}
