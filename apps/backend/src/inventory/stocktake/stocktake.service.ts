@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Stocktake } from './entities/stocktake.entity';
 import { StocktakeDetail } from './entities/stocktake-detail.entity';
@@ -64,7 +64,7 @@ export class StocktakeService {
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
     @InjectRepository(Product) private productRepo: Repository<Product>,
     private readonly notificationsService: NotificationsService,
-    private readonly dataSource: DataSource,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   // ─── CRUD ──────────────────────────────────────────────────────

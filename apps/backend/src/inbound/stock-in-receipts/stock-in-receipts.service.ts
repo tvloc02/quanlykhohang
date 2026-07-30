@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { AuditLogService } from '../../audit-log/audit-log.service';
 import { Product } from '../../entities/product.entity';
@@ -50,7 +50,7 @@ export class StockInReceiptsService {
     @InjectRepository(StockInOrder) private readonly stockInOrderRepo: Repository<StockInOrder>,
     private readonly auditLogService: AuditLogService,
     private readonly notificationsService: NotificationsService,
-    private readonly dataSource: DataSource,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async findAll() {
