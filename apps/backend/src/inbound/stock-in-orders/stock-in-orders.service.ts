@@ -457,7 +457,9 @@ export class StockInOrdersService {
                   name: order.sourcePurchaseOrder.supplier.name,
                   supplierCode: order.sourcePurchaseOrder.supplier.supplierCode,
                 }
-              : null,
+              : order.sourcePurchaseOrder.supplierName
+                ? { id: '', name: order.sourcePurchaseOrder.supplierName, supplierCode: '' }
+                : null,
           }
         : null,
       status: order.status,
