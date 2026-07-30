@@ -7,6 +7,7 @@ import {
   TrendingDown,
   Archive,
   FileText,
+  FileCheck,
   Settings,
   Mail,
   Cpu,
@@ -52,6 +53,19 @@ interface SidebarProps {
 
 const menuItems = [
   { icon: Home, label: 'Trang chủ', path: '/dashboard', badge: null },
+  {
+    icon: FileCheck,
+    label: 'Lập chứng từ',
+    path: '/documents',
+    badge: null,
+    allowedRoles: ['admin', 'manager', 'staff'],
+    children: [
+      { icon: FileText, label: 'Hóa đơn bán hàng', path: '/documents/sales-invoice' },
+      { icon: TrendingDown, label: 'Phiếu nhập kho', path: '/documents/stock-in-note' },
+      { icon: TrendingUp, label: 'Phiếu xuất kho', path: '/documents/stock-out-note' },
+      { icon: Truck, label: 'Phiếu điều chuyển', path: '/documents/transfer-note' },
+    ],
+  },
   { icon: Layers, label: 'Danh mục', path: '/categories', badge: null, allowedRoles: ['manager', 'staff'] },
   {
     icon: Package,

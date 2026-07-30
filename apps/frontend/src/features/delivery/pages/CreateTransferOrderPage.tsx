@@ -1,6 +1,7 @@
 import React from 'react';
-import { Clock3, Filter, PlusCircle, Search, Trash2, Truck } from 'lucide-react';
+import { Clock3, FileText, Filter, PlusCircle, Search, Trash2, Truck } from 'lucide-react';
 import TransferOrderModal from '../components/TransferOrderModal';
+import InternalShippingNoteModal from '../components/InternalShippingNoteModal';
 import { deliveryApi, type TransferOrder } from '../api/deliveryApi';
 
 function formatDateTime(value?: string | null) {
@@ -25,6 +26,8 @@ export default function CreateTransferOrderPage() {
   const [pageSize, setPageSize] = React.useState(20);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [showModal, setShowModal] = React.useState(false);
+  const [showShippingModal, setShowShippingModal] = React.useState(false);
+  const [selectedOrder, setSelectedOrder] = React.useState<TransferOrder | null>(null);
   const [toast, setToast] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const loadOrders = React.useCallback(async () => {
@@ -90,17 +93,31 @@ export default function CreateTransferOrderPage() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Truck className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Phiếu điều chuyển</h1>
+            <h1 className="text-lg font-bold tracking-tight text-white">Lập Lệnh Điều Chuyển Kho</h1>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Tạo phiếu điều chuyển
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Lập lệnh điều chuyển
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedOrder(null);
+              setShowShippingModal(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-emerald-700"
+          >
+            <FileText className="h-4 w-4" />
+            In phiếu điều chuyển
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -198,11 +215,22 @@ export default function CreateTransferOrderPage() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
+                          onClick={() => {
+                            setSelectedOrder(order);
+                            setShowShippingModal(true);
+                          }}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-emerald-500 bg-white text-emerald-600 shadow-sm transition hover:bg-emerald-50"
+                          title="In / Xem phiếu điều chuyển"
+                        >
+                          <FileText className="h-4 w-4 text-emerald-600" strokeWidth={2.2} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleDelete(order.id)}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-400 bg-white text-red-500 shadow-sm transition hover:bg-red-50"
                           title="Xóa phiếu"
                         >
-                          <Trash2 className="h-4 w-4" strokeWidth={2.2} />
+                          <Trash2 className="h-4 w-4 text-red-500" strokeWidth={2.2} />
                         </button>
                       </div>
                     </td>
@@ -304,6 +332,36 @@ export default function CreateTransferOrderPage() {
         onClose={() => setShowModal(false)}
         onSaved={loadOrders}
         setToast={(nextToast) => setToast(nextToast)}
+      />
+
+      <InternalShippingNoteModal
+        open={showShippingModal}
+        onClose={() => {
+          setShowShippingModal(false);
+          setSelectedOrder(null);
+        }}
+        initialData={
+          selectedOrder
+            ? {
+                commandNo: `12/LDD-${selectedOrder.transferNo || 'KTTU'}`,
+                sourceAddress: selectedOrder.sourceWarehouse || 'Kho tổng Hà Nội',
+                receiverName: selectedOrder.createdBy || 'Nguyễn Thị Mai',
+                destinationAddress: selectedOrder.destinationWarehouse || 'Kho chi nhánh TP.HCM',
+                items: selectedOrder.items && selectedOrder.items.length > 0
+                  ? selectedOrder.items.map((item, idx) => ({
+                      id: item.id || String(idx + 1),
+                      productName: item.productName || 'Sản phẩm điều chuyển',
+                      productCode: item.productCode || 'SKU-001',
+                      unit: item.unit || 'Cái',
+                      quantityExported: Number(item.quantity) || 1,
+                      quantityImported: Number(item.quantity) || 1,
+                      price: 10000000,
+                    }))
+                  : undefined,
+              }
+            : undefined
+        }
+        setToast={setToast}
       />
     </div>
   );

@@ -95,22 +95,23 @@ export default function TransferOrderModal({
     const userName = storedUser.fullName || storedUser.email || 'Nhân viên kho';
 
     if (request) {
-      setTransferNo(`TRF-${request.requestNumber.replace(/^REQ-?/i, '')}`);
+      const reqNum = request.requestNumber || '';
+      setTransferNo(`TRF-${reqNum.replace(/^REQ-?/i, '') || Date.now().toString().slice(-4)}`);
       setSourceWarehouse(request.sourceWarehouse || '');
       setDestinationWarehouse(request.destinationWarehouse || '');
       setScheduledDate(todayValue());
-      setNote(`Lập phiếu từ yêu cầu ${request.requestNumber}${request.description ? ` - ${request.description}` : ''}`);
+      setNote(`Lập phiếu từ yêu cầu ${reqNum}${request.description ? ` - ${request.description}` : ''}`);
       setCreatedBy(request.createdBy || userName);
       setStatus('APPROVED');
       setItems(
-        request.items.length
+        Array.isArray(request.items) && request.items.length > 0
           ? request.items.map((item) =>
               makeRow({
                 id: item.id,
-                productCode: item.productCode,
-                productName: item.productName,
-                unit: item.unit,
-                quantity: String(item.quantity),
+                productCode: item.productCode || '',
+                productName: item.productName || '',
+                unit: item.unit || 'Cái',
+                quantity: String(item.quantity || 1),
               })
             )
           : [makeRow()]
