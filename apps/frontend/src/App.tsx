@@ -49,6 +49,12 @@ import BarcodeMappingsPage from './features/inbound/pages/BarcodeMappingsPage';
 import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
 import ErpSyncStatusPage from './features/erp-status/pages/ErpSyncStatusPage';
 
+import DocumentsPage from './features/documents/DocumentsPage';
+import SalesInvoiceDocPage from './features/documents/pages/SalesInvoiceDocPage';
+import StockInDocPage from './features/documents/pages/StockInDocPage';
+import StockOutDocPage from './features/documents/pages/StockOutDocPage';
+import TransferDocPage from './features/documents/pages/TransferDocPage';
+
 function getStoredUser() {
   try {
     return JSON.parse(localStorage.getItem('user') || '{}') as { role?: string };
@@ -525,6 +531,56 @@ function App() {
                 <Reports />
               </MainLayout>
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/documents"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+              <MainLayout>
+                <DocumentsPage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/documents/sales-invoice"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+              <MainLayout>
+                <SalesInvoiceDocPage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/documents/stock-in-note"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+              <MainLayout>
+                <StockInDocPage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/documents/stock-out-note"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+              <MainLayout>
+                <StockOutDocPage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/documents/transfer-note"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+              <MainLayout>
+                <TransferDocPage />
+              </MainLayout>
+            </RoleRoute>
           }
         />
         <Route

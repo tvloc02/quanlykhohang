@@ -1,7 +1,8 @@
 import React from 'react';
-import { Plus, Search, Filter, Truck, CheckCircle, Clock, AlertCircle, ArrowRight } from 'lucide-react';
+import { Plus, Search, Filter, Truck, CheckCircle, Clock, AlertCircle, ArrowRight, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import TransferOrderModal from './components/TransferOrderModal';
+import InternalShippingNoteModal from './components/InternalShippingNoteModal';
 import { deliveryApi, type TransferOrder } from './api/deliveryApi';
 
 const statusConfig: Record<string, { color: string; label: string }> = {
@@ -26,6 +27,8 @@ export default function Delivery() {
   const [pageSize, setPageSize] = React.useState(20);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [showModal, setShowModal] = React.useState(false);
+  const [showShippingModal, setShowShippingModal] = React.useState(false);
+  const [selectedOrder, setSelectedOrder] = React.useState<TransferOrder | null>(null);
   const [toast, setToast] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const loadOrders = React.useCallback(async () => {
@@ -80,25 +83,28 @@ export default function Delivery() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Truck className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Điều Chuyển</h1>
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Điều Chuyển Kho</h1>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedOrder(null);
+              setShowShippingModal(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-emerald-700"
+          >
+            <FileText className="h-4 w-4" />
+            In phiếu điều chuyển
+          </button>
           <button
             type="button"
             onClick={() => setShowModal(true)}
             className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
           >
             <Plus className="h-4 w-4" />
-            Lập phiếu điều chuyển
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/delivery/create-transfer-order')}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-5 py-2.5 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-          >
-            <ArrowRight className="h-4 w-4" />
-            Xem danh sách
+            Lập lệnh điều chuyển
           </button>
         </div>
       </div>
@@ -150,19 +156,20 @@ export default function Delivery() {
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho nhập</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày lập</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Trạng thái</th>
+                <th className="sticky right-0 w-32 border-x border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Thao tác</th>
               </tr>
             </thead>
             <tbody>
               {paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     <p className="mb-1 text-base font-bold text-slate-800">Chưa có phiếu điều chuyển</p>
                     Hãy tạo phiếu điều chuyển bằng popup để bắt đầu.
                   </td>
                 </tr>
               ) : (
                 paginatedOrders.map((order, index) => (
-                  <tr key={order.id} className="border-b border-slate-200 transition hover:bg-cyan-50/50">
+                  <tr key={order.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{startIndex + index}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.transferNo}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.requestNumber || '-'}</td>
@@ -173,6 +180,21 @@ export default function Delivery() {
                       <span className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold ${statusConfig[order.status]?.color || ''}`}>
                         {statusConfig[order.status]?.label || order.status}
                       </span>
+                    </td>
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedOrder(order);
+                            setShowShippingModal(true);
+                          }}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-emerald-500 bg-white text-emerald-600 shadow-sm transition hover:bg-emerald-50"
+                          title="In / Xem phiếu điều chuyển"
+                        >
+                          <FileText className="h-4 w-4 text-emerald-600" strokeWidth={2.2} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -272,6 +294,36 @@ export default function Delivery() {
         onClose={() => setShowModal(false)}
         onSaved={loadOrders}
         setToast={(nextToast) => setToast(nextToast)}
+      />
+
+      <InternalShippingNoteModal
+        open={showShippingModal}
+        onClose={() => {
+          setShowShippingModal(false);
+          setSelectedOrder(null);
+        }}
+        initialData={
+          selectedOrder
+            ? {
+                commandNo: `12/LDD-${selectedOrder.transferNo || 'KTTU'}`,
+                sourceAddress: selectedOrder.sourceWarehouse || 'Kho tổng Hà Nội',
+                receiverName: selectedOrder.createdBy || 'Nguyễn Thị Mai',
+                destinationAddress: selectedOrder.destinationWarehouse || 'Kho chi nhánh TP.HCM',
+                items: selectedOrder.items && selectedOrder.items.length > 0
+                  ? selectedOrder.items.map((item, idx) => ({
+                      id: item.id || String(idx + 1),
+                      productName: item.productName || 'Sản phẩm điều chuyển',
+                      productCode: item.productCode || 'SKU-001',
+                      unit: item.unit || 'Cái',
+                      quantityExported: Number(item.quantity) || 1,
+                      quantityImported: Number(item.quantity) || 1,
+                      price: 10000000,
+                    }))
+                  : undefined,
+              }
+            : undefined
+        }
+        setToast={setToast}
       />
     </div>
   );
