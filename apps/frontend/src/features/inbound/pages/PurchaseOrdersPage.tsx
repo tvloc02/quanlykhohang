@@ -110,7 +110,7 @@ type PurchaseOrder = {
   items: number;
 };
 
-type OrderStatus = 'CREATED' | 'APPROVED' | 'SUPPLIER_APPROVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED';
+type OrderStatus = 'DRAFT' | 'CREATED' | 'APPROVED' | 'SUPPLIER_APPROVED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED' | 'REJECTED';
 type TimeFilter = 'this-month' | '7-days' | 'all';
 type ModalMode = 'create' | 'edit' | 'delete' | 'view' | null;
 
@@ -346,7 +346,7 @@ function statusLabel(status?: string) {
     case 'CANCELLED':
       return 'Đã hủy';
     case 'REJECTED':
-      return 'Từ chối / Phản hồi giá';
+      return 'Phản hồi giá';
     default:
       return 'Đơn đặt hàng mới';
   }
@@ -367,7 +367,7 @@ function statusClass(status?: string) {
     case 'CANCELLED':
       return 'border-red-200 bg-red-50 text-red-600';
     case 'REJECTED':
-      return 'border-red-200 bg-red-50 text-red-600';
+      return 'border-amber-200 bg-amber-50 text-amber-700';
     default:
       return 'border-amber-200 bg-amber-50 text-amber-700';
   }
@@ -957,12 +957,17 @@ function PurchaseOrdersPageContent() {
         unitPrice: Number(item.unitPrice || 0),
       }));
 
+    let submitStatus = form.status;
+    if (modalMode === 'edit' && (selectedOrder?.status === 'REJECTED' || selectedOrderDetails?.status === 'REJECTED') && submitStatus === 'REJECTED') {
+      submitStatus = 'CREATED';
+    }
+
     const payload: any = {
       poNumber: form.poNumber.trim() || undefined,
       supplierId: form.supplierId,
       orderDate: form.orderDate,
       expectedDate: form.expectedDate,
-      status: form.status,
+      status: submitStatus,
       description: form.description.trim() || undefined,
       creatorName: form.creatorName || undefined,
       creatorPhone: form.creatorPhone || undefined,
@@ -1332,7 +1337,7 @@ function PurchaseOrdersPageContent() {
 
   const canEditOrder = (order: PurchaseOrder) => {
     const status = (order.status || '').toUpperCase();
-    return status === 'DRAFT' || status === 'REJECTED';
+    return ['DRAFT', 'REJECTED', 'CREATED', 'NEGOTIATING', 'SUPPLIER_REJECTED'].includes(status);
   };
 
   const canDelete = (order: PurchaseOrder) => {
@@ -1637,17 +1642,6 @@ function PurchaseOrdersPageContent() {
                               openView(order);
                             }}
                             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Thêm mới / Chi tiết"
-                          >
-                            <Plus size={18} strokeWidth={2.5} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openView(order);
-                            }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
                             title="Lịch sử đơn hàng"
                           >
                             <History size={18} strokeWidth={2.5} />
@@ -1661,7 +1655,7 @@ function PurchaseOrdersPageContent() {
                             }}
                             disabled={!canEditOrder(order)}
                             className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${canEditOrder(order) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
-                            title="Sửa"
+                            title={order.status === 'REJECTED' ? 'Điều chỉnh giá / Sửa đơn' : 'Sửa'}
                           >
                             <Pencil size={18} strokeWidth={2.5} />
                           </button>
@@ -1713,7 +1707,7 @@ function PurchaseOrdersPageContent() {
                                 <MoreHorizontal size={18} strokeWidth={2.5} />
                               </button>
                               {activeDropdown === order.id && (
-                                <div className={`absolute right-0 ${index >= paginatedOrders.length - 4 ? 'bottom-full mb-2' : 'top-full mt-2'} w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left`}>
+                                <div className={`absolute right-0 ${index > 0 && index >= paginatedOrders.length - 3 ? 'bottom-full mb-2' : 'top-full mt-2'} w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left`}>
                                   <button
                                     type="button"
                                     disabled={order.status !== 'DRAFT'}
@@ -1833,6 +1827,7 @@ function PurchaseOrdersPageContent() {
         users={users}
         scannedProducts={scannedProducts}
         saving={saving}
+        onApproveOrder={() => selectedOrder && approveOrder(selectedOrder)}
         customActions={
           modalMode === ('create_order' as any) ? (
             <div className="flex gap-3">

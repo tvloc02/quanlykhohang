@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, User as UserIcon, Building2, Clock3, CheckCircle2, Printer, FileText } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, Calendar, Building2, CheckCircle2, Printer } from 'lucide-react';
 const API_BASE_URL = 'http://localhost:3000/api';
 
 function authHeaders() {
@@ -17,6 +18,7 @@ function parseMoney(value: string | number) {
 function formatMoney(value: number) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value || 0);
 }
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat('vi-VN').format(value || 0);
 }
@@ -106,7 +108,6 @@ export function CreateStockInReceiptModal({
   const [saving, setSaving] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   
-  const [users, setUsers] = useState<any[]>([]);
   const [sourceData, setSourceData] = useState<any>(null);
   const warehouses = React.useMemo(() => {
     try {
@@ -120,14 +121,38 @@ export function CreateStockInReceiptModal({
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 16));
   const [description, setDescription] = useState('');
   const [delivererName, setDelivererName] = useState('');
+  const [delivererPhone, setDelivererPhone] = useState('');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [invoiceDate, setInvoiceDate] = useState('');
   const [accountDebit, setAccountDebit] = useState('156');
   const [accountCredit, setAccountCredit] = useState('331');
   const [status, setStatus] = useState<'DRAFT' | 'ASSIGNED' | 'CHECKED' | 'POSTED'>('DRAFT');
-  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
-  const [staffCounts, setStaffCounts] = useState<Record<string, number>>({});
   const [items, setItems] = useState<any[]>([]);
+
+  // Bóc tách Tên tài xế & SĐT riêng biệt từ Ghi chú
+  useEffect(() => {
+    if (sourceData) {
+      const rawNote = sourceData.orderDescription || sourceData.description || '';
+      const driverMatch = rawNote.match(/(?:Tài xế|Người giao|Lái xe):\s*([^|;\n]+)/i);
+      const phoneMatch = rawNote.match(/(?:SĐT|SDT|Điện thoại|Phone):\s*([0-9\s+]+)/i);
+
+      if (driverMatch && driverMatch[1]) {
+        setDelivererName(driverMatch[1].trim());
+      } else if (sourceData.supplier?.contactPerson) {
+        setDelivererName(sourceData.supplier.contactPerson);
+      } else if (sourceData.supplier?.name) {
+        setDelivererName(sourceData.supplier.name);
+      }
+
+      if (phoneMatch && phoneMatch[1]) {
+        setDelivererPhone(phoneMatch[1].trim());
+      } else if (sourceData.supplier?.phone) {
+        setDelivererPhone(sourceData.supplier.phone);
+      } else if (sourceData.creatorPhone) {
+        setDelivererPhone(sourceData.creatorPhone);
+      }
+    }
+  }, [sourceData]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -136,8 +161,8 @@ export function CreateStockInReceiptModal({
       setReceiptDate(new Date().toISOString().slice(0, 16));
       setDescription('');
       setStatus('DRAFT');
-      setSelectedStaffIds([]);
-      setStaffCounts({});
+      setDelivererName('');
+      setDelivererPhone('');
       setItems([]);
       return;
     }
@@ -145,13 +170,7 @@ export function CreateStockInReceiptModal({
     const load = async () => {
       setLoading(true);
       try {
-        const uRes = await fetch(`${API_BASE_URL}/users`, { headers: authHeaders() });
-        if (uRes.ok) {
-          const uData = await uRes.json();
-          setUsers(Array.isArray(uData) ? uData : uData.data || []);
-        }
-
-        let data = null;
+        let data: any = null;
         if (receiptId && (mode === 'edit' || mode === 'view')) {
           const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts/${receiptId}`, { headers: authHeaders() });
           if (res.ok) {
@@ -161,7 +180,6 @@ export function CreateStockInReceiptModal({
             if (data.receiptDate) setReceiptDate(new Date(data.receiptDate).toISOString().slice(0, 16));
             setDescription(data.description || '');
             setStatus(data.status || 'DRAFT');
-            setSelectedStaffIds(data.assignedStaffIds || data.staffs?.map((s: any) => s.id) || []);
             
             const mappedItems = (data.details || []).map((d: any) => ({
               id: d.id,
@@ -186,16 +204,26 @@ export function CreateStockInReceiptModal({
 
           if (data) {
             setSourceData(data);
-            const mappedItems = (data.details || []).map((d: any) => ({
-              id: d.id,
-              productId: d.product?.id,
-              product: d.product,
-              warehouseCode: d.warehouseCode || 'KHO-NVL',
-              expectedQty: String(d.expectedQty || d.orderedQty || 0),
-              receivedQty: String(d.receivedQty || 0),
-              inventoryQty: String(d.expectedQty || d.orderedQty || 0),
-              unitPrice: String(d.unitPrice || 0),
-            }));
+            const mappedItems = (data.details || []).map((d: any) => {
+              const expected = d.expectedQty !== undefined && d.expectedQty !== null ? d.expectedQty : (d.orderedQty || 0);
+              const received = d.receivedQty !== undefined && d.receivedQty !== null && Number(d.receivedQty) > 0 
+                ? d.receivedQty 
+                : expected;
+              const inventory = d.quantity !== undefined && d.quantity !== null && Number(d.quantity) > 0 
+                ? d.quantity 
+                : received;
+
+              return {
+                id: d.id,
+                productId: d.product?.id,
+                product: d.product,
+                warehouseCode: d.warehouseCode || data.warehouseCode || 'KHO-NVL',
+                expectedQty: String(expected),
+                receivedQty: String(received),
+                inventoryQty: String(inventory),
+                unitPrice: String(d.unitPrice || 0),
+              };
+            });
             setItems(mappedItems);
           }
         }
@@ -210,10 +238,6 @@ export function CreateStockInReceiptModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedStaffIds.length === 0) {
-      alert('Vui lòng chọn ít nhất một nhân viên kiểm kê.');
-      return;
-    }
     setSaving(true);
     try {
       const payloadItems = items.map((item: any) => ({
@@ -221,7 +245,7 @@ export function CreateStockInReceiptModal({
         warehouseCode: item.warehouseCode,
         orderedQty: Number(item.expectedQty) || 0,
         receivedQty: Number(item.receivedQty) || 0,
-        quantity: item.inventoryQty !== undefined ? Number(item.inventoryQty) : (Number(item.expectedQty) || 0),
+        quantity: item.inventoryQty !== undefined ? Number(item.inventoryQty) : (Number(item.receivedQty) || 0),
         unitPrice: Number(item.unitPrice) || 0,
       }));
 
@@ -233,9 +257,8 @@ export function CreateStockInReceiptModal({
         sourceReferenceNo: sourceData?.poNumber || sourceData?.orderCode,
         receiptDate: new Date(receiptDate).toISOString(),
         description,
-        assignedStaffIds: selectedStaffIds,
         items: payloadItems,
-        warehouseCode: items[0]?.warehouseCode || 'KHO-NVL',
+        warehouseCode: items[0]?.warehouseCode || sourceData?.warehouseCode || 'KHO-NVL',
       };
 
       let endpoint = '';
@@ -269,12 +292,6 @@ export function CreateStockInReceiptModal({
     }
   };
 
-  const updateItem = (index: number, changes: any) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], ...changes };
-    setItems(newItems);
-  };
-
   if (!isOpen) return null;
 
   const totalAmount = items.reduce((sum, item) => sum + (parseMoney(item.expectedQty) * parseMoney(item.unitPrice)), 0);
@@ -293,134 +310,148 @@ export function CreateStockInReceiptModal({
     'CANCELLED': 'Đã hủy',
   };
 
-  const warehouseObj = warehouses.find((w: any) => w.code === sourceData?.warehouseCode || w.id === sourceData?.warehouseCode);
-  const warehouseName = warehouseObj ? `${warehouseObj.code} - ${warehouseObj.name}` : sourceData?.warehouseCode || '-';
+  // Smart Warehouse Name Resolution
+  const resolvedWarehouseCode = sourceData?.warehouseCode || sourceData?.details?.[0]?.warehouseCode || sourceData?.items?.[0]?.warehouseCode;
+  const warehouseObj = warehouses.find((w: any) => w.code === resolvedWarehouseCode || w.id === resolvedWarehouseCode);
+  const warehouseName = sourceData?.warehouse?.name 
+    ? `${sourceData.warehouse.code || resolvedWarehouseCode || ''} - ${sourceData.warehouse.name}`.replace(/^- /, '')
+    : (warehouseObj ? `${warehouseObj.code} - ${warehouseObj.name}` : (sourceData?.warehouseName || (resolvedWarehouseCode ? `${resolvedWarehouseCode} - Kho lưu trữ` : '-')));
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+  // Smart Approver Name Resolution
+  const approverName = sourceData?.approver?.fullName || sourceData?.approver?.name || sourceData?.approver?.email || sourceData?.approverName || sourceData?.approvedBy || '-';
+
+  // Smart Buyer Name & Phone Resolution
+  const buyerName = sourceData?.creator?.fullName || sourceData?.creatorName || sourceData?.user?.fullName || sourceData?.createdByName || '-';
+  const buyerPhone = sourceData?.creator?.phone || sourceData?.creatorPhone || sourceData?.user?.phone || sourceData?.createdByPhone || '-';
+
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/60 p-2 sm:p-4 backdrop-blur-sm overflow-y-auto">
       <form
         id="create-receipt-form"
         onSubmit={handleSubmit}
-        className="max-h-[94vh] w-[95vw] max-w-[1500px] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col"
+        className="max-h-[96vh] w-[96vw] max-w-[1550px] overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col"
       >
-        <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
-          <div className="flex items-start gap-3">
+        {/* MODAL HEADER */}
+        <div className="flex items-center justify-between border-b-2 border-slate-100 px-8 py-4 bg-gradient-to-r from-slate-50 to-white shrink-0">
+          <div className="flex items-center gap-3">
             <div className="rounded-xl bg-cyan-100 p-2 text-cyan-700">
-              <Building2 className="h-5 w-5" />
+              <Building2 className="h-6 w-6" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-900">
+              <h3 className="text-xl font-black text-slate-900">
                 {mode === 'create' ? 'Tạo Phiếu Nhập Kho' : mode === 'edit' ? 'Sửa Phiếu Nhập Kho' : 'Xem Phiếu Nhập Kho'}
               </h3>
-              <p className="text-sm font-medium text-slate-500">
-                {mode === 'create' ? 'Ghi nhận hàng hóa đã nhận vào kho.' : 'Chi tiết hàng hóa đã nhận vào kho.'}
+              <p className="text-xs font-semibold text-slate-500">
+                {mode === 'create' ? 'Ghi nhận hàng hóa đã nhận vào hệ thống lưu kho.' : 'Chi tiết hàng hóa nhập kho.'}
               </p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100">
-            <X className="h-5 w-5" />
+          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 cursor-pointer">
+            <X className="h-6 w-6" />
           </button>
         </div>
 
+        {/* MODAL BODY CONTENT */}
         <div className="flex flex-1 overflow-hidden min-h-0">
+          {/* LEFT PANEL: SUPPLIER & ORDER DETAILS & TABLE */}
           <div className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
             {loading ? (
-              <div className="flex h-full items-center justify-center"><p className="text-slate-500 font-bold">Đang tải dữ liệu...</p></div>
+              <div className="flex h-full items-center justify-center py-20"><p className="text-slate-500 font-bold">Đang tải dữ liệu đơn hàng...</p></div>
             ) : (
               <>
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
-                  {/* PHÍA TRÁI: THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
-                  <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
+                  {/* THÔNG TIN NHÀ CUNG CẤP & ĐẶT HÀNG */}
+                  <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full space-y-4">
                     <div>
-                      <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin nhà cung cấp</h4>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
+                      <h4 className="mb-4 text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-2">Thông tin nhà cung cấp</h4>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-3">
                         <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Nhà cung cấp</label>
-                          <input type="text" value={supplier.name || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700">Nhà cung cấp</label>
+                          <input type="text" value={supplier.name || '-'} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 cursor-not-allowed" />
                         </div>
                         <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Mã số thuế</label>
-                          <input type="text" value={supplier.taxCode || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700">Mã số thuế</label>
+                          <input type="text" value={supplier.taxCode || '-'} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-6">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Người liên hệ</label>
-                          <input type="text" value={supplier.contactPerson || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700">Người liên hệ</label>
+                          <input type="text" value={supplier.contactPerson || '-'} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
                         </div>
                         <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Số điện thoại</label>
-                          <input type="text" value={supplier.phone || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700">Số điện thoại</label>
+                          <input type="text" value={supplier.phone || '-'} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex-1 flex flex-col">
-                      <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin đặt hàng</h4>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
+                    <div className="flex-1 flex flex-col pt-2 border-t border-slate-200 space-y-3">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-2">Thông tin đặt hàng</h4>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Người đặt hàng</label>
-                          <input type="text" value={sourceData?.creatorName || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700">Người đặt hàng</label>
+                          <input type="text" value={buyerName} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
                         </div>
                         <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">SĐT người đặt</label>
-                          <input type="text" value={sourceData?.creatorPhone || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
-                        <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Kho hàng</label>
-                          <input type="text" value={warehouseName} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
-                        </div>
-                        <div>
-                          <label className="mb-2 block text-sm font-bold text-slate-700">Quản lý (Người duyệt)</label>
-                          <input type="text" value={sourceData?.approver?.fullName || sourceData?.approver?.email || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700">SĐT người đặt</label>
+                          <input type="text" value={buyerPhone} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
                         </div>
                       </div>
-                      <div className="flex-1 flex flex-col min-h-[100px]">
-                        <label className="mb-2 block text-sm font-bold text-slate-700">Ghi chú (Đơn hàng)</label>
-                        <textarea value={sourceData?.orderDescription || (mode === 'create' ? sourceData?.description : '') || '-'} disabled className="w-full flex-1 rounded-2xl border-2 border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 cursor-not-allowed resize-none" />
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700">Kho hàng</label>
+                          <input type="text" value={warehouseName} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700">Quản lý (Người duyệt)</label>
+                          <input type="text" value={approverName} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
+                        </div>
+                      </div>
+                      <div className="flex-1 flex flex-col min-h-[90px]">
+                        <label className="mb-1.5 block text-xs font-bold text-slate-700">Ghi chú (Đơn hàng)</label>
+                        <textarea value={sourceData?.orderDescription || (mode === 'create' ? sourceData?.description : '') || '-'} disabled className="w-full flex-1 rounded-xl border-2 border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 cursor-not-allowed resize-none" />
                       </div>
                     </div>
                   </div>
 
-                  {/* PHÍA GIỮA: THÔNG TIN ĐƠN HÀNG */}
-                  <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full">
-                    <h4 className="mb-5 text-sm font-black uppercase text-slate-800">Thông tin đơn hàng</h4>
-                    <div className="grid grid-cols-1 gap-6">
+                  {/* THÔNG TIN ĐƠN HÀNG */}
+                  <div className="rounded-2xl border-2 border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 flex flex-col h-full space-y-4">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-2">Thông tin đơn hàng</h4>
+                    <div className="space-y-3">
                       <div>
-                        <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Mã đơn hàng</label>
-                        <input type="text" value={sourceData?.poNumber || sourceData?.orderCode || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 cursor-not-allowed" />
+                        <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Mã đơn hàng</label>
+                        <input type="text" value={sourceData?.poNumber || sourceData?.orderCode || '-'} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-black text-slate-900 cursor-not-allowed" />
                       </div>
                       <div>
-                        <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Ngày tạo đơn</label>
-                        <input type="text" value={sourceData?.orderDate ? new Date(sourceData.orderDate).toLocaleString('vi-VN') : '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                        <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Ngày tạo đơn</label>
+                        <input type="text" value={sourceData?.orderDate ? new Date(sourceData.orderDate).toLocaleString('vi-VN') : '-'} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
                       </div>
                       <div>
-                        <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Ngày giao hàng dự kiến</label>
-                        <input type="text" value={sourceData?.expectedDate ? new Date(sourceData.expectedDate).toLocaleString('vi-VN') : '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                        <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Ngày giao hàng dự kiến</label>
+                        <input type="text" value={sourceData?.expectedDate ? new Date(sourceData.expectedDate).toLocaleString('vi-VN') : '-'} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 cursor-not-allowed" />
                       </div>
                       <div>
-                        <label className="mb-2 block text-xs font-bold uppercase text-slate-600">Trạng thái đơn hàng</label>
-                        <input type="text" value={poStatusMap[sourceData?.orderStatus || sourceData?.status] || sourceData?.orderStatus || sourceData?.status || '-'} disabled className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 cursor-not-allowed" />
+                        <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Trạng thái đơn hàng</label>
+                        <input type="text" value={poStatusMap[sourceData?.orderStatus || sourceData?.status] || sourceData?.orderStatus || sourceData?.status || 'Hoàn thành'} disabled className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-extrabold text-cyan-800 cursor-not-allowed" />
                       </div>
 
-                      <div className="mt-2 rounded-2xl bg-cyan-50 p-5 border border-cyan-100 flex-1 flex flex-col justify-center">
-                        <div className="flex justify-between items-center mb-3">
+                      <div className="mt-2 rounded-2xl bg-cyan-50/80 p-4 border border-cyan-200 flex-1 flex flex-col justify-center space-y-2">
+                        <div className="flex justify-between items-center">
                           <span className="text-xs font-bold uppercase text-cyan-800">Tổng sản phẩm</span>
-                          <span className="font-black text-cyan-900 text-lg">{items.length}</span>
+                          <span className="font-black text-cyan-950 text-base">{items.length}</span>
                         </div>
-                        <div className="flex justify-between items-center mb-3">
+                        <div className="flex justify-between items-center">
                           <span className="text-xs font-bold uppercase text-cyan-800">Tổng số lượng</span>
-                          <span className="font-black text-cyan-900 text-lg">{formatMoney(totalQuantity)}</span>
+                          <span className="font-black text-cyan-950 text-base">{formatNumber(totalQuantity)}</span>
                         </div>
-                        <div className="flex justify-between items-center pt-3 border-t border-cyan-200/50">
+                        <div className="flex justify-between items-center pt-2 border-t border-cyan-200">
                           <span className="text-xs font-bold uppercase text-cyan-800">Tổng tiền</span>
-                          <span className="font-black text-cyan-700 text-xl">{formatMoney(totalAmount)}</span>
+                          <span className="font-black text-cyan-700 text-lg">{formatMoney(totalAmount)}</span>
                         </div>
-                        <div className="mt-3 pt-3 border-t border-cyan-200/50">
+                        <div className="pt-2 border-t border-cyan-200">
                           <span className="text-[11px] font-bold uppercase text-cyan-800">Bằng chữ:</span>
-                          <p className="text-xs font-bold text-cyan-900 italic mt-0.5">{numberToVietnameseWords(totalAmount)}</p>
+                          <p className="text-xs font-bold text-cyan-950 italic mt-0.5">{numberToVietnameseWords(totalAmount)}</p>
                         </div>
                       </div>
                     </div>
@@ -429,47 +460,41 @@ export function CreateStockInReceiptModal({
 
                 {/* BẢNG CHI TIẾT HÀNG HÓA */}
                 <div>
-                  <h4 className="font-black text-slate-900 mb-3 flex items-center gap-2">Chi tiết hàng hóa</h4>
-                  <div className="overflow-hidden rounded-2xl border-2 border-slate-200">
+                  <h4 className="font-black text-slate-900 mb-3 text-sm flex items-center gap-2">Chi tiết hàng hóa</h4>
+                  <div className="overflow-hidden rounded-2xl border-2 border-slate-200 shadow-2xs">
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[800px] bg-white">
                         <thead className="bg-slate-50">
                           <tr className="border-b border-slate-200">
-                            <th className="w-10 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">STT</th>
-                            <th className="w-[30%] border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Mặt hàng</th>
-                            <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL yêu cầu</th>
-                            <th className="w-24 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL đã nhận</th>
-                            <th className="w-28 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">SL kiểm kê</th>
-                            <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-indigo-700 bg-indigo-50/50">Sau kiểm kê (Tổng)</th>
-                            <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Đơn giá</th>
-                            <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-semibold uppercase text-slate-700">Thành tiền</th>
+                            <th className="w-12 border border-slate-200 px-3 py-3 text-center text-xs font-extrabold uppercase text-slate-700">STT</th>
+                            <th className="w-[35%] border border-slate-200 px-3 py-3 text-left text-xs font-extrabold uppercase text-slate-700">Mặt hàng</th>
+                            <th className="w-32 border border-slate-200 px-3 py-3 text-center text-xs font-extrabold uppercase text-slate-700">SL YÊU CẦU</th>
+                            <th className="w-36 border border-slate-200 px-3 py-3 text-center text-xs font-extrabold uppercase text-cyan-800 bg-cyan-50">SL THỰC NHẬN</th>
+                            <th className="w-36 border border-slate-200 px-3 py-3 text-right text-xs font-extrabold uppercase text-slate-700">ĐƠN GIÁ</th>
+                            <th className="w-40 border border-slate-200 px-3 py-3 text-right text-xs font-extrabold uppercase text-slate-700">THÀNH TIỀN</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 bg-white">
                           {items.map((item, index) => (
                             <tr key={item.id || index} className="hover:bg-slate-50 transition">
-                              <td className="border border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{index + 1}</td>
+                              <td className="border border-slate-200 px-3 py-3 text-center text-xs font-bold text-slate-600">{index + 1}</td>
                               <td className="border border-slate-200 px-3 py-3">
-                                <p className="font-bold text-slate-900">{item.product?.internalSku}</p>
-                                <p className="text-sm text-slate-600">{item.product?.name}</p>
+                                <p className="font-bold text-slate-900 text-xs">{item.product?.internalSku}</p>
+                                <p className="text-xs text-slate-600 font-medium">{item.product?.name}</p>
                               </td>
-                              <td className="border border-slate-200 px-3 py-3 text-center text-sm font-medium text-slate-700">
-                                {item.expectedQty}
+                              <td className="border border-slate-200 px-3 py-3 text-center text-xs font-bold text-slate-700">
+                                {formatNumber(parseMoney(item.expectedQty))}
                               </td>
-                              <td className="border border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-700">{item.receivedQty}</td>
-                              <td className="border border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-700">
-                                {item.receivedQty}
-                              </td>
-                              <td className="border border-slate-200 px-3 py-3 text-center bg-indigo-50/20">
-                                <span className="font-black text-indigo-600 text-lg">
-                                  {formatNumber(Object.values(staffCounts).reduce<number>((a, b) => a + (Number(b) || 0), 0))}
+                              <td className="border border-slate-200 px-3 py-3 text-center bg-cyan-50/50">
+                                <span className="font-black text-cyan-700 text-sm">
+                                  {formatNumber(parseMoney(item.receivedQty || item.expectedQty))}
                                 </span>
                               </td>
-                              <td className="border border-slate-200 px-3 py-3 text-right text-sm font-medium text-slate-700">
-                                {formatMoney(item.unitPrice)}
+                              <td className="border border-slate-200 px-3 py-3 text-right text-xs font-semibold text-slate-700">
+                                {formatMoney(parseMoney(item.unitPrice))}
                               </td>
-                              <td className="border border-slate-200 px-3 py-3 text-right text-sm font-black text-cyan-700">
-                                {formatMoney(parseMoney(item.expectedQty) * parseMoney(item.unitPrice))}
+                              <td className="border border-slate-200 px-3 py-3 text-right text-xs font-black text-cyan-800">
+                                {formatMoney(parseMoney(item.receivedQty || item.expectedQty) * parseMoney(item.unitPrice))}
                               </td>
                             </tr>
                           ))}
@@ -482,254 +507,125 @@ export function CreateStockInReceiptModal({
             )}
           </div>
 
-          <div className="w-[420px] shrink-0 border-l border-slate-200 bg-slate-50 overflow-y-auto flex flex-col">
-            <div className="flex flex-col h-full p-6">
-              <h3 className="text-lg font-black text-slate-900 mb-6">Thông tin Phiếu Nhập Kho</h3>
+          {/* RIGHT PANEL: SETTINGS FOR STOCK-IN RECEIPT SHEET */}
+          <div className="w-[380px] shrink-0 border-l border-slate-200 bg-slate-50/70 overflow-y-auto flex flex-col p-6 space-y-4">
+            <h3 className="text-base font-black text-slate-900 border-b border-slate-200 pb-3">Thông tin Phiếu Nhập Kho</h3>
+            
+            <div className="space-y-3.5 flex-1">
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Mã phiếu nhập kho</label>
+                <input type="text" value={receiptCode} onChange={(e) => setReceiptCode(e.target.value)} disabled={mode === 'view'} placeholder="Để trống để tự động tạo..." className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
+              </div>
               
-              <div className="space-y-4 flex-1">
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Mã phiếu nhập kho</label>
-                  <input type="text" value={receiptCode} onChange={(e) => setReceiptCode(e.target.value)} disabled={mode === 'view'} placeholder="Để trống để tự động tạo..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
-                </div>
-                
-                <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Trạng thái phiếu</label>
-                  <select value={status} onChange={(e) => setStatus(e.target.value as any)} disabled={mode === 'view'} className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed">
-                    <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
-                    <option value="ASSIGNED">Đang giao việc (Chờ kiểm kê)</option>
-                    <option value="CHECKED">Đã kiểm kê (Chờ duyệt)</option>
-                    <option value="POSTED">Hoàn thành (Ghi sổ)</option>
-                  </select>
-                </div>
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Trạng thái phiếu</label>
+                <select value={status} onChange={(e) => setStatus(e.target.value as any)} disabled={mode === 'view'} className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed">
+                  <option value="DRAFT">Nháp (Chưa gửi yêu cầu)</option>
+                  <option value="ASSIGNED">Đã tiếp nhận (Chờ nhập kho)</option>
+                  <option value="CHECKED">Đã kiểm đếm (Chờ duyệt)</option>
+                  <option value="POSTED">Hoàn thành (Ghi sổ)</option>
+                </select>
+              </div>
 
+              <div>
+                <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <Calendar className="h-3.5 w-3.5 text-cyan-600" />
+                  Thời gian nhập kho
+                </label>
+                <input type="datetime-local" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} disabled={mode === 'view'} required className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
+              </div>
+
+              {/* THÔNG TIN NGƯỜI GIAO HÀNG */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
                 <div>
-                  <label className="mb-1.5 flex items-center gap-2 text-sm font-bold text-slate-700">
-                    <Calendar className="h-4 w-4 text-cyan-600" />
-                    Thời gian nhập kho
-                  </label>
-                  <input type="datetime-local" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} disabled={mode === 'view'} required className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
+                  <label className="mb-1 block text-xs font-bold text-slate-700">Họ tên người giao (Tài xế)</label>
+                  <input type="text" value={delivererName} onChange={(e) => setDelivererName(e.target.value)} disabled={mode === 'view'} placeholder="Tên tài xế..." className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
                 </div>
-
-                {/* THÔNG TIN CHỨNG TỪ KẾ TOÁN (Theo Mẫu 01-VT) */}
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-700">Họ tên người giao</label>
-                    <input type="text" value={delivererName} onChange={(e) => setDelivererName(e.target.value)} disabled={mode === 'view'} placeholder={supplier.contactPerson || supplier.name || 'Người giao'} className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-700">Theo hóa đơn số</label>
-                    <input type="text" value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} disabled={mode === 'view'} placeholder={sourceData?.poNumber || 'Số hóa đơn'} className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-700">Tài khoản Nợ</label>
-                    <input type="text" value={accountDebit} onChange={(e) => setAccountDebit(e.target.value)} disabled={mode === 'view'} placeholder="156" className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-700">Tài khoản Có</label>
-                    <input type="text" value={accountCredit} onChange={(e) => setAccountCredit(e.target.value)} disabled={mode === 'view'} placeholder="331" className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
-                  </div>
-                </div>
-                
                 <div>
-                  <label className="mb-1.5 block text-sm font-bold text-slate-700">Ghi chú kiểm kê / Hướng dẫn</label>
-                  <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} disabled={mode === 'view'} placeholder="Ví dụ: Kiểm tra kỹ tem mác..." className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed" />
-                </div>
-
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 flex flex-col min-h-[200px] max-h-[260px]">
-                  <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                    <p className="text-sm font-bold uppercase text-slate-700 flex items-center gap-2">
-                      <UserIcon className="h-4 w-4 text-indigo-600" />
-                      Nhân viên kho
-                    </p>
-                    {mode !== 'view' && (
-                      <label className="flex items-center gap-2 text-sm cursor-pointer text-indigo-700 font-bold hover:text-indigo-800">
-                        <input 
-                          type="checkbox" 
-                          onChange={(e) => {
-                            const eligible = users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff'));
-                            if (e.target.checked) setSelectedStaffIds(eligible.map(u => u.id));
-                            else setSelectedStaffIds([]);
-                          }} 
-                          checked={
-                            selectedStaffIds.length > 0 && 
-                            selectedStaffIds.length === users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length
-                          } 
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600" 
-                        />
-                        Chọn tất cả
-                      </label>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 gap-2 flex-1 overflow-y-auto pr-2">
-                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).map((u) => (
-                      <label key={u.id} className={`flex ${mode !== 'view' ? 'cursor-pointer hover:border-indigo-400' : 'cursor-default'} items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 transition shadow-sm`}>
-                        <input
-                          type="checkbox"
-                          checked={selectedStaffIds.includes(u.id)}
-                          onChange={(e) => {
-                            if (status === 'POSTED') return;
-                            if (e.target.checked) setSelectedStaffIds([...selectedStaffIds, u.id]);
-                            else setSelectedStaffIds(selectedStaffIds.filter((id) => id !== u.id));
-                          }}
-                          onClick={(e) => status === 'POSTED' && e.preventDefault()}
-                          className={`h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600 ${status === 'POSTED' ? 'pointer-events-none' : ''}`}
-                        />
-                        <div className="flex-1">
-                          <p className="text-sm font-bold text-slate-900">{u.fullName || u.email}</p>
-                          {u.fullName && <p className="text-xs text-slate-500">{u.email}</p>}
-                        </div>
-                        {selectedStaffIds.includes(u.id) && (
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="Số lượng..."
-                            disabled={status === 'POSTED' || (mode === 'view' && !items.some(d => (Number(d.receivedQty) || 0) > 0))}
-                            onClick={(e) => e.stopPropagation()}
-                            value={staffCounts[u.id] || ''}
-                            onChange={(e) => {
-                              const val = Number(e.target.value);
-                              setStaffCounts(prev => {
-                                const next = { ...prev, [u.id]: val };
-                                if (items.length > 0) {
-                                  const total = Object.values(next).reduce<number>((a, b) => a + (Number(b) || 0), 0);
-                                  const newItems = [...items];
-                                  newItems[0].inventoryQty = String(total);
-                                  setItems(newItems);
-                                }
-                                return next;
-                              });
-                            }}
-                            className="ml-auto w-24 rounded-lg border-2 border-indigo-200 bg-indigo-50 px-2 py-1 text-center text-sm font-bold text-indigo-700 outline-none transition focus:border-indigo-500 disabled:bg-slate-50 disabled:cursor-not-allowed"
-                          />
-                        )}
-                      </label>
-                    ))}
-                    {users.filter(u => u.roles?.some((r: any) => ['STAFF', 'INVENTORY_STAFF', 'WAREHOUSE_STAFF', 'Nhân viên kho'].includes(r.name) || String(r.name).toLowerCase() === 'staff')).length === 0 && (
-                       <p className="text-sm text-slate-500 italic mt-4 text-center">Không có nhân viên kho nào</p>
-                    )}
-                  </div>
+                  <label className="mb-1 block text-xs font-bold text-slate-700">SĐT tài xế / người giao</label>
+                  <input type="text" value={delivererPhone} onChange={(e) => setDelivererPhone(e.target.value)} disabled={mode === 'view'} placeholder="SĐT tài xế..." className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500 disabled:bg-slate-50" />
                 </div>
               </div>
-            </div>
-
-            <div className="border-t border-slate-200 p-6 flex flex-col gap-3 bg-white">
-            <button
-              type="button"
-              onClick={() => setIsPrinting(true)}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-cyan-50 px-5 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
-            >
-              <Printer className="h-4 w-4" />
-              In Phiếu Nhập Kho (Mẫu 01-VT)
-            </button>
-
-            {mode === 'view' && status === 'DRAFT' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatus('ASSIGNED');
-                  setTimeout(() => {
-                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
-                    if (form) form.requestSubmit();
-                  }, 50);
-                }}
-                disabled={saving}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a165] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b08e56] disabled:opacity-60"
-              >
-                <Clock3 className="h-4 w-4" />
-                Tạo mới phiếu yêu cầu (Giao việc)
-              </button>
-            )}
-
-            {mode === 'view' && status === 'ASSIGNED' && (
-              items.some(d => (Number(d.receivedQty) || 0) > 0) ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStatus('CHECKED');
-                    setTimeout(() => {
-                      const form = document.getElementById('create-receipt-form') as HTMLFormElement;
-                      if (form) form.requestSubmit();
-                    }, 50);
-                  }}
-                  disabled={saving}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Hoàn thành kiểm kê
-                </button>
-              ) : (
-                <div className="w-full rounded-xl border-2 border-amber-200 bg-amber-50 p-3 text-center">
-                  <p className="text-sm font-bold text-amber-700">Chưa nhận hàng</p>
-                  <p className="text-xs text-amber-600 mt-0.5">Phải nhận hàng trước mới có thể nhập số liệu kiểm kê.</p>
-                </div>
-              )
-            )}
-
-            {mode === 'view' && status === 'CHECKED' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatus('POSTED');
-                  setTimeout(() => {
-                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
-                    if (form) form.requestSubmit();
-                  }, 50);
-                }}
-                disabled={saving}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Duyệt & Hoàn thành
-              </button>
-            )}
-
-            {mode !== 'view' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatus('DRAFT');
-                  setTimeout(() => {
-                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
-                    if (form) form.requestSubmit();
-                  }, 50);
-                }}
-                disabled={saving}
-                className="w-full inline-flex items-center justify-center rounded-xl border-2 border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-bold text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
-              >
-                Lưu Nháp
-              </button>
-            )}
-            
-            {mode !== 'view' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatus('ASSIGNED');
-                  setTimeout(() => {
-                    const form = document.getElementById('create-receipt-form') as HTMLFormElement;
-                    if (form) form.requestSubmit();
-                  }, 50);
-                }}
-                disabled={saving}
-                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a165] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#b08e56] disabled:opacity-60"
-              >
-                <Clock3 className="h-4 w-4" />
-                {mode === 'create' ? 'Tạo mới & Giao Việc' : 'Cập nhật & Giao Việc'}
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-            >
-              Đóng
-            </button>
+              
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Ghi chú nhập kho / Hướng dẫn</label>
+                <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} disabled={mode === 'view'} placeholder="Ví dụ: Kiểm tra kỹ tem mác..." className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none transition focus:border-cyan-500 disabled:bg-slate-50 disabled:cursor-not-allowed resize-none" />
+              </div>
             </div>
           </div>
+        </div>
+
+        {/* FOOTER ACTION BAR: ALL 4 BUTTONS GROUPED ON THE RIGHT */}
+        <div className="border-t-2 border-slate-200 bg-white px-8 py-4 flex items-center justify-end gap-3 shrink-0 shadow-md z-10">
+          <button
+            type="button"
+            onClick={() => setIsPrinting(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-cyan-50 px-5 py-2.5 text-xs font-extrabold text-cyan-700 transition hover:bg-cyan-100 cursor-pointer"
+          >
+            <Printer className="h-4 w-4" />
+            <span>In Phiếu Nhập Kho (Mẫu 01-VT)</span>
+          </button>
+
+          {mode !== 'view' && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatus('DRAFT');
+                setTimeout(() => {
+                  const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                  if (form) form.requestSubmit();
+                }, 50);
+              }}
+              disabled={saving}
+              className="inline-flex items-center justify-center rounded-xl border-2 border-amber-300 bg-amber-50 px-6 py-2.5 text-xs font-extrabold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60 cursor-pointer"
+            >
+              Lưu Nháp
+            </button>
+          )}
+
+          {mode !== 'view' && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatus('ASSIGNED');
+                setTimeout(() => {
+                  const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                  if (form) form.requestSubmit();
+                }, 50);
+              }}
+              disabled={saving}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-7 py-2.5 text-xs font-black text-white shadow-md transition hover:bg-cyan-700 disabled:opacity-60 cursor-pointer active:scale-95"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{mode === 'create' ? 'Tạo mới Phiếu Nhập Kho' : 'Cập nhật Phiếu Nhập Kho'}</span>
+            </button>
+          )}
+
+          {mode === 'view' && status === 'DRAFT' && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatus('ASSIGNED');
+                setTimeout(() => {
+                  const form = document.getElementById('create-receipt-form') as HTMLFormElement;
+                  if (form) form.requestSubmit();
+                }, 50);
+              }}
+              disabled={saving}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-7 py-2.5 text-xs font-black text-white shadow-md transition hover:bg-cyan-700 disabled:opacity-60 cursor-pointer"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              <span>Xác Nhận Nhập Kho</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-xl border-2 border-slate-200 bg-white px-6 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-100 cursor-pointer"
+          >
+            Đóng
+          </button>
         </div>
       </form>
 
@@ -761,7 +657,7 @@ export function CreateStockInReceiptModal({
             </div>
 
             <div className="space-y-2 text-sm text-slate-800 mb-6">
-              <p>- Họ và tên người giao: <strong>{delivererName || supplier.contactPerson || supplier.name || '...'}</strong></p>
+              <p>- Họ và tên người giao: <strong>{delivererName || supplier.contactPerson || supplier.name || '...'}</strong> (SĐT: <strong>{delivererPhone || '...'}</strong>)</p>
               <p>- Theo Hóa đơn/Chứng từ số: <strong>{invoiceNo || sourceData?.poNumber || '...'}</strong> {invoiceDate ? `ngày ${formatDate(invoiceDate)}` : (sourceData?.orderDate ? `ngày ${formatDate(sourceData.orderDate)}` : '')} của <strong>{supplier.name || '...'}</strong></p>
               <p>- Nhập tại kho: <strong>{warehouseName}</strong></p>
               <p>- Diễn giải: <strong>{description || sourceData?.description || 'Nhập kho mua hàng theo hợp đồng/PO'}</strong></p>
@@ -791,7 +687,7 @@ export function CreateStockInReceiptModal({
                     <td className="border border-slate-900 px-2 py-1.5 text-center font-mono">{item.product?.internalSku || '-'}</td>
                     <td className="border border-slate-900 px-2 py-1.5 text-center">{item.product?.unit || 'Cái'}</td>
                     <td className="border border-slate-900 px-2 py-1.5 text-center">{formatNumber(parseMoney(item.expectedQty))}</td>
-                    <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{formatNumber(parseMoney(item.inventoryQty || item.receivedQty || item.expectedQty))}</td>
+                    <td className="border border-slate-900 px-2 py-1.5 text-center font-bold">{formatNumber(parseMoney(item.inventoryQty || item.receivedQty))}</td>
                     <td className="border border-slate-900 px-2 py-1.5 text-right">{formatNumber(parseMoney(item.unitPrice))}</td>
                     <td className="border border-slate-900 px-2 py-1.5 text-right font-bold">{formatNumber(parseMoney(item.expectedQty) * parseMoney(item.unitPrice))}</td>
                   </tr>
@@ -799,7 +695,7 @@ export function CreateStockInReceiptModal({
                 <tr className="font-bold bg-slate-50">
                   <td colSpan={4} className="border border-slate-900 px-2 py-2 text-center">Cộng</td>
                   <td className="border border-slate-900 px-2 py-2 text-center">{formatNumber(totalQuantity)}</td>
-                  <td className="border border-slate-900 px-2 py-2 text-center">{formatNumber(totalQuantity)}</td>
+                  <td className="border border-slate-900 px-2 py-2 text-center">{formatNumber(items.reduce((s, i) => s + parseMoney(i.inventoryQty || i.receivedQty), 0))}</td>
                   <td className="border border-slate-900 px-2 py-2 text-right">x</td>
                   <td className="border border-slate-900 px-2 py-2 text-right text-sm font-black">{formatMoney(totalAmount)}</td>
                 </tr>
@@ -830,8 +726,8 @@ export function CreateStockInReceiptModal({
             </div>
 
             <div className="flex justify-end gap-3 border-t border-slate-200 pt-4 no-print">
-              <button type="button" onClick={() => setIsPrinting(false)} className="px-5 py-2.5 rounded-xl border-2 border-slate-300 font-bold text-slate-700 hover:bg-slate-100 transition">Đóng</button>
-              <button type="button" onClick={() => window.print()} className="px-5 py-2.5 rounded-xl bg-cyan-600 text-white font-bold hover:bg-cyan-700 transition flex items-center gap-2">
+              <button type="button" onClick={() => setIsPrinting(false)} className="px-5 py-2.5 rounded-xl border-2 border-slate-300 font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer">Đóng</button>
+              <button type="button" onClick={() => window.print()} className="px-5 py-2.5 rounded-xl bg-cyan-600 text-white font-bold hover:bg-cyan-700 transition flex items-center gap-2 cursor-pointer">
                 <Printer className="h-4 w-4" />
                 In phiếu ngay
               </button>
@@ -839,6 +735,7 @@ export function CreateStockInReceiptModal({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -106,6 +106,7 @@ interface PurchaseOrderFormModalProps {
   onUpdateRow: (rowId: string, patch: Partial<FormLine>) => void;
   onProductChange: (rowId: string, productId: string) => void;
   onScannerOpen: () => void;
+  onApproveOrder?: () => void;
   renderRightPanel?: React.ReactNode;
   customWidthClass?: string;
 }
@@ -217,6 +218,7 @@ export function PurchaseOrderFormModal({
   onUpdateRow,
   onProductChange,
   onScannerOpen,
+  onApproveOrder,
   renderRightPanel,
   customWidthClass,
 }: PurchaseOrderFormModalProps) {
@@ -326,7 +328,13 @@ export function PurchaseOrderFormModal({
             </div>
             <div>
               <h3 className="text-lg font-black text-slate-900">
-                {mode === 'view' ? 'Xem đơn mua hàng' : mode === 'edit' ? 'Sửa đơn mua hàng' : 'Tạo đơn mua hàng'}
+                {mode === 'view'
+                  ? 'Xem đơn mua hàng'
+                  : mode === 'edit'
+                  ? form.status === 'REJECTED'
+                    ? 'Điều chỉnh giá & Gửi lại đơn hàng'
+                    : 'Sửa đơn mua hàng'
+                  : 'Tạo đơn mua hàng'}
               </h3>
               <p className="text-sm font-medium text-slate-500">
                 {mode === 'view' ? 'Chi tiết thông tin nhà cung cấp, kho và sản phẩm.' : 'Nhập thông tin nhà cung cấp, kho và sản phẩm cần mua.'}
@@ -557,7 +565,7 @@ export function PurchaseOrderFormModal({
                     options={[
                       { value: 'DRAFT', label: 'Đơn nháp' },
                       { value: 'CREATED', label: 'Đơn đặt hàng mới' },
-                      { value: 'REJECTED', label: 'Từ chối / Phản hồi giá' },
+                      { value: 'REJECTED', label: 'Phản hồi giá' },
                       ...((mode === 'view' || mode === ('create_order' as any))
                         ? [
                             { value: 'APPROVED', label: 'Chờ NCC xác nhận' },
@@ -846,6 +854,34 @@ export function PurchaseOrderFormModal({
           </button>
           {mode === 'view' || mode === ('create_order' as any) ? (
             customActions
+          ) : mode === 'edit' && form.status === 'REJECTED' ? (
+            <>
+              {onApproveOrder && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => onApproveOrder()}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-6 py-2.5 font-bold text-white shadow-lg hover:bg-emerald-700 disabled:opacity-60 transition cursor-pointer"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  Đồng ý & Chốt đơn hàng
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(e) => {
+                  onFormChange({ ...form, status: 'CREATED' });
+                  setTimeout(() => {
+                    const formEl = (e.target as HTMLElement).closest('form');
+                    if (formEl) formEl.requestSubmit();
+                  }, 0);
+                }}
+                className="rounded-2xl bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-lg hover:bg-cyan-700 disabled:opacity-60 transition cursor-pointer"
+              >
+                {saving ? 'Đang gửi...' : 'Phản hồi lại giá'}
+              </button>
+            </>
           ) : (
             <>
               <button
