@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { documentsApi, type TransferDoc } from '../api/documentsApi';
 import {
   Truck,
@@ -9,30 +9,100 @@ import {
   X,
   CheckCircle2,
   Package,
-  DollarSign,
-  Layers,
   FileCheck,
-  ArrowRight,
+  Upload,
+  Pencil,
+  FileSpreadsheet,
+  FileText,
+  List,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Trash2,
+  AlertCircle,
 } from 'lucide-react';
 
+export interface DocTemplateItem {
+  id: string;
+  templateCode: string; // Mã mẫu chứng từ (ví dụ: PDC-001)
+  serialSymbol: string; // Kí hiệu chứng từ (ví dụ: C26DC)
+  cqtStatus: 'APPROVED' | 'PENDING'; // Trạng thái gửi CQT / Ban Giám Đốc (Đã duyệt | Chưa nộp)
+  status: 'ACTIVE' | 'INACTIVE'; // Trạng thái chứng từ (Đang sử dụng | Ngừng sử dụng)
+  invoiceType?: 'MAIN' | 'SUB'; // Loại chứng từ (Chính | Phụ nếu đã duyệt, còn nếu Chưa nộp thì không hiện)
+  appliedWarehouse: string; // Kho áp dụng
+  createdDate: string; // Ngày tạo mẫu
+  fileName: string;
+  fileSize: string;
+  companyName: string;
+  companyTaxCode: string;
+  companyAddress: string;
+  invoiceTitle: string;
+  sellerName?: string;
+}
+
+const INITIAL_TRANSFER_TEMPLATES: DocTemplateItem[] = [];
+
 export default function TransferDocPage() {
-  const [notes, setNotes] = React.useState<TransferDoc[]>([]);
-  const [loading, setLoading] = React.useState<boolean>(true);
-  const [search, setSearch] = React.useState<string>('');
-  const [statusFilter, setStatusFilter] = React.useState<string>('ALL');
-  const [showAdvancedSearch, setShowAdvancedSearch] = React.useState<boolean>(false);
-  const [template, setTemplate] = React.useState<string>('STANDARD');
-  const [previewDoc, setPreviewDoc] = React.useState<TransferDoc | null>(null);
+  const [docs, setDocs] = useState<TransferDoc[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [search, setSearch] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState<boolean>(false);
+  const [previewDoc, setPreviewDoc] = useState<TransferDoc | null>(null);
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<'LIST' | 'TEMPLATE'>('LIST');
 
   // Pagination states
-  const [pageSize, setPageSize] = React.useState<number>(10);
-  const [currentPage, setCurrentPage] = React.useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Template List State
+  const [templates, setTemplates] = useState<DocTemplateItem[]>(INITIAL_TRANSFER_TEMPLATES);
+  const [templateSearch, setTemplateSearch] = useState<string>('');
+
+  // Modals for Template Tab
+  const [previewTemplateModal, setPreviewTemplateModal] = useState<DocTemplateItem | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<DocTemplateItem | null>(null);
+  const [showAddTemplateModal, setShowAddTemplateModal] = useState<boolean>(false);
+
+  // File Upload reference for template editing
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [targetTemplateIdForFile, setTargetTemplateIdForFile] = useState<string | null>(null);
+
+  // Simplified New Template Form State
+  const [newTemplateForm, setNewTemplateForm] = useState<{
+    templateCode: string;
+    appliedWarehouse: string;
+    fileName: string;
+  }>({
+    templateCode: '',
+    appliedWarehouse: 'Tất cả các kho',
+    fileName: '',
+  });
+
+  // Form State for Editing Template Metadata
+  const [templateForm, setTemplateForm] = useState<Partial<DocTemplateItem>>({
+    templateCode: '',
+    serialSymbol: '',
+    cqtStatus: 'PENDING',
+    status: 'ACTIVE',
+    invoiceType: 'MAIN',
+    appliedWarehouse: 'Tất cả các kho',
+    createdDate: new Date().toLocaleDateString('vi-VN'),
+    companyName: 'CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS',
+    companyTaxCode: '0316889988',
+    companyAddress: 'Tầng 8, Tòa nhà Innovation, Quận 1, TP. Hồ Chí Minh',
+    invoiceTitle: 'PHIẾU ĐIỀU CHUYỂN KHO NỘI BỘ',
+    fileName: 'Mau_Phieu_Dieu_Chuyen_Moi.docx',
+    fileSize: '40.0 KB',
+  });
 
   React.useEffect(() => {
     async function loadData() {
       setLoading(true);
       const data = await documentsApi.getTransferNotes();
-      setNotes(data);
+      setDocs(data);
       setLoading(false);
     }
     loadData();
@@ -42,326 +112,873 @@ export default function TransferDocPage() {
     return new Intl.NumberFormat('vi-VN').format(val);
   };
 
-  const filteredNotes = notes.filter((n) => {
+  const filteredDocs = docs.filter((doc) => {
     const keyword = search.trim().toLowerCase();
+    const sourceWh = doc.sourceWarehouse || (doc as any).fromWarehouse || '';
+    const destWh = doc.destinationWarehouse || (doc as any).toWarehouse || '';
     const matchesKeyword =
       !keyword ||
-      n.transferNo.toLowerCase().includes(keyword) ||
-      n.sourceWarehouse.toLowerCase().includes(keyword) ||
-      n.destinationWarehouse.toLowerCase().includes(keyword) ||
-      n.transporterName.toLowerCase().includes(keyword) ||
-      n.items.some((i) => i.productName.toLowerCase().includes(keyword) || i.productCode.toLowerCase().includes(keyword));
+      doc.transferNo.toLowerCase().includes(keyword) ||
+      sourceWh.toLowerCase().includes(keyword) ||
+      destWh.toLowerCase().includes(keyword) ||
+      doc.items.some((item) => item.productName.toLowerCase().includes(keyword) || item.productCode.toLowerCase().includes(keyword));
 
     if (!matchesKeyword) return false;
 
     if (showAdvancedSearch) {
-      if (statusFilter !== 'ALL' && n.status !== statusFilter) {
+      if (statusFilter !== 'ALL' && doc.status !== statusFilter) {
         return false;
       }
     }
     return true;
   });
 
-  const totalItems = filteredNotes.length;
+  // Calculate Pagination
+  const totalItems = filteredDocs.length;
   const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const paginatedNotes = filteredNotes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedDocs = filteredDocs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const startIndex = totalItems > 0 ? (currentPage - 1) * pageSize + 1 : 0;
+  const endIndex = Math.min(currentPage * pageSize, totalItems);
 
-  const totalTransferValue = notes.reduce((sum, n) => {
-    return sum + n.items.reduce((s, i) => s + i.price * i.quantityExported, 0);
+  const totalTransferValue = docs.reduce((sum, d) => {
+    const sub = d.items.reduce((s, i) => s + (i.price || 0) * (i.quantityExported || 0), 0);
+    return sum + sub;
   }, 0);
 
-  const totalExportedQty = notes.reduce((sum, n) => {
-    return sum + n.items.reduce((s, i) => s + i.quantityExported, 0);
-  }, 0);
+  const totalItemsCount = docs.reduce((sum, d) => sum + d.items.reduce((s, i) => s + (i.quantityExported || 0), 0), 0);
+
+  // Filter templates list
+  const filteredTemplates = templates.filter((tpl) => {
+    const kw = templateSearch.trim().toLowerCase();
+    return (
+      !kw ||
+      tpl.templateCode.toLowerCase().includes(kw) ||
+      tpl.serialSymbol.toLowerCase().includes(kw) ||
+      tpl.invoiceTitle.toLowerCase().includes(kw) ||
+      tpl.fileName.toLowerCase().includes(kw)
+    );
+  });
 
   const handlePrint = () => {
     window.print();
   };
 
+  // Trigger Sửa File (.docx) for specific template item
+  const handleTriggerEditFile = (templateId: string) => {
+    setTargetTemplateIdForFile(templateId);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && targetTemplateIdForFile) {
+      setTemplates((prev) =>
+        prev.map((tpl) =>
+          tpl.id === targetTemplateIdForFile
+            ? {
+                ...tpl,
+                fileName: file.name,
+                fileSize: `${(file.size / 1024).toFixed(1)} KB`,
+              }
+            : tpl
+        )
+      );
+      setTargetTemplateIdForFile(null);
+    }
+  };
+
+  // Delete Template Item
+  const handleDeleteTemplate = (id: string) => {
+    if (window.confirm('Bạn có chắc chắn muốn xóa mẫu phiếu điều chuyển này không?')) {
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+    }
+  };
+
+  // Open Edit Template Modal
+  const handleOpenEditModal = (tpl: DocTemplateItem) => {
+    setEditingTemplate(tpl);
+    setTemplateForm({ ...tpl });
+  };
+
+  // Save Edit Template Form
+  const handleSaveEditTemplate = () => {
+    if (!editingTemplate) return;
+    setTemplates((prev) =>
+      prev.map((tpl) =>
+        tpl.id === editingTemplate.id
+          ? {
+              ...tpl,
+              ...templateForm,
+              invoiceType: templateForm.cqtStatus === 'APPROVED' ? templateForm.invoiceType : undefined,
+            }
+          : tpl
+      )
+    );
+    setEditingTemplate(null);
+  };
+
+  // Save New Template Form (Simplified)
+  const handleSaveNewTemplate = () => {
+    const newId = `tpl-tr-${Date.now()}`;
+    const code = newTemplateForm.templateCode.trim() || `PDC/00${templates.length + 1}`;
+    const newTpl: DocTemplateItem = {
+      id: newId,
+      templateCode: code,
+      serialSymbol: `C26DC-0${templates.length + 1}`,
+      cqtStatus: 'PENDING',
+      status: 'ACTIVE',
+      invoiceType: undefined,
+      appliedWarehouse: newTemplateForm.appliedWarehouse || 'Tất cả các kho',
+      createdDate: new Date().toLocaleDateString('vi-VN'),
+      fileName: newTemplateForm.fileName || `${code.replace(/[/ ]/g, '_')}_MauDocx.docx`,
+      fileSize: '40.0 KB',
+      companyName: 'CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS',
+      companyTaxCode: '0316889988',
+      companyAddress: 'Tầng 8, Tòa nhà Innovation, Quận 1, TP. Hồ Chí Minh',
+      invoiceTitle: code,
+      sellerName: 'Nguyễn Văn Quản Lý',
+    };
+    setTemplates([newTpl, ...templates]);
+    setShowAddTemplateModal(false);
+  };
+
   return (
-    <div className="p-4 sm:p-6 font-sans space-y-6">
-      {/* Header Banner matching /products/main */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-4">
-        <div>
-          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
-            <Truck className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white uppercase">Lập Phiếu Điều Chuyển Nội Bộ</h1>
-          </div>
-          <p className="mt-2 text-xs font-semibold text-slate-500">
-            Quản lý lệnh và phiếu điều chuyển hàng hóa, vật tư giữa các kho trong cùng hệ thống
-          </p>
+    <div className="font-sans space-y-4">
+      {/* Hidden File Input for Editing (.docx) */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept=".docx,.doc"
+        className="hidden"
+      />
+
+      {/* Header Design Aligned with Personnel Layout */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setActiveTab('LIST')}
+            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
+              activeTab === 'LIST'
+                ? 'bg-cyan-600 text-white shadow-md'
+                : 'bg-white text-cyan-700 hover:bg-cyan-50'
+            }`}
+          >
+            <List className="h-4.5 w-4.5" />
+            Danh sách phiếu điều chuyển
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('TEMPLATE')}
+            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
+              activeTab === 'TEMPLATE'
+                ? 'bg-cyan-600 text-white shadow-md'
+                : 'bg-white text-cyan-700 hover:bg-cyan-50'
+            }`}
+          >
+            <FileSpreadsheet className="h-4.5 w-4.5" />
+            Mẫu phiếu điều chuyển
+          </button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 shadow-xs">
-            <Layers className="h-4 w-4 text-cyan-600" />
-            <span className="text-xs font-bold text-slate-600">Đổi Mẫu In:</span>
-            <select
-              value={template}
-              onChange={(e) => setTemplate(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer"
-            >
-              <option value="STANDARD">Mẫu Tiêu Chuẩn Điều Chuyển Nội Bộ</option>
-              <option value="DETAILED">Mẫu Chi Tiết Vận Chuyển Kho</option>
-              <option value="OFFICIAL">Mẫu Biên Bản Giao Nhận Kèm Xe</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* 4 Cards Summary Strip matching /products/main */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex h-[76px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-xs transition hover:bg-cyan-50/50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG PHIẾU ĐIỀU CHUYỂN</p>
-            <p className="text-xl font-black text-cyan-700 mt-0.5">{notes.length} Phiếu</p>
-          </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 font-bold">
-            <FileCheck className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="flex h-[76px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-xs transition hover:bg-cyan-50/50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">SL HÀNG ĐIỀU CHUYỂN</p>
-            <p className="text-xl font-black text-cyan-700 mt-0.5">{formatMoney(totalExportedQty)} SP</p>
-          </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 font-bold">
-            <Package className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="flex h-[76px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-xs transition hover:bg-cyan-50/50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG GIÁ TRỊ LUÂN CHUYỂN</p>
-            <p className="text-xl font-black text-cyan-700 mt-0.5">{formatMoney(totalTransferValue)} đ</p>
-          </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 font-bold">
-            <DollarSign className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="flex h-[76px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-xs transition hover:bg-cyan-50/50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TRẠNG THÁI GIAO KHO</p>
-            <p className="text-xl font-black text-emerald-600 mt-0.5">{notes.length} / {notes.length} Hoàn tất</p>
-          </div>
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 font-bold">
-            <CheckCircle2 className="h-5 w-5" />
-          </div>
-        </div>
-      </div>
-
-      {/* Search & Toolbar */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
-              placeholder="Tìm phiếu theo số lệnh, kho xuất, kho nhập, người vận chuyển, sản phẩm..."
-            />
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowAdvancedSearch((prev) => !prev)}
-              className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 px-4 text-xs font-bold transition cursor-pointer ${
-                showAdvancedSearch
-                  ? 'border-cyan-600 bg-cyan-50 text-cyan-700'
-                  : 'border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50'
-              }`}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              Bộ lọc nâng cao
-            </button>
-          </div>
-        </div>
-
-        {/* Panel Tìm kiếm nâng cao */}
-        {showAdvancedSearch && (
-          <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/40 p-5 space-y-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black uppercase tracking-wider text-cyan-800">Bộ lọc nâng cao</h3>
-              <button
-                type="button"
-                onClick={() => setStatusFilter('ALL')}
-                className="text-xs font-bold text-slate-500 hover:text-cyan-700 hover:underline cursor-pointer"
-              >
-                Xóa bộ lọc
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {[
-                { key: 'ALL', label: 'Tất cả trạng thái' },
-                { key: 'COMPLETED', label: 'Đã hoàn tất điều chuyển' },
-                { key: 'IN_TRANSIT', label: 'Đang vận chuyển' },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setStatusFilter(item.key)}
-                  className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border cursor-pointer ${
-                    statusFilter === item.key
-                      ? 'bg-cyan-600 text-white border-cyan-600 shadow-xs'
-                      : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
+        {activeTab === 'TEMPLATE' && (
+          <button
+            type="button"
+            onClick={() => {
+              setNewTemplateForm({
+                templateCode: `PDC/00${templates.length + 1}`,
+                appliedWarehouse: 'Kho Tổng TP.HCM',
+                fileName: '',
+              });
+              setShowAddTemplateModal(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 shrink-0"
+          >
+            <Plus className="h-4 w-4" />
+            Thêm mới mẫu
+          </button>
         )}
       </div>
 
-      {/* Main Table Section matching /products/main */}
-      <div className="overflow-hidden rounded-xl border-2 border-slate-200 bg-white shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] border-collapse bg-white">
-            <thead className="bg-cyan-50">
-              <tr className="border-b-2 border-slate-200 text-center text-xs font-extrabold uppercase text-slate-800">
-                <th className="w-10 border-x border-slate-200 px-3 py-3.5">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
-                </th>
-                <th className="w-12 border-x border-slate-200 px-3 py-3.5">STT</th>
-                <th className="border-x border-slate-200 px-3 py-3.5">Số Lệnh / Phiếu</th>
-                <th className="min-w-[150px] border-x border-slate-200 px-3 py-3.5">Kho Xuất Đi</th>
-                <th className="w-8"></th>
-                <th className="min-w-[150px] border-x border-slate-200 px-3 py-3.5">Kho Nhập Đến</th>
-                <th className="border-x border-slate-200 px-3 py-3.5">Người Vận Chuyển</th>
-                <th className="border-x border-slate-200 px-3 py-3.5">Ngày Lập</th>
-                <th className="border-x border-slate-200 px-3 py-3.5">Số SP</th>
-                <th className="border-x border-slate-200 px-3 py-3.5">Tổng Giá Trị</th>
-                <th className="border-x border-slate-200 px-3 py-3.5">Trạng Thái</th>
-                <th className="sticky right-0 border-l border-slate-200 bg-cyan-50 px-3 py-3.5 min-w-[160px]">
-                  THAO TÁC
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Đang tải danh sách phiếu điều chuyển...
-                  </td>
-                </tr>
-              ) : paginatedNotes.length === 0 ? (
-                <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có phiếu điều chuyển phù hợp.
-                  </td>
-                </tr>
-              ) : (
-                paginatedNotes.map((n, idx) => {
-                  const total = n.items.reduce((s, i) => s + i.price * i.quantityExported, 0);
+      {activeTab === 'LIST' ? (
+        <>
+          {/* 4 Cards Summary Strip */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+              <p className="text-base font-black text-cyan-700 uppercase">
+                {docs.length} PHIẾU ĐIỀU CHUYỂN
+              </p>
+            </div>
+            <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+              <p className="text-base font-black text-cyan-700 uppercase">
+                {formatMoney(totalItemsCount)} SẢN PHẨM ĐIỀU CHUYỂN
+              </p>
+            </div>
+            <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+              <p className="text-base font-black text-cyan-700 uppercase">
+                {formatMoney(totalTransferValue)} ₫ TỔNG GIÁ TRỊ LUÂN CHUYỂN
+              </p>
+            </div>
+            <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+              <p className="text-base font-black text-cyan-700 uppercase">
+                100% HOÀN TẤT ĐIỀU CHUYỂN
+              </p>
+            </div>
+          </div>
 
-                  return (
-                    <tr key={n.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/40 text-center text-xs font-semibold text-slate-700">
-                      <td className="border-x border-slate-200 px-3 py-3">
-                        <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3 font-extrabold text-slate-800">
-                        {(currentPage - 1) * pageSize + idx + 1}
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3 font-extrabold text-cyan-800 font-mono text-sm">
-                        {n.transferNo}
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3 font-bold text-amber-800">
-                        {n.sourceWarehouse}
-                      </td>
-                      <td className="px-1 py-3 text-slate-400">
-                        <ArrowRight className="h-4 w-4 text-cyan-600 inline" />
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3 font-bold text-teal-800">
-                        {n.destinationWarehouse}
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3 font-medium text-slate-700">
-                        {n.transporterName}
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3 font-medium">
-                        {new Date(n.createdDate).toLocaleDateString('vi-VN')}
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3 font-extrabold text-slate-800">
-                        {n.items.length} mặt hàng
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3 font-extrabold text-cyan-700">
-                        {formatMoney(total)} đ
-                      </td>
-                      <td className="border-x border-slate-200 px-3 py-3">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800 border border-emerald-300">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                          Đã hoàn tất
-                        </span>
-                      </td>
-                      <td className="sticky right-0 border-l border-slate-200 bg-white group-hover:bg-cyan-50/40 px-3 py-3">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewDoc(n)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-cyan-600 bg-cyan-50 px-3 py-1.5 text-xs font-bold text-cyan-700 shadow-2xs hover:bg-cyan-600 hover:text-white transition cursor-pointer"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          <span>Xem & In</span>
-                        </button>
+          {/* Search & Toolbar */}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  placeholder="Tìm kiếm theo số phiếu, kho xuất, kho nhập, sản phẩm..."
+                />
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedSearch((prev) => !prev)}
+                  className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition ${
+                    showAdvancedSearch
+                      ? 'border-cyan-600 bg-cyan-50 text-cyan-700'
+                      : 'border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50'
+                  }`}
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Tìm kiếm nâng cao
+                </button>
+              </div>
+            </div>
+
+            {/* Advanced Search Panel */}
+            {showAdvancedSearch && (
+              <div className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/40 p-5 space-y-4 shadow-xs">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-cyan-800">Bộ lọc nâng cao</h3>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('ALL')}
+                    className="text-xs font-bold text-slate-500 hover:text-cyan-700 hover:underline"
+                  >
+                    Xóa bộ lọc
+                  </button>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">Trạng thái phiếu điều chuyển</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'ALL', label: 'Tất cả phiếu điều chuyển' },
+                      { key: 'COMPLETED', label: 'Đã nhập kho nhận' },
+                    ].map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setStatusFilter(item.key)}
+                        className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${
+                          statusFilter === item.key
+                            ? 'bg-cyan-600 text-white border-cyan-600 shadow-xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* High-density Data Table */}
+          <div className="overflow-hidden rounded-2xl border-2 border-cyan-500 bg-white shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="bg-cyan-50 border-b border-slate-200">
+                    <th className="w-12 border-r border-slate-200 p-3 text-center text-xs font-extrabold uppercase text-slate-800">STT</th>
+                    <th className="border-r border-slate-200 p-3 text-xs font-extrabold uppercase text-slate-800">Số Phiếu Điều Chuyển</th>
+                    <th className="border-r border-slate-200 p-3 text-xs font-extrabold uppercase text-slate-800">Kho Xuất (Nguồn)</th>
+                    <th className="border-r border-slate-200 p-3 text-xs font-extrabold uppercase text-slate-800">Kho Nhập (Đích)</th>
+                    <th className="border-r border-slate-200 p-3 text-center text-xs font-extrabold uppercase text-slate-800">Ngày Điều Chuyển</th>
+                    <th className="border-r border-slate-200 p-3 text-center text-xs font-extrabold uppercase text-slate-800">Số Lượng SP</th>
+                    <th className="border-r border-slate-200 p-3 text-right text-xs font-extrabold uppercase text-slate-800">Tổng Giá Trị</th>
+                    <th className="border-r border-slate-200 p-3 text-center text-xs font-extrabold uppercase text-slate-800">Trạng Thái</th>
+                    <th className="p-3 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[120px]">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-slate-500">Đang tải danh sách phiếu điều chuyển...</td>
+                    </tr>
+                  ) : paginatedDocs.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-slate-500">Không tìm thấy phiếu điều chuyển phù hợp.</td>
+                    </tr>
+                  ) : (
+                    paginatedDocs.map((doc, index) => {
+                      const totalQty = doc.items.reduce((sum, item) => sum + (item.quantityExported || (item as any).quantity || 0), 0);
+                      const totalVal = doc.items.reduce((sum, item) => sum + (item.price || (item as any).unitPrice || 0) * (item.quantityExported || (item as any).quantity || 0), 0);
+                      const sourceWh = doc.sourceWarehouse || (doc as any).fromWarehouse || '';
+                      const destWh = doc.destinationWarehouse || (doc as any).toWarehouse || '';
+                      const dateStr = doc.createdDate || (doc as any).transferredDate || '';
+
+                      return (
+                        <tr key={doc.id} className="border-b border-slate-200 hover:bg-cyan-50/50 transition-colors">
+                          <td className="border-r border-slate-200 p-3 text-center font-bold text-slate-700 text-xs sm:text-sm">
+                            {startIndex + index}
+                          </td>
+                          <td className="border-r border-slate-200 p-3 font-bold text-cyan-700 text-xs sm:text-sm">
+                            {doc.transferNo}
+                          </td>
+                          <td className="border-r border-slate-200 p-3 text-xs sm:text-sm font-bold text-slate-800">
+                            {sourceWh}
+                          </td>
+                          <td className="border-r border-slate-200 p-3 text-xs sm:text-sm font-bold text-slate-800">
+                            {destWh}
+                          </td>
+                          <td className="border-r border-slate-200 p-3 text-center text-xs text-slate-600">
+                            {dateStr}
+                          </td>
+                          <td className="border-r border-slate-200 p-3 text-center font-bold text-slate-800 text-xs sm:text-sm">
+                            {totalQty}
+                          </td>
+                          <td className="border-r border-slate-200 p-3 text-right font-black text-cyan-700 text-xs sm:text-sm">
+                            {formatMoney(totalVal)} ₫
+                          </td>
+                          <td className="border-r border-slate-200 p-3 text-center">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-extrabold text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Đã hoàn thành
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc(doc)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 shadow-xs transition hover:bg-cyan-50"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              Xem & In
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Footer */}
+            {!loading && totalItems > 0 && (
+              <div className="flex flex-col items-center justify-between border-t border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
+                <div className="text-sm text-slate-600 font-medium">
+                  Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
+                </div>
+                <div className="mt-4 flex items-center gap-2 sm:mt-0">
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-sm outline-none transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      «
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <span className="px-3 text-sm font-bold text-slate-700">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      »
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        /* TAB 2: MẪU PHIẾU ĐIỀU CHUYỂN (DANH SÁCH MẪU CHỨNG TỪ TỰ ĐỘNG) */
+        <div className="space-y-4">
+          {/* Search Toolbar for Mẫu phiếu điều chuyển (Full Width Search) */}
+          <div className="relative w-full">
+            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
+            <input
+              type="text"
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+              placeholder="Tìm mẫu theo mã mẫu, kí hiệu, kho áp dụng, tên file..."
+            />
+          </div>
+
+          {/* Table for Templates List (Styling aligned with Personnel) */}
+          <div className="overflow-hidden rounded-xl border-2 border-slate-200 bg-white shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse bg-white text-left">
+                <thead className="bg-cyan-50">
+                  <tr className="border-b-2 border-slate-200">
+                    <th className="w-12 border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800">STT</th>
+                    <th className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800">Mã Mẫu Phiếu</th>
+                    <th className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800">Kí Hiệu Phiếu</th>
+                    <th className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800">Trạng Thái Gửi CQT</th>
+                    <th className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800">Trạng Thái Phiếu</th>
+                    <th className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800">Loại Phiếu</th>
+                    <th className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800">Kho Áp Dụng</th>
+                    <th className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800">Ngày Tạo Mẫu</th>
+                    <th className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[290px]">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTemplates.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-sm font-semibold text-slate-500">
+                        Chưa có mẫu phiếu điều chuyển nào được tạo.
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                  ) : (
+                    filteredTemplates.map((tpl, index) => (
+                      <tr key={tpl.id} className="border-b border-slate-200 transition-colors hover:bg-cyan-50/40">
+                        <td className="border-x border-slate-200 p-3.5 text-center text-sm font-semibold text-slate-700">
+                          {index + 1}
+                        </td>
+                        <td className="border-x border-slate-200 p-3.5 text-center text-sm font-extrabold text-cyan-700">
+                          {tpl.templateCode}
+                        </td>
+                        <td className="border-x border-slate-200 p-3.5 text-center text-sm font-mono font-bold text-slate-800">
+                          {tpl.serialSymbol}
+                        </td>
+                        <td className="border-x border-slate-200 p-3.5 text-center">
+                          {tpl.cqtStatus === 'APPROVED' ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-extrabold text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Đã duyệt
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-extrabold text-amber-700 border border-amber-200">
+                              <AlertCircle className="h-3.5 w-3.5" />
+                              Chưa nộp
+                            </span>
+                          )}
+                        </td>
+                        <td className="border-x border-slate-200 p-3.5 text-center">
+                          {tpl.status === 'ACTIVE' ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-extrabold text-cyan-700 border border-cyan-200">
+                              Đang sử dụng
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-extrabold text-slate-600 border border-slate-200">
+                              Ngừng sử dụng
+                            </span>
+                          )}
+                        </td>
+                        <td className="border-x border-slate-200 p-3.5 text-center text-xs font-extrabold">
+                          {tpl.cqtStatus === 'APPROVED' ? (
+                            tpl.invoiceType === 'MAIN' ? (
+                              <span className="inline-flex rounded-md bg-indigo-50 px-2.5 py-1 text-indigo-700 border border-indigo-200">
+                                Chính
+                              </span>
+                            ) : (
+                              <span className="inline-flex rounded-md bg-purple-50 px-2.5 py-1 text-purple-700 border border-purple-200">
+                                Phụ
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-slate-400 font-bold">-</span>
+                          )}
+                        </td>
+                        <td className="border-x border-slate-200 p-3.5 text-center text-sm font-semibold text-slate-800">
+                          {tpl.appliedWarehouse || 'Tất cả các kho'}
+                        </td>
+                        <td className="border-x border-slate-200 p-3.5 text-center text-xs font-semibold text-slate-600">
+                          {tpl.createdDate}
+                        </td>
+                        <td className="border-x border-slate-200 p-3.5 text-center">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleTriggerEditFile(tpl.id)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-cyan-600 bg-white px-2.5 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition shadow-2xs"
+                              title="Tải lên file Word (.docx) mới"
+                            >
+                              <Upload className="h-3.5 w-3.5" />
+                              Sửa file
+                            </button>
 
-        {/* Footer Pagination */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-slate-200 bg-slate-50/80 px-4 py-3 text-xs font-bold text-slate-600">
-          <div>
-            Hiển thị <span className="text-cyan-800">{paginatedNotes.length}</span> / <span className="text-slate-900">{totalItems}</span> phiếu điều chuyển
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditModal(tpl)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-cyan-700 transition shadow-2xs"
+                              title="Sửa chi tiết thông tin bản ghi mẫu"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Sửa nội dung
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setPreviewTemplateModal(tpl)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+                              title="Xem mẫu phiếu A4"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              Xem mẫu
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTemplate(tpl.id)}
+                              className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 transition"
+                              title="Xóa mẫu phiếu"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+        </div>
+      )}
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-slate-700 hover:bg-cyan-50 disabled:opacity-50 cursor-pointer"
-            >
-              Trang trước
-            </button>
-            <span className="px-2 font-black text-cyan-900">
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              type="button"
-              disabled={currentPage >= totalPages}
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-slate-700 hover:bg-cyan-50 disabled:opacity-50 cursor-pointer"
-            >
-              Trang sau
-            </button>
+      {/* Edit Template Content Modal */}
+      {editingTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl space-y-4 border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-base font-extrabold text-cyan-900 flex items-center gap-2">
+                <Pencil className="h-5 w-5 text-cyan-600" />
+                Sửa Nội Dung Bản Ghi Mẫu Phiếu Điều Chuyển
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingTemplate(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
+              <div>
+                <label className="block mb-1 font-bold text-slate-800">Mã mẫu phiếu:</label>
+                <input
+                  type="text"
+                  value={templateForm.templateCode || ''}
+                  onChange={(e) => setTemplateForm({ ...templateForm, templateCode: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-cyan-800 outline-none focus:border-cyan-500 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-bold text-slate-800">Kí hiệu phiếu:</label>
+                <input
+                  type="text"
+                  value={templateForm.serialSymbol || ''}
+                  onChange={(e) => setTemplateForm({ ...templateForm, serialSymbol: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-mono font-bold text-slate-900 outline-none focus:border-cyan-500 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1 font-bold text-slate-800">Trạng thái gửi CQT:</label>
+                <select
+                  value={templateForm.cqtStatus || 'PENDING'}
+                  onChange={(e) => setTemplateForm({ ...templateForm, cqtStatus: e.target.value as any })}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold outline-none focus:border-cyan-500 bg-white"
+                >
+                  <option value="APPROVED">Đã duyệt</option>
+                  <option value="PENDING">Chưa nộp</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block mb-1 font-bold text-slate-800">Loại phiếu:</label>
+                <select
+                  disabled={templateForm.cqtStatus !== 'APPROVED'}
+                  value={templateForm.invoiceType || 'MAIN'}
+                  onChange={(e) => setTemplateForm({ ...templateForm, invoiceType: e.target.value as any })}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold outline-none focus:border-cyan-500 bg-white disabled:opacity-50 disabled:bg-slate-100"
+                >
+                  <option value="MAIN">Chính</option>
+                  <option value="SUB">Phụ</option>
+                </select>
+              </div>
+
+              <div className="col-span-2">
+                <label className="block mb-1 font-bold text-slate-800">Tiêu đề mẫu phiếu:</label>
+                <input
+                  type="text"
+                  value={templateForm.invoiceTitle || ''}
+                  onChange={(e) => setTemplateForm({ ...templateForm, invoiceTitle: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-cyan-500 bg-white"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block mb-1 font-bold text-slate-800">Tên đơn vị lập phiếu:</label>
+                <input
+                  type="text"
+                  value={templateForm.companyName || ''}
+                  onChange={(e) => setTemplateForm({ ...templateForm, companyName: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs outline-none focus:border-cyan-500 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setEditingTemplate(null)}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEditTemplate}
+                className="rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 transition shadow-xs"
+              >
+                Lưu Thay Đổi
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* DOCUMENT PRINT & PREVIEW MODAL */}
-      {previewDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto no-print">
-          <div className="relative w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto">
-            {/* Modal Top Bar */}
-            <div className="flex items-center justify-between border-b border-slate-200 pb-4 no-print">
-              <div className="flex items-center gap-2.5 text-cyan-800 font-bold text-base">
-                <Truck className="h-5 w-5 text-cyan-600" />
-                <span>Chi Tiết Phiếu Điều Chuyển Hàng Hóa Nội Bộ - {previewDoc.transferNo}</span>
+      {/* Add New Template Modal (Simplified: Name, Warehouse, File Upload) */}
+      {showAddTemplateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-base font-extrabold text-cyan-900 flex items-center gap-2">
+                <Plus className="h-5 w-5 text-cyan-600" />
+                Thêm Mẫu Phiếu Điều Chuyển Mới
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddTemplateModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs font-semibold text-slate-700">
+              <div>
+                <label className="block mb-1.5 font-bold text-slate-800 text-xs">Tên / Mã Mẫu Phiếu:</label>
+                <input
+                  type="text"
+                  value={newTemplateForm.templateCode}
+                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, templateCode: e.target.value })}
+                  placeholder="Ví dụ: Mẫu Phiếu Điều Chuyển 004"
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-cyan-500 bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-1.5 font-bold text-slate-800 text-xs">Kho Áp Dụng:</label>
+                <select
+                  value={newTemplateForm.appliedWarehouse}
+                  onChange={(e) => setNewTemplateForm({ ...newTemplateForm, appliedWarehouse: e.target.value })}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-bold text-slate-900 outline-none focus:border-cyan-500 bg-white"
+                >
+                  <option value="Tất cả các kho">Tất cả các kho</option>
+                  <option value="Kho Tổng TP.HCM">Kho Tổng TP.HCM</option>
+                  <option value="Kho Miền Bắc">Kho Miền Bắc</option>
+                  <option value="Kho Miền Trung">Kho Miền Trung</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block mb-1.5 font-bold text-slate-800 text-xs">Chọn File Mẫu Word (.docx):</label>
+                <input
+                  type="file"
+                  accept=".docx,.doc"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setNewTemplateForm({ ...newTemplateForm, fileName: file.name });
+                    }
+                  }}
+                  className="w-full rounded-xl border border-slate-300 p-2 text-xs text-slate-700 bg-slate-50 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-cyan-600 file:text-white hover:file:bg-cyan-700 cursor-pointer"
+                />
+                {newTemplateForm.fileName && (
+                  <p className="mt-1.5 text-xs text-cyan-700 font-bold truncate">
+                    Đã chọn: {newTemplateForm.fileName}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowAddTemplateModal(false)}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveNewTemplate}
+                className="rounded-xl bg-cyan-600 px-5 py-2 text-xs font-bold text-white hover:bg-cyan-700 transition shadow-xs"
+              >
+                Tạo Mẫu Mới
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Template Printable A4 Canvas Modal */}
+      {previewTemplateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8">
+            <div className="flex items-center justify-between bg-cyan-700 px-6 py-4 text-white print:hidden">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" />
+                <h3 className="font-bold text-base">Xem Mẫu Phiếu Điều Chuyển: {previewTemplateModal.templateCode} ({previewTemplateModal.serialSymbol})</h3>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handlePrint}
-                  className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-xs font-bold text-white shadow-md transition hover:bg-cyan-700 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-cyan-800 shadow-xs hover:bg-cyan-50 transition"
+                >
+                  <Printer className="h-4 w-4" />
+                  In Thử Mẫu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewTemplateModal(null)}
+                  className="rounded-xl p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-8 md:p-12 font-serif text-slate-900 space-y-6">
+              <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1">
+                <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">{previewTemplateModal.invoiceTitle}</h2>
+                <p className="text-xs font-bold text-slate-700">{previewTemplateModal.companyName}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs font-medium text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div>
+                  <span className="font-bold text-slate-900">Mẫu Số:</span> <span className="font-mono font-bold text-cyan-700">{previewTemplateModal.templateCode}</span>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-900">Kí Hiệu Phiếu:</span> <span className="font-mono font-bold text-cyan-700">{previewTemplateModal.serialSymbol}</span>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-900">Số Phiếu:</span> <span className="font-mono font-bold text-cyan-700">&#123;&#123;transferNo&#125;&#125;</span>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-900">Trạng Thái CQT:</span>{' '}
+                  <span className="font-bold text-emerald-700">
+                    {previewTemplateModal.cqtStatus === 'APPROVED' ? 'Đã duyệt CQT' : 'Chưa nộp'}
+                  </span>
+                </div>
+              </div>
+
+              <table className="w-full border-2 border-slate-900 text-center text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 font-bold border-b-2 border-slate-900">
+                    <th className="border border-slate-900 p-2 w-12">STT</th>
+                    <th className="border border-slate-900 p-2 text-left">Tên vật tư điều chuyển</th>
+                    <th className="border border-slate-900 p-2 w-16">ĐVT</th>
+                    <th className="border border-slate-900 p-2 w-20">Số lượng</th>
+                    <th className="border border-slate-900 p-2 w-28">Đơn giá</th>
+                    <th className="border border-slate-900 p-2 w-32">Thành tiền</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-slate-900 p-2 font-bold">1</td>
+                    <td className="border border-slate-900 p-2 text-left font-mono text-cyan-700">&#123;&#123;productName_1&#125;&#125;</td>
+                    <td className="border border-slate-900 p-2 font-mono text-cyan-700">&#123;&#123;unit_1&#125;&#125;</td>
+                    <td className="border border-slate-900 p-2 font-mono text-cyan-700">&#123;&#123;quantity_1&#125;&#125;</td>
+                    <td className="border border-slate-900 p-2 text-right font-mono text-cyan-700">&#123;&#123;unitPrice_1&#125;&#125;</td>
+                    <td className="border border-slate-900 p-2 text-right font-mono text-cyan-700">&#123;&#123;total_1&#125;&#125;</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div className="grid grid-cols-2 gap-4 text-center text-xs pt-8">
+                <div className="space-y-12">
+                  <p className="font-bold uppercase">NGƯỜI LẬP PHIẾU</p>
+                  <p className="text-slate-400 font-italic">(Ký, ghi rõ họ tên)</p>
+                </div>
+                <div className="space-y-12">
+                  <p className="font-bold uppercase">XÁC NHẬN KHO ĐÍCH</p>
+                  <p className="font-bold text-cyan-800">{previewTemplateModal.sellerName || 'Nguyễn Văn Quản Lý'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Printable Detail Modal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto">
+          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8">
+            <div className="flex items-center justify-between bg-cyan-700 px-6 py-4 text-white print:hidden">
+              <div className="flex items-center gap-2">
+                <Truck className="h-5 w-5" />
+                <h3 className="font-bold text-base">Chi Tiết Phiếu Điều Chuyển: {previewDoc.transferNo}</h3>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-cyan-800 shadow-xs hover:bg-cyan-50 transition"
                 >
                   <Printer className="h-4 w-4" />
                   In Phiếu Điều Chuyển
@@ -369,112 +986,60 @@ export default function TransferDocPage() {
                 <button
                   type="button"
                   onClick={() => setPreviewDoc(null)}
-                  className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
+                  className="rounded-xl p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            {/* Printable Paper Area */}
-            <div className="print-area border-4 border-cyan-600/80 p-6 sm:p-8 rounded-lg bg-white text-slate-900 font-sans shadow-xs">
-              <style>{`
-                @media print {
-                  body * { visibility: hidden; }
-                  .print-area, .print-area * { visibility: visible; }
-                  .print-area { position: absolute; left: 0; top: 0; width: 100%; }
-                  .no-print { display: none !important; }
-                }
-              `}</style>
-
-              {/* Header */}
-              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
-                <div>
-                  <h2 className="text-base sm:text-lg font-extrabold uppercase text-slate-900">CÔNG TY TNHH QUẢN LÝ KHO THÔNG MINH</h2>
-                  <p className="text-xs text-slate-600">Đơn vị chủ quản: Tập Đoàn Logistic Việt Nam</p>
-                </div>
-                <div className="text-right text-xs font-semibold text-slate-700">
-                  <div>Mẫu phiếu điều chuyển nội bộ</div>
-                  <div className="font-extrabold text-cyan-700 text-sm">Số lệnh: {previewDoc.transferNo}</div>
-                </div>
+            <div className="p-8 font-serif text-slate-900 print:p-0 space-y-6">
+              <div className="text-center border-b-2 border-slate-900 pb-4">
+                <h1 className="text-2xl font-black uppercase tracking-wide text-slate-900">PHIẾU ĐIỀU CHUYỂN KHO NỘI BỘ</h1>
+                <p className="text-xs font-semibold text-slate-600 mt-1">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
               </div>
 
-              {/* Title */}
-              <div className="text-center my-6">
-                <h1 className="text-2xl sm:text-3xl font-black uppercase text-slate-900 tracking-wider">
-                  PHIẾU ĐIỀU CHUYỂN HÀNG HÓA NỘI BỘ
-                </h1>
-                <p className="text-xs italic text-slate-500 mt-1">
-                  Ngày {new Date(previewDoc.createdDate).getDate()} tháng {new Date(previewDoc.createdDate).getMonth() + 1} năm {new Date(previewDoc.createdDate).getFullYear()}
-                </p>
+              <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm mb-6 border-b border-dashed border-slate-300 pb-4">
+                <div><span className="font-semibold text-slate-700">Số phiếu điều chuyển:</span> <span className="font-bold text-cyan-800">{previewDoc.transferNo}</span></div>
+                <div><span className="font-semibold text-slate-700">Ngày điều chuyển:</span> <span className="font-bold text-slate-900">{previewDoc.createdDate || (previewDoc as any).transferredDate || ''}</span></div>
+                <div><span className="font-semibold text-slate-700">Kho xuất (Nguồn):</span> <span className="font-bold text-slate-900">{previewDoc.sourceWarehouse || (previewDoc as any).fromWarehouse || ''}</span></div>
+                <div><span className="font-semibold text-slate-700">Kho nhập (Đích):</span> <span className="font-bold text-slate-900">{previewDoc.destinationWarehouse || (previewDoc as any).toWarehouse || ''}</span></div>
               </div>
 
-              {/* Info */}
-              <div className="space-y-1.5 text-xs sm:text-sm mb-6 border-b border-dashed border-slate-300 pb-4">
-                <div className="flex"><span className="w-44 font-semibold text-slate-700">Căn cứ lệnh điều chuyển số:</span> <span className="font-bold text-slate-900">{previewDoc.transferNo}</span></div>
-                <div className="flex"><span className="w-44 font-semibold text-slate-700">Từ kho xuất hàng:</span> <span className="font-bold text-amber-800">{previewDoc.sourceWarehouse}</span></div>
-                <div className="flex"><span className="w-44 font-semibold text-slate-700">Đến kho tiếp nhận:</span> <span className="font-bold text-teal-800">{previewDoc.destinationWarehouse}</span></div>
-                <div className="flex"><span className="w-44 font-semibold text-slate-700">Người / Đơn vị vận chuyển:</span> <span className="font-bold text-slate-900">{previewDoc.transporterName}</span></div>
-                <div className="flex"><span className="w-44 font-semibold text-slate-700">Mã lệnh liên kết:</span> <span className="font-medium text-slate-800">{previewDoc.commandNo || 'N/A'}</span></div>
-              </div>
-
-              {/* Items Table */}
               <table className="w-full border-2 border-slate-900 text-center text-xs sm:text-sm border-collapse mb-6">
                 <thead>
                   <tr className="bg-slate-100 font-bold border-b-2 border-slate-900">
-                    <th rowSpan={2} className="border border-slate-900 p-2 w-12">STT</th>
-                    <th rowSpan={2} className="border border-slate-900 p-2 text-left">Tên, nhãn hiệu quy cách sản phẩm</th>
-                    <th rowSpan={2} className="border border-slate-900 p-2 w-20">Mã SKU</th>
-                    <th rowSpan={2} className="border border-slate-900 p-2 w-16">ĐVT</th>
-                    <th colSpan={2} className="border border-slate-900 p-1">Số lượng</th>
-                    <th rowSpan={2} className="border border-slate-900 p-2 w-24">Đơn giá</th>
-                    <th rowSpan={2} className="border border-slate-900 p-2 w-28">Thành tiền</th>
-                  </tr>
-                  <tr className="bg-slate-100 font-bold border-b-2 border-slate-900">
-                    <th className="border border-slate-900 p-1 w-16">Xuất kho</th>
-                    <th className="border border-slate-900 p-1 w-16">Thực nhận</th>
+                    <th className="border border-slate-900 p-2 w-12">STT</th>
+                    <th className="border border-slate-900 p-2 text-left">Tên vật tư sản phẩm</th>
+                    <th className="border border-slate-900 p-2 w-16">ĐVT</th>
+                    <th className="border border-slate-900 p-2 w-20">Số lượng</th>
+                    <th className="border border-slate-900 p-2 w-28">Đơn giá</th>
+                    <th className="border border-slate-900 p-2 w-32">Thành tiền</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {previewDoc.items.map((item, idx) => (
-                    <tr key={item.id || idx} className="border-b border-slate-800">
-                      <td className="border border-slate-900 p-2 font-bold">{idx + 1}</td>
-                      <td className="border border-slate-900 p-2 text-left font-bold text-slate-900">{item.productName}</td>
-                      <td className="border border-slate-900 p-2 font-mono text-xs">{item.productCode}</td>
-                      <td className="border border-slate-900 p-2">{item.unit}</td>
-                      <td className="border border-slate-900 p-2 font-bold text-slate-900">{item.quantityExported}</td>
-                      <td className="border border-slate-900 p-2 font-bold text-slate-900">{item.quantityImported}</td>
-                      <td className="border border-slate-900 p-2 text-right">{formatMoney(item.price)}</td>
-                      <td className="border border-slate-900 p-2 text-right font-bold">{formatMoney(item.price * item.quantityExported)}</td>
-                    </tr>
-                  ))}
-                  <tr className="font-black bg-slate-50 text-slate-900">
-                    <td colSpan={7} className="border border-slate-900 p-2 text-right uppercase">TỔNG GIÁ TRỊ ĐIỀU CHUYỂN:</td>
-                    <td className="border border-slate-900 p-2 text-right text-cyan-800">
-                      {formatMoney(previewDoc.items.reduce((s, i) => s + i.price * i.quantityExported, 0))} đ
-                    </td>
-                  </tr>
+                  {previewDoc.items.map((item, idx) => {
+                    const qty = item.quantityExported || (item as any).quantity || 0;
+                    const pr = item.price || (item as any).unitPrice || 0;
+                    return (
+                      <tr key={item.id || idx} className="border-b border-slate-800">
+                        <td className="border border-slate-900 p-2 font-bold">{idx + 1}</td>
+                        <td className="border border-slate-900 p-2 text-left font-bold text-slate-900">{item.productName}</td>
+                        <td className="border border-slate-900 p-2">{item.unit}</td>
+                        <td className="border border-slate-900 p-2 font-bold text-slate-900">{qty}</td>
+                        <td className="border border-slate-900 p-2 text-right">{formatMoney(pr)}</td>
+                        <td className="border border-slate-900 p-2 text-right font-bold">{formatMoney(pr * qty)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
-              {/* Signatures */}
-              <div className="grid grid-cols-4 text-center mt-10">
-                <div>
-                  <div className="font-bold uppercase text-slate-900 text-xs">NGƯỜI LẬP PHIẾU</div>
-                  <div className="text-[10px] italic text-slate-500">(Ký, họ tên)</div>
-                </div>
-                <div>
-                  <div className="font-bold uppercase text-slate-900 text-xs">THỦ KHO XUẤT</div>
-                  <div className="text-[10px] italic text-slate-500">(Ký, họ tên)</div>
-                </div>
-                <div>
-                  <div className="font-bold uppercase text-slate-900 text-xs">NGƯỜI VẬN CHUYỂN</div>
-                  <div className="text-[10px] italic text-slate-500">(Ký, họ tên)</div>
-                </div>
-                <div>
-                  <div className="font-bold uppercase text-slate-900 text-xs">THỦ KHO NHẬP</div>
-                  <div className="text-[10px] italic text-slate-500">(Ký, họ tên)</div>
-                </div>
+              <div className="flex justify-between items-center text-xs sm:text-sm border-t border-slate-900 pt-3">
+                <span className="font-bold">Người lập phiếu: Nguyễn Văn Quản Lý</span>
+                <span className="font-black text-cyan-800 text-base">
+                  Tổng giá trị luân chuyển: {formatMoney(previewDoc.items.reduce((s, i) => s + (i.price || (i as any).unitPrice || 0) * (i.quantityExported || (i as any).quantity || 0), 0))} ₫
+                </span>
               </div>
             </div>
           </div>

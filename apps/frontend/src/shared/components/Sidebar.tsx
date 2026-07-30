@@ -38,7 +38,7 @@ const menuItems: MenuItem[] = [
   { icon: Home, label: 'Trang chủ', path: '/dashboard', badge: null },
   {
     icon: FileCheck,
-    label: 'Lập chứng từ',
+    label: 'Chứng từ',
     path: '/documents',
     badge: null,
     children: [

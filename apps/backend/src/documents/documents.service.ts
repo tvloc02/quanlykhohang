@@ -27,6 +27,7 @@ export class DocumentsService {
     return orders.map((order, idx) => ({
       id: order.id,
       invoiceNo: `HD-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
+      invoiceName: order.description?.trim() || order.orderNo || 'Hóa đơn bán hàng',
       orderCode: order.orderNo || `SO-${order.id.slice(0, 6)}`,
       customerName: order.customer?.name || 'Khách hàng cá nhân',
       customerTaxCode: '0101234567',

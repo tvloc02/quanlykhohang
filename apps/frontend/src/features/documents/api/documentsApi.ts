@@ -11,6 +11,7 @@ function getAuthHeaders() {
 export type SalesInvoiceDoc = {
   id: string;
   invoiceNo: string;
+  invoiceName: string;
   orderCode: string;
   customerName: string;
   customerTaxCode: string;
@@ -105,6 +106,7 @@ export const documentsApi = {
     return list.map((item: any, idx: number) => ({
       id: item.id || String(idx),
       invoiceNo: `HD-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
+      invoiceName: item.description || item.orderNo || 'Hóa đơn bán hàng',
       orderCode: item.orderCode || `SO-${item.id?.slice(0, 6) || '001'}`,
       customerName: item.customerName || 'Khách hàng',
       customerTaxCode: '0101234567',
