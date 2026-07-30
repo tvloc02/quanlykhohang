@@ -42,14 +42,6 @@ export default function CartCheckoutPage() {
   const user = userStr ? JSON.parse(userStr) : null;
   const token = localStorage.getItem('token');
 
-  const [addressModalOpen, setAddressModalOpen] = useState(false);
-  const [profileForm, setProfileForm] = useState({
-    fullName: user?.fullName || '',
-    phone: user?.phone || '',
-    address: user?.address || ''
-  });
-  const [updatingAddress, setUpdatingAddress] = useState(false);
-
   useEffect(() => {
     const savedCart = localStorage.getItem('shop_cart');
     if (savedCart) {
@@ -129,31 +121,6 @@ export default function CartCheckoutPage() {
       navigate('/');
   };
 
-  const handleUpdateAddress = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user?.id) return;
-    setUpdatingAddress(true);
-    try {
-      const res = await fetch(`http://localhost:3000/api/users/${user.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(profileForm),
-      });
-      if (!res.ok) throw new Error('Không thể cập nhật thông tin');
-      
-      const updatedUser = await res.json();
-      localStorage.setItem('user', JSON.stringify({ ...user, ...updatedUser }));
-      setToast({ type: 'success', message: 'Cập nhật thông tin thành công!' });
-      setTimeout(() => window.location.reload(), 1000);
-    } catch (err) {
-      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Lỗi hệ thống' });
-      setUpdatingAddress(false);
-    }
-  };
-
   const cartSubtotal = cart.reduce((total, item) => total + ((item.product.price || 0) * item.quantity), 0);
   const shippingFee = cart.length > 0 ? 30000 : 0;
   const cartTotal = cartSubtotal + shippingFee;
@@ -181,15 +148,8 @@ export default function CartCheckoutPage() {
                       <div className="flex items-center gap-4 ml-2">
                           <div 
                             className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" 
-                            onClick={() => {
-                              setProfileForm({
-                                fullName: user.fullName || '',
-                                phone: user.phone || '',
-                                address: user.address || ''
-                              });
-                              setAddressModalOpen(true);
-                            }}
-                            title="Bấm để cập nhật thông tin cá nhân"
+                            onClick={() => navigate('/shop/profile')}
+                            title="Bấm để đến trang thông tin cá nhân"
                           >
                               <div className="w-8 h-8 rounded-full bg-cyan-100 flex items-center justify-center text-cyan-700">
                                   <User size={16} />
@@ -367,63 +327,6 @@ export default function CartCheckoutPage() {
               </div>
           </div>
       </footer>
-
-      {/* Address Modal */}
-      {addressModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-            <div className="border-b-2 border-slate-100 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">Cập nhật thông tin cá nhân</h2>
-              <button type="button" onClick={() => setAddressModalOpen(false)} className="text-slate-400 hover:text-slate-600">
-                <span className="sr-only">Đóng</span>
-                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
-            </div>
-            <form onSubmit={handleUpdateAddress} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Họ và tên</label>
-                <input
-                  type="text"
-                  value={profileForm.fullName}
-                  onChange={e => setProfileForm(prev => ({...prev, fullName: e.target.value}))}
-                  className="w-full h-12 rounded-xl border-2 border-slate-200 px-4 text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                  placeholder="Nhập họ và tên..."
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Số điện thoại</label>
-                <input
-                  type="text"
-                  value={profileForm.phone}
-                  onChange={e => setProfileForm(prev => ({...prev, phone: e.target.value}))}
-                  className="w-full h-12 rounded-xl border-2 border-slate-200 px-4 text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                  placeholder="Nhập số điện thoại..."
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Địa chỉ giao hàng</label>
-                <textarea
-                  value={profileForm.address}
-                  onChange={e => setProfileForm(prev => ({...prev, address: e.target.value}))}
-                  className="w-full h-24 rounded-xl border-2 border-slate-200 p-4 text-slate-700 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                  placeholder="Nhập địa chỉ của bạn..."
-                  required
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="ghost" onClick={() => setAddressModalOpen(false)} type="button">Hủy</Button>
-                <Button type="submit" disabled={updatingAddress}>
-                  {updatingAddress ? 'Đang lưu...' : 'Lưu thông tin'}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

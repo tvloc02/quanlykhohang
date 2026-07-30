@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, Search, Package, ChevronDown } from 'lucide-react';
 const API_BASE_URL = 'http://localhost:3000/api';
 function authHeaders() {
@@ -244,9 +245,9 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md">
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+  return createPortal(
+    <div className="fixed inset-0 top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-slate-950/75 p-3 sm:p-6 backdrop-blur-md overflow-y-auto">
+      <div className="flex w-full max-w-4xl max-h-[94vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl my-auto">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div>
             <h2 className="text-xl font-black text-slate-900">Tạo yêu cầu điều chuyển</h2>
@@ -438,7 +439,8 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
           onConfirm={handleAddProducts}
         />
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -477,7 +479,7 @@ function ProductSelectionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 top-0 left-0 w-screen h-screen z-[100000] flex items-center justify-center bg-slate-950/75 p-3 sm:p-6 backdrop-blur-md overflow-y-auto">
       <div className="flex h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-xl font-black text-slate-900">Chọn sản phẩm</h2>

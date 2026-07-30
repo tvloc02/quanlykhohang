@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import CreateTransferRequestModal from '../components/CreateTransferRequestModal';
 import TransferOrderModal from '../components/TransferOrderModal';
+import { createPortal } from 'react-dom';
 import { getStoredWarehouses, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
 
 type Toast = {
@@ -369,6 +370,7 @@ export default function TransferRequestsPage() {
         </button>
       </div>
 
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
           <p className="text-lg font-black text-cyan-700 uppercase">{requests.length} TỔNG YÊU CẦU</p>
@@ -501,7 +503,7 @@ export default function TransferRequestsPage() {
                         {formatStatus(request.status)}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                    <td className={`sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeActionMenuId === request.id ? 'z-[60]' : 'z-10'}`}>
                       <div className="flex items-center justify-center gap-2" data-action-menu>
                         <button
                           type="button"
@@ -531,7 +533,7 @@ export default function TransferRequestsPage() {
                             <MoreHorizontal className="h-4 w-4 text-cyan-600" strokeWidth={2.5} />
                           </button>
                           {activeActionMenuId === request.id && (
-                            <div className={`absolute right-0 ${index >= paginatedRequests.length - 3 ? 'bottom-full mb-2' : 'top-full mt-2'} w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-xl z-50`}>
+                            <div className={`absolute right-0 ${index > 0 && index >= paginatedRequests.length - 2 ? 'bottom-full mb-2' : 'top-full mt-2'} w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-xl z-50`}>
                               {request.status === 'APPROVED' && (
                                 <button
                                   type="button"
@@ -650,9 +652,9 @@ export default function TransferRequestsPage() {
         </div>
       </div>
 
-      {modalMode === 'view' && selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+      {modalMode === 'view' && selectedRequest && createPortal(
+        <div className="fixed inset-0 top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-slate-950/75 p-3 sm:p-6 backdrop-blur-md overflow-y-auto">
+          <div className="flex w-full max-w-6xl max-h-[94vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl my-auto">
             <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 lg:flex-row lg:items-start lg:justify-between bg-slate-50">
               <div>
                 <p className="text-2xl font-black text-slate-900">Yêu cầu {selectedRequest.requestNumber}</p>
@@ -762,7 +764,8 @@ export default function TransferRequestsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {modalMode === 'create' && (

@@ -43,6 +43,7 @@ import SupplierProducts from './features/supplier-products/SupplierProducts';
 
 import Shop from './features/shop/Shop';
 import CartCheckoutPage from './features/shop/pages/CartCheckoutPage';
+import ShopUserProfilePage from './features/shop/pages/ShopUserProfilePage';
 import Customers from './features/customers/Customers';
 import BarcodeMappingsPage from './features/inbound/pages/BarcodeMappingsPage';
 import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
@@ -118,6 +119,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
         <Route path="/shop" element={<Shop />} />
+        <Route path="/shop/profile" element={<ShopUserProfilePage />} />
         <Route path="/cart" element={<CartCheckoutPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />

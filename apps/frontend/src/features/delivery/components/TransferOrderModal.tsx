@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, X } from 'lucide-react';
 import { deliveryApi, type TransferOrderStatus } from '../api/deliveryApi';
 
@@ -220,9 +221,9 @@ export default function TransferOrderModal({
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-md">
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+  return createPortal(
+    <div className="fixed inset-0 top-0 left-0 w-screen h-screen z-[99999] flex items-center justify-center bg-slate-950/75 p-3 sm:p-6 backdrop-blur-md overflow-y-auto">
+      <div className="flex w-full max-w-6xl max-h-[94vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl my-auto">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div>
             <h2 className="text-xl font-black text-slate-900">Phiếu điều chuyển</h2>
@@ -427,6 +428,7 @@ export default function TransferOrderModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

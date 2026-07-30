@@ -164,7 +164,7 @@ function statusLabel(status?: string) {
   const group = getStatusGroup(status);
   if (normalized === 'APPROVED') return 'Đơn đặt hàng mới';
   if (normalized === 'SUPPLIER_APPROVED') return 'NCC đã xác nhận';
-  if (normalized === 'REJECTED') return 'Đã phản hồi / Từ chối';
+  if (normalized === 'REJECTED') return 'Phản hồi giá';
   if (group === 'completed') return 'Hoàn thành';
   if (group === 'in-transit') return 'Đang giao';
   if (group === 'cancelled') return 'Đã hủy';
@@ -172,6 +172,8 @@ function statusLabel(status?: string) {
 }
 
 function statusClass(status?: string) {
+  const normalized = (status || 'CREATED').toUpperCase();
+  if (normalized === 'REJECTED') return 'border-amber-200 bg-amber-50 text-amber-700';
   const group = getStatusGroup(status);
   if (group === 'completed') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (group === 'in-transit') return 'border-blue-200 bg-blue-50 text-blue-700';
