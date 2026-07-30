@@ -3,8 +3,10 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   BarChart3,
   Box,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  FileCheck,
   FileText,
   HeartHandshake,
   Home,
@@ -24,8 +26,28 @@ interface SidebarProps {
   onToggle: () => void;
 }
 
-const menuItems = [
+type MenuItem = {
+  icon: any;
+  label: string;
+  path: string;
+  badge?: null | string;
+  children?: Array<{ icon: any; label: string; path: string }>;
+};
+
+const menuItems: MenuItem[] = [
   { icon: Home, label: 'Trang chủ', path: '/dashboard', badge: null },
+  {
+    icon: FileCheck,
+    label: 'Lập chứng từ',
+    path: '/documents',
+    badge: null,
+    children: [
+      { icon: FileText, label: 'Hóa đơn bán hàng', path: '/documents/sales-invoice' },
+      { icon: TrendingDown, label: 'Phiếu nhập kho', path: '/documents/stock-in-note' },
+      { icon: TrendingUp, label: 'Phiếu xuất kho', path: '/documents/stock-out-note' },
+      { icon: Truck, label: 'Phiếu điều chuyển', path: '/documents/transfer-note' },
+    ],
+  },
   { icon: Layers, label: 'Danh mục', path: '/categories', badge: null },
   { icon: Package, label: 'Sản phẩm', path: '/products', badge: null },
   { icon: BarChart3, label: 'Báo cáo', path: '/reports', badge: null },
@@ -53,23 +75,86 @@ function getStoredRole() {
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isDocExpanded, setIsDocExpanded] = useState<boolean>(true);
   const userRole = getStoredRole();
 
   const allowedMenuItems = menuItems.filter((item) => {
-    // Admin: Chỉ Trang chủ, Nhân sự, Nhật ký hoạt động, Cài đặt
+    // Lập chứng từ luôn được hiển thị cho tất cả tài khoản
+    if (item.path === '/documents') return true;
+
+    // Admin: Được hiển thị tất cả các menu trên hệ thống
     if (userRole === 'admin') {
-      return ['/dashboard', '/personnel', '/customers', '/audit-log', '/settings'].includes(item.path);
+      return true;
     }
+
     // Manager & Staff: Tất cả NGOẠI TRỪ Nhân sự, Nhật ký hoạt động, Cài đặt
     return !['/personnel', '/audit-log', '/settings'].includes(item.path);
   });
 
   const filteredMenuItems = allowedMenuItems.filter((item) =>
-    item.label.toLowerCase().includes(searchQuery.toLowerCase()),
+    item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    item.children?.some(c => c.label.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const renderItem = (item: (typeof menuItems)[number]) => {
+  const renderItem = (item: MenuItem) => {
     const Icon = item.icon;
+    const isParentActive = location.pathname.startsWith(item.path);
+    const hasChildren = Boolean(item.children && item.children.length > 0);
+
+    if (hasChildren) {
+      return (
+        <div key={item.path} className="space-y-1">
+          <div
+            onClick={() => setIsDocExpanded(!isDocExpanded)}
+            className={`w-full flex items-center px-4 py-3.5 text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer group ${
+              isParentActive
+                ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border-l-4 border-cyan-500'
+                : 'hover:bg-cyan-50 dark:hover:bg-black/40 text-gray-600 dark:text-slate-300'
+            }`}
+            title={!isOpen ? item.label : ''}
+          >
+            <Icon
+              className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 text-cyan-600`}
+            />
+            {isOpen && (
+              <>
+                <span className="flex-1 text-left truncate">{item.label}</span>
+                <ChevronDown
+                  className={`h-4 w-4 text-cyan-600 transition-transform duration-200 ${
+                    isDocExpanded ? 'transform rotate-180' : ''
+                  }`}
+                />
+              </>
+            )}
+          </div>
+
+          {/* Children Accordion */}
+          {hasChildren && isOpen && isDocExpanded && (
+            <div className="pl-6 space-y-1 border-l-2 border-cyan-100 dark:border-slate-800 ml-5 my-1">
+              {item.children!.map((child) => {
+                const ChildIcon = child.icon;
+                const isChildActive = location.pathname === child.path;
+                return (
+                  <Link
+                    key={child.path}
+                    to={child.path}
+                    className={`w-full flex items-center px-3 py-2.5 text-xs font-bold rounded-lg transition-all duration-200 ${
+                      isChildActive
+                        ? 'bg-cyan-600 text-white shadow-md'
+                        : 'text-gray-600 dark:text-slate-400 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <ChildIcon className={`h-4 w-4 mr-2.5 flex-shrink-0 ${isChildActive ? 'text-white' : 'text-cyan-600'}`} />
+                    <span className="truncate">{child.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     const isActive = location.pathname === item.path;
 
     return (

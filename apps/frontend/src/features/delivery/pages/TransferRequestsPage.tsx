@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import CreateTransferRequestModal from '../components/CreateTransferRequestModal';
 import TransferOrderModal from '../components/TransferOrderModal';
+import InternalShippingNoteModal from '../components/InternalShippingNoteModal';
 import { createPortal } from 'react-dom';
 import { getStoredWarehouses, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
 
@@ -221,7 +222,9 @@ export default function TransferRequestsPage() {
   const [selectedRequest, setSelectedRequest] = React.useState<TransferRequest | null>(null);
   const [transferOrderRequest, setTransferOrderRequest] = React.useState<TransferRequest | null>(null);
   const [isTransferOrderModalOpen, setIsTransferOrderModalOpen] = React.useState(false);
-  const [activeActionMenuId, setActiveActionMenuId] = React.useState<string | null>(null);
+  const [shippingNoteRequest, setShippingNoteRequest] = React.useState<TransferRequest | null>(null);
+  const [isShippingNoteModalOpen, setIsShippingNoteModalOpen] = React.useState(false);
+  const [actionMenuState, setActionMenuState] = React.useState<{ id: string; top: number; right: number; request: TransferRequest } | null>(null);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(() => getStoredWarehouses());
 
   React.useEffect(() => {
@@ -267,7 +270,7 @@ export default function TransferRequestsPage() {
     function handleDocumentMouseDown(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
       if (target && !target.closest('[data-action-menu]')) {
-        setActiveActionMenuId(null);
+        setActionMenuState(null);
       }
     }
 
@@ -289,7 +292,7 @@ export default function TransferRequestsPage() {
     setRequests(updated);
     localStorage.setItem('wms_transfer_requests', JSON.stringify(updated));
     setToast({ type: 'success', message: 'Đã duyệt yêu cầu điều chuyển!' });
-    setActiveActionMenuId(null);
+    setActionMenuState(null);
   };
 
   React.useEffect(() => {
@@ -337,13 +340,13 @@ export default function TransferRequestsPage() {
   const openView = (request: TransferRequest) => {
     setSelectedRequest(request);
     setModalMode('view');
-    setActiveActionMenuId(null);
+    setActionMenuState(null);
   };
 
   const openTransferOrderModal = (request: TransferRequest) => {
     setTransferOrderRequest(request);
     setIsTransferOrderModalOpen(true);
-    setActiveActionMenuId(null);
+    setActionMenuState(null);
   };
 
   const closeModal = () => {
@@ -503,8 +506,8 @@ export default function TransferRequestsPage() {
                         {formatStatus(request.status)}
                       </span>
                     </td>
-                    <td className={`sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeActionMenuId === request.id ? 'z-[60]' : 'z-10'}`}>
-                      <div className="flex items-center justify-center gap-2" data-action-menu>
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                      <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
                           onClick={() => openView(request)}
@@ -523,44 +526,29 @@ export default function TransferRequestsPage() {
                             <CheckCircle2 className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
                           </button>
                         )}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setActiveActionMenuId((current) => (current === request.id ? null : request.id))}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Thao tác khác"
-                          >
-                            <MoreHorizontal className="h-4 w-4 text-cyan-600" strokeWidth={2.5} />
-                          </button>
-                          {activeActionMenuId === request.id && (
-                            <div className={`absolute right-0 ${index > 0 && index >= paginatedRequests.length - 2 ? 'bottom-full mb-2' : 'top-full mt-2'} w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-xl z-50`}>
-                              {request.status === 'APPROVED' && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    openTransferOrderModal(request);
-                                  }}
-                                  className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-50 text-left"
-                                >
-                                  <Pencil className="h-4 w-4" strokeWidth={2.2} />
-                                  Lập phiếu điều chuyển
-                                </button>
-                              )}
-                              <div className="my-1 border-t border-slate-100" />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleDeleteRequest(request.id);
-                                  setActiveActionMenuId(null);
-                                }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-50 text-left"
-                              >
-                                <Trash2 className="h-4 w-4" strokeWidth={2.2} />
-                                Xóa yêu cầu
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (actionMenuState?.id === request.id) {
+                              setActionMenuState(null);
+                            } else {
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const spaceBelow = window.innerHeight - rect.bottom;
+                              const openUpwards = spaceBelow < 150;
+                              setActionMenuState({
+                                id: request.id,
+                                top: openUpwards ? rect.top - 95 : rect.bottom + 6,
+                                right: Math.max(16, window.innerWidth - rect.right),
+                                request,
+                              });
+                            }
+                          }}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          title="Thao tác khác"
+                        >
+                          <MoreHorizontal className="h-4 w-4 text-cyan-600" strokeWidth={2.5} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -793,6 +781,99 @@ export default function TransferRequestsPage() {
         }}
         setToast={setToast}
       />
+
+      <InternalShippingNoteModal
+        open={isShippingNoteModalOpen}
+        onClose={() => {
+          setIsShippingNoteModalOpen(false);
+          setShippingNoteRequest(null);
+        }}
+        initialData={
+          shippingNoteRequest
+            ? {
+                commandNo: `12/LDD-${shippingNoteRequest.requestNumber.replace(/^REQ-?/i, '') || 'KTTU'}`,
+                sourceAddress: shippingNoteRequest.sourceWarehouse || 'Kho tổng Hà Nội',
+                receiverName: shippingNoteRequest.createdBy || 'Nguyễn Thị Mai',
+                destinationAddress: shippingNoteRequest.destinationWarehouse || 'Kho chi nhánh TP.HCM',
+                items: shippingNoteRequest.items && shippingNoteRequest.items.length > 0
+                  ? shippingNoteRequest.items.map((item, idx) => ({
+                      id: item.id || String(idx + 1),
+                      productName: item.productName || 'Sản phẩm điều chuyển',
+                      productCode: item.productCode || 'SKU-001',
+                      unit: item.unit || 'Cái',
+                      quantityExported: item.quantity || 1,
+                      quantityImported: item.quantity || 1,
+                      price: 10000000,
+                    }))
+                  : undefined,
+              }
+            : undefined
+        }
+        setToast={setToast}
+      />
+
+      {actionMenuState && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[99998]"
+            onClick={() => setActionMenuState(null)}
+          />
+          <div
+            className="fixed z-[99999] w-64 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 text-left shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+            style={{
+              top: `${actionMenuState.top}px`,
+              right: `${actionMenuState.right}px`,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const req = actionMenuState.request;
+                if (req.status !== 'APPROVED') {
+                  approveRequest(req);
+                }
+                openTransferOrderModal(req);
+                setActionMenuState(null);
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-50 text-left"
+            >
+              <Pencil className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
+              Lập lệnh điều chuyển
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const req = actionMenuState.request;
+                if (req.status !== 'APPROVED') {
+                  approveRequest(req);
+                }
+                setShippingNoteRequest(req);
+                setIsShippingNoteModalOpen(true);
+                setActionMenuState(null);
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 text-left"
+            >
+              <FileText className="h-4 w-4 text-emerald-600" strokeWidth={2.2} />
+              In phiếu điều chuyển (Mẫu chuẩn)
+            </button>
+
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              type="button"
+              onClick={() => {
+                handleDeleteRequest(actionMenuState.request.id);
+                setActionMenuState(null);
+              }}
+              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 text-left"
+            >
+              <Trash2 className="h-4 w-4" strokeWidth={2.2} />
+              Xóa yêu cầu
+            </button>
+          </div>
+        </>,
+        document.body
+      )}
 
       {toast && (
         <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
