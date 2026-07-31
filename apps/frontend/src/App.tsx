@@ -8,6 +8,7 @@ import Products from './features/products/Products';
 import Categories from './features/categories/Categories';
 import Suppliers from './features/suppliers/Suppliers';
 import Personnel from './features/personnel/Personnel';
+import ProjectTeamsPage from './features/personnel/ProjectTeamsPage';
 import WarehouseManagement from './features/warehouses/WarehouseManagement';
 import Delivery from './features/delivery/Delivery';
 import TransferRequestsPage from './features/delivery/pages/TransferRequestsPage';
@@ -208,6 +209,7 @@ function App() {
             </RoleRoute>
           }
         />
+        <Route path="/personnel/teams" element={<RoleRoute allowedRoles={['admin']}><MainLayout><ProjectTeamsPage /></MainLayout></RoleRoute>} />
         <Route
           path="/customers"
           element={
@@ -495,11 +497,11 @@ function App() {
         <Route
           path="/inventory/stocktake/scan"
           element={
-            <ProtectedRoute>
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff', 'inventory_checker']}>
               <MainLayout>
                 <StocktakeScanPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route

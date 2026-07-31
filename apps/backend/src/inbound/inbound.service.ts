@@ -37,6 +37,9 @@ type SerializedPurchaseOrder = {
     expectedQty: number;
     receivedQty: number;
     unitPrice: number;
+    supplierPrice?: number | null;
+    rounds?: Array<{ round: number; supplierPrice?: number | null; enterprisePrice?: number | null; enterpriseResponded?: boolean }>;
+    listPrice?: number;
     totalLineAmount: number;
     product?: {
       id: string;
@@ -235,6 +238,7 @@ export class InboundService {
           exist.expectedQty = parseNumber(item.expectedQty ?? exist.expectedQty);
           exist.receivedQty = Math.min(parseNumber(item.receivedQty ?? exist.receivedQty), exist.expectedQty);
           exist.unitPrice = (parseNumber(item.unitPrice ?? parseNumber(exist.unitPrice))).toFixed(2);
+          exist.requestedPrice = exist.unitPrice;
           exist.supplierPrice = null; // Clear supplier proposed price on manager update/counter-propose
           exist.totalLineAmount = (parseNumber(exist.unitPrice) * parseNumber(exist.expectedQty)).toFixed(2);
 
@@ -438,7 +442,9 @@ export class InboundService {
 
   async supplierNegotiateReceipt(id: string, body: { items?: Array<{ detailId: string; supplierPrice: number }>; reason?: string }, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
-    if (receipt.status !== 'APPROVED' && receipt.status !== 'CREATED') {
+    // REJECTED trong luồng này có nghĩa là doanh nghiệp đã gửi giá thương lượng
+    // và đang chờ nhà cung cấp phản hồi tiếp, không phải đơn bị hủy.
+    if (receipt.status !== 'APPROVED' && receipt.status !== 'CREATED' && receipt.status !== 'REJECTED') {
       throw new BadRequestException('Chỉ có thể phản hồi giá với đơn hàng chưa chốt');
     }
     
@@ -451,6 +457,8 @@ export class InboundService {
           const newPrice = Number(item.supplierPrice || 0);
 
           detail.supplierPrice = newPrice.toFixed(2);
+          const history = Array.isArray(detail.negotiationHistory) ? detail.negotiationHistory : [];
+          detail.negotiationHistory = [...history, { round: history.length + 1, supplierPrice: newPrice, enterprisePrice: null, enterpriseResponded: false }];
           await this.detailRepo.save(detail);
 
           priceNotes += `• ${detail.product?.name || 'Mặt hàng'}: Báo giá NCC ${newPrice.toLocaleString('vi-VN')} VNĐ (Giá mua ${oldPrice.toLocaleString('vi-VN')} VNĐ)\n`;
@@ -473,6 +481,36 @@ export class InboundService {
       priority: 'high',
     });
 
+    return this.serializeReceipt(await this.findReceiptEntity(id, user));
+  }
+
+  async enterprisePriceFeedback(id: string, body: { items?: Array<{ detailId: string; newPrice: number }>; note?: string; acceptedSupplierPrice?: boolean }, user?: any) {
+    const receipt = await this.findReceiptEntity(id, user);
+    if (!isEditablePurchaseOrderStatus(receipt.status)) {
+      throw new BadRequestException('Chỉ có thể phản hồi giá với đơn hàng đang thương lượng');
+    }
+    for (const item of body.items || []) {
+      const detail = await this.detailRepo.findOne({ where: { id: item.detailId }, relations: ['product'] });
+      if (!detail) continue;
+      const enterprisePrice = parseNumber(item.newPrice);
+      const supplierPrice = parseNumber(detail.supplierPrice ?? detail.unitPrice);
+      const history = Array.isArray(detail.negotiationHistory) ? detail.negotiationHistory : [];
+      const openRoundIndex = [...history].reverse().findIndex((round) => round.enterprisePrice == null && round.supplierPrice != null);
+      if (openRoundIndex >= 0) {
+        const index = history.length - 1 - openRoundIndex;
+        history[index] = { ...history[index], enterprisePrice, enterpriseResponded: true };
+        detail.negotiationHistory = history;
+      } else {
+        detail.negotiationHistory = [...history, { round: history.length + 1, supplierPrice, enterprisePrice, enterpriseResponded: true }];
+      }
+      detail.unitPrice = (body.acceptedSupplierPrice ? supplierPrice : enterprisePrice).toFixed(2);
+      detail.totalLineAmount = (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty)).toFixed(2);
+      await this.detailRepo.save(detail);
+    }
+    receipt.status = body.acceptedSupplierPrice ? 'SUPPLIER_APPROVED' : 'REJECTED';
+    if (body.note?.trim()) receipt.description = `[PHẢN HỒI GIÁ DOANH NGHIỆP]: ${body.note.trim()}${receipt.description ? `\n---\n${receipt.description}` : ''}`;
+    await this.recalculateTotalAmount(receipt.id);
+    await this.receiptRepo.save(receipt);
     return this.serializeReceipt(await this.findReceiptEntity(id, user));
   }
 
@@ -554,7 +592,7 @@ export class InboundService {
       relations: ['details', 'details.product', 'supplier'],
       order: { id: 'DESC' },
     });
-    return receipts.map((receipt) => this.serializeReceipt(receipt));
+    return Promise.all(receipts.map((receipt) => this.serializeReceipt(receipt)));
   }
 
   async findPurchaseOrders(user?: any) {
@@ -616,6 +654,7 @@ export class InboundService {
       expectedQty,
       receivedQty,
       unitPrice: unitPrice.toFixed(2),
+      requestedPrice: unitPrice.toFixed(2),
       totalLineAmount: (unitPrice * expectedQty).toFixed(2),
     });
   }
@@ -699,7 +738,7 @@ export class InboundService {
     return activeBalanceRepo.save(balance);
   }
 
-  private serializeReceipt(receipt: InboundReceipt): SerializedPurchaseOrder {
+  private async serializeReceipt(receipt: InboundReceipt): Promise<SerializedPurchaseOrder> {
     // Hiển thị NCC: ưu tiên supplier entity > supplierName text
     const supplierDisplay = receipt.supplier
       ? {
@@ -719,6 +758,11 @@ export class InboundService {
       ? details.reduce((sum, d) => sum + (parseNumber(d.unitPrice) * parseNumber(d.expectedQty)), 0)
       : parseNumber(receipt.totalAmount);
 
+    const supplierProducts = receipt.supplier?.id
+      ? await this.supplierProductRepo.find({ where: { supplier: { id: receipt.supplier.id } }, relations: ['product'] })
+      : [];
+    const supplierProductByProductId = new Map(supplierProducts.map((item) => [String(item.product?.id), item]));
+
     return {
       id: receipt.id,
       poNumber: receipt.poNumber || `DMH${String(receipt.id).padStart(5, '0')}`,
@@ -734,12 +778,12 @@ export class InboundService {
       totalAmount: computedTotal,
       supplier: supplierDisplay as any,
       supplierName: receipt.supplierName || receipt.supplier?.name || undefined,
-      details: details.map((detail) => this.serializeDetail(detail)),
+      details: details.map((detail) => this.serializeDetail(detail, supplierProductByProductId.get(String(detail.product?.id)))),
       items: details.length,
     };
   }
 
-  private serializeDetail(detail: InboundDetail) {
+  private serializeDetail(detail: InboundDetail, supplierProduct?: SupplierProduct) {
     return {
       id: detail.id,
       warehouseCode: detail.warehouseCode,
@@ -747,6 +791,12 @@ export class InboundService {
       receivedQty: parseNumber(detail.receivedQty),
       unitPrice: parseNumber(detail.unitPrice),
       supplierPrice: detail.supplierPrice ? parseNumber(detail.supplierPrice) : null,
+      rounds: Array.isArray(detail.negotiationHistory)
+        ? detail.negotiationHistory.map((round) => ({ ...round, enterprisePrice: round.enterpriseResponded ? round.enterprisePrice : null }))
+        : [],
+      requestedPrice: parseNumber(detail.requestedPrice ?? detail.unitPrice),
+      listPrice: parseNumber(detail.product?.price) || parseNumber(supplierProduct?.purchasePrice),
+      supplierCatalogPrice: supplierProduct ? parseNumber(supplierProduct.purchasePrice) : null,
       totalLineAmount: parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty),
       product: detail.product
         ? {
@@ -754,6 +804,7 @@ export class InboundService {
           internalSku: detail.product.internalSku,
           name: detail.product.name,
           unit: detail.product.unit,
+          price: parseNumber(detail.product.price),
         }
         : null,
     };

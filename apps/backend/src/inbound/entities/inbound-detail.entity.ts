@@ -24,7 +24,13 @@ export class InboundDetail extends BaseEntity {
   unitPrice: string;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
+  requestedPrice?: string | null;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
   supplierPrice?: string | null;
+
+  @Column({ type: 'json', nullable: true })
+  negotiationHistory?: Array<{ round: number; supplierPrice?: number | null; enterprisePrice?: number | null; enterpriseResponded?: boolean }>;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalLineAmount: string;
