@@ -18,6 +18,7 @@ import {
   Clock,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
+import { Link } from 'react-router-dom';
 import {
   getStoredWarehouses,
   getUserWarehouseIds,
@@ -78,6 +79,7 @@ const DEFAULT_ROLES: Role[] = [
   { id: 'role-admin', name: 'admin' },
   { id: 'role-manager', name: 'manager' },
   { id: 'role-staff', name: 'staff' },
+  { id: 'role-inventory-checker', name: 'inventory_checker' },
   { id: 'role-supplier', name: 'supplier' },
   { id: 'role-customer', name: 'customer' },
 ];
@@ -97,6 +99,7 @@ function getPrimaryRole(user: PersonnelUser) {
 
   if (normalizedRoles.includes('admin')) return 'admin';
   if (normalizedRoles.includes('manager')) return 'manager';
+  if (normalizedRoles.includes('inventory_checker')) return 'inventory_checker';
   if (normalizedRoles.includes('staff')) return 'staff';
   if (normalizedRoles.includes('supplier')) return 'supplier';
   if (normalizedRoles.includes('customer')) return 'customer';
@@ -104,6 +107,8 @@ function getPrimaryRole(user: PersonnelUser) {
 }
 
 function formatRole(role: string) {
+  if (role === 'staff') return 'Thủ kho';
+  if (role === 'inventory_checker') return 'Nhân viên kiểm kê';
   const roleMap: Record<string, string> = {
     admin: 'Quản trị viên',
     manager: 'Quản lý',
@@ -359,7 +364,7 @@ export default function PersonnelManagement() {
   const [roles, setRoles] = React.useState<Role[]>([]);
   const [search, setSearch] = React.useState('');
   const [roleFilter, setRoleFilter] = React.useState('all');
-  const [statFilter, setStatFilter] = React.useState<'ALL' | 'LOCKED' | 'MANAGER' | 'STAFF'>('ALL');
+  const [statFilter, setStatFilter] = React.useState<'ALL' | 'LOCKED' | 'MANAGER' | 'STAFF' | 'CHECKER'>('ALL');
 
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -510,7 +515,7 @@ export default function PersonnelManagement() {
 
   const personnelUsers = users.filter(isInternalPersonnel);
 
-  // Compute stat counts for 4 overview buttons
+  // Compute stat counts for overview buttons
   const totalAccountsCount = personnelUsers.length;
   const lockedAccountsCount = personnelUsers.filter((user) => getProfile(user).isLocked).length;
   const managersCount = personnelUsers.filter((user) => {
@@ -518,6 +523,7 @@ export default function PersonnelManagement() {
     return role === 'admin' || role === 'manager';
   }).length;
   const staffCount = personnelUsers.filter((user) => getPrimaryRole(user) === 'staff').length;
+  const checkerCount = personnelUsers.filter((user) => getPrimaryRole(user) === 'inventory_checker').length;
 
   // Filter users based on statFilter, roleFilter, search
   const filteredUsers = personnelUsers.filter((user) => {
@@ -543,6 +549,8 @@ export default function PersonnelManagement() {
       matchesStat = role === 'admin' || role === 'manager';
     } else if (statFilter === 'STAFF') {
       matchesStat = role === 'staff';
+    } else if (statFilter === 'CHECKER') {
+      matchesStat = role === 'inventory_checker';
     }
 
     return matchesKeyword && matchesRole && matchesStat;
@@ -1142,13 +1150,23 @@ export default function PersonnelManagement() {
         }}
       />
 
-      {/* Header design aligned with products/main */}
+      {/* Header design with side-by-side navigation tabs */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/personnel"
+            className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2.5 text-white shadow-md transition"
+          >
             <Users className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Quản lý nhân sự</h1>
-          </div>
+            <h1 className="text-base font-bold tracking-tight text-white">Quản lý nhân sự</h1>
+          </Link>
+          <Link
+            to="/personnel/teams"
+            className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 shadow-sm transition hover:bg-cyan-50"
+          >
+            <Users className="h-4.5 w-4.5 text-cyan-600" />
+            <span>Đội dự án</span>
+          </Link>
         </div>
 
         <div className="flex flex-wrap gap-2.5">
@@ -1194,18 +1212,18 @@ export default function PersonnelManagement() {
         />
       </div>
 
-      {/* 4 Button Tổng quan overview matching products/main design */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 5 Button Tổng quan overview matching products/main design */}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <button
           type="button"
           onClick={() => setStatFilter('ALL')}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center ${
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center ${
             statFilter === 'ALL'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <p className="text-base font-black uppercase">
+          <p className="text-sm sm:text-base font-black uppercase">
             {totalAccountsCount} TỔNG TÀI KHOẢN
           </p>
         </button>
@@ -1213,13 +1231,13 @@ export default function PersonnelManagement() {
         <button
           type="button"
           onClick={() => setStatFilter('LOCKED')}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center ${
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center ${
             statFilter === 'LOCKED'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <p className="text-base font-black uppercase">
+          <p className="text-sm sm:text-base font-black uppercase">
             {lockedAccountsCount} TÀI KHOẢN BỊ KHÓA
           </p>
         </button>
@@ -1227,13 +1245,13 @@ export default function PersonnelManagement() {
         <button
           type="button"
           onClick={() => setStatFilter('MANAGER')}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center ${
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center ${
             statFilter === 'MANAGER'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <p className="text-base font-black uppercase">
+          <p className="text-sm sm:text-base font-black uppercase">
             {managersCount} QUẢN LÝ
           </p>
         </button>
@@ -1241,14 +1259,28 @@ export default function PersonnelManagement() {
         <button
           type="button"
           onClick={() => setStatFilter('STAFF')}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-4 shadow-sm transition text-center ${
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center ${
             statFilter === 'STAFF'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <p className="text-base font-black uppercase">
-            {staffCount} NHÂN VIÊN
+          <p className="text-sm sm:text-base font-black uppercase">
+            {staffCount} THỦ KHO
+          </p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatFilter('CHECKER')}
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center ${
+            statFilter === 'CHECKER'
+              ? 'bg-cyan-600 text-white'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
+          }`}
+        >
+          <p className="text-sm sm:text-base font-black uppercase">
+            {checkerCount} NV KIỂM KÊ
           </p>
         </button>
       </div>

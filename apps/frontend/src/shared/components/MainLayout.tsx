@@ -148,7 +148,7 @@ const menuItems = [
     label: 'Kiểm kê',
     path: '/inventory/stocktake',
     badge: null,
-    allowedRoles: ['manager', 'staff'],
+    allowedRoles: ['manager', 'staff', 'inventory_checker'],
     children: [
       { icon: FileText, label: 'Tạo phiên kiểm kê', path: '/inventory/stocktake/create', allowedRoles: ['admin', 'manager'] },
       { icon: ScanLine, label: 'Quét đếm kiểm kê', path: '/inventory/stocktake/scan' },
@@ -409,7 +409,8 @@ export default function MainLayout({ children }: LayoutProps) {
     const lower = String(role).trim().toLowerCase();
     if (lower === 'admin' || lower === 'administrator') return 'Quản trị viên';
     if (lower === 'manager' || lower === 'warehouse_manager' || lower === 'quản lý kho') return 'Quản lý kho';
-    if (lower === 'staff' || lower === 'inventory_staff' || lower === 'warehouse_staff' || lower === 'nhân viên kho' || lower === 'nhân viên kiểm kho') return 'Nhân viên kiểm kho';
+    if (lower === 'staff' || lower === 'inventory_staff' || lower === 'warehouse_staff' || lower === 'storekeeper') return 'Thủ kho';
+    if (lower === 'inventory_checker' || lower === 'inventory-checker' || lower === 'nhân viên kiểm kê') return 'Nhân viên kiểm kê';
     if (lower === 'customer') return 'Khách hàng';
     if (lower === 'supplier') return 'Nhà cung cấp';
     return role;

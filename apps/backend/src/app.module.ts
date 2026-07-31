@@ -25,6 +25,7 @@ import { ScanModule } from './scan/scan.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SmartInventoryModule } from './inventory/smart-inventory/smart-inventory.module';
+import { ProjectTeamsModule } from './project-teams/project-teams.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { SmartInventoryModule } from './inventory/smart-inventory/smart-inventor
     ScanModule,
     DeliveryModule,
     DocumentsModule,
+    ProjectTeamsModule,
   ],
   controllers: [],
   providers: [

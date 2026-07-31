@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS `roles` (
   UNIQUE KEY `IDX_roles_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+INSERT IGNORE INTO `roles` (`name`) VALUES ('inventory_checker');
+
 -- Users
 CREATE TABLE IF NOT EXISTS `users` (
   `id` bigint NOT NULL AUTO_INCREMENT,

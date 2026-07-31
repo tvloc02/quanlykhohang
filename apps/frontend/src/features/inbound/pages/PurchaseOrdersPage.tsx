@@ -26,6 +26,7 @@ import {
   Calendar,
   User,
   Printer,
+  Scale,
 } from 'lucide-react';
 import InboundSectionPlaceholderPage from './InboundSectionPlaceholderPage';
 import {
@@ -39,6 +40,7 @@ import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../..
 import { PurchaseOrderFormModal } from '../components/PurchaseOrderFormModal';
 import { PrintablePurchaseOrder } from '../components/PrintablePurchaseOrder';
 import { CreateStockInReceiptModal } from '../components/CreateStockInReceiptModal';
+import { PriceNegotiationModal } from '../components/PriceNegotiationModal';
 
 type SupplierProduct = {
   id: string;
@@ -419,7 +421,8 @@ function PurchaseOrdersPageContent() {
   // Filters
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<'all' | 'waiting' | 'approved' | 'partial' | 'done' | 'cancelled'>('all');
-  const [timeFilter, setTimeFilter] = React.useState<TimeFilter>('this-month');
+  // Hiển thị toàn bộ đơn hàng khi mở trang; người dùng có thể lọc theo thời gian sau.
+  const [timeFilter, setTimeFilter] = React.useState<TimeFilter>('all');
 
   // Advanced Filters
   const [showAdvancedFilters, setShowAdvancedFilters] = React.useState(false);
@@ -457,6 +460,69 @@ function PurchaseOrdersPageContent() {
   const [showPrintPreview, setShowPrintPreview] = React.useState(false);
   const [createReceiptModalOpen, setCreateReceiptModalOpen] = React.useState(false);
   const [receiptSourcePOId, setReceiptSourcePOId] = React.useState<string | null>(null);
+
+  // Price Negotiation Modal State
+  const [priceNegotiationOrder, setPriceNegotiationOrder] = React.useState<PurchaseOrder | null>(null);
+  const [priceNegotiationModalOpen, setPriceNegotiationModalOpen] = React.useState(false);
+
+  const openPriceNegotiation = async (order: PurchaseOrder) => {
+    setPriceNegotiationOrder(order);
+    setPriceNegotiationModalOpen(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${order.id}`, {
+        headers: authHeaders(),
+      });
+      if (response.ok) {
+        const full = await response.json();
+        setPriceNegotiationOrder(full);
+      }
+    } catch (e) {
+      console.error('Failed to load PO details for price negotiation', e);
+    }
+  };
+
+  const handleSavePriceFeedback = async ({
+    items,
+    note,
+    acceptedSupplierPrice,
+  }: {
+    items: Array<{ detailId: string; newPrice: number }>;
+    note: string;
+    acceptedSupplierPrice: boolean;
+  }) => {
+    if (!priceNegotiationOrder) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${priceNegotiationOrder.id}/price-feedback`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          status: acceptedSupplierPrice ? 'SUPPLIER_APPROVED' : 'REJECTED',
+          description: note || `[PHẢN HỒI GIÁ DOANH NGHIỆP]: Đã ${acceptedSupplierPrice ? 'chấp nhận giá NCC đề xuất' : 'gửi mức giá thương lượng mới'}.`,
+          items,
+          note,
+          acceptedSupplierPrice,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Không thể lưu phản hồi giá');
+      }
+
+      setToast({
+        type: 'success',
+        message: acceptedSupplierPrice ? 'Đã đồng ý giá từ Nhà cung cấp!' : 'Đã gửi phản hồi giá thành công!',
+      });
+      setPriceNegotiationModalOpen(false);
+      setPriceNegotiationOrder(null);
+      await loadData();
+    } catch (err) {
+      setToast({ type: 'error', message: err instanceof Error ? err.message : 'Lỗi khi gửi phản hồi giá' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const openPrintPreview = async (order: PurchaseOrder | null) => {
     if (!order) return;
@@ -658,11 +724,15 @@ function PurchaseOrdersPageContent() {
 
       // 3. Simple Time Filter
       let matchesTime = true;
-      const orderDateObj = order.orderDate ? new Date(order.orderDate) : null;
+      // Một số đơn cũ chỉ có createdAt, không có orderDate. Dùng createdAt làm ngày dự phòng
+      // để bộ lọc không làm biến mất toàn bộ danh sách đơn hàng.
+      const rawOrderDate = order.orderDate || (order as any).createdAt;
+      const orderDateObj = rawOrderDate ? new Date(rawOrderDate) : null;
 
       if (timeFilter !== 'all') {
         if (!orderDateObj || Number.isNaN(orderDateObj.getTime())) {
-          matchesTime = false;
+          // Không chặn dữ liệu cũ thiếu ngày; vẫn cho phép hiển thị trong danh sách.
+          matchesTime = true;
         } else if (timeFilter === 'this-month') {
           matchesTime = orderDateObj.getFullYear() === now.getFullYear() && orderDateObj.getMonth() === now.getMonth();
         } else if (timeFilter === '7-days') {
@@ -1677,6 +1747,17 @@ function PurchaseOrdersPageContent() {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
+                              openPriceNegotiation(order);
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                            title="Phản hồi giá"
+                          >
+                            <Scale size={18} strokeWidth={2.5} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
                               openPrintPreview(order);
                             }}
                             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
@@ -1708,6 +1789,17 @@ function PurchaseOrdersPageContent() {
                               </button>
                               {activeDropdown === order.id && (
                                 <div className={`absolute right-0 ${index > 0 && index >= paginatedOrders.length - 3 ? 'bottom-full mb-2' : 'top-full mt-2'} w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left`}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      openPriceNegotiation(order);
+                                      setActiveDropdown(null);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 text-left font-bold"
+                                  >
+                                    <Scale className="h-4 w-4" />
+                                    Phản hồi giá
+                                  </button>
                                   <button
                                     type="button"
                                     disabled={order.status !== 'DRAFT'}
@@ -2239,6 +2331,17 @@ function PurchaseOrdersPageContent() {
           mode="create"
         />
       )}
+      <PriceNegotiationModal
+        isOpen={priceNegotiationModalOpen}
+        order={priceNegotiationOrder}
+        saving={saving}
+        onClose={() => {
+          if (saving) return;
+          setPriceNegotiationModalOpen(false);
+          setPriceNegotiationOrder(null);
+        }}
+        onSaveFeedback={handleSavePriceFeedback}
+      />
     </div>
   );
 }

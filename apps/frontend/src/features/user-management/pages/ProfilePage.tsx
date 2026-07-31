@@ -71,7 +71,8 @@ function formatRole(role?: string) {
   const r = role.toLowerCase();
   if (r === 'admin' || r === 'administrator') return 'Quản trị viên';
   if (r === 'manager' || r === 'warehouse_manager') return 'Quản lý kho';
-  if (r === 'staff' || r === 'inventory_staff' || r === 'warehouse_staff') return 'Nhân viên kho';
+  if (r === 'staff' || r === 'inventory_staff' || r === 'warehouse_staff' || r === 'storekeeper') return 'Thủ kho';
+  if (r === 'inventory_checker' || r === 'inventory-checker') return 'Nhân viên kiểm kê';
   if (r === 'customer') return 'Khách hàng';
   if (r === 'supplier') return 'Nhà cung cấp';
   return role;

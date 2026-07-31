@@ -70,6 +70,16 @@ export class InboundController {
     return this.svc.supplierNegotiateReceipt(id, body, req.user);
   }
 
+  @Post('purchase-orders/:id/price-feedback')
+  @Roles('admin', 'manager')
+  enterprisePriceFeedback(
+    @Param('id') id: string,
+    @Body() body: { items?: Array<{ detailId: string; newPrice: number }>; note?: string; acceptedSupplierPrice?: boolean },
+    @Req() req: any,
+  ) {
+    return this.svc.enterprisePriceFeedback(id, body, req.user);
+  }
+
   @Post('purchase-orders/:id/complete')
   @Roles('admin', 'manager')
   completePurchaseOrder(@Param('id') id: string, @Req() req: any) {

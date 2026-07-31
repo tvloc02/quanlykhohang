@@ -27,7 +27,7 @@ async function seed() {
 
   // ─── 1. ROLES ────────────────────────────────────────────────
   console.log('📦 Tạo vai trò...');
-  await q(`INSERT IGNORE INTO roles (id, name) VALUES ('admin','admin'),('manager','manager'),('staff','staff'),('supplier','supplier'),('customer','customer')`);
+  await q(`INSERT IGNORE INTO roles (id, name) VALUES ('admin','admin'),('manager','manager'),('staff','staff'),('inventory-checker','inventory_checker'),('supplier','supplier'),('customer','customer')`);
 
   // ─── 2. USERS ────────────────────────────────────────────────
   console.log('👤 Tạo tài khoản demo...');
