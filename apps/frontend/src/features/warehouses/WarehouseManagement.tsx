@@ -19,10 +19,13 @@ import {
   Lock,
   Unlock,
   AlertTriangle,
+  Users,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
 import {
+  getStoredProjectTeams,
   getStoredWarehouses,
+  getUserWarehouseIds,
   mergeStoredWarehouses,
   normalizeWarehouseRecord,
   saveStoredWarehouses,
@@ -44,7 +47,32 @@ type PersonnelUser = {
   email: string;
   fullName?: string;
   roles?: Role[];
+  role?: string;
 };
+
+type PersonnelCategory = 'manager' | 'storekeeper' | 'inventory_checker';
+
+function getUserRole(user: PersonnelUser): string {
+  if (user.role) return user.role.toLowerCase();
+  if (user.roles && user.roles.length > 0) return user.roles[0].name.toLowerCase();
+  return 'staff';
+}
+
+function getUserRoleCategory(user: PersonnelUser): PersonnelCategory {
+  const r = getUserRole(user);
+  if (r === 'admin' || r === 'manager') return 'manager';
+  if (r === 'inventory_checker') return 'inventory_checker';
+  return 'storekeeper';
+}
+
+function formatRoleBadge(role: string) {
+  const r = role.toLowerCase();
+  if (r === 'admin') return { label: 'Admin', color: 'bg-rose-50 text-rose-700 border-rose-200' };
+  if (r === 'manager') return { label: 'Quản lý', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+  if (r === 'storekeeper') return { label: 'Thủ kho', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+  if (r === 'inventory_checker') return { label: 'NV kiểm kê', color: 'bg-amber-50 text-amber-700 border-amber-200' };
+  return { label: 'Nhân viên', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+}
 
 type WarehouseForm = {
   code: string;
@@ -100,8 +128,16 @@ function buildEmptyForm(): WarehouseForm {
   };
 }
 
-function buildWarehouseForm(warehouse: WarehouseRecord): WarehouseForm {
+function buildWarehouseForm(warehouse: WarehouseRecord, teams = getStoredProjectTeams()): WarehouseForm {
   const norm = normalizeWarehouseRecord(warehouse);
+  const teamMemberIds = Array.isArray(teams)
+    ? teams
+        .filter((t) => t.warehouseId === warehouse.id)
+        .flatMap((t) => [...(t.storekeeperIds || []), ...(t.inventoryCheckerIds || [])])
+    : [];
+
+  const mergedStaffIds = Array.from(new Set([...(norm.staffIds || []), ...teamMemberIds]));
+
   return {
     code: norm.code,
     name: norm.name,
@@ -113,7 +149,7 @@ function buildWarehouseForm(warehouse: WarehouseRecord): WarehouseForm {
     longitude: norm.longitude,
     status: norm.status,
     managerIds: norm.managerIds,
-    staffIds: norm.staffIds,
+    staffIds: mergedStaffIds,
     wallSpec: norm.wallSpec || '',
     ceilingSpec: norm.ceilingSpec || '',
     floorSpec: norm.floorSpec || '',
@@ -125,6 +161,7 @@ function buildWarehouseForm(warehouse: WarehouseRecord): WarehouseForm {
 export default function WarehouseManagement() {
   const [users, setUsers] = useState<PersonnelUser[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRecord[]>(() => getStoredWarehouses());
+  const [projectTeams, setProjectTeams] = useState<any[]>(() => getStoredProjectTeams());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -140,9 +177,71 @@ export default function WarehouseManagement() {
   const [saving, setSaving] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
 
+  // Personnel category add popup modal states
+  const [personnelPopupCategory, setPersonnelPopupCategory] = useState<PersonnelCategory | null>(null);
+  const [tempSelectedUserIds, setTempSelectedUserIds] = useState<string[]>([]);
+  const [popupSearch, setPopupSearch] = useState('');
+  const [detailPersonnelModal, setDetailPersonnelModal] = useState<{ title: string; users: PersonnelUser[] } | null>(null);
+
   // Pagination states
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
+
+  const openPersonnelPopup = (category: PersonnelCategory) => {
+    const assigned = users
+      .filter(
+        (u) =>
+          getUserRoleCategory(u) === category &&
+          (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
+      )
+      .map((u) => u.id);
+
+    setTempSelectedUserIds(assigned);
+    setPopupSearch('');
+    setPersonnelPopupCategory(category);
+  };
+
+  const handleConfirmPersonnelPopup = () => {
+    if (!personnelPopupCategory) return;
+    const category = personnelPopupCategory;
+
+    setForm((prev) => {
+      // Keep IDs belonging to other categories
+      const otherManagerIds = prev.managerIds.filter((id) => {
+        const u = users.find((usr) => usr.id === id);
+        return u ? getUserRoleCategory(u) !== category : true;
+      });
+
+      const otherStaffIds = prev.staffIds.filter((id) => {
+        const u = users.find((usr) => usr.id === id);
+        return u ? getUserRoleCategory(u) !== category : true;
+      });
+
+      if (category === 'manager') {
+        return {
+          ...prev,
+          managerIds: [...otherManagerIds, ...tempSelectedUserIds],
+          staffIds: otherStaffIds,
+        };
+      } else {
+        return {
+          ...prev,
+          managerIds: otherManagerIds,
+          staffIds: [...otherStaffIds, ...tempSelectedUserIds],
+        };
+      }
+    });
+
+    setPersonnelPopupCategory(null);
+  };
+
+  const handleRemoveAssignedUser = (userId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      managerIds: prev.managerIds.filter((id) => id !== userId),
+      staffIds: prev.staffIds.filter((id) => id !== userId),
+    }));
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -201,24 +300,36 @@ export default function WarehouseManagement() {
   }, []);
 
   useEffect(() => {
-    async function loadUsers() {
+    async function loadUsersAndTeams() {
       try {
-        const response = await fetch(`${API_BASE_URL}/users`, { headers: authHeaders() });
-        if (response.status === 401) {
+        const [uRes, tRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }),
+          fetch(`${API_BASE_URL}/project-teams`, { headers: authHeaders() }),
+        ]);
+
+        if (uRes.status === 401) {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           window.location.href = '/login';
           return;
         }
 
-        if (!response.ok) throw new Error('Không tải được danh sách nhân sự');
-        setUsers((await response.json()) as PersonnelUser[]);
+        if (uRes.ok) {
+          setUsers((await uRes.json()) as PersonnelUser[]);
+        }
+        if (tRes.ok) {
+          const tData = await tRes.json();
+          if (Array.isArray(tData) && tData.length > 0) {
+            setProjectTeams(tData);
+            localStorage.setItem('smart-wms-project-teams', JSON.stringify(tData));
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Không tải được danh sách nhân sự');
       }
     }
 
-    loadUsers();
+    loadUsersAndTeams();
   }, []);
 
   useEffect(() => {
@@ -228,6 +339,12 @@ export default function WarehouseManagement() {
   useEffect(() => {
     saveStoredWarehouses(warehouses);
   }, [warehouses]);
+
+  useEffect(() => {
+    const syncData = () => setProjectTeams(getStoredProjectTeams());
+    window.addEventListener('storage', syncData);
+    return () => window.removeEventListener('storage', syncData);
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -483,6 +600,31 @@ export default function WarehouseManagement() {
       setError('');
       try {
         await upsertWarehouseToApi(payload, modalMode === 'create' ? 'POST' : undefined);
+
+        // Single-warehouse rule for inventory_checker:
+        // Identify inventory checkers assigned to this saved warehouse and remove them from other warehouses
+        const assignedCheckers = users.filter((u) => {
+          const r = getUserRole(u);
+          return r === 'inventory_checker' && (payload.managerIds.includes(u.id) || payload.staffIds.includes(u.id));
+        });
+
+        if (assignedCheckers.length > 0) {
+          const checkerIds = new Set(assignedCheckers.map((u) => u.id));
+          const otherWarehousesToSync = warehouses.filter((w) => {
+            if (w.id === payload.id) return false;
+            return w.managerIds.some((id) => checkerIds.has(id)) || w.staffIds.some((id) => checkerIds.has(id));
+          });
+
+          for (const otherW of otherWarehousesToSync) {
+            const updatedOtherW = normalizeWarehouseRecord({
+              ...otherW,
+              managerIds: otherW.managerIds.filter((id) => !checkerIds.has(id)),
+              staffIds: otherW.staffIds.filter((id) => !checkerIds.has(id)),
+            });
+            await upsertWarehouseToApi(updatedOtherW);
+          }
+        }
+
         await loadData();
         setSuccess(modalMode === 'edit' ? 'Đã cập nhật kho hàng thành công.' : 'Đã thêm kho hàng mới.');
         closeModal();
@@ -588,11 +730,10 @@ export default function WarehouseManagement() {
             setCardFilter('all-warehouses');
             setStatusFilter('all');
           }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
-            cardFilter === 'all-warehouses'
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${cardFilter === 'all-warehouses'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
-          }`}
+            }`}
         >
           <p className="text-xs sm:text-sm font-black uppercase leading-tight">
             {totalWarehousesCount} KHO HÀNG
@@ -605,11 +746,10 @@ export default function WarehouseManagement() {
             setCardFilter('active-warehouses');
             setStatusFilter('active');
           }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
-            cardFilter === 'active-warehouses'
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${cardFilter === 'active-warehouses'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
-          }`}
+            }`}
         >
           <p className="text-xs sm:text-sm font-black uppercase leading-tight">
             {activeWarehousesCount} KHO HOẠT ĐỘNG
@@ -622,11 +762,10 @@ export default function WarehouseManagement() {
             setCardFilter('frozen-warehouses');
             setStatusFilter('frozen');
           }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
-            cardFilter === 'frozen-warehouses'
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${cardFilter === 'frozen-warehouses'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
-          }`}
+            }`}
         >
           <p className="text-xs sm:text-sm font-black uppercase leading-tight flex items-center justify-center gap-1">
             <Lock className="h-4 w-4" />
@@ -640,11 +779,10 @@ export default function WarehouseManagement() {
             setCardFilter('all-zones');
             setStatusFilter('all');
           }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
-            cardFilter === 'all-zones'
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${cardFilter === 'all-zones'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
-          }`}
+            }`}
         >
           <p className="text-xs sm:text-sm font-black uppercase leading-tight">
             {totalZonesCount} PHÂN KHU
@@ -657,11 +795,10 @@ export default function WarehouseManagement() {
             setCardFilter('active-zones');
             setStatusFilter('active');
           }}
-          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${
-            cardFilter === 'active-zones'
+          className={`flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 px-3 shadow-sm transition text-center cursor-pointer ${cardFilter === 'active-zones'
               ? 'bg-cyan-600 text-white'
               : 'bg-white text-cyan-700 hover:bg-cyan-50'
-          }`}
+            }`}
         >
           <p className="text-xs sm:text-sm font-black uppercase leading-tight">
             {activeZonesCount} PHÂN KHU HOẠT ĐỘNG
@@ -773,6 +910,15 @@ export default function WarehouseManagement() {
                   Địa chỉ kho
                 </th>
                 <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Quản lý kho
+                </th>
+                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                  Thủ kho
+                </th>
+                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                  NV kiểm kê
+                </th>
+                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
                   Trạng thái
                 </th>
                 <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
@@ -786,125 +932,220 @@ export default function WarehouseManagement() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
+                  <td colSpan={12} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
                     Đang tải danh sách kho hàng...
                   </td>
                 </tr>
               ) : paginatedWarehouses.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
+                  <td colSpan={12} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
                     {error ? 'Lỗi khi tải dữ liệu. Vui lòng thử lại.' : 'Chưa có kho hàng. Hãy tạo kho hàng mới.'}
                   </td>
                 </tr>
               ) : (
-                paginatedWarehouses.map((w, index) => (
-                  <tr key={w.id} className={`group border-b border-slate-200 transition ${w.isFrozen ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-cyan-50/40'}`}>
-                    <td className="border-x border-slate-200 px-2 py-3.5 text-center align-middle">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                        checked={selectedIds.includes(w.id)}
-                        onChange={() => {
-                          setSelectedIds((prev) =>
-                            prev.includes(w.id) ? prev.filter((id) => id !== w.id) : [...prev, w.id]
-                          );
-                        }}
-                      />
-                    </td>
-                    <td className="border-x border-slate-200 px-2 py-3.5 text-center text-xs font-bold text-slate-700">
-                      {startIndex + index}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-cyan-700 uppercase font-mono">
-                      {w.code}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-900">
-                      {w.name}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-700">
-                      <span className="inline-flex items-center gap-1 rounded-lg bg-cyan-50 px-2.5 py-1 text-cyan-700 border border-cyan-200">
-                        <Layers className="h-3.5 w-3.5 text-cyan-600" />
-                        {w.subWarehouses?.length || 0} Phân khu
-                      </span>
-                    </td>
-                    <td className="max-w-[280px] truncate border-x border-slate-200 px-3 py-3.5 text-center text-xs font-medium text-slate-700">
-                      {w.address ||
-                        `${w.detailAddress ? w.detailAddress + ', ' : ''}${w.ward ? w.ward + ', ' : ''}${w.province || ''}`}
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
-                      <span
-                        className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-bold ${
-                          w.status === 'active'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-200 bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {w.status === 'active' ? 'Đang hoạt động' : 'Không hoạt động'}
-                      </span>
-                    </td>
-                    <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
-                      {w.isFrozen ? (
-                        <span className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-700 animate-pulse">
-                          <Lock className="h-3.5 w-3.5 text-red-600" /> Đóng băng
+                paginatedWarehouses.map((w, index) => {
+                  const teamMemberIds = projectTeams
+                    .filter((t) => t.warehouseId === w.id)
+                    .flatMap((t) => [...(t.storekeeperIds || []), ...(t.inventoryCheckerIds || [])]);
+                  const assignedUsers = users.filter(
+                    (u) => w.managerIds.includes(u.id) || w.staffIds.includes(u.id) || teamMemberIds.includes(u.id),
+                  );
+                  const managers = assignedUsers.filter((u) => getUserRoleCategory(u) === 'manager');
+                  const storekeepers = assignedUsers.filter((u) => getUserRoleCategory(u) === 'storekeeper');
+                  const checkers = assignedUsers.filter((u) => getUserRoleCategory(u) === 'inventory_checker');
+
+                  return (
+                    <tr key={w.id} className={`group border-b border-slate-200 transition ${w.isFrozen ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-cyan-50/40'}`}>
+                      <td className="border-x border-slate-200 px-2 py-3.5 text-center align-middle">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                          checked={selectedIds.includes(w.id)}
+                          onChange={() => {
+                            setSelectedIds((prev) =>
+                              prev.includes(w.id) ? prev.filter((id) => id !== w.id) : [...prev, w.id]
+                            );
+                          }}
+                        />
+                      </td>
+                      <td className="border-x border-slate-200 px-2 py-3.5 text-center text-xs font-bold text-slate-700">
+                        {startIndex + index}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-cyan-700 uppercase font-mono">
+                        {w.code}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-900">
+                        {w.name}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-700">
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-cyan-50 px-2.5 py-1 text-cyan-700 border border-cyan-200">
+                          <Layers className="h-3.5 w-3.5 text-cyan-600" />
+                          {w.subWarehouses?.length || 0} Phân khu
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200/60 bg-emerald-50/50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                          <Unlock className="h-3.5 w-3.5 text-emerald-600" /> Bình thường
+                      </td>
+                      <td className="max-w-[200px] truncate border-x border-slate-200 px-3 py-3.5 text-center text-xs font-medium text-slate-700">
+                        {w.address ||
+                          `${w.detailAddress ? w.detailAddress + ', ' : ''}${w.ward ? w.ward + ', ' : ''}${w.province || ''}`}
+                      </td>
+                      {/* Column 1: Quản lý kho */}
+                      <td className="border-x border-slate-200 px-2 py-3 text-center align-middle">
+                        {managers.length === 0 ? (
+                          <span className="text-[11px] font-medium text-slate-400 font-mono">-</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
+                            {managers.slice(0, 2).map((u) => (
+                              <span
+                                key={u.id}
+                                className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800"
+                                title={`${u.fullName || u.email}`}
+                              >
+                                {u.fullName || u.email.split('@')[0]}
+                              </span>
+                            ))}
+                            {managers.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => setDetailPersonnelModal({ title: `Quản Lý Kho - ${w.name}`, users: managers })}
+                                className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
+                                title="Xem tất cả quản lý"
+                              >
+                                +{managers.length - 2}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      {/* Column 2: Thủ kho */}
+                      <td className="border-x border-slate-200 px-2 py-3 text-center align-middle">
+                        {storekeepers.length === 0 ? (
+                          <span className="text-[11px] font-medium text-slate-400 font-mono">-</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
+                            {storekeepers.slice(0, 2).map((u) => (
+                              <span
+                                key={u.id}
+                                className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800"
+                                title={`${u.fullName || u.email}`}
+                              >
+                                {u.fullName || u.email.split('@')[0]}
+                              </span>
+                            ))}
+                            {storekeepers.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => setDetailPersonnelModal({ title: `Thủ Kho - ${w.name}`, users: storekeepers })}
+                                className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
+                                title="Xem tất cả thủ kho"
+                              >
+                                +{storekeepers.length - 2}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      {/* Column 3: NV kiểm kê */}
+                      <td className="border-x border-slate-200 px-2 py-3 text-center align-middle">
+                        {checkers.length === 0 ? (
+                          <span className="text-[11px] font-medium text-slate-400 font-mono">-</span>
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
+                            {checkers.slice(0, 2).map((u) => (
+                              <span
+                                key={u.id}
+                                className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800"
+                                title={`${u.fullName || u.email}`}
+                              >
+                                {u.fullName || u.email.split('@')[0]}
+                              </span>
+                            ))}
+                            {checkers.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => setDetailPersonnelModal({ title: `NV Kiểm Kê - ${w.name}`, users: checkers })}
+                                className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
+                                title="Xem tất cả nhân viên kiểm kê"
+                              >
+                                +{checkers.length - 2}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
+                        <span
+                          className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-bold ${w.status === 'active'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : 'border-slate-200 bg-slate-100 text-slate-600'
+                            }`}
+                        >
+                          {w.status === 'active' ? 'Đang hoạt động' : 'Không hoạt động'}
                         </span>
-                      )}
-                    </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/40">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {/* Lock / Unlock Freeze Toggle Button - Styled Cyan */}
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                          aria-label={w.isFrozen ? 'Mở khóa kho' : 'Đóng băng kho kiểm kê'}
-                          title={w.isFrozen ? 'Mở khóa kho (Cho phép nhập/xuất trở lại)' : 'Đóng băng kho kiểm kê (Khóa nhập/xuất)'}
-                          onClick={() => setFreezeModalTarget(w)}
-                        >
-                          {w.isFrozen ? <Unlock className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} /> : <Lock className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />}
-                        </button>
-                        {/* 3D Phân Khu Button */}
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                          aria-label="Xem 3D Phân Khu"
-                          title="Xem 3D Kệ Phân Khu"
-                          onClick={() => openWarehouseModal('view3d', w)}
-                        >
-                          <Move3d className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
-                        </button>
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                          aria-label="Xem kho"
-                          title="Xem chi tiết"
-                          onClick={() => openWarehouseModal('view', w)}
-                        >
-                          <Eye className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
-                        </button>
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                          aria-label="Sửa kho"
-                          title="Chỉnh sửa"
-                          onClick={() => openWarehouseModal('edit', w)}
-                        >
-                          <Pencil className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
-                        </button>
-                        <button
-                          type="button"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                          aria-label="Xóa kho"
-                          title="Xóa kho"
-                          onClick={() => openWarehouseModal('delete', w)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
+                        {w.isFrozen ? (
+                          <span className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-700 animate-pulse">
+                            <Lock className="h-3.5 w-3.5 text-red-600" /> Đóng băng
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200/60 bg-emerald-50/50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                            <Unlock className="h-3.5 w-3.5 text-emerald-600" /> Bình thường
+                          </span>
+                        )}
+                      </td>
+                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/40">
+                        <div className="flex items-center justify-center gap-1.5">
+                          {/* Lock / Unlock Freeze Toggle Button - Styled Cyan */}
+                          <button
+                            type="button"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                            aria-label={w.isFrozen ? 'Mở khóa kho' : 'Đóng băng kho kiểm kê'}
+                            title={w.isFrozen ? 'Mở khóa kho (Cho phép nhập/xuất trở lại)' : 'Đóng băng kho kiểm kê (Khóa nhập/xuất)'}
+                            onClick={() => setFreezeModalTarget(w)}
+                          >
+                            {w.isFrozen ? <Unlock className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} /> : <Lock className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />}
+                          </button>
+                          {/* 3D Phân Khu Button */}
+                          <button
+                            type="button"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                            aria-label="Xem 3D Phân Khu"
+                            title="Xem 3D Kệ Phân Khu"
+                            onClick={() => openWarehouseModal('view3d', w)}
+                          >
+                            <Move3d className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
+                          </button>
+                          <button
+                            type="button"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                            aria-label="Xem kho"
+                            title="Xem chi tiết"
+                            onClick={() => openWarehouseModal('view', w)}
+                          >
+                            <Eye className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
+                          </button>
+                          <button
+                            type="button"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                            aria-label="Sửa kho"
+                            title="Chỉnh sửa"
+                            onClick={() => openWarehouseModal('edit', w)}
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
+                          </button>
+                          <button
+                            type="button"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                            aria-label="Xóa kho"
+                            title="Xóa kho"
+                            onClick={() => openWarehouseModal('delete', w)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1028,11 +1269,10 @@ export default function WarehouseManagement() {
                     <button
                       type="button"
                       onClick={() => setActiveTabId('main')}
-                      className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                        activeTabId === 'main'
+                      className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer whitespace-nowrap ${activeTabId === 'main'
                           ? 'bg-cyan-600 text-white shadow-sm'
                           : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                      }`}
+                        }`}
                     >
                       <Building className="h-4 w-4" />
                       Thông Tin & Địa Chỉ Kho Hàng
@@ -1043,11 +1283,10 @@ export default function WarehouseManagement() {
                         <button
                           type="button"
                           onClick={() => setActiveTabId(sub.id)}
-                          className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                            activeTabId === sub.id
+                          className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-bold transition cursor-pointer whitespace-nowrap ${activeTabId === sub.id
                               ? 'bg-indigo-600 text-white shadow-sm'
                               : 'bg-white text-indigo-700 border border-slate-200 hover:bg-slate-50'
-                          }`}
+                            }`}
                         >
                           <Layers className="h-3.5 w-3.5" />
                           {sub.code || `Phân Khu ${idx + 1}`}
@@ -1205,6 +1444,225 @@ export default function WarehouseManagement() {
                                 className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-cyan-500 read-only:bg-slate-50"
                               />
                             </div>
+                          </div>
+                        </div>
+
+                        {/* SECTION: PHÂN CÔNG NHÂN SỰ PHỤ TRÁCH KHO (3 CỘT RIÊNG BIỆT) */}
+                        <div className="space-y-3 pt-2">
+                          <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
+                            <div className="flex items-center gap-2">
+                              <Users className="h-4 w-4 text-cyan-600" />
+                              <h4 className="text-xs font-extrabold text-cyan-900 uppercase tracking-wide">
+                                Phân Công Nhân Sự Phụ Trách Kho
+                              </h4>
+                            </div>
+
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {/* BOX 1: QUẢN LÝ KHO */}
+                            {(() => {
+                              const assigned = users.filter(
+                                (u) =>
+                                  getUserRoleCategory(u) === 'manager' &&
+                                  (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
+                              );
+                              const displayed = assigned.slice(0, 2);
+
+                              return (
+                                <div className="flex flex-col rounded-xl border border-cyan-200 bg-cyan-50/20 p-3 space-y-2">
+                                  <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
+                                    <span className="text-xs font-bold text-cyan-950 flex items-center gap-1.5">
+                                      <Building className="h-3.5 w-3.5 text-cyan-600" />
+                                      Quản Lý Kho ({assigned.length})
+                                    </span>
+                                    {modalMode !== 'view' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openPersonnelPopup('manager')}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-2 py-1 text-[11px] font-bold text-white shadow-xs transition hover:bg-cyan-700 cursor-pointer"
+                                      >
+                                        <Plus className="h-3 w-3" /> Thêm Quản lý
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                    {assigned.length === 0 ? (
+                                      <p className="text-[11px] font-medium text-slate-400 italic py-2 text-center">Chưa chọn quản lý nào</p>
+                                    ) : (
+                                      <>
+                                        {displayed.map((u) => (
+                                          <div
+                                            key={u.id}
+                                            className="flex items-center justify-between rounded-lg border border-cyan-200/80 bg-white p-2 text-xs font-semibold text-slate-800 shadow-xs"
+                                          >
+                                            <div className="truncate pr-1">
+                                              <div className="font-bold text-slate-900">{u.fullName || u.email}</div>
+                                              <div className="text-[10px] font-normal text-slate-500 truncate">{u.email}</div>
+                                            </div>
+                                            {modalMode !== 'view' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveAssignedUser(u.id)}
+                                                className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer"
+                                                title="Gỡ khỏi kho"
+                                              >
+                                                <X className="h-3.5 w-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                        {assigned.length > 2 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openPersonnelPopup('manager')}
+                                            className="w-full text-center py-1 text-[11px] font-bold text-cyan-700 hover:underline cursor-pointer"
+                                          >
+                                            + Xem thêm {assigned.length - 2} quản lý...
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* BOX 2: THỦ KHO */}
+                            {(() => {
+                              const assigned = users.filter(
+                                (u) =>
+                                  getUserRoleCategory(u) === 'storekeeper' &&
+                                  (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
+                              );
+                              const displayed = assigned.slice(0, 2);
+
+                              return (
+                                <div className="flex flex-col rounded-xl border border-cyan-200 bg-cyan-50/20 p-3 space-y-2">
+                                  <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
+                                    <span className="text-xs font-bold text-cyan-950 flex items-center gap-1.5">
+                                      <Users className="h-3.5 w-3.5 text-cyan-600" />
+                                      Thủ Kho ({assigned.length})
+                                    </span>
+                                    {modalMode !== 'view' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openPersonnelPopup('storekeeper')}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-2 py-1 text-[11px] font-bold text-white shadow-xs transition hover:bg-cyan-700 cursor-pointer"
+                                      >
+                                        <Plus className="h-3 w-3" /> Thêm Thủ kho
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                    {assigned.length === 0 ? (
+                                      <p className="text-[11px] font-medium text-slate-400 italic py-2 text-center">Chưa chọn thủ kho nào</p>
+                                    ) : (
+                                      <>
+                                        {displayed.map((u) => (
+                                          <div
+                                            key={u.id}
+                                            className="flex items-center justify-between rounded-lg border border-cyan-200/80 bg-white p-2 text-xs font-semibold text-slate-800 shadow-xs"
+                                          >
+                                            <div className="truncate pr-1">
+                                              <div className="font-bold text-slate-900">{u.fullName || u.email}</div>
+                                              <div className="text-[10px] font-normal text-slate-500 truncate">{u.email}</div>
+                                            </div>
+                                            {modalMode !== 'view' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveAssignedUser(u.id)}
+                                                className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer"
+                                                title="Gỡ khỏi kho"
+                                              >
+                                                <X className="h-3.5 w-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                        {assigned.length > 2 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openPersonnelPopup('storekeeper')}
+                                            className="w-full text-center py-1 text-[11px] font-bold text-cyan-700 hover:underline cursor-pointer"
+                                          >
+                                            + Xem thêm {assigned.length - 2} thủ kho...
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* BOX 3: NHÂN VIÊN KIỂM KÊ */}
+                            {(() => {
+                              const assigned = users.filter(
+                                (u) =>
+                                  getUserRoleCategory(u) === 'inventory_checker' &&
+                                  (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
+                              );
+                              const displayed = assigned.slice(0, 2);
+
+                              return (
+                                <div className="flex flex-col rounded-xl border border-cyan-200 bg-cyan-50/20 p-3 space-y-2">
+                                  <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
+                                    <span className="text-xs font-bold text-cyan-950 flex items-center gap-1.5">
+                                      <Check className="h-3.5 w-3.5 text-cyan-600" />
+                                      NV Kiểm Kê ({assigned.length})
+                                    </span>
+                                    {modalMode !== 'view' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openPersonnelPopup('inventory_checker')}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-2 py-1 text-[11px] font-bold text-white shadow-xs transition hover:bg-cyan-700 cursor-pointer"
+                                      >
+                                        <Plus className="h-3 w-3" /> Thêm NV kiểm kê
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                    {assigned.length === 0 ? (
+                                      <p className="text-[11px] font-medium text-slate-400 italic py-2 text-center">Chưa chọn NV kiểm kê</p>
+                                    ) : (
+                                      <>
+                                        {displayed.map((u) => (
+                                          <div
+                                            key={u.id}
+                                            className="flex items-center justify-between rounded-lg border border-cyan-200/80 bg-white p-2 text-xs font-semibold text-slate-800 shadow-xs"
+                                          >
+                                            <div className="truncate pr-1">
+                                              <div className="font-bold text-slate-900">{u.fullName || u.email}</div>
+                                              <div className="text-[10px] font-normal text-slate-500 truncate">{u.email}</div>
+                                            </div>
+                                            {modalMode !== 'view' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveAssignedUser(u.id)}
+                                                className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer"
+                                                title="Gỡ khỏi kho"
+                                              >
+                                                <X className="h-3.5 w-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                        {assigned.length > 2 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openPersonnelPopup('inventory_checker')}
+                                            className="w-full text-center py-1 text-[11px] font-bold text-cyan-700 hover:underline cursor-pointer"
+                                          >
+                                            + Xem thêm {assigned.length - 2} NV kiểm kê...
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -1585,15 +2043,261 @@ export default function WarehouseManagement() {
                     type="button"
                     disabled={saving}
                     onClick={handleExecuteBatchAction}
-                    className={`inline-flex items-center justify-center gap-2 rounded-xl border-2 px-7 py-3 text-sm font-bold text-white shadow-md transition disabled:opacity-50 cursor-pointer active:scale-95 ${
-                      batchActionType === 'delete'
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl border-2 px-7 py-3 text-sm font-bold text-white shadow-md transition disabled:opacity-50 cursor-pointer active:scale-95 ${batchActionType === 'delete'
                         ? 'border-red-500 bg-red-600 hover:bg-red-700'
                         : 'border-cyan-500 bg-cyan-600 hover:bg-cyan-700'
-                    }`}
+                      }`}
                   >
                     {saving ? 'Đang xử lý...' : 'Đồng Ý Thực Hiện'}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* POPUP MODAL: THÊM NHÂN SỰ THEO LOẠI */}
+      {personnelPopupCategory &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs transition-all animate-in fade-in duration-200">
+            <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[85vh]">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 bg-cyan-600 px-5 py-4 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 text-white shadow-xs">
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-wide">
+                      {personnelPopupCategory === 'manager' && 'Thêm Quản Lý Kho'}
+                      {personnelPopupCategory === 'storekeeper' && 'Thêm Thủ Kho'}
+                      {personnelPopupCategory === 'inventory_checker' && 'Thêm Nhân Viên Kiểm Kê'}
+                    </h3>
+                    <p className="text-xs font-medium text-cyan-100">
+                      Gán nhân sự vào kho: <b className="text-white font-bold">{form.name || 'Kho mới'}</b>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPersonnelPopupCategory(null)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:bg-white/20 hover:text-white transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-4 space-y-3 overflow-y-auto flex-1 bg-slate-50/50">
+                {/* Search bar & Bulk action controls */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={popupSearch}
+                      onChange={(e) => setPopupSearch(e.target.value)}
+                      placeholder="Tìm tên, email..."
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-cyan-500 focus:bg-white"
+                    />
+                  </div>
+
+                  {(() => {
+                    const categoryUsers = users.filter(
+                      (u) =>
+                        getUserRoleCategory(u) === personnelPopupCategory &&
+                        (u.fullName?.toLowerCase().includes(popupSearch.toLowerCase()) ||
+                          u.email.toLowerCase().includes(popupSearch.toLowerCase())),
+                    );
+                    const allChecked =
+                      categoryUsers.length > 0 && categoryUsers.every((u) => tempSelectedUserIds.includes(u.id));
+
+                    return (
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (allChecked) {
+                              const idsToRemove = new Set(categoryUsers.map((u) => u.id));
+                              setTempSelectedUserIds((prev) => prev.filter((id) => !idsToRemove.has(id)));
+                            } else {
+                              const idsToAdd = categoryUsers.map((u) => u.id);
+                              setTempSelectedUserIds((prev) => Array.from(new Set([...prev, ...idsToAdd])));
+                            }
+                          }}
+                          className="h-9 rounded-xl border border-cyan-300 bg-cyan-50 px-3 text-xs font-bold text-cyan-700 hover:bg-cyan-100 transition cursor-pointer"
+                        >
+                          {allChecked ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                        </button>
+                        <span className="text-xs font-bold text-slate-700 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200">
+                          Đã chọn {tempSelectedUserIds.length}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* List of category users */}
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {(() => {
+                    const categoryUsers = users.filter(
+                      (u) =>
+                        getUserRoleCategory(u) === personnelPopupCategory &&
+                        (u.fullName?.toLowerCase().includes(popupSearch.toLowerCase()) ||
+                          u.email.toLowerCase().includes(popupSearch.toLowerCase())),
+                    );
+
+                    if (categoryUsers.length === 0) {
+                      return (
+                        <div className="py-8 text-center text-xs font-medium text-slate-500 bg-white rounded-xl border border-slate-200">
+                          {popupSearch ? 'Không tìm thấy nhân sự phù hợp' : 'Chưa có nhân sự thuộc loại này'}
+                        </div>
+                      );
+                    }
+
+                    return categoryUsers.map((user) => {
+                      const isSelected = tempSelectedUserIds.includes(user.id);
+                      const badge = formatRoleBadge(getUserRole(user));
+                      const currentWhId = selectedWarehouse?.id || warehouses.find((w) => w.code === form.code || w.name === form.name)?.id;
+                      const userWhIds = getUserWarehouseIds(user.id, warehouses, projectTeams);
+                      const isCurrentWh = currentWhId && userWhIds.includes(currentWhId);
+                      const assignedOtherWh = warehouses.find((w) => w.id !== currentWhId && userWhIds.includes(w.id));
+
+                      return (
+                        <label
+                          key={user.id}
+                          className={`flex items-center justify-between rounded-xl border p-3 transition cursor-pointer ${isSelected
+                              ? 'border-cyan-500 bg-cyan-50/80 shadow-2xs'
+                              : 'border-slate-200 bg-white hover:bg-slate-50'
+                            }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                setTempSelectedUserIds((prev) =>
+                                  prev.includes(user.id)
+                                    ? prev.filter((id) => id !== user.id)
+                                    : [...prev, user.id],
+                                );
+                              }}
+                              className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                            />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-900">
+                                  {user.fullName || user.email}
+                                </span>
+                                <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold border ${badge.color}`}>
+                                  {badge.label}
+                                </span>
+                              </div>
+                              <span className="text-[11px] font-medium text-slate-500">{user.email}</span>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            {personnelPopupCategory === 'inventory_checker' && (
+                              isCurrentWh ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-cyan-100 px-2 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-300">
+                                  Đang ở kho này
+                                </span>
+                              ) : assignedOtherWh ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-300">
+                                  Đang ở {assignedOtherWh.name} (Tự chuyển khi lưu)
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-medium">Chưa vào kho nào</span>
+                              )
+                            )}
+                          </div>
+                        </label>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => setPersonnelPopupCategory(null)}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmPersonnelPopup}
+                  className="rounded-xl bg-cyan-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-cyan-700 transition cursor-pointer"
+                >
+                  Xác nhận thêm ({tempSelectedUserIds.length})
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* DETAIL PERSONNEL MODAL (VIEW ALL PERSONNEL FOR A CATEGORY IN TABLE) */}
+      {detailPersonnelModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs transition-all animate-in fade-in duration-200">
+            <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[80vh]">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-cyan-600 px-5 py-4 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 text-white shadow-xs">
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white uppercase tracking-wide">
+                      Danh Sách Nhân Sự
+                    </h3>
+                    <p className="text-xs font-medium text-cyan-100">{detailPersonnelModal.title}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailPersonnelModal(null)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:bg-white/20 hover:text-white transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-2 overflow-y-auto flex-1 bg-slate-50/50">
+                {detailPersonnelModal.users.map((u) => {
+                  const badge = formatRoleBadge(getUserRole(u));
+                  return (
+                    <div
+                      key={u.id}
+                      className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-2xs"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-900">{u.fullName || u.email}</span>
+                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold border ${badge.color}`}>
+                            {badge.label}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-medium text-slate-500">{u.email}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-end border-t border-slate-200 bg-white px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => setDetailPersonnelModal(null)}
+                  className="rounded-xl bg-slate-100 px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition cursor-pointer"
+                >
+                  Đóng
+                </button>
               </div>
             </div>
           </div>,

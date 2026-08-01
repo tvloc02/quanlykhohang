@@ -1117,19 +1117,20 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                     <h4 className="font-black text-slate-900">Chi tiết hàng hóa & Báo giá</h4>
                   </div>
                 </div>
-                <div className="overflow-hidden rounded-2xl border-2 border-slate-200 shadow-sm">
+                <div className="overflow-hidden rounded-2xl border-2 border-cyan-300 shadow-sm">
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[980px] bg-white">
-                      <thead className="bg-slate-50">
-                        <tr className="border-b border-slate-200">
-                          <th className="w-14 px-3 py-3 text-center text-xs font-bold uppercase text-slate-700">STT</th>
-                          <th className="w-[28%] px-3 py-3 text-left text-xs font-bold uppercase text-slate-700">Mặt hàng</th>
-                          <th className="px-3 py-3 text-left text-xs font-bold uppercase text-slate-700">Kho nhận</th>
-                          <th className="px-3 py-3 text-center text-xs font-bold uppercase text-slate-700">Đơn vị tính</th>
-                          <th className="px-3 py-3 text-center text-xs font-bold uppercase text-slate-700">SL yêu cầu</th>
-                          <th className="px-3 py-3 text-right text-xs font-bold uppercase text-slate-700">Đơn giá</th>
-                          <th className="px-3 py-3 text-right text-xs font-bold uppercase text-slate-700">Thành tiền</th>
-                          <th className="px-3 py-3 text-center text-xs font-bold uppercase text-slate-700">SL đã nhận</th>
+                      <thead className="bg-[#ecfeff] text-xs font-black text-cyan-950 uppercase border-b-2 border-cyan-300">
+                        <tr>
+                          <th className="w-14 px-3 py-3 text-center text-xs font-bold uppercase text-cyan-950 border-r border-cyan-200">STT</th>
+                          <th className="px-3 py-3 text-left text-xs font-bold uppercase text-cyan-950 border-r border-cyan-200">Mã hàng hóa</th>
+                          <th className="px-3 py-3 text-left text-xs font-bold uppercase text-cyan-950 border-r border-cyan-200">Tên hàng hóa</th>
+                          <th className="px-3 py-3 text-left text-xs font-bold uppercase text-cyan-950 border-r border-cyan-200">Kho nhận</th>
+                          <th className="px-3 py-3 text-center text-xs font-bold uppercase text-cyan-950 border-r border-cyan-200">Đơn vị tính</th>
+                          <th className="px-3 py-3 text-center text-xs font-bold uppercase text-cyan-950 border-r border-cyan-200">SL yêu cầu</th>
+                          <th className="px-3 py-3 text-right text-xs font-bold uppercase text-cyan-950 border-r border-cyan-200">Đơn giá</th>
+                          <th className="px-3 py-3 text-right text-xs font-bold uppercase text-cyan-950 border-r border-cyan-200">Thành tiền</th>
+                          <th className="px-3 py-3 text-center text-xs font-bold uppercase text-cyan-950">SL đã nhận</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 bg-white">
@@ -1139,13 +1140,15 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                             const itemPrice = detail.unitPrice || 0;
                             const lineTotal = itemQty * itemPrice;
                             return (
-                              <tr key={detail.id} className="hover:bg-slate-50 transition">
-                                <td className="px-3 py-4 text-center text-sm font-semibold text-slate-600">
+                              <tr key={detail.id} className="hover:bg-cyan-50/50 transition">
+                                <td className="px-3 py-4 text-center text-sm font-semibold text-slate-600 border-r border-slate-200">
                                   {index + 1}
                                 </td>
-                                <td className="px-3 py-4">
-                                  <p className="text-sm font-bold text-slate-800">{detail.product?.internalSku || '-'}</p>
-                                  <p className="text-sm font-semibold text-slate-500 mt-0.5">{detail.product?.name || '-'}</p>
+                                <td className="px-3 py-4 text-sm font-mono font-bold text-cyan-900 border-r border-slate-200 whitespace-nowrap">
+                                  {detail.product?.internalSku || '-'}
+                                </td>
+                                <td className="px-3 py-4 text-sm font-semibold text-slate-800 border-r border-slate-200">
+                                  {detail.product?.name || 'Hàng hóa'}
                                 </td>
                                 <td className="px-3 py-4 text-sm font-medium text-slate-600">
                                   {detail.warehouseCode || 'Kho nguyên vật liệu'}
@@ -1294,21 +1297,22 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
             </div>
 
             <form onSubmit={handleNegotiateSubmit} className="mt-4 space-y-4">
-              <div className="overflow-x-auto rounded-xl border border-slate-300 shadow-sm">
+              <div className="overflow-x-auto rounded-xl border border-cyan-300 shadow-sm">
                 <table className="w-full text-left border-collapse bg-white">
-                  <thead className="bg-slate-100 text-xs font-bold text-slate-900 uppercase border-b border-slate-300">
+                  <thead className="bg-[#ecfeff] text-xs font-black text-cyan-950 uppercase border-b-2 border-cyan-300">
                     <tr>
-                      <th className="p-3 text-center w-12 whitespace-nowrap border-r border-slate-300">STT</th>
-                      <th className="p-3 text-left whitespace-nowrap border-r border-slate-300">Sản phẩm</th>
-                      <th className="p-3 text-center w-24 whitespace-nowrap border-r border-slate-300">SL đặt</th>
-                      <th className="p-3 text-center whitespace-nowrap border-r border-slate-300">Giá niêm yết NCC</th>
-                      <th className="p-3 text-center whitespace-nowrap border-r border-slate-300">Giá bên mua yêu cầu</th>
-                      <th className="p-3 text-center whitespace-nowrap border-r border-slate-300">Thành tiền bên mua</th>
-                      <th className="p-3 text-center w-48 whitespace-nowrap border-r border-slate-300">Giá mong muốn điều chỉnh</th>
+                      <th className="p-3 text-center w-12 whitespace-nowrap border-r border-cyan-200">STT</th>
+                      <th className="p-3 text-left whitespace-nowrap border-r border-cyan-200">Mã hàng hóa</th>
+                      <th className="p-3 text-left whitespace-nowrap border-r border-cyan-200">Tên hàng hóa</th>
+                      <th className="p-3 text-center w-24 whitespace-nowrap border-r border-cyan-200">SL đặt</th>
+                      <th className="p-3 text-center whitespace-nowrap border-r border-cyan-200">Giá niêm yết NCC</th>
+                      <th className="p-3 text-center whitespace-nowrap border-r border-cyan-200">Giá bên mua yêu cầu</th>
+                      <th className="p-3 text-center whitespace-nowrap border-r border-cyan-200">Thành tiền bên mua</th>
+                      <th className="p-3 text-center w-48 whitespace-nowrap border-r border-cyan-200">Giá mong muốn điều chỉnh</th>
                       <th className="p-3 text-center whitespace-nowrap">Thành tiền đề xuất</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-300 text-sm">
+                  <tbody className="divide-y divide-slate-200 text-sm">
                     {((loadedReceipt?.details || selectedReceipt.details || []).map((detail, idx) => {
                       const qty = detail.expectedQty || 0;
                       const prodId = detail.product?.id || '';
@@ -1320,25 +1324,27 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                       const supplierTotal = qty * supplierPrice;
 
                       return (
-                        <tr key={detail.id} className="hover:bg-slate-50">
-                          <td className="p-3 text-center font-medium text-slate-800 border-r border-slate-300">{idx + 1}</td>
-                          <td className="p-3 text-left font-semibold text-slate-900 border-r border-slate-300">
-                            <p className="whitespace-nowrap">{detail.product?.name || detail.product?.internalSku || 'Sản phẩm'}</p>
-                            <p className="text-xs text-slate-600 font-mono">{detail.product?.internalSku}</p>
+                        <tr key={detail.id} className="hover:bg-cyan-50/50 transition">
+                          <td className="p-3 text-center font-medium text-slate-800 border-r border-slate-200">{idx + 1}</td>
+                          <td className="p-3 text-left font-mono font-bold text-cyan-900 border-r border-slate-200 whitespace-nowrap">
+                            {detail.product?.internalSku || '-'}
                           </td>
-                          <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 whitespace-nowrap">
+                          <td className="p-3 text-left font-semibold text-slate-900 border-r border-slate-200">
+                            {detail.product?.name || 'Hàng hóa'}
+                          </td>
+                          <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
                             {formatQuantity(qty)}
                           </td>
-                          <td className="p-3 text-center font-medium text-slate-800 border-r border-slate-300 whitespace-nowrap">
+                          <td className="p-3 text-center font-medium text-slate-800 border-r border-slate-200 whitespace-nowrap">
                             {formatCurrency(listPrice)}
                           </td>
-                          <td className="p-3 text-center font-medium text-slate-800 border-r border-slate-300 whitespace-nowrap">
+                          <td className="p-3 text-center font-medium text-slate-800 border-r border-slate-200 whitespace-nowrap">
                             {formatCurrency(buyerPrice)}
                           </td>
-                          <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 whitespace-nowrap">
+                          <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
                             {formatCurrency(buyerTotal)}
                           </td>
-                          <td className="p-3 text-center border-r border-slate-300">
+                          <td className="p-3 text-center border-r border-slate-200">
                             <input
                               type="number"
                               min={0}
@@ -1348,10 +1354,10 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                                 const val = Number(e.target.value);
                                 setSupplierPrices((prev) => ({ ...prev, [detail.id]: val }));
                               }}
-                              className="h-9 w-full rounded-lg border border-slate-300 bg-white px-2 text-center text-sm font-bold text-slate-900 outline-none focus:border-slate-600"
+                              className="h-9 w-full rounded-lg border-2 border-cyan-300 bg-white px-2 text-center text-sm font-bold text-slate-900 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20"
                             />
                           </td>
-                          <td className="p-3 text-center font-bold text-slate-900 whitespace-nowrap">
+                          <td className="p-3 text-center font-bold text-cyan-900 whitespace-nowrap">
                             {formatCurrency(supplierTotal)}
                           </td>
                         </tr>
@@ -1369,18 +1375,18 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                 const diff = totalSupplier - totalBuyer;
 
                 return (
-                  <div className="grid grid-cols-3 gap-4 rounded-xl border border-slate-300 bg-slate-50 p-4 text-center">
-                    <div className="border-r border-slate-300 pr-4">
-                      <p className="text-xs font-bold uppercase text-slate-700">Tổng tiền đặt mua (Bên mua)</p>
+                  <div className="grid grid-cols-3 gap-4 rounded-xl border border-cyan-200 bg-cyan-50/50 p-4 text-center">
+                    <div className="border-r border-cyan-200 pr-4">
+                      <p className="text-xs font-bold uppercase text-cyan-800">Tổng tiền đặt mua (Bên mua)</p>
                       <p className="mt-1 text-lg font-bold text-slate-900">{formatCurrency(totalBuyer)}</p>
                     </div>
-                    <div className="border-r border-slate-300 px-4">
-                      <p className="text-xs font-bold uppercase text-slate-700">Tổng tiền đề xuất (NCC)</p>
+                    <div className="border-r border-cyan-200 px-4">
+                      <p className="text-xs font-bold uppercase text-cyan-800">Tổng tiền đề xuất (NCC)</p>
                       <p className="mt-1 text-lg font-bold text-slate-900">{formatCurrency(totalSupplier)}</p>
                     </div>
                     <div className="pl-4">
-                      <p className="text-xs font-bold uppercase text-slate-700">Chênh lệch</p>
-                      <p className="mt-1 text-lg font-bold text-slate-900">
+                      <p className="text-xs font-bold uppercase text-cyan-800">Chênh lệch</p>
+                      <p className="mt-1 text-lg font-bold text-cyan-900">
                         {diff > 0 ? `+${formatCurrency(diff)}` : formatCurrency(diff)}
                       </p>
                     </div>

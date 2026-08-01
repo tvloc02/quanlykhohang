@@ -158,10 +158,10 @@ const menuItems = [
       { icon: Package, label: 'Kiểm kê của tôi', path: '/inventory/stocktake/my-tasks', allowedRoles: ['staff'] },
     ],
   },
-  { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null, allowedRoles: ['manager', 'staff'] },
+  { icon: Warehouse, label: 'Kho hàng', path: '/warehouses', badge: null, allowedRoles: ['admin', 'manager', 'staff'] },
   { icon: Users, label: 'Nhân sự', path: '/personnel', badge: null, allowedRoles: ['admin'] },
   { icon: HeartHandshake, label: 'Khách hàng', path: '/customers', badge: null, allowedRoles: ['admin', 'manager', 'staff'] },
-  { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null, allowedRoles: ['manager', 'staff'] },
+  { icon: Truck, label: 'Nhà cung cấp', path: '/suppliers', badge: null, allowedRoles: ['admin', 'manager', 'staff'] },
   {
     icon: Settings,
     label: 'Cài đặt',

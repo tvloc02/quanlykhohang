@@ -1,4 +1,5 @@
 import React from 'react';
+import * as XLSX from 'xlsx';
 import {
   Download,
   Eye,
@@ -20,6 +21,7 @@ import {
 import Toast from '../../shared/components/Toast';
 import { Link } from 'react-router-dom';
 import {
+  getStoredProjectTeams,
   getStoredWarehouses,
   getUserWarehouseIds,
   getUserWarehouseNames,
@@ -375,9 +377,17 @@ export default function PersonnelManagement() {
   const [selectedUser, setSelectedUser] = React.useState<PersonnelUser | null>(null);
   const [form, setForm] = React.useState<PersonnelForm>(buildEmptyForm());
   const [profiles, setProfiles] = React.useState<Record<string, PersonnelProfile>>(() => getStoredPersonnelProfiles());
+  const [teams, setTeams] = React.useState<any[]>(() => getStoredProjectTeams());
   const [warehouses, setWarehouses] = React.useState(() => getStoredWarehouses());
   const [showPassword, setShowPassword] = React.useState(false);
   const importInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Import Modal State
+  const [isImportModalOpen, setIsImportModalOpen] = React.useState(false);
+  const [importFile, setImportFile] = React.useState<File | null>(null);
+  const [importSelectedRole, setImportSelectedRole] = React.useState('staff');
+  const [importSelectedWarehouseIds, setImportSelectedWarehouseIds] = React.useState<string[]>([]);
+  const [importModalError, setImportModalError] = React.useState('');
 
   // Lock Account Modal State
   const [lockModalOpen, setLockModalOpen] = React.useState(false);
@@ -426,10 +436,11 @@ export default function PersonnelManagement() {
     setError('');
 
     try {
-      const [usersResponse, rolesResponse, warehousesResponse] = await Promise.all([
+      const [usersResponse, rolesResponse, warehousesResponse, teamsResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }),
         fetch(`${API_BASE_URL}/roles`, { headers: authHeaders() }),
         fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }),
+        fetch(`${API_BASE_URL}/project-teams`, { headers: authHeaders() }),
       ]);
 
       if (
@@ -448,6 +459,14 @@ export default function PersonnelManagement() {
       const userData = (await usersResponse.json()) as PersonnelUser[];
       const roleData = rolesResponse.ok ? ((await rolesResponse.json()) as Role[]) : [];
       const warehouseData = warehousesResponse.ok ? ((await warehousesResponse.json()) as WarehouseRecord[]) : [];
+      if (teamsResponse && teamsResponse.ok) {
+        const teamsData = await teamsResponse.json();
+        if (Array.isArray(teamsData) && teamsData.length > 0) {
+          setTeams(teamsData);
+          localStorage.setItem('smart-wms-project-teams', JSON.stringify(teamsData));
+        }
+      }
+
       const fallbackWarehouses = getStoredWarehouses();
       const nextWarehouses = (warehouseData.length > 0
         ? mergeStoredWarehouses(warehouseData, fallbackWarehouses)
@@ -493,9 +512,12 @@ export default function PersonnelManagement() {
   }, [loadData]);
 
   React.useEffect(() => {
-    const syncWarehouses = () => setWarehouses(getStoredWarehouses());
-    window.addEventListener('storage', syncWarehouses);
-    return () => window.removeEventListener('storage', syncWarehouses);
+    const syncData = () => {
+      setWarehouses(getStoredWarehouses());
+      setTeams(getStoredProjectTeams());
+    };
+    window.addEventListener('storage', syncData);
+    return () => window.removeEventListener('storage', syncData);
   }, []);
 
   // Reset pagination when filters change
@@ -597,7 +619,7 @@ export default function PersonnelManagement() {
 
   const getWarehouseAssignmentField = (role: string): 'managerIds' | 'staffIds' | undefined => {
     if (role === 'admin' || role === 'manager') return 'managerIds';
-    if (role === 'staff') return 'staffIds';
+    if (role === 'staff' || role === 'storekeeper' || role === 'inventory_checker') return 'staffIds';
     return undefined;
   };
 
@@ -751,202 +773,171 @@ export default function PersonnelManagement() {
   };
 
   const handleImportClick = () => {
-    if (!importInputRef.current) return;
-    importInputRef.current.value = '';
-    importInputRef.current.click();
+    setImportFile(null);
+    setImportModalError('');
+    setIsImportModalOpen(true);
   };
 
   const downloadPersonnelImportTemplate = () => {
     const rows = [
-      ['Email', 'Họ và Tên', 'Giới tính', 'Vai trò', 'Kho hoạt động', 'Số điện thoại', 'Trạng thái', 'Mật khẩu'],
-      ['nhanvien@example.com', 'Nguyễn Văn A', 'Nam', 'staff', 'Kho A; Kho B', '0912345678', 'Đang hoạt động', 'Aa123456'],
+      ['STT', 'Họ và Tên', 'Email', 'Số điện thoại', 'Giới tính'],
+      [1, 'Nguyễn Văn A', 'nhanvien.a@smartwms.vn', '0912345678', 'Nam'],
+      [2, 'Trần Thị B', 'nhanvien.b@smartwms.vn', '0987654321', 'Nữ'],
     ];
-    const csvContent = rows
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'mau-file-nhan-su.csv';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    setSuccess('Đã tải mẫu file import nhân sự.');
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Import Nhan Su');
+    XLSX.writeFile(wb, 'mau-import-nhan-su.xlsx');
+    setSuccess('Đã tải mẫu file import nhân sự (.xlsx).');
     setError('');
   };
 
-  const parseCsvLine = (line: string) => {
-    const fields: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i += 1) {
-      const char = line[i];
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"';
-          i += 1;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (char === ',' && !inQuotes) {
-        fields.push(current);
-        current = '';
-      } else {
-        current += char;
-      }
+  const handleConfirmImportXlsx = async () => {
+    if (!importFile) {
+      setImportModalError('Vui lòng chọn file Excel (.xlsx) để import.');
+      return;
+    }
+    if (!importSelectedRole) {
+      setImportModalError('Vui lòng chọn Vai trò cho nhân sự import (Bắt buộc).');
+      return;
     }
 
-    fields.push(current);
-    return fields.map((value) => value.trim());
-  };
-
-  const normalizeHeader = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-
-  const parsePersonnelCsv = (csvText: string) => {
-    const lines = csvText.split(/\r?\n/).filter((line) => line.trim() !== '');
-    if (lines.length < 2) {
-      throw new Error('Tệp CSV phải có ít nhất một dòng dữ liệu.');
-    }
-
-    const headerNames = parseCsvLine(lines[0]);
-    const headerMap: Record<string, number> = {};
-
-    headerNames.forEach((header, index) => {
-      const normalized = normalizeHeader(header);
-      if (['email', 'e-mail'].includes(normalized)) headerMap.email = index;
-      if (['họ và tên', 'ho va ten', 'full name', 'fullname'].includes(normalized)) headerMap.fullName = index;
-      if (['giới tính', 'gioi tinh', 'gender'].includes(normalized)) headerMap.gender = index;
-      if (['vai trò', 'vai tro', 'role'].includes(normalized)) headerMap.role = index;
-      if (['kho hoạt động', 'kho hoat dong', 'warehouse', 'warehouses'].includes(normalized)) headerMap.warehouses = index;
-      if (['số điện thoại', 'so dien thoai', 'phone', 'mobile'].includes(normalized)) headerMap.phone = index;
-      if (['trạng thái', 'trang thai', 'status'].includes(normalized)) headerMap.status = index;
-      if (['mật khẩu', 'mat khau', 'password'].includes(normalized)) headerMap.password = index;
-    });
-
-    if (headerMap.email === undefined) {
-      throw new Error('Thiếu cột Email trong file CSV.');
-    }
-
-    return lines.slice(1).map((line, rowIndex) => {
-      const values = parseCsvLine(line);
-      const email = (values[headerMap.email] || '').trim();
-      if (!email) {
-        throw new Error(`Dòng ${rowIndex + 2}: Thiếu email.`);
-      }
-
-      const roleName = ((values[headerMap.role] || '').trim() || 'staff').toLowerCase();
-      const warehouseNames = (values[headerMap.warehouses] || '')
-        .split(/;|,|，/)
-        .map((name) => name.trim())
-        .filter(Boolean);
-
-      const warehouseIds = warehouseNames
-        .map((name) => warehouses.find((warehouse) => warehouse.name === name)?.id)
-        .filter((id): id is string => Boolean(id));
-
-      const statusValue = (values[headerMap.status] || '').trim().toLowerCase();
-      const status: 'active' | 'inactive' = ['active', 'đang hoạt động', 'dang hoat dong'].includes(statusValue)
-        ? 'active'
-        : 'inactive';
-
-      return {
-        user: {
-          id: crypto.randomUUID(),
-          email,
-          fullName: (values[headerMap.fullName] || '').trim(),
-          roles: [getRoleByName(roleName || 'staff')],
-        },
-        profile: {
-          gender: (values[headerMap.gender] || '').trim() || 'Nam',
-          phone: (values[headerMap.phone] || '').trim() || '0900000000',
-          status,
-          lastLogin: new Date().toISOString(),
-        },
-        warehouseIds,
-        password: (values[headerMap.password] || '').trim(),
-      };
-    });
-  };
-
-  const handleImportFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setError('');
-    setSuccess('');
+    setImportModalError('');
+    setSaving(true);
 
     try {
-      const text = await file.text();
-      const parsedRows = parsePersonnelCsv(text);
-      const existingByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]));
+      const buffer = await importFile.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      if (workbook.SheetNames.length === 0) {
+        throw new Error('File Excel không chứa trang dữ liệu nào.');
+      }
 
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawRows = (XLSX.utils.sheet_to_json(sheet, { header: 1 }) || []) as any[];
+
+      if (rawRows.length < 2) {
+        throw new Error('Tệp Excel phải chứa ít nhất 1 dòng dữ liệu (sau dòng tiêu đề).');
+      }
+
+      // Find header row
+      const headerRowIndex = rawRows.findIndex((r: any) =>
+        Array.isArray(r) && r.some((cell: any) => {
+          const str = String(cell || '').trim().toLowerCase();
+          return str.includes('email') || str.includes('họ') || str.includes('tên');
+        })
+      );
+
+      const headerRow = headerRowIndex >= 0 ? rawRows[headerRowIndex] : rawRows[0];
+      const dataRows = headerRowIndex >= 0 ? rawRows.slice(headerRowIndex + 1) : rawRows.slice(1);
+
+      let emailIdx = -1;
+      let nameIdx = -1;
+      let phoneIdx = -1;
+      let genderIdx = -1;
+
+      if (headerRow) {
+        headerRow.forEach((h: any, idx: number) => {
+          const str = String(h || '').trim().toLowerCase();
+          if (str.includes('email') || str.includes('e-mail')) emailIdx = idx;
+          else if (str.includes('họ') || str.includes('tên') || str.includes('name')) nameIdx = idx;
+          else if (str.includes('điện thoại') || str.includes('phone') || str.includes('sđt')) phoneIdx = idx;
+          else if (str.includes('giới tính') || str.includes('gender')) genderIdx = idx;
+        });
+      }
+
+      if (emailIdx === -1) emailIdx = 2; // Default column index mapping if header not explicit
+      if (nameIdx === -1) nameIdx = 1;
+      if (phoneIdx === -1) phoneIdx = 3;
+      if (genderIdx === -1) genderIdx = 4;
+
+      const existingByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
       const nextUsers = [...users];
       const nextProfiles = { ...profiles };
+      let count = 0;
 
-      for (const { user, profile, warehouseIds, password } of parsedRows) {
-        const existing = existingByEmail.get(user.email.toLowerCase());
-        const requestBody: Record<string, string> = {
-          email: user.email,
-          fullName: user.fullName || '',
-          phone: profile.phone,
-          role: user.roles?.[0]?.name || 'staff',
+      for (let i = 0; i < dataRows.length; i += 1) {
+        const row = dataRows[i];
+        if (!row || row.length === 0) continue;
+
+        const email = String(row[emailIdx] || '').trim();
+        if (!email || !email.includes('@')) continue;
+
+        const fullName = nameIdx >= 0 ? String(row[nameIdx] ?? '').trim() : '';
+        let phone = phoneIdx >= 0 ? String(row[phoneIdx] ?? '').trim() : '';
+        if (phone && /^\d{9}$/.test(phone)) {
+          phone = '0' + phone;
+        }
+        if (!phone) {
+          phone = '0900000000';
+        }
+        const gender = genderIdx >= 0 ? String(row[genderIdx] ?? '').trim() : 'Nam';
+
+        const existing = existingByEmail.get(email.toLowerCase());
+        const newUserId = existing ? existing.id : crypto.randomUUID();
+
+        const savedUser: PersonnelUser = {
+          id: newUserId,
+          email,
+          fullName: fullName || existing?.fullName || '',
+          phone,
+          roles: [getRoleByName(importSelectedRole)],
         };
 
-        if (existing) {
-          if (password) requestBody.password = password;
-        } else {
-          requestBody.password = password || 'Aa123456';
-        }
-
-        let savedUser = existing || user;
-
-        try {
-          const response = await fetch(
-            existing ? `${API_BASE_URL}/users/${existing.id}` : `${API_BASE_URL}/users`,
-            {
-              method: existing ? 'PUT' : 'POST',
-              headers: authHeaders(),
-              body: JSON.stringify(requestBody),
-            },
-          );
-
-          if (!response.ok) {
-            const data = await response.json().catch(() => null);
-            throw new Error(data?.message || 'Không lưu được nhân sự từ file CSV');
-          }
-
-          savedUser = (await response.json()) as PersonnelUser;
-        } catch {
-          savedUser = existing
-            ? { ...existing, fullName: user.fullName, roles: user.roles }
-            : user;
-        }
-
         if (!existing) {
-          nextUsers.push(savedUser);
-        } else {
-          const index = nextUsers.findIndex((item) => item.id === existing.id);
-          if (index >= 0) nextUsers[index] = savedUser;
+          try {
+            const apiRes = await fetch(`${API_BASE_URL}/users`, {
+              method: 'POST',
+              headers: authHeaders(),
+              body: JSON.stringify({
+                email,
+                fullName: fullName || email.split('@')[0],
+                phone,
+                role: importSelectedRole,
+                password: 'abc@123a',
+              }),
+            });
+            if (apiRes.ok) {
+              const resData = await apiRes.json();
+              if (resData?.id) {
+                savedUser.id = resData.id;
+              }
+            }
+          } catch {
+            // Local fallback
+          }
         }
 
-        nextProfiles[savedUser.id] = profile;
-        await syncWarehouseAssignments(savedUser.id, savedUser.roles?.[0]?.name || 'staff', warehouseIds);
+        if (existing) {
+          const idx = nextUsers.findIndex((u) => u.id === existing.id);
+          if (idx >= 0) nextUsers[idx] = savedUser;
+        } else {
+          nextUsers.unshift(savedUser);
+        }
+
+        nextProfiles[savedUser.id] = {
+          gender: gender || 'Nam',
+          phone,
+          status: 'active',
+          lastLogin: new Date().toISOString(),
+        };
+
+        // Sync warehouse assignments if selected
+        await syncWarehouseAssignments(savedUser.id, importSelectedRole, importSelectedWarehouseIds);
+        count += 1;
       }
 
       setUsers(nextUsers);
       saveStoredPersonnelUsers(nextUsers);
       setProfiles(nextProfiles);
       saveStoredPersonnelProfiles(nextProfiles);
-      setSuccess(`Đã import ${parsedRows.length} nhân sự từ file CSV.`);
+
+      setSuccess(`Đã import thành công ${count} nhân sự với vai trò "${formatRole(importSelectedRole)}".`);
+      setIsImportModalOpen(false);
+      setImportFile(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không đọc được file import nhân sự.');
+      setImportModalError(err instanceof Error ? err.message : 'Lỗi xử lý file Excel import.');
     } finally {
-      if (importInputRef.current) {
-        importInputRef.current.value = '';
-      }
+      setSaving(false);
     }
   };
 
@@ -968,19 +959,25 @@ export default function PersonnelManagement() {
         profile.isLocked ? profile.lockReason : '',
       ];
     });
-    const csvContent = [
-      ['STT', 'Họ và Tên', 'Giới tính', 'Email', 'Vai trò', 'Kho hoạt động', 'Số điện thoại', 'Lần đăng nhập cuối', 'Trạng thái', 'Lý do khóa'],
-      ...rows,
-    ]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'danh-sach-nhan-su.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+
+    const header = [
+      'STT',
+      'Họ và Tên',
+      'Giới tính',
+      'Email',
+      'Vai trò',
+      'Kho hoạt động',
+      'Số điện thoại',
+      'Lần đăng nhập cuối',
+      'Trạng thái',
+      'Lý do khóa',
+    ];
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    XLSX.utils.book_append_sheet(wb, ws, 'Danh sach nhan su');
+    XLSX.writeFile(wb, 'danh-sach-nhan-su.xlsx');
+    setSuccess('Đã xuất file danh sách nhân sự (.xlsx).');
   };
 
   const saveProfile = (userId: string) => {
@@ -1054,6 +1051,8 @@ export default function PersonnelManagement() {
 
       if (form.password) {
         body.password = form.password;
+      } else if (!isEdit) {
+        body.password = 'abc@123a';
       }
 
       const response = await fetch(url, {
@@ -1203,13 +1202,6 @@ export default function PersonnelManagement() {
             Thêm mới
           </button>
         </div>
-        <input
-          ref={importInputRef}
-          type="file"
-          accept=".csv"
-          className="hidden"
-          onChange={handleImportFileChange}
-        />
       </div>
 
       {/* 5 Button Tổng quan overview matching products/main design */}
@@ -1376,7 +1368,7 @@ export default function PersonnelManagement() {
               ) : (
                 paginatedUsers.map((user, index) => {
                   const profile = getProfile(user);
-                  const userWarehouses = getUserWarehouseNames(user.id, warehouses);
+                  const userWarehouses = getUserWarehouseNames(user.id, warehouses, teams);
                   const accountStatus = calculateAccountStatus(user, profile);
 
                   return (
@@ -1839,6 +1831,159 @@ export default function PersonnelManagement() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+      {/* Import Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
+          <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-cyan-50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-600 text-white shadow-sm">
+                  <Upload className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900">Import Nhân sự (Excel .xlsx)</h2>
+                  <p className="text-xs font-semibold text-slate-500">
+                    Chọn vai trò bắt buộc & kho phụ trách (tùy chọn) trước khi tải file lên
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportFile(null);
+                  setImportModalError('');
+                }}
+                className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {importModalError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700 flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 flex-shrink-0" />
+                  {importModalError}
+                </div>
+              )}
+
+              {/* File upload picker */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-bold text-slate-700">
+                    Chọn file dữ liệu (.xlsx, .xls) <span className="text-red-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={downloadPersonnelImportTemplate}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-600 hover:text-cyan-700 hover:underline"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Tải file mẫu
+                  </button>
+                </div>
+                <div className="relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-cyan-400 bg-cyan-50/40 p-5 text-center transition hover:bg-cyan-50">
+                  <Upload className="h-8 w-8 text-cyan-600 mb-2" />
+                  <p className="text-xs font-bold text-slate-700">
+                    {importFile ? importFile.name : 'Nhấp để chọn file Excel từ máy tính của bạn'}
+                  </p>
+                  <p className="text-[11px] font-medium text-slate-400 mt-1">Chỉ chấp nhận định dạng Excel (.xlsx)</p>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Select Role (Mandatory) */}
+              <div>
+                <label className="mb-2 block text-sm font-bold text-slate-700">
+                  Phân công Vai trò <span className="text-red-500">* (Bắt buộc phải chọn)</span>
+                </label>
+                <select
+                  value={importSelectedRole}
+                  onChange={(e) => setImportSelectedRole(e.target.value)}
+                  className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
+                  required
+                >
+                  <option value="">-- Chọn Vai trò bắt buộc --</option>
+                  {formRoleOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] font-medium text-slate-500">
+                  Tất cả nhân sự tạo từ file import sẽ có mật khẩu mặc định là <span className="font-bold text-cyan-700">abc@123a</span>.
+                </p>
+              </div>
+
+              {/* Select Warehouse (Optional) */}
+              <div>
+                <label className="mb-2 block text-sm font-bold text-slate-700">
+                  Phân công Kho hoạt động <span className="text-slate-400 font-normal">(Có thể không chọn)</span>
+                </label>
+                <div className="max-h-36 overflow-y-auto rounded-xl border-2 border-slate-200 p-3 space-y-2 bg-slate-50/50">
+                  {warehouses.length > 0 ? (
+                    warehouses.map((wh) => {
+                      const checked = importSelectedWarehouseIds.includes(wh.id);
+                      return (
+                        <label
+                          key={wh.id}
+                          className={`flex items-center justify-between rounded-lg p-2 cursor-pointer transition ${
+                            checked ? 'bg-cyan-100 text-cyan-900 font-bold' : 'bg-white text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setImportSelectedWarehouseIds((prev) =>
+                                  prev.includes(wh.id) ? prev.filter((id) => id !== wh.id) : [...prev, wh.id]
+                                );
+                              }}
+                              className="h-4 w-4 rounded text-cyan-600 focus:ring-cyan-500"
+                            />
+                            <span className="text-xs font-semibold">{wh.code} - {wh.name}</span>
+                          </div>
+                        </label>
+                      );
+                    })
+                  ) : (
+                    <p className="text-xs text-slate-400">Không có kho nào khả dụng</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportFile(null);
+                  setImportModalError('');
+                }}
+                className="rounded-xl border-2 border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmImportXlsx}
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 disabled:opacity-60"
+              >
+                {saving ? 'Đang Import...' : 'Thực hiện Import'}
+              </button>
+            </div>
           </div>
         </div>
       )}
