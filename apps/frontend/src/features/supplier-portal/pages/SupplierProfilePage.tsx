@@ -8,6 +8,7 @@ import {
   Minimize2,
   Package,
   ShoppingCart,
+  Sparkles,
   Truck,
   X,
   XCircle,
@@ -448,11 +449,55 @@ export default function SupplierProfilePage() {
     reader.readAsDataURL(file);
   };
 
-  const openProductModal = (link?: SupplierProductLink) => {
+  const generateAutoSku = async () => {
+    let allSkus: string[] = [];
+    try {
+      const res = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
+      if (res.ok) {
+        const globalProducts = await res.json();
+        if (Array.isArray(globalProducts)) {
+          allSkus = globalProducts.map((p: any) => p.internalSku).filter(Boolean);
+        }
+      }
+    } catch {
+      // Fallback if network issue
+    }
+
+    const localSkus = (profile?.products || [])
+      .map((p) => p.product?.internalSku)
+      .filter(Boolean) as string[];
+
+    const combinedSkus = Array.from(new Set([...allSkus, ...localSkus]));
+
+    let maxNum = 0;
+    combinedSkus.forEach((sku) => {
+      const match = sku.match(/\d+/);
+      if (match) {
+        const num = parseInt(match[0], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    });
+
+    let nextNum = maxNum + 1;
+    let candidate = `SP${String(nextNum).padStart(4, '0')}`;
+
+    while (combinedSkus.includes(candidate)) {
+      nextNum++;
+      candidate = `SP${String(nextNum).padStart(4, '0')}`;
+    }
+
+    return candidate;
+  };
+
+  const openProductModal = async (link?: SupplierProductLink) => {
     const latestCatalogCategories = catalogCategories;
     const latestItemGroups = getActiveItemGroupCategories(latestCatalogCategories);
 
     setEditingLink(link || null);
+    const autoSku = link ? link.product?.internalSku || '' : await generateAutoSku();
+
     setProductForm(
       link
         ? {
@@ -475,6 +520,7 @@ export default function SupplierProfilePage() {
         }
         : {
           ...buildEmptyProductForm(),
+          internalSku: autoSku,
           itemGroup: latestItemGroups[0]?.name || '',
           unit: latestCatalogCategories.filter((category) => category.type === 'unit' && category.status === 'active')[0]?.name || '',
           managementType: latestCatalogCategories.filter((category) => category.type === 'management-attribute' && category.status === 'active')[0]?.name || '',
@@ -1139,8 +1185,22 @@ export default function SupplierProfilePage() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Mã hàng hóa <span className="text-red-500">*</span></label>
-                    <input value={productForm.internalSku} onChange={(event) => setProductForm((current) => ({ ...current, internalSku: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="VD: SP001, HH001" required />
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="text-sm font-bold text-slate-700">Mã hàng hóa <span className="text-red-500">*</span></label>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const newSku = await generateAutoSku();
+                          setProductForm((current) => ({ ...current, internalSku: newSku }));
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-cyan-600 hover:text-cyan-700 hover:underline transition"
+                        title="Tạo mã hàng hóa tự động"
+                      >
+                        <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
+                        Mã tự động
+                      </button>
+                    </div>
+                    <input value={productForm.internalSku} onChange={(event) => setProductForm((current) => ({ ...current, internalSku: event.target.value }))} className="h-11 w-full rounded-xl border-2 border-slate-200 px-4 uppercase font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10" placeholder="VD: SP0001, HH0001" required />
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">Tên hàng hóa <span className="text-red-500">*</span></label>

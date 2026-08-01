@@ -108,6 +108,32 @@ export default function SupplierProducts() {
     setCurrentPage(1);
   }, [search, showAdvancedSearch, filterSupplierName, filterMinQty, filterMaxQty, filterMinPrice, filterMaxPrice]);
 
+  const handleExport = () => {
+    const exportHeaders = ['STT', 'Mã hàng hóa', 'Supplier SKU', 'Tên hàng hóa', 'Đơn vị tính', 'Nhà cung cấp', 'Mã NCC', 'Số lượng', 'Giá', 'Đã mua'];
+    const exportRows = filteredRows.map((row, idx) => [
+      idx + 1,
+      row.product?.internalSku || '',
+      row.supplierSku || '',
+      row.product?.name || '',
+      row.product?.unit || '',
+      row.supplierName || '',
+      row.supplierCode || '',
+      row.quantity ?? 0,
+      formatMoney(row.purchasePrice, row.currency),
+      row.quantitySold ?? 0,
+    ]);
+
+    const content = [exportHeaders.join('\t'), ...exportRows.map(r => r.join('\t'))].join('\n');
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'san-pham-nha-cung-cap.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const filteredRows = rows.filter((row) => {
     const keyword = search.trim().toLowerCase();
     
@@ -118,6 +144,7 @@ export default function SupplierProducts() {
       row.supplierContact?.toLowerCase().includes(keyword) ||
       row.product?.internalSku.toLowerCase().includes(keyword) ||
       row.product?.name.toLowerCase().includes(keyword) ||
+      row.product?.unit?.toLowerCase().includes(keyword) ||
       row.supplierSku?.toLowerCase().includes(keyword) ||
       row.itemGroup?.toLowerCase().includes(keyword);
 
@@ -222,6 +249,7 @@ export default function SupplierProducts() {
           <div className="flex gap-2">
             <button
               type="button"
+              onClick={handleExport}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-white px-5 text-sm font-black text-cyan-600 transition hover:bg-cyan-50"
             >
               Export
@@ -321,31 +349,32 @@ export default function SupplierProducts() {
 
       <div className="mt-6 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1220px] border-collapse bg-white">
-            <thead className="bg-cyan-50">
+          <table className="w-full min-w-[1300px] border-collapse bg-white">
+            <thead className="sticky top-0 z-10 bg-cyan-50 text-xs font-black uppercase tracking-wider text-slate-800">
               <tr className="border-b-2 border-slate-200">
-                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
-                <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ảnh</th>
-                <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã hàng hóa</th>
-                <th className="min-w-[250px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên hàng hóa</th>
-                <th className="w-64 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nhà cung cấp</th>
-                <th className="w-32 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số lượng</th>
-                <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Giá</th>
-                <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Đã mua</th>
-                <th className="w-52 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Lịch sử mua gần đây</th>
-                <th className="w-28 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Thao tác</th>
+                <th className="w-16 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">STT</th>
+                <th className="w-32 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Ảnh Hàng Hóa</th>
+                <th className="w-40 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Mã Hàng Hóa</th>
+                <th className="w-64 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Tên Hàng Hóa</th>
+                <th className="w-36 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Đơn Vị Tính</th>
+                <th className="w-56 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Nhà Cung Cấp</th>
+                <th className="w-32 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Số Lượng</th>
+                <th className="w-40 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Giá Thành</th>
+                <th className="w-32 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Đã Mua</th>
+                <th className="w-48 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Lịch Sử Mua Gần Đây</th>
+                <th className="w-28 border-x border-slate-200 px-3 py-3.5 text-center whitespace-nowrap">Thao Tác</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-16 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={11} className="px-6 py-16 text-center text-sm font-medium text-slate-500">
                     Đang tải dữ liệu...
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-16 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={11} className="px-6 py-16 text-center text-sm font-medium text-slate-500">
                     Không tìm thấy sản phẩm nhà cung cấp.
                   </td>
                 </tr>
@@ -364,18 +393,19 @@ export default function SupplierProducts() {
                           )}
                         </div>
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700 uppercase">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-900 uppercase">
                         <div>{row.product?.internalSku || '-'}</div>
                         {row.supplierSku && (
                           <div className="text-[10px] font-medium text-slate-500 mt-0.5">({row.supplierSku})</div>
                         )}
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{row.product?.name || '-'}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{row.product?.unit || '-'}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                         {row.supplierName} <span className="text-xs font-medium text-slate-500">({row.supplierCode})</span>
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{row.quantity ?? 0}</td>
-                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatMoney(row.purchasePrice, row.currency)}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-cyan-700">{row.quantity ?? 0}</td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-slate-900">{formatMoney(row.purchasePrice, row.currency)}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{row.quantitySold ?? 0}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                         {latest ? (
@@ -411,56 +441,86 @@ export default function SupplierProducts() {
         </div>
 
         {!loading && totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t border-slate-200 bg-slate-50/80 px-6 py-3 sm:flex-row">
-            <div className="text-sm text-slate-600">
-              Tổng: <b>{totalItems}</b> sản phẩm
-              <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
+          <div className="sticky bottom-0 z-10 flex flex-col items-center justify-between border-t-2 border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row">
+            <div className="text-xs font-semibold text-slate-600">
+              Tổng số: <span className="font-bold text-slate-900">{totalItems}</span> sản phẩm | Hiển thị{' '}
+              <span className="font-bold text-slate-900">{startIndex} - {endIndex}</span>
             </div>
-            <div className="mt-3 flex items-center gap-2 sm:mt-0">
-              <select
-                value={pageSize}
-                onChange={(event) => {
-                  setPageSize(Number(event.target.value));
-                  setCurrentPage(1);
-                }}
-                className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm outline-none transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-              >
-                <option value={5}>5</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
+            <div className="mt-2 flex items-center gap-3 sm:mt-0">
+              <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                <span>Hiển thị</span>
+                <select
+                  value={pageSize}
+                  onChange={(event) => {
+                    setPageSize(Number(event.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="h-8 rounded-lg border-2 border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 outline-none focus:border-cyan-500"
+                >
+                  <option value={5}>5 / trang</option>
+                  <option value={10}>10 / trang</option>
+                  <option value={20}>20 / trang</option>
+                  <option value={50}>50 / trang</option>
+                  <option value={100}>100 / trang</option>
+                </select>
+              </div>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  disabled={currentPage === 1}
                   onClick={() => setCurrentPage(1)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={currentPage === 1}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-40"
+                  title="Trang đầu"
                 >
                   «
                 </button>
                 <button
                   type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-40"
+                  title="Trang trước"
                 >
                   ‹
                 </button>
-                <div className="flex h-9 min-w-[48px] items-center justify-center rounded-lg bg-cyan-600 px-3 text-sm font-bold text-white">{currentPage}</div>
+                {(() => {
+                  const pages = [];
+                  const range = 2;
+                  const start = Math.max(1, currentPage - range);
+                  const end = Math.min(totalPages, currentPage + range);
+                  for (let i = start; i <= end; i++) {
+                    pages.push(i);
+                  }
+                  return pages.map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-black transition-all ${
+                        page === currentPage
+                          ? 'border-2 border-cyan-600 bg-cyan-600 text-white shadow-xs'
+                          : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ));
+                })()}
                 <button
                   type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-40"
+                  title="Trang sau"
                 >
                   ›
                 </button>
                 <button
                   type="button"
-                  disabled={currentPage === totalPages}
                   onClick={() => setCurrentPage(totalPages)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={currentPage === totalPages}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-40"
+                  title="Trang cuối"
                 >
                   »
                 </button>

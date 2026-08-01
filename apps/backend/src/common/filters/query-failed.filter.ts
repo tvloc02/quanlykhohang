@@ -15,12 +15,16 @@ export class QueryFailedExceptionFilter implements ExceptionFilter {
 
     if (isDuplicate) {
       let message = 'Dữ liệu đã tồn tại trong hệ thống (trùng lặp thông tin).';
-      if (exception.message?.includes('users') || exception.message?.includes('email') || exception.message?.includes('IDX_97672ac88f789774dd47f7c8be')) {
+      const msg = exception.message?.toLowerCase() || '';
+
+      if (msg.includes('users') || msg.includes('email') || msg.includes('idx_97672ac88f789774dd47f7c8be')) {
         message = 'Email đã tồn tại trong hệ thống. Vui lòng sử dụng email khác.';
-      } else if (exception.message?.includes('warehouses') || exception.message?.includes('code')) {
-        message = 'Mã kho hàng đã tồn tại.';
-      } else if (exception.message?.includes('products')) {
-        message = 'Mã sản phẩm (SKU) hoặc barcode đã tồn tại.';
+      } else if (msg.includes('products') || msg.includes('internalsku') || msg.includes('supplierbarcode') || msg.includes('sku')) {
+        message = 'Mã hàng hóa (SKU) hoặc barcode đã tồn tại trong hệ thống. Vui lòng chọn mã hàng hóa khác.';
+      } else if (msg.includes('warehouses')) {
+        message = 'Mã kho hàng đã tồn tại trong hệ thống. Vui lòng nhập mã kho khác.';
+      } else if (msg.includes('suppliers')) {
+        message = 'Thông tin nhà cung cấp đã tồn tại trong hệ thống.';
       }
 
       return response.status(HttpStatus.BAD_REQUEST).json({

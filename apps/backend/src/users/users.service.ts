@@ -26,7 +26,7 @@ export class UsersService {
       throw new BadRequestException('Email đã tồn tại trong hệ thống. Vui lòng sử dụng email khác.');
     }
 
-    const rawPassword = createUserDto.password ?? (Math.random().toString(36).slice(-8) + 'A1');
+    const rawPassword = createUserDto.password ?? 'abc@123a';
     const hashed = await bcrypt.hash(rawPassword, 10);
     const roleName = createUserDto.role || 'staff';
     let role = await this.roleRepo.findOne({ where: { name: roleName } });

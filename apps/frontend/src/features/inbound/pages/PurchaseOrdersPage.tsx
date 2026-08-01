@@ -1395,6 +1395,16 @@ function PurchaseOrdersPageContent() {
 
   const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
   const canManagerApprove = (selectedOrderStatus === 'CREATED' || selectedOrderStatus === 'REJECTED') && currentUserIsManager;
+  
+  const canEditOrder = (order: PurchaseOrder) => {
+    const status = (order.status || '').toUpperCase();
+    return ['DRAFT', 'REJECTED', 'CREATED', 'NEGOTIATING', 'SUPPLIER_REJECTED'].includes(status);
+  };
+
+  const canNegotiatePrice = (order: PurchaseOrder) => {
+    const status = (order.status || '').toUpperCase();
+    return ['CREATED', 'REJECTED', 'NEGOTIATING', 'SUPPLIER_REJECTED', 'DRAFT'].includes(status);
+  };
 
   const canReceiveRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
   const canCreateOrderRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
@@ -1403,11 +1413,6 @@ function PurchaseOrdersPageContent() {
   const canApproveRow = (order: PurchaseOrder) => {
     const status = (order.status || 'CREATED').toUpperCase();
     return (status === 'CREATED' || status === 'REJECTED') && currentUserIsManager;
-  };
-
-  const canEditOrder = (order: PurchaseOrder) => {
-    const status = (order.status || '').toUpperCase();
-    return ['DRAFT', 'REJECTED', 'CREATED', 'NEGOTIATING', 'SUPPLIER_REJECTED'].includes(status);
   };
 
   const canDelete = (order: PurchaseOrder) => {
@@ -1733,6 +1738,19 @@ function PurchaseOrdersPageContent() {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
+                              if (!canNegotiatePrice(order)) return;
+                              openPriceNegotiation(order);
+                            }}
+                            disabled={!canNegotiatePrice(order)}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${canNegotiatePrice(order) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                            title="Điều chỉnh giá / Phản hồi giá"
+                          >
+                            <Scale size={18} strokeWidth={2.5} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
                               if (!canDelete(order)) return;
                               setDeleteTarget(order);
                               setModalMode('delete');
@@ -1742,17 +1760,6 @@ function PurchaseOrdersPageContent() {
                             title="Xóa"
                           >
                             <Trash2 size={18} strokeWidth={2.5} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openPriceNegotiation(order);
-                            }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Phản hồi giá"
-                          >
-                            <Scale size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
@@ -1788,23 +1795,20 @@ function PurchaseOrdersPageContent() {
                                 <MoreHorizontal size={18} strokeWidth={2.5} />
                               </button>
                               {activeDropdown === order.id && (
-                                <div className={`absolute right-0 ${index > 0 && index >= paginatedOrders.length - 3 ? 'bottom-full mb-2' : 'top-full mt-2'} w-48 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left`}>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      openPriceNegotiation(order);
-                                      setActiveDropdown(null);
-                                    }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 text-left font-bold"
-                                  >
-                                    <Scale className="h-4 w-4" />
-                                    Phản hồi giá
-                                  </button>
+                                <div className={`absolute right-0 ${index > 0 && index >= paginatedOrders.length - 3 ? 'bottom-full mb-2' : 'top-full mt-2'} w-52 rounded-xl border border-slate-200 bg-white shadow-xl z-50 overflow-hidden py-1 text-left`}>
                                   <button
                                     type="button"
                                     disabled={order.status !== 'DRAFT'}
-                                    onClick={() => { submitDraftOrder(order); setActiveDropdown(null); }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                    onClick={() => {
+                                      if (order.status !== 'DRAFT') return;
+                                      submitDraftOrder(order);
+                                      setActiveDropdown(null);
+                                    }}
+                                    className={`flex w-full items-center gap-2 px-4 py-2 text-sm text-left transition ${
+                                      order.status === 'DRAFT'
+                                        ? 'text-slate-700 hover:bg-cyan-50 font-semibold cursor-pointer'
+                                        : 'text-slate-400 bg-slate-50/50 opacity-40 cursor-not-allowed'
+                                    }`}
                                   >
                                     <Send className="h-4 w-4" />
                                     Tạo mới đơn đặt hàng
@@ -1813,12 +1817,17 @@ function PurchaseOrdersPageContent() {
                                     type="button"
                                     disabled={!canApproveRow(order)}
                                     onClick={() => {
+                                      if (!canApproveRow(order)) return;
                                       if (window.confirm('Bạn có chắc chắn muốn duyệt đơn hàng này?')) {
                                         approveOrder(order);
                                       }
                                       setActiveDropdown(null);
                                     }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                    className={`flex w-full items-center gap-2 px-4 py-2 text-sm font-bold text-left transition ${
+                                      canApproveRow(order)
+                                        ? 'text-emerald-700 hover:bg-emerald-50 cursor-pointer'
+                                        : 'text-slate-400 bg-slate-50/50 opacity-40 cursor-not-allowed'
+                                    }`}
                                   >
                                     <CheckCircle2 className="h-4 w-4" />
                                     Duyệt đơn hàng
@@ -1828,10 +1837,15 @@ function PurchaseOrdersPageContent() {
                                     type="button"
                                     disabled={!canReceiveRow(order)}
                                     onClick={() => {
+                                      if (!canReceiveRow(order)) return;
                                       openReceive(order);
                                       setActiveDropdown(null);
                                     }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                    className={`flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-left transition ${
+                                      canReceiveRow(order)
+                                        ? 'text-emerald-700 hover:bg-emerald-50 cursor-pointer'
+                                        : 'text-slate-400 bg-slate-50/50 opacity-40 cursor-not-allowed'
+                                    }`}
                                   >
                                     <Package className="h-4 w-4" />
                                     Đã nhận hàng
@@ -1840,10 +1854,16 @@ function PurchaseOrdersPageContent() {
                                     type="button"
                                     disabled={!canCreateReceiptRow(order)}
                                     onClick={() => {
-                                      setReceiptSourcePOId(order.id); setCreateReceiptModalOpen(true);
+                                      if (!canCreateReceiptRow(order)) return;
+                                      setReceiptSourcePOId(order.id);
+                                      setCreateReceiptModalOpen(true);
                                       setActiveDropdown(null);
                                     }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 disabled:opacity-40 disabled:hover:bg-white text-left"
+                                    className={`flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-left transition ${
+                                      canCreateReceiptRow(order)
+                                        ? 'text-cyan-700 hover:bg-cyan-50 cursor-pointer'
+                                        : 'text-slate-400 bg-slate-50/50 opacity-40 cursor-not-allowed'
+                                    }`}
                                   >
                                     <FileText className="h-4 w-4" />
                                     Tạo phiếu nhập kho
@@ -1854,7 +1874,7 @@ function PurchaseOrdersPageContent() {
                                       openPrintPreview(order);
                                       setActiveDropdown(null);
                                     }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50 text-left"
+                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-cyan-700 hover:bg-cyan-50 text-left cursor-pointer"
                                   >
                                     <Printer className="h-4 w-4" />
                                     Xem trước bản in & In
@@ -1863,6 +1883,7 @@ function PurchaseOrdersPageContent() {
                                     type="button"
                                     disabled={!canCreateOrderRow(order)}
                                     onClick={() => {
+                                      if (!canCreateOrderRow(order)) return;
                                       navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
                                       setActiveDropdown(null);
                                     }}

@@ -71,6 +71,8 @@ export function PriceNegotiationModal({
       let rounds: NegotiationRound[] = [];
       if (Array.isArray(detail.rounds) && detail.rounds.length > 0) {
         rounds = detail.rounds;
+      } else if (supplierPrice > 0) {
+        rounds = [{ round: 1, supplierPrice: supplierPrice, enterprisePrice: requestedPrice }];
       } else {
         rounds = [];
       }
@@ -99,14 +101,19 @@ export function PriceNegotiationModal({
   // Determine max number of rounds across items
   const maxRounds = Math.max(1, ...items.map((i) => i.rounds.length));
 
+  const getSupplierPriceForItem = (i: PriceNegotiationItem) => {
+    const latestRound = [...i.rounds].reverse().find((r) => r.supplierPrice != null);
+    if (latestRound && latestRound.supplierPrice != null) return Number(latestRound.supplierPrice);
+    return Number(i.requestedPrice || 0);
+  };
+
   // Calculations for totals
   const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0);
   const totalRequestedAmount = items.reduce((sum, i) => sum + i.quantity * i.requestedPrice, 0);
   const totalLatestSupplierAmount = items.reduce((sum, i) => {
-    const latestRound = i.rounds[i.rounds.length - 1];
-    return sum + i.quantity * Number(latestRound?.supplierPrice || 0);
+    return sum + i.quantity * getSupplierPriceForItem(i);
   }, 0);
-  const totalNewEnterpriseAmount = items.reduce((sum, i) => sum + i.quantity * Number(i.newEnterprisePrice || 0), 0);
+  const totalNewEnterpriseAmount = items.reduce((sum, i) => sum + i.quantity * Number(i.newEnterprisePrice ?? getSupplierPriceForItem(i)), 0);
   const hasSupplierResponse = items.some((i) => i.rounds.some((round) => round.supplierPrice != null));
   const hasEnterpriseResponse = items.some((i) => i.rounds.some((round) => round.enterprisePrice != null));
   const hasNewEnterprisePrice = items.some((i) => i.newEnterprisePrice != null);
@@ -125,18 +132,27 @@ export function PriceNegotiationModal({
   const handleAcceptSupplierPrices = () => {
     setItems((prev) =>
       prev.map((item) => {
-        const latestRound = item.rounds[item.rounds.length - 1];
         return {
           ...item,
-          newEnterprisePrice: latestRound?.supplierPrice ?? null,
+          newEnterprisePrice: getSupplierPriceForItem(item),
         };
       })
     );
   };
 
   const handleSubmit = (acceptedSupplierPrice: boolean) => {
+    const finalItems = items.map((i) => {
+      const priceToUse = acceptedSupplierPrice
+        ? getSupplierPriceForItem(i)
+        : (i.newEnterprisePrice ?? getSupplierPriceForItem(i));
+      return {
+        detailId: i.detailId,
+        newPrice: Number(priceToUse),
+      };
+    });
+
     const payload = {
-      items: items.filter((i) => i.newEnterprisePrice !== null).map((i) => ({ detailId: i.detailId, newPrice: Number(i.newEnterprisePrice) })),
+      items: finalItems,
       note: note.trim(),
       acceptedSupplierPrice,
     };
@@ -405,16 +421,16 @@ export function PriceNegotiationModal({
             <button
               type="button"
               onClick={() => handleSubmit(true)}
-              disabled={saving || !hasNewEnterprisePrice}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 shadow-sm disabled:opacity-50"
+              disabled={saving || items.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl border border-cyan-500 bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 shadow-md active:scale-95 disabled:opacity-50"
             >
               <CheckCircle2 className="h-4 w-4" />
-              Đồng ý giá NCC đề xuất ({formatMoney(totalLatestSupplierAmount)})
+              {saving ? 'Đang gửi...' : `Đồng ý giá NCC đề xuất (${formatMoney(totalLatestSupplierAmount)})`}
             </button>
             <button
               type="button"
               onClick={() => handleSubmit(false)}
-              disabled={saving || !hasNewEnterprisePrice}
+              disabled={saving || items.length === 0}
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-700 shadow-md active:scale-95 disabled:opacity-50"
             >
               <Send className="h-4 w-4" />

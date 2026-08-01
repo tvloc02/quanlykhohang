@@ -257,22 +257,57 @@ export function mergeStoredWarehouses(remoteWarehouses: WarehouseRecord[], fallb
   return mergedWarehouses.map(normalizeWarehouseRecord);
 }
 
-export function getUserWarehouseIds(userId: string, warehouses = getStoredWarehouses()) {
-  const normalizedUserId = String(userId);
-  return warehouses
-    .filter(
-      (warehouse) =>
-        warehouse.managerIds.includes(normalizedUserId) || warehouse.staffIds.includes(normalizedUserId),
-    )
-    .map((warehouse) => warehouse.id);
+export function getStoredProjectTeams(): any[] {
+  try {
+    const rawData = localStorage.getItem('smart-wms-project-teams');
+    if (!rawData) return [];
+    const parsedData = JSON.parse(rawData);
+    return Array.isArray(parsedData) ? parsedData : [];
+  } catch {
+    return [];
+  }
 }
 
-export function getUserWarehouseNames(userId: string, warehouses = getStoredWarehouses()) {
+export function getUserWarehouseIds(
+  userId: string,
+  warehouses = getStoredWarehouses(),
+  teams = getStoredProjectTeams(),
+) {
   const normalizedUserId = String(userId);
+  const matchedWarehouseIds = new Set<string>();
+
+  // 1. Check direct warehouse assignments (managerIds or staffIds)
+  warehouses.forEach((warehouse) => {
+    const managers = normalizeWarehouseIds(warehouse.managerIds);
+    const staff = normalizeWarehouseIds(warehouse.staffIds);
+    if (managers.includes(normalizedUserId) || staff.includes(normalizedUserId)) {
+      matchedWarehouseIds.add(warehouse.id);
+    }
+  });
+
+  // 2. Check project team assignments (storekeepers or inventory checkers assigned to team's warehouse)
+  if (Array.isArray(teams)) {
+    teams.forEach((team) => {
+      const sks = normalizeWarehouseIds(team.storekeeperIds);
+      const ics = normalizeWarehouseIds(team.inventoryCheckerIds);
+      if (sks.includes(normalizedUserId) || ics.includes(normalizedUserId)) {
+        if (team.warehouseId) {
+          matchedWarehouseIds.add(team.warehouseId);
+        }
+      }
+    });
+  }
+
+  return Array.from(matchedWarehouseIds);
+}
+
+export function getUserWarehouseNames(
+  userId: string,
+  warehouses = getStoredWarehouses(),
+  teams = getStoredProjectTeams(),
+) {
+  const warehouseIds = getUserWarehouseIds(userId, warehouses, teams);
   return warehouses
-    .filter(
-      (warehouse) =>
-        warehouse.managerIds.includes(normalizedUserId) || warehouse.staffIds.includes(normalizedUserId),
-    )
-    .map((warehouse) => warehouse.name);
+    .filter((w) => warehouseIds.includes(w.id))
+    .map((w) => w.name);
 }
