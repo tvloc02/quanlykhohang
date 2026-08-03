@@ -22,6 +22,7 @@ import SupplierProfilePage from './features/supplier-portal/pages/SupplierProfil
 import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
 import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSectionPlaceholderPage';
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
+import CreateStockInOrderPage from './features/inbound/pages/CreateStockInOrderPage';
 import StockInReceiptsPage from './features/inbound/pages/StockInReceiptsPage';
 import GoodsReceiptsPage from './features/inbound/pages/GoodsReceiptsPage';
 import ApproveReceiptPage from './features/inbound/pages/ApproveReceiptPage';
@@ -265,6 +266,62 @@ function App() {
               <MainLayout>
                 <StockInOrdersPage />
               </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inbound/stock-in-orders/create"
+          element={
+            <ProtectedRoute>
+              <CreateStockInOrderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inbound/return-customers"
+          element={
+            <ProtectedRoute>
+              <Navigate to="/inbound/return-requests" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/initial-stock"
+          element={
+            <ProtectedRoute>
+              <Navigate to="/inventory" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/retail"
+          element={
+            <ProtectedRoute>
+              <Navigate to="/outbound/orders" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/sales-orders"
+          element={
+            <ProtectedRoute>
+              <Navigate to="/outbound/orders" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/disposal"
+          element={
+            <ProtectedRoute>
+              <Navigate to="/outbound/orders" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/documents/quotes"
+          element={
+            <ProtectedRoute>
+              <Navigate to="/documents/sales-invoice" replace />
             </ProtectedRoute>
           }
         />
