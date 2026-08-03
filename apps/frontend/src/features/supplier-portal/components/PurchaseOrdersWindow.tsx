@@ -155,7 +155,7 @@ function getStatusGroup(status?: string): StatusGroup {
   const normalized = (status || 'CREATED').toUpperCase();
   if (normalized === 'RECEIVED' || normalized === 'COMPLETED') return 'completed';
   if (normalized === 'SUPPLIER_APPROVED' || normalized === 'PARTIALLY_RECEIVED' || normalized === 'IN_TRANSIT' || normalized === 'DELIVERING') return 'in-transit';
-  if (normalized === 'CANCELLED' || normalized === 'CANCELED' || normalized === 'REJECTED') return 'cancelled';
+  if (normalized === 'CANCELLED' || normalized === 'CANCELED') return 'cancelled';
   return 'waiting';
 }
 
@@ -912,7 +912,7 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
                             <Eye className="h-4 w-4" />
                           </button>
 
-                          {(receipt.status || '').toUpperCase() === 'APPROVED' && (
+                          {['APPROVED', 'REJECTED', 'CREATED'].includes((receipt.status || '').toUpperCase()) && (
                             <>
                               <button
                                 type="button"
@@ -1228,7 +1228,7 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
               >
                 Hủy
               </button>
-              {displayReceipt?.status && displayReceipt.status.toUpperCase() === 'APPROVED' && (
+              {displayReceipt?.status && ['APPROVED', 'REJECTED', 'CREATED'].includes(displayReceipt.status.toUpperCase()) && (
                 <div className="flex gap-2">
                   <button
                     type="button"

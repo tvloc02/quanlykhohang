@@ -991,22 +991,22 @@ export default function StockInOrdersPage() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Workflow className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Lệnh nhập kho</h1>
+            <h1 className="text-lg font-bold tracking-tight text-white">Nhập kho</h1>
           </div>
         </div>
         <button
           type="button"
-          onClick={() => openCreate()}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
+          onClick={() => navigate('/inbound/stock-in-orders/create')}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 cursor-pointer"
         >
           <PlusCircle className="h-4 w-4" />
-          Tạo lệnh nhập kho
+          Tạo phiếu nhập kho
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-lg font-black text-cyan-700 uppercase">{orders.length} TỔNG LỆNH</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{orders.length} TỔNG PHIẾU</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
           <p className="text-lg font-black text-cyan-700 uppercase">{draftCount} NHÁP</p>
@@ -1026,7 +1026,7 @@ export default function StockInOrdersPage() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
-            placeholder="Tìm theo mã lệnh, nguồn, nhà cung cấp, diễn giải..."
+            placeholder="Tìm theo mã phiếu, nguồn, nhà cung cấp, diễn giải..."
           />
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -1047,7 +1047,7 @@ export default function StockInOrdersPage() {
             <option value="all">Tình trạng: Tất cả</option>
             <option value="draft">Tình trạng: Nháp</option>
             <option value="in_progress">Tình trạng: Đang xử lý</option>
-            <option value="ready">Tình trạng: Tạo lệnh mới</option>
+            <option value="ready">Tình trạng: Tạo phiếu mới</option>
             <option value="completed">Tình trạng: Hoàn thành</option>
             <option value="cancelled">Tình trạng: Đã hủy</option>
           </select>
@@ -1071,7 +1071,7 @@ export default function StockInOrdersPage() {
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
                 </th>
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã lệnh</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã phiếu</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày tạo</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nguồn PO</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nhà cung cấp</th>
@@ -1087,13 +1087,13 @@ export default function StockInOrdersPage() {
               {loading ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Đang tải danh sách lệnh nhập kho...
+                    Đang tải danh sách phiếu nhập kho...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có lệnh nhập kho phù hợp.
+                    Chưa có phiếu nhập kho phù hợp.
                   </td>
                 </tr>
               ) : (

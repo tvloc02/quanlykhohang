@@ -117,10 +117,6 @@ type ColumnKey =
   | 'unit'
   | 'price'
   | 'stock'
-  | 'defaultWarehouse'
-  | 'location'
-  | 'managementType'
-  | 'supplier'
   | 'isVisible'
   | 'actions';
 
@@ -224,10 +220,6 @@ export default function Products() {
     { key: 'unit', label: 'ĐV Tính', visible: true },
     { key: 'price', label: 'Giá', visible: true },
     { key: 'stock', label: 'Tồn kho', visible: true },
-    { key: 'defaultWarehouse', label: 'Kho mặc định', visible: true },
-    { key: 'location', label: 'Vị trí', visible: true },
-    { key: 'managementType', label: 'Quản lý', visible: true },
-    { key: 'supplier', label: 'Nhà cung cấp', visible: true },
     { key: 'isVisible', label: 'Hiện trên Shop', visible: true },
     { key: 'actions', label: 'Thao tác', visible: true },
   ]);
@@ -304,10 +296,7 @@ export default function Products() {
       !keyword ||
       product.name.toLowerCase().includes(keyword) ||
       product.sku.toLowerCase().includes(keyword) ||
-      product.category.toLowerCase().includes(keyword) ||
-      product.supplier.toLowerCase().includes(keyword) ||
-      product.location.toLowerCase().includes(keyword) ||
-      product.defaultWarehouse.toLowerCase().includes(keyword);
+      product.category.toLowerCase().includes(keyword);
 
     if (!matchesKeyword) return false;
 
@@ -588,7 +577,7 @@ export default function Products() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
-              placeholder="Tìm kiếm sản phẩm theo tên, SKU, danh mục, kho, nhà cung cấp..."
+              placeholder="Tìm kiếm sản phẩm theo tên, SKU, danh mục..."
             />
           </div>
 
@@ -754,18 +743,6 @@ export default function Products() {
                 {isColVisible('stock') && (
                   <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tồn kho</th>
                 )}
-                {isColVisible('defaultWarehouse') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho mặc định</th>
-                )}
-                {isColVisible('location') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Vị trí</th>
-                )}
-                {isColVisible('managementType') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Quản lý</th>
-                )}
-                {isColVisible('supplier') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nhà cung cấp</th>
-                )}
                 {isColVisible('isVisible') && (
                   <th className="w-28 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 leading-tight">Hiện trên Shop</th>
                 )}
@@ -849,30 +826,6 @@ export default function Products() {
                         <span className="inline-flex rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
                           {product.stock}
                         </span>
-                      </td>
-                    )}
-
-                    {isColVisible('defaultWarehouse') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
-                        {product.defaultWarehouse || '-'}
-                      </td>
-                    )}
-
-                    {isColVisible('location') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
-                        {product.location || '-'}
-                      </td>
-                    )}
-
-                    {isColVisible('managementType') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
-                        {product.managementType || '-'}
-                      </td>
-                    )}
-
-                    {isColVisible('supplier') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
-                        {product.supplier || '-'}
                       </td>
                     )}
 
