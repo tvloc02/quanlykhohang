@@ -97,7 +97,7 @@ const menuItems: MenuItem[] = [
       { icon: TrendingDown, label: 'Nhập hàng', path: '/inbound/stock-in-orders' },
       { icon: CornerUpRight, label: 'Xuất trả Nhà cung cấp', path: '/inbound/return-requests' },
       { icon: CornerDownLeft, label: 'Nhập hàng Khách trả lại', path: '/inbound/return-customers' },
-      { icon: Send, label: 'Xuất chuyển Chi nhánh', path: '/delivery/create-transfer-order' },
+      { icon: Send, label: 'Xuất chuyển Chi nhánh', path: '/delivery/transfer-orders' },
       { icon: Repeat, label: 'Nhập chuyển Chi nhánh', path: '/delivery/transfer-requests' },
       { icon: PlusCircle, label: 'Nhập hàng tồn đầu kỳ', path: '/inventory/initial-stock' },
       { icon: FileCheck, label: 'Kiểm kho', path: '/inventory/stocktake' },

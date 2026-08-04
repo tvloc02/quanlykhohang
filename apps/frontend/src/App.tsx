@@ -462,6 +462,16 @@ function App() {
           }
         />
         <Route
+          path="/delivery/transfer-orders"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <Delivery />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/delivery/transfer-requests"
           element={
             <ProtectedRoute>
