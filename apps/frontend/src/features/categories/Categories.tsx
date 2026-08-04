@@ -324,19 +324,19 @@ export default function CategoryManagement() {
 
     const downloadImportTemplate = () => {
         const sheets = [{
-            name: 'Danh muc',
+            name: 'Nhom hang hoa',
             rows: [excelHeaders, ['1', '', '', '', 'Đang dùng']],
         }];
-        generateExcelFile('mau-import-danh-muc.xlsx', sheets);
+        generateExcelFile('mau-import-nhom-hang-hoa.xlsx', sheets);
     };
 
     const handleExport = () => {
         const sheets = [{
-            name: 'Danh muc',
+            name: 'Nhom hang hoa',
             rows: buildRows(),
         }];
-        generateExcelFile('danh-muc.xlsx', sheets);
-        setSuccess('Đã xuất file danh mục.');
+        generateExcelFile('nhom-hang-hoa.xlsx', sheets);
+        setSuccess('Đã xuất file nhóm hàng hóa.');
         closeModal();
     };
 
@@ -408,7 +408,7 @@ export default function CategoryManagement() {
 
                     if (!code || !name) {
                         failedCount += 1;
-                        details.push(`Dòng ${rowNumber}: thiếu mã hoặc tên danh mục.`);
+                        details.push(`Dòng ${rowNumber}: thiếu mã hoặc tên nhóm hàng hóa.`);
                         return;
                     }
 
@@ -456,7 +456,7 @@ export default function CategoryManagement() {
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (!form.code.trim() || !form.name.trim()) {
-            setError('Vui lòng nhập mã danh mục và tên danh mục.');
+            setError('Vui lòng nhập mã nhóm hàng hóa và tên nhóm hàng hóa.');
             return;
         }
 
@@ -469,7 +469,7 @@ export default function CategoryManagement() {
         );
 
         if (duplicateCode) {
-            setError('Mã danh mục đã tồn tại trong cùng loại danh mục.');
+            setError('Mã nhóm hàng hóa đã tồn tại.');
             return;
         }
 
@@ -488,43 +488,43 @@ export default function CategoryManagement() {
                 ? current.map((category) => (category.id === payload.id ? payload : category))
                 : [payload, ...current],
         );
-        setSuccess(modalMode === 'edit' ? 'Đã cập nhật danh mục.' : 'Đã thêm danh mục mới.');
+        setSuccess(modalMode === 'edit' ? 'Đã cập nhật nhóm hàng hóa.' : 'Đã thêm nhóm hàng hóa mới.');
         closeModal();
     };
 
     const handleDelete = () => {
         if (!selectedCategory) return;
         setCategories((current) => current.filter((category) => category.id !== selectedCategory.id));
-        setSuccess('Đã xóa danh mục.');
+        setSuccess('Đã xóa nhóm hàng hóa.');
         closeModal();
     };
 
     const modalTitle =
         modalMode === 'create'
-            ? 'Thêm danh mục'
+            ? 'Thêm nhóm hàng hóa'
             : modalMode === 'view'
-                ? 'Chi tiết danh mục'
+                ? 'Chi tiết nhóm hàng hóa'
                 : modalMode === 'edit'
-                    ? 'Sửa danh mục'
+                    ? 'Sửa nhóm hàng hóa'
                     : modalMode === 'import'
-                        ? 'Import danh mục'
+                        ? 'Import nhóm hàng hóa'
                         : modalMode === 'export'
-                            ? 'Export danh mục'
+                            ? 'Export nhóm hàng hóa'
                             : modalMode === 'import-result'
                                 ? 'Kết quả import'
                                 : modalMode === 'mass-delete'
                                     ? 'Xóa hàng loạt'
-                                    : 'Xóa danh mục';
+                                    : 'Xóa nhóm hàng hóa';
 
     const modalDescription =
         modalMode === 'import'
             ? 'Import file Excel theo mẫu, chỉ bao gồm 1 sheet dữ liệu'
             : modalMode === 'export'
-                ? 'Xuất toàn bộ danh mục thành file Excel'
+                ? 'Xuất toàn bộ nhóm hàng hóa thành file Excel'
                 : modalMode === 'import-result'
                     ? 'Tổng hợp số dòng import thành công và thất bại'
                     : modalMode === 'mass-delete'
-                        ? 'Xóa nhiều danh mục cùng lúc khỏi hệ thống'
+                        ? 'Xóa nhiều nhóm hàng hóa cùng lúc khỏi hệ thống'
                         : 'Chỉ tạo master data, không tạo sản phẩm trong màn này';
 
     return (
@@ -549,7 +549,7 @@ export default function CategoryManagement() {
                 <div>
                     <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
                         <Tags className="h-5 w-5 text-cyan-100" />
-                        <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Danh Mục</h1>
+                        <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Nhóm Hàng Hóa</h1>
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -575,7 +575,7 @@ export default function CategoryManagement() {
                         className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
                     >
                         <Plus className="h-4 w-4" />
-                        Thêm danh mục
+                        Thêm nhóm hàng hóa
                     </button>
                 </div>
             </div>
@@ -592,7 +592,7 @@ export default function CategoryManagement() {
                     }`}
                 >
                     <span className="text-sm font-black tracking-wide uppercase">
-                        {categories.length} TỔNG DANH MỤC
+                        {categories.length} TỔNG NHÓM HÀNG HÓA
                     </span>
                 </button>
 
@@ -606,7 +606,7 @@ export default function CategoryManagement() {
                     }`}
                 >
                     <span className="text-sm font-black tracking-wide uppercase">
-                        {categories.filter((c) => c.status === 'active').length} DANH MỤC ĐANG SỬ DỤNG
+                        {categories.filter((c) => c.status === 'active').length} NHÓM HÀNG HÓA ĐANG SỬ DỤNG
                     </span>
                 </button>
 
@@ -620,7 +620,7 @@ export default function CategoryManagement() {
                     }`}
                 >
                     <span className="text-sm font-black tracking-wide uppercase">
-                        {categories.filter((c) => c.status === 'inactive').length} DANH MỤC NGỪNG SỬ DỤNG
+                        {categories.filter((c) => c.status === 'inactive').length} NHÓM HÀNG HÓA NGỪNG SỬ DỤNG
                     </span>
                 </button>
 
@@ -645,7 +645,7 @@ export default function CategoryManagement() {
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
                                 className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
-                                placeholder="Tìm kiếm mã, tên hoặc ý nghĩa danh mục..."
+                                placeholder="Tìm kiếm mã, tên hoặc ý nghĩa nhóm hàng hóa..."
                             />
                         </div>
                     </div>
@@ -688,7 +688,7 @@ export default function CategoryManagement() {
             {selectedIds.length > 0 && (
                 <div className="mt-5 flex items-center justify-between rounded-xl border-2 border-cyan-500 bg-cyan-50 px-4 py-3 shadow-sm">
           <span className="text-sm font-bold text-cyan-800">
-            Đã chọn <b>{selectedIds.length}</b> danh mục trên trang này
+            Đã chọn <b>{selectedIds.length}</b> nhóm hàng hóa trên trang này
           </span>
                     <button
                         onClick={() => setModalMode('mass-delete')}
@@ -721,8 +721,8 @@ export default function CategoryManagement() {
                                 />
                             </th>
                             <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
-                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã danh mục</th>
-                            <th className="w-56 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên danh mục</th>
+                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã nhóm hàng</th>
+                            <th className="w-56 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên nhóm hàng</th>
                             <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số lượng SP</th>
                             <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ghi chú</th>
                             <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Trạng thái</th>
@@ -735,7 +735,7 @@ export default function CategoryManagement() {
                         {paginatedCategories.length === 0 ? (
                             <tr>
                                 <td colSpan={8} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
-                                    Chưa có danh mục. Hãy tạo danh mục đầu tiên để dùng khi thêm sản phẩm.
+                                    Chưa có nhóm hàng hóa. Hãy tạo nhóm hàng hóa đầu tiên để dùng khi thêm sản phẩm.
                                 </td>
                             </tr>
                         ) : (
@@ -788,7 +788,7 @@ export default function CategoryManagement() {
                                             <button
                                                 type="button"
                                                 className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                                                title="Chi tiết danh mục"
+                                                title="Chi tiết nhóm hàng hóa"
                                                 onClick={() => openCategoryModal('view', category)}
                                             >
                                                 <History size={18} strokeWidth={2.5} />
@@ -796,7 +796,7 @@ export default function CategoryManagement() {
                                             <button
                                                 type="button"
                                                 className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                                                title="Sửa danh mục"
+                                                title="Sửa nhóm hàng hóa"
                                                 onClick={() => openCategoryModal('edit', category)}
                                             >
                                                 <Pencil size={18} strokeWidth={2.5} />
@@ -804,7 +804,7 @@ export default function CategoryManagement() {
                                             <button
                                                 type="button"
                                                 className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                                                title="Xóa danh mục"
+                                                title="Xóa nhóm hàng hóa"
                                                 onClick={() => openCategoryModal('delete', category)}
                                             >
                                                 <Trash2 size={18} strokeWidth={2.5} />
@@ -878,8 +878,8 @@ export default function CategoryManagement() {
                                 <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                                     <p className="font-black">Lưu ý trước khi import</p>
                                     <ul className="mt-3 list-disc space-y-2 pl-5 font-semibold">
-                                        <li>Cột bắt buộc: Mã danh mục và Tên danh mục.</li>
-                                        <li>Mã danh mục không được trùng lặp.</li>
+                                        <li>Cột bắt buộc: Mã nhóm hàng hóa và Tên nhóm hàng hóa.</li>
+                                        <li>Mã nhóm hàng hóa không được trùng lặp.</li>
                                         <li>Trạng thái hợp lệ: Đang dùng hoặc Ngừng dùng.</li>
                                     </ul>
                                 </div>
@@ -911,7 +911,7 @@ export default function CategoryManagement() {
                                 <div className="rounded-2xl border-2 border-cyan-200 bg-cyan-50 p-5">
                                     <p className="font-black text-cyan-900">Xác nhận xuất Excel</p>
                                     <p className="mt-2 text-sm font-medium leading-6 text-cyan-800">
-                                        Hệ thống sẽ tải xuống file Excel chứa danh sách danh mục đang được hiển thị trên bảng.
+                                        Hệ thống sẽ tải xuống file Excel chứa danh sách nhóm hàng hóa đang được hiển thị trên bảng.
                                     </p>
                                 </div>
 
@@ -931,7 +931,7 @@ export default function CategoryManagement() {
                                     <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5">
                                         <p className="text-sm font-bold uppercase tracking-wide text-emerald-600">Thành công</p>
                                         <p className="mt-2 text-3xl font-black text-emerald-700">{importSummary?.successCount || 0}</p>
-                                        <p className="mt-1 text-sm font-medium text-emerald-700">dòng danh mục</p>
+                                        <p className="mt-1 text-sm font-medium text-emerald-700">dòng nhóm hàng hóa</p>
                                     </div>
                                     <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-5">
                                         <p className="text-sm font-bold uppercase tracking-wide text-red-500">Thất bại</p>
@@ -962,10 +962,10 @@ export default function CategoryManagement() {
                         ) : modalMode === 'delete' ? (
                             <div className="px-6 py-5">
                                 <p className="text-base text-slate-700">
-                                    Bạn có chắc muốn xóa danh mục{' '}
+                                    Bạn có chắc muốn xóa nhóm hàng hóa{' '}
                                     <span className="font-black text-slate-950">{selectedCategory?.name}</span> không?
                                 </p>
-                                <p className="mt-2 text-sm font-medium text-red-500">Sản phẩm đang dùng danh mục này sẽ không tự động đổi danh mục.</p>
+                                <p className="mt-2 text-sm font-medium text-red-500">Sản phẩm đang dùng nhóm hàng hóa này sẽ không tự động đổi nhóm hàng.</p>
                                 <div className="mt-8 flex justify-end gap-3">
                                     <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 transition hover:bg-slate-50">Hủy</button>
                                     <button type="button" onClick={handleDelete} className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700">Xóa</button>
@@ -974,15 +974,15 @@ export default function CategoryManagement() {
                         ) : modalMode === 'mass-delete' ? (
                             <div className="px-6 py-5">
                                 <p className="text-base text-slate-700">
-                                    Bạn có chắc muốn xóa <b>{selectedIds.length}</b> danh mục đã chọn không?
+                                    Bạn có chắc muốn xóa <b>{selectedIds.length}</b> nhóm hàng hóa đã chọn không?
                                 </p>
-                                <p className="mt-2 text-sm font-medium text-red-500">Sản phẩm đang dùng các danh mục này sẽ bị ảnh hưởng hoặc hiển thị lỗi.</p>
+                                <p className="mt-2 text-sm font-medium text-red-500">Sản phẩm đang dùng các nhóm hàng hóa này sẽ bị ảnh hưởng hoặc hiển thị lỗi.</p>
                                 <div className="mt-8 flex justify-end gap-3">
                                     <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 transition hover:bg-slate-50">Hủy</button>
                                     <button type="button" onClick={() => {
                                         setCategories((current) => current.filter((category) => !selectedIds.includes(category.id!)));
                                         setSelectedIds([]);
-                                        setSuccess(`Đã xóa ${selectedIds.length} danh mục.`);
+                                        setSuccess(`Đã xóa ${selectedIds.length} nhóm hàng hóa.`);
                                         closeModal();
                                     }} className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700">Xóa tất cả</button>
                                 </div>
@@ -991,7 +991,7 @@ export default function CategoryManagement() {
                             <form onSubmit={handleSubmit} className="px-6 py-5">
                                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                                     <div>
-                                        <label className="mb-2 block text-sm font-bold text-slate-700">Mã danh mục <span className="text-red-500">*</span></label>
+                                        <label className="mb-2 block text-sm font-bold text-slate-700">Mã nhóm hàng hóa <span className="text-red-500">*</span></label>
                                         <input
                                             value={form.code}
                                             onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
@@ -1002,7 +1002,7 @@ export default function CategoryManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="mb-2 block text-sm font-bold text-slate-700">Tên danh mục <span className="text-red-500">*</span></label>
+                                        <label className="mb-2 block text-sm font-bold text-slate-700">Tên nhóm hàng hóa <span className="text-red-500">*</span></label>
                                         <input
                                             value={form.name}
                                             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
@@ -1043,7 +1043,7 @@ export default function CategoryManagement() {
                                     </button>
                                     {modalMode !== 'view' && (
                                         <button type="submit" className="rounded-xl border-2 border-cyan-500 bg-cyan-600 px-6 py-2.5 font-bold text-white shadow-md transition hover:bg-cyan-700">
-                                            {modalMode === 'create' ? 'Thêm danh mục' : 'Lưu thay đổi'}
+                                            {modalMode === 'create' ? 'Thêm nhóm hàng hóa' : 'Lưu thay đổi'}
                                         </button>
                                     )}
                                 </div>
