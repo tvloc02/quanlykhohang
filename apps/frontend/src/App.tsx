@@ -43,6 +43,7 @@ import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDet
 import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalPage';
 import ScannerPage from './features/scanner/ScannerPage';
 import SupplierProducts from './features/supplier-products/SupplierProducts';
+import UnitsPage from './features/products/UnitsPage';
 
 import Shop from './features/shop/Shop';
 import CartCheckoutPage from './features/shop/pages/CartCheckoutPage';
@@ -177,6 +178,26 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <SupplierProducts />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/units"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <UnitsPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/products/units"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <UnitsPage />
               </MainLayout>
             </ProtectedRoute>
           }

@@ -126,7 +126,7 @@ const menuItems: MenuItem[] = [
       { id: 'customers', icon: UserPlus, label: 'Khách hàng', path: '/customers' },
       { id: 'suppliers', icon: Contact, label: 'Nhà cung cấp', path: '/suppliers' },
       { id: 'warehouses', icon: MapPin, label: 'Khu vực', path: '/warehouses' },
-      { id: 'units', icon: Scale, label: 'Đơn vị quy đổi', path: '/products/main' },
+      { id: 'units', icon: Scale, label: 'Đơn vị quy đổi', path: '/units' },
       { id: 'currency', icon: DollarSign, label: 'Ngoại tệ', path: '/settings' },
       { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/settings' },
       { id: 'receipt-expense-types', icon: Terminal, label: 'Nội dung thu chi', path: '/reports' },
