@@ -1,10 +1,13 @@
-import { IsArray, IsOptional, IsString, IsNotEmpty } from 'class-validator';
+import { IsArray, IsOptional, IsString, IsNotEmpty, IsObject } from 'class-validator';
 
 export class CreateProjectTeamDto {
-  @IsString() @IsNotEmpty() warehouseId: string;
+  @IsOptional() @IsString() warehouseId?: string;
   @IsOptional() @IsString() warehouseCode?: string;
   @IsString() @IsNotEmpty() name: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsArray() storekeeperIds?: string[];
   @IsOptional() @IsArray() inventoryCheckerIds?: string[];
+  @IsOptional() @IsArray() memberIds?: string[];
+  @IsOptional() @IsObject() generalPermissions?: any;
+  @IsOptional() @IsObject() menuPermissions?: any;
 }
