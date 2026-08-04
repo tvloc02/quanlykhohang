@@ -100,8 +100,8 @@ export default function Delivery() {
           </button>
           <button
             type="button"
-            onClick={() => setShowModal(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
+            onClick={() => navigate('/delivery/create-transfer-order')}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             Lập lệnh điều chuyển
