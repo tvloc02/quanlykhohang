@@ -308,8 +308,8 @@ export class StocktakeService {
     });
     if (!detail) throw new NotFoundException('Chi tiết kiểm kê không tồn tại');
 
-    if (detail.stocktake.status !== 'DRAFT' && detail.stocktake.status !== 'COUNTING' && detail.stocktake.status !== 'REQUESTED') {
-      throw new BadRequestException('Không thể xóa sản phẩm ở trạng thái hiện tại');
+    if (detail.stocktake.status === 'APPROVED' || detail.stocktake.status === 'REJECTED') {
+      throw new BadRequestException('Không thể xóa sản phẩm ở phiếu đã được duyệt hoặc từ chối');
     }
 
     const stocktakeId = detail.stocktake.id;
@@ -324,8 +324,8 @@ export class StocktakeService {
     });
     if (!detail) throw new NotFoundException('Chi tiết kiểm kê không tồn tại');
 
-    if (detail.stocktake.status !== 'COUNTING' && detail.stocktake.status !== 'DRAFT') {
-      throw new BadRequestException('Không thể cập nhật số đếm ở trạng thái hiện tại');
+    if (detail.stocktake.status === 'APPROVED' || detail.stocktake.status === 'REJECTED') {
+      throw new BadRequestException('Không thể cập nhật số đếm ở phiếu đã được duyệt hoặc từ chối');
     }
 
     detail.countedQty = dto.countedQty;
@@ -334,11 +334,9 @@ export class StocktakeService {
 
     await this.detailRepo.save(detail);
 
-    // Ensure stocktake is in COUNTING status
-    const stocktake = await this.stocktakeRepo.findOneBy({ id: detail.stocktake.id });
-    if (stocktake && stocktake.status === 'DRAFT') {
-      stocktake.status = 'COUNTING';
-      await this.stocktakeRepo.save(stocktake);
+    // Ensure stocktake is in COUNTING status if currently DRAFT
+    if (detail.stocktake.status === 'DRAFT') {
+      await this.stocktakeRepo.update(detail.stocktake.id, { status: 'COUNTING' });
     }
 
     return this.serialize(await this.findEntity(detail.stocktake.id));

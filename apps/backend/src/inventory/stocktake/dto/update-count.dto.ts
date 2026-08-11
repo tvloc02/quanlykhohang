@@ -1,8 +1,8 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class UpdateCountDto {
   @IsNotEmpty()
-  @IsInt()
+  @IsNumber()
   countedQty: number;
 
   @IsOptional()
