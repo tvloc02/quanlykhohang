@@ -1,4 +1,19 @@
-import { IsArray, IsBoolean, IsDateString, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class StocktakeItemDto {
+  @IsNotEmpty()
+  @IsString()
+  productId: string;
+
+  @IsOptional()
+  @IsNumber()
+  countedQty?: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
 
 export class CreateStocktakeDto {
   @IsNotEmpty()
@@ -53,4 +68,15 @@ export class CreateStocktakeDto {
   @IsOptional()
   @IsString()
   detailBy?: string;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StocktakeItemDto)
+  items?: StocktakeItemDto[];
 }
+

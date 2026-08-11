@@ -836,15 +836,13 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                                 <Check size={14} />
                               </button>
                             )}
-                            {item.status === 'DRAFT' && (
-                              <button
-                                onClick={() => handleDelete(item.id)}
-                                className="rounded p-1 text-red-400 transition hover:bg-red-50 hover:text-red-600"
-                                title="Xóa"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              className="rounded p-1 text-red-400 transition hover:bg-red-50 hover:text-red-600"
+                              title="Xóa"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1114,8 +1112,8 @@ function CreateStocktakeModal({
       .then((data) => setUsers(Array.isArray(data) ? data : data?.data || []))
       .catch(() => { });
 
-    // Tải tất cả thông tin sản phẩm và số lượng tồn hệ thống của chúng
-    fetch(`${API_BASE}/products`, { headers: authHeaders() })
+    // Tải tất cả thông tin sản phẩm và số lượng tồn hệ thống thực tế của chúng
+    fetch(`${API_BASE}/products/with-balances`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : data?.data || [];
@@ -1131,13 +1129,14 @@ function CreateStocktakeModal({
       setShowDropdown(false);
       return;
     }
-    // Lấy tồn kho hệ thống ngẫu nhiên hoặc mặc định là 1-10 để demo giống RIC
-    const systemQty = p.stockQty !== undefined ? p.stockQty : Math.floor(Math.random() * 20) + 1;
+    // Lấy tồn kho thực tế từ StockBalance theo kho đang chọn (locationCode)
+    const matchBal = (p.stockBalances || []).find((b: any) => b.locationCode === locationCode);
+    const systemQty = matchBal ? matchBal.totalPhysical : (p.totalPhysical ?? p.stockQty ?? 0);
     setItems(prev => [
       ...prev,
       {
         product: { id: p.id, internalSku: p.internalSku, name: p.name, unit: p.unit, systemQty },
-        countedQty: 0,
+        countedQty: systemQty, // Khởi tạo thực tồn bằng số tồn hệ thống giống chuẩn RIC
         note: ''
       }
     ]);
@@ -1165,14 +1164,21 @@ function CreateStocktakeModal({
     setItems(prev => prev.filter((_, i) => i !== index));
   };
 
-  const executeSubmit = async (status: string = 'DRAFT') => {
+  const executeSubmit = async (finalStatus: string = 'DRAFT') => {
     if (!locationCode) {
       onError('Vui lòng chọn Kho / Vị trí kiểm kê');
       return;
     }
     setSubmitting(true);
     try {
-      // 1. Tạo phiên kiểm kê
+      const itemsPayload = items.map(item => ({
+        productId: String(item.product.id || item.product.internalSku),
+        countedQty: Number(item.countedQty) >= 0 ? Number(item.countedQty) : 0,
+        note: item.note || undefined,
+      }));
+      const productIds = items.map(item => String(item.product.id || item.product.internalSku));
+
+      // 1. Tạo phiên kiểm kê kèm mảng items đầy đủ thông tin (productId, countedQty, note)
       const res = await fetch(`${API_BASE}/inventory/stocktakes`, {
         method: 'POST',
         headers: authHeaders(),
@@ -1186,7 +1192,9 @@ function CreateStocktakeModal({
           branch,
           purpose,
           reference,
-          status // 'DRAFT' hoặc 'COUNTING'
+          status: finalStatus,
+          items: itemsPayload.length > 0 ? itemsPayload : undefined,
+          productIds: productIds.length > 0 ? productIds : undefined,
         }),
       });
 
@@ -1196,26 +1204,26 @@ function CreateStocktakeModal({
       }
       const created = await res.json();
 
-      // 2. Thêm từng sản phẩm và cập nhật số lượng đếm
-      for (const item of items) {
-        // Thêm sản phẩm vào chi tiết
-        const detailRes = await fetch(`${API_BASE}/inventory/stocktakes/${created.id}/details`, {
+      // 2. Nếu là hoàn tất kiểm kê (COUNTING_DONE), đảm bảo chuyển trạng thái nếu backend chưa tự động đổi
+      if (finalStatus === 'COUNTING_DONE' && items.length > 0 && created.status !== 'COUNTING_DONE' && created.status !== 'REQUESTED') {
+        const finishRes = await fetch(`${API_BASE}/inventory/stocktakes/${created.id}/finish-counting`, {
           method: 'POST',
           headers: authHeaders(),
-          body: JSON.stringify({ productId: item.product.id }),
         });
-        if (detailRes.ok) {
-          const detail = await detailRes.json();
-          // Cập nhật số thực đếm
-          await fetch(`${API_BASE}/inventory/stocktakes/details/${detail.id}/count`, {
-            method: 'PATCH',
-            headers: authHeaders(),
-            body: JSON.stringify({ countedQty: item.countedQty }),
-          });
+        if (finishRes.ok) {
+          const finishedData = await finishRes.json().catch(() => null);
+          if (finishedData) {
+            onCreated(finishedData);
+            return;
+          }
         }
       }
 
-      onCreated(created);
+      // 3. Fetch lại thông tin phiên kiểm kê mới nhất để trả về cho trang chính
+      const freshRes = await fetch(`${API_BASE}/inventory/stocktakes/${created.id}`, { headers: authHeaders() });
+      const freshData = freshRes.ok ? await freshRes.json() : created;
+
+      onCreated(freshData);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Lỗi');
     } finally {
@@ -1279,9 +1287,15 @@ function CreateStocktakeModal({
                 type="text"
                 value={productSearch}
                 onChange={(e) => { setProductSearch(e.target.value); setShowDropdown(true); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && filteredProducts.length > 0) {
+                    e.preventDefault();
+                    handleAddProduct(filteredProducts[0]);
+                  }
+                }}
                 onFocus={() => setShowDropdown(true)}
                 onClick={(e) => e.stopPropagation()}
-                placeholder="Gõ vào mã/tên hàng hóa"
+                placeholder="Gõ vào mã/tên hàng hóa (Bấm Enter để chọn)"
                 className="h-9 w-full rounded border border-slate-300 bg-white px-3 pl-8 text-xs font-medium outline-none focus:border-teal-500"
               />
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -1574,47 +1588,43 @@ function CreateStocktakeModal({
       </div>
 
       {/* RIC Footer Action Buttons */}
-      <div className="flex h-12 items-center justify-between border-t border-slate-300 bg-slate-200 px-4 flex-shrink-0">
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => executeSubmit('COUNTING_DONE')}
-            disabled={submitting || items.length === 0}
-            className="flex h-8 items-center gap-1 rounded bg-emerald-600 px-4 text-xs font-bold text-white shadow hover:bg-emerald-700 disabled:opacity-50 transition"
-          >
-            💾 Lưu
-          </button>
-          <button
-            onClick={() => { window.print(); }}
-            className="flex h-8 items-center gap-1 rounded bg-pink-600 px-4 text-xs font-bold text-white shadow hover:bg-pink-700 transition"
-          >
-            🖨 In
-          </button>
-          <button
-            onClick={async () => {
-              await executeSubmit('COUNTING_DONE');
-              window.print();
-            }}
-            disabled={submitting || items.length === 0}
-            className="flex h-8 items-center gap-1 rounded bg-blue-600 px-4 text-xs font-bold text-white shadow hover:bg-blue-700 disabled:opacity-50 transition"
-          >
-            💾 In & Lưu
-          </button>
-          <button
-            onClick={() => executeSubmit('DRAFT')}
-            disabled={submitting}
-            className="flex h-8 items-center gap-1 rounded bg-amber-500 px-4 text-xs font-bold text-white shadow hover:bg-amber-600 disabled:opacity-50 transition"
-          >
-            💾 Lưu tạm
-          </button>
-        </div>
-        <div>
-          <button
-            onClick={onClose}
-            className="flex h-8 items-center gap-1 rounded bg-red-600 px-4 text-xs font-bold text-white shadow hover:bg-red-700 transition"
-          >
-            ✕ Đóng
-          </button>
-        </div>
+      <div className="flex h-12 items-center justify-end gap-1.5 border-t border-slate-300 bg-slate-200 px-4 flex-shrink-0">
+        <button
+          onClick={() => executeSubmit('COUNTING_DONE')}
+          disabled={submitting || items.length === 0}
+          className="flex h-8 items-center gap-1 rounded bg-emerald-600 px-4 text-xs font-bold text-white shadow hover:bg-emerald-700 disabled:opacity-50 transition"
+        >
+          💾 Lưu
+        </button>
+        <button
+          onClick={() => { window.print(); }}
+          className="flex h-8 items-center gap-1 rounded bg-pink-600 px-4 text-xs font-bold text-white shadow hover:bg-pink-700 transition"
+        >
+          🖨 In
+        </button>
+        <button
+          onClick={async () => {
+            await executeSubmit('COUNTING_DONE');
+            window.print();
+          }}
+          disabled={submitting || items.length === 0}
+          className="flex h-8 items-center gap-1 rounded bg-blue-600 px-4 text-xs font-bold text-white shadow hover:bg-blue-700 disabled:opacity-50 transition"
+        >
+          💾 In & Lưu
+        </button>
+        <button
+          onClick={() => executeSubmit('DRAFT')}
+          disabled={submitting}
+          className="flex h-8 items-center gap-1 rounded bg-amber-500 px-4 text-xs font-bold text-white shadow hover:bg-amber-600 disabled:opacity-50 transition"
+        >
+          💾 Lưu tạm
+        </button>
+        <button
+          onClick={onClose}
+          className="flex h-8 items-center gap-1 rounded bg-red-600 px-4 text-xs font-bold text-white shadow hover:bg-red-700 transition"
+        >
+          ✕ Đóng
+        </button>
       </div>
     </div>
   );
@@ -1640,14 +1650,10 @@ function StocktakeDetailModal({
   isStaff?: boolean;
 }) {
   const [products, setProducts] = React.useState<ProductOption[]>([]);
-  const [selectedProductId, setSelectedProductId] = React.useState('');
-  const [addingProduct, setAddingProduct] = React.useState(false);
-  const [scannerOpen, setScannerOpen] = React.useState(false);
-
-  // Editable counts - local state keyed by detail id
   const [editCounts, setEditCounts] = React.useState<Record<string, string>>({});
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
 
-  // Load products list for the add dropdown
   React.useEffect(() => {
     fetch(`${API_BASE}/products`, { headers: authHeaders() })
       .then((r) => r.json())
@@ -1658,15 +1664,15 @@ function StocktakeDetailModal({
       .catch(() => { });
   }, []);
 
-  const canEdit = stocktake.status === 'DRAFT' || stocktake.status === 'COUNTING';
-  const canFinish = stocktake.status === 'COUNTING';
-  const canApproveReject = stocktake.status === 'COUNTING_DONE' && isManager;
+  const detailsList = Array.isArray(stocktake?.details) ? stocktake.details : [];
+  const totalTon = detailsList.reduce((sum, d) => sum + (d.systemQty || 0), 0);
+  const totalThucTon = detailsList.reduce((sum, d) => sum + (d.countedQty || 0), 0);
+  const totalLech = detailsList.reduce((sum, d) => sum + (d.difference || 0), 0);
 
-  // ── Add Product ─────────────────────────────────────────────
+  const [selectedProductId, setSelectedProductId] = React.useState('');
 
-  const handleAddProduct = async () => {
+  const handleAddProductToExisting = async () => {
     if (!selectedProductId) return;
-    setAddingProduct(true);
     try {
       const res = await fetch(`${API_BASE}/inventory/stocktakes/${stocktake.id}/details`, {
         method: 'POST',
@@ -1678,123 +1684,38 @@ function StocktakeDetailModal({
         throw new Error(data?.message || 'Không thể thêm sản phẩm');
       }
       setSelectedProductId('');
-      onSuccess('Đã thêm sản phẩm');
+      onSuccess('Đã thêm sản phẩm vào phiếu kiểm kê');
       onRefresh();
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Lỗi');
-    } finally {
-      setAddingProduct(false);
     }
   };
 
-  const handleProductScanned = async (product: ScannedProduct, qty: number) => {
-    if (!canEdit) {
-      onError('Phiên kiểm kê không ở trạng thái cho phép cập nhật số lượng.');
-      return;
-    }
-
-    const detail = stocktake.details.find((d) => d.product?.id === product.id);
-
-    if (detail) {
-      // Đã có trong danh sách -> cộng dồn vào ô đang nhập (hoặc số đang đếm)
-      const currentVal = editCounts[detail.id] !== undefined ? editCounts[detail.id] : (detail.countedQty?.toString() || '0');
-      const nextQty = Number(currentVal) + qty;
-      setEditCounts((prev) => ({ ...prev, [detail.id]: nextQty.toString() }));
-      onSuccess(`Đã cộng dồn ${qty} cho ${product.name}. (Bấm "Lưu" để cập nhật lên hệ thống)`);
-    } else {
-      // Chưa có trong danh sách -> Gọi API thêm vào trước
-      try {
-        const res = await fetch(`${API_BASE}/inventory/stocktakes/${stocktake.id}/details`, {
-          method: 'POST',
-          headers: authHeaders(),
-          body: JSON.stringify({ productId: product.id }),
-        });
-        if (!res.ok) {
-          throw new Error('Không thể thêm sản phẩm mới từ máy quét');
+  const handleSaveAll = async () => {
+    setSubmitting(true);
+    try {
+      for (const d of detailsList) {
+        const val = editCounts[d.id];
+        if (val !== undefined && val !== '') {
+          const qty = parseInt(val, 10);
+          if (!isNaN(qty) && qty >= 0) {
+            await fetch(`${API_BASE}/inventory/stocktakes/details/${d.id}/count`, {
+              method: 'PATCH',
+              headers: authHeaders(),
+              body: JSON.stringify({ countedQty: qty }),
+            });
+          }
         }
-
-        // Ta cần onRefresh() để lấy detail id mới sinh.
-        // Tạm thời, người dùng sẽ quét lại hoặc nhập tay số lượng sau khi nó xuất hiện.
-        onSuccess(`Đã thêm ${product.name} vào danh sách kiểm kê.`);
-        onRefresh();
-      } catch (err) {
-        onError(err instanceof Error ? err.message : 'Lỗi quét mã');
       }
-    }
-  };
-
-  // ── Remove Detail ───────────────────────────────────────────
-
-  const handleRemoveDetail = async (detailId: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/inventory/stocktakes/details/${detailId}`, {
-        method: 'DELETE',
-        headers: authHeaders(),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.message || 'Không thể xóa');
-      }
-      onSuccess('Đã xóa sản phẩm');
+      onSuccess('Đã lưu thay đổi số lượng đếm thực tế');
+      setIsEditing(false);
       onRefresh();
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Lỗi');
+      onError('Lỗi khi lưu: ' + (err instanceof Error ? err.message : ''));
+    } finally {
+      setSubmitting(false);
     }
   };
-
-  // ── Update Count ────────────────────────────────────────────
-
-  const handleSaveCount = async (detailId: string) => {
-    const val = editCounts[detailId];
-    if (val === undefined || val === '') return;
-    const qty = parseInt(val, 10);
-    if (isNaN(qty) || qty < 0) {
-      onError('Số lượng đếm phải là số nguyên không âm');
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/inventory/stocktakes/details/${detailId}/count`, {
-        method: 'PATCH',
-        headers: authHeaders(),
-        body: JSON.stringify({ countedQty: qty }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.message || 'Không thể cập nhật');
-      }
-      // Clear local edit state
-      setEditCounts((prev) => {
-        const next = { ...prev };
-        delete next[detailId];
-        return next;
-      });
-      onRefresh();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : 'Lỗi');
-    }
-  };
-
-  // ── Finish Counting ─────────────────────────────────────────
-
-  const handleFinishCounting = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/inventory/stocktakes/${stocktake.id}/finish-counting`, {
-        method: 'POST',
-        headers: authHeaders(),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.message || 'Không thể hoàn tất');
-      }
-      onSuccess('Đã hoàn tất đếm, chờ duyệt');
-      onRefresh();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : 'Lỗi');
-    }
-  };
-
-  // ── Approve / Reject ────────────────────────────────────────
 
   const handleApprove = async () => {
     try {
@@ -1815,292 +1736,226 @@ function StocktakeDetailModal({
     }
   };
 
-  const handleReject = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/inventory/stocktakes/${stocktake.id}/reject`, {
-        method: 'POST',
-        headers: authHeaders(),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.message || 'Không thể từ chối');
-      }
-      onSuccess('Đã từ chối phiên kiểm kê');
-      onRefresh();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : 'Lỗi');
-    }
-  };
-
-  // Available products (not already in this stocktake)
-  const usedProductIds = new Set(stocktake.details.map((d) => d.product?.id).filter(Boolean));
-  const availableProducts = products.filter((p) => !usedProductIds.has(p.id));
-
-  // Stats
-  const totalDiff = stocktake.details.reduce((sum, d) => sum + Math.abs(d.difference), 0);
+  const canApprove = stocktake.status === 'COUNTING_DONE' && isManager;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xs" onClick={onClose}>
+      <div 
+        className="w-full max-w-4xl max-h-[85vh] flex flex-col rounded-lg bg-white shadow-2xl border border-slate-300 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b-2 border-slate-200 px-6 py-4 flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-xl"
-              style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
-            >
-              <ListChecks className="h-5 w-5 text-white" />
+        {/* Title Bar */}
+        <div className="flex h-10 items-center justify-between bg-slate-100 border-b border-slate-300 px-4 flex-shrink-0">
+          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">THÔNG TIN PHIẾU KIỂM KÊ</span>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-700 text-sm font-bold">✕</button>
+        </div>
+
+        {/* Info Header */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex-shrink-0 space-y-1.5 text-xs text-slate-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-12">
+              <div>
+                <span className="font-semibold text-slate-500">Ngày:</span>{' '}
+                <span className="font-bold text-slate-800">
+                  {stocktake.plannedDate ? new Date(stocktake.plannedDate).toLocaleDateString('vi-VN') : new Date(stocktake.createdAt).toLocaleDateString('vi-VN')}
+                </span>
+              </div>
+              <div>
+                <span className="font-semibold text-slate-500">Mã phiếu:</span>{' '}
+                <span className="font-bold text-teal-700">{stocktake.stocktakeNo}</span>
+              </div>
             </div>
             <div>
-              <h2 className="text-lg font-black text-slate-900">
-                Phiên kiểm kê {stocktake.stocktakeNo}
-              </h2>
-              <div className="mt-1 flex items-center gap-3 text-sm text-slate-500">
-                <span>Kho: <b className="text-slate-700">{stocktake.locationCode}</b></span>
-                <span>•</span>
-                <StatusBadge status={stocktake.status} />
-                {stocktake.plannedDate && (
-                  <>
-                    <span>•</span>
-                    <span>Ngày: <b className="text-slate-700">{new Date(stocktake.plannedDate).toLocaleDateString('vi-VN')}</b></span>
-                  </>
-                )}
-                {stocktake.assignee && (
-                  <>
-                    <span>•</span>
-                    <span>NV: <b className="text-slate-700">{stocktake.assignee}</b></span>
-                  </>
-                )}
-              </div>
+              <span className="font-semibold text-slate-500">Trạng thái:</span>{' '}
+              <StatusBadge status={stocktake.status} />
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 transition hover:bg-slate-100">
-            <X size={20} className="text-slate-500" />
-          </button>
+          <div>
+            <span className="font-semibold text-slate-500">Nhân viên:</span>{' '}
+            <span className="font-bold text-slate-800">{stocktake.assignee || stocktake.createdBy || '—'}</span>
+          </div>
         </div>
 
-        {/* Modal Body - scrollable */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Summary row */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 p-4 text-center">
-              <p className="text-xs font-bold text-cyan-700 uppercase">Tổng SP</p>
-              <p className="mt-1 text-2xl font-black text-cyan-600">{stocktake.totalItems}</p>
-            </div>
-            <div className="rounded-xl border-2 border-amber-200 bg-amber-50 p-4 text-center">
-              <p className="text-xs font-bold text-amber-700 uppercase">Đã đếm</p>
-              <p className="mt-1 text-2xl font-black text-amber-600">{stocktake.countedItems}/{stocktake.totalItems}</p>
-            </div>
-            <div className={`rounded-xl border-2 p-4 text-center ${totalDiff > 0 ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'}`}>
-              <p className={`text-xs font-bold uppercase ${totalDiff > 0 ? 'text-red-700' : 'text-emerald-700'}`}>Chênh lệch</p>
-              <p className={`mt-1 text-2xl font-black ${totalDiff > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{totalDiff}</p>
-            </div>
+        {/* Edit mode: Add product bar */}
+        {isEditing && (
+          <div className="flex items-center gap-2 px-4 pt-3 text-xs flex-shrink-0">
+            <select
+              value={selectedProductId}
+              onChange={(e) => setSelectedProductId(e.target.value)}
+              className="h-8 flex-1 rounded border border-slate-300 bg-white px-2 outline-none"
+            >
+              <option value="">— Chọn sản phẩm để thêm vào phiếu —</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.internalSku} - {p.name} {p.unit ? `(${p.unit})` : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleAddProductToExisting}
+              disabled={!selectedProductId}
+              className="h-8 rounded bg-teal-600 px-3 font-bold text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              + Thêm sản phẩm
+            </button>
           </div>
+        )}
 
-          {/* Note */}
-          {stocktake.note && (
-            <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Ghi chú</p>
-              <p className="text-sm text-slate-700">{stocktake.note}</p>
-            </div>
-          )}
-
-          {/* Add product (only if editable) */}
-          {canEdit && (
-            <div className="flex items-end gap-3">
-              <ScanBarcodeButton onClick={() => setScannerOpen(true)} />
-              <div className="flex-1">
-                <label className="block text-sm font-bold text-slate-700 mb-2">Thêm sản phẩm kiểm</label>
-                <select
-                  value={selectedProductId}
-                  onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10"
-                >
-                  <option value="">— Chọn sản phẩm —</option>
-                  {availableProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.internalSku} — {p.name} {p.unit ? `(${p.unit})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                onClick={handleAddProduct}
-                disabled={!selectedProductId || addingProduct}
-                className="h-11 rounded-xl px-5 text-sm font-bold text-white shadow-md transition hover:shadow-lg disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)' }}
-              >
-                <Plus size={18} />
-              </button>
-            </div>
-          )}
-
-          {/* Details Table */}
-          <div className="overflow-hidden rounded-xl border-2 border-slate-200">
-            <table className="w-full border-collapse bg-white">
-              <thead className="bg-slate-50">
-                <tr className="border-b-2 border-slate-200">
-                  <th className="w-14 border-x border-slate-200 px-3 py-3 text-center text-xs font-black uppercase text-slate-700">STT</th>
-                  <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-black uppercase text-slate-700">SKU</th>
-                  <th className="border-x border-slate-200 px-3 py-3 text-left text-xs font-black uppercase text-slate-700">Tên sản phẩm</th>
-                  <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-black uppercase text-cyan-700 bg-cyan-50/50">SL hệ thống</th>
-                  <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-black uppercase text-amber-700 bg-amber-50/50">SL thực đếm</th>
-                  <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-black uppercase text-slate-700">Chênh lệch</th>
-                  {canEdit && <th className="w-20 border-x border-slate-200 px-3 py-3 text-center text-xs font-black uppercase text-slate-700">Xóa</th>}
+        {/* Table Details */}
+        <div className="flex-1 overflow-auto p-4">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead>
+              <tr className="bg-slate-100 border border-slate-300 font-bold text-slate-700">
+                <th className="w-10 border border-slate-300 px-2 py-2 text-center">TT</th>
+                <th className="border border-slate-300 px-3 py-2 text-center">Mã hàng</th>
+                <th className="border border-slate-300 px-3 py-2">Tên</th>
+                <th className="border border-slate-300 px-3 py-2 text-center">ĐV</th>
+                <th className="border border-slate-300 px-3 py-2 text-center bg-yellow-50/40">Số tồn</th>
+                <th className="border border-slate-300 px-3 py-2 text-center bg-teal-50/40">Thực tồn</th>
+                <th className="border border-slate-300 px-3 py-2 text-center bg-red-50/40">Lệch</th>
+                <th className="border border-slate-300 px-3 py-2">Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detailsList.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-10 text-center text-xs text-slate-400 italic">
+                    Không có sản phẩm nào trong phiếu kiểm kê này. (Bấm "Mở =&gt; Sửa" để chọn sản phẩm vào phiếu)
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {stocktake.details.length === 0 ? (
-                  <tr>
-                    <td colSpan={canEdit ? 7 : 6} className="px-6 py-10 text-center text-sm text-slate-500">
-                      Chưa có sản phẩm nào. Hãy thêm sản phẩm cần kiểm kê.
-                    </td>
-                  </tr>
-                ) : (
-                  stocktake.details.map((detail, idx) => {
-                    const isEditing = editCounts[detail.id] !== undefined;
-                    const displayCount = isEditing ? editCounts[detail.id] : (detail.countedQty !== null ? String(detail.countedQty) : '');
-                    const diff = detail.difference;
+              ) : (
+                detailsList.map((d, idx) => {
+                  const isEditingThis = isEditing;
+                  const displayQty = isEditingThis
+                    ? (editCounts[d.id] !== undefined ? editCounts[d.id] : String(d.countedQty || 0))
+                    : (d.countedQty !== null ? d.countedQty : 0);
+                  const systemVal = d.systemQty || 0;
+                  const currentCount = Number(displayQty) || 0;
+                  const diff = currentCount - systemVal;
 
-                    return (
-                      <tr key={detail.id} className="border-b border-slate-200 transition hover:bg-slate-50/50">
-                        <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-600">{idx + 1}</td>
-                        <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-bold text-slate-800">
-                          {detail.product?.internalSku || '—'}
-                        </td>
-                        <td className="border-x border-slate-200 px-3 py-3 text-left text-sm text-slate-700">
-                          {detail.product?.name || '—'}
-                          {detail.product?.unit && <span className="ml-1 text-xs text-slate-400">({detail.product.unit})</span>}
-                        </td>
-                        <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-black text-cyan-600">
-                          {detail.systemQty.toLocaleString('vi-VN')}
-                        </td>
-                        <td className="border-x border-slate-200 px-3 py-3 text-center">
-                          {canEdit ? (
-                            <div className="flex items-center justify-center gap-1.5">
-                              <input
-                                type="number"
-                                min="0"
-                                value={displayCount}
-                                onChange={(e) => setEditCounts((prev) => ({ ...prev, [detail.id]: e.target.value }))}
-                                onBlur={() => {
-                                  if (editCounts[detail.id] !== undefined && editCounts[detail.id] !== '') {
-                                    handleSaveCount(detail.id);
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveCount(detail.id);
-                                }}
-                                placeholder="Nhập SL"
-                                className="h-9 w-24 rounded-lg border-2 border-amber-200 bg-amber-50/50 px-2 text-center text-sm font-bold text-amber-700 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20"
-                              />
-                            </div>
-                          ) : (
-                            <span className="text-sm font-black text-amber-600">
-                              {detail.countedQty !== null ? detail.countedQty.toLocaleString('vi-VN') : '—'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-black">
-                          {detail.countedQty !== null ? (
-                            <span className={diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-red-600' : 'text-slate-500'}>
-                              {diff > 0 ? `+${diff}` : diff}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                        {canEdit && (
-                          <td className="border-x border-slate-200 px-3 py-3 text-center">
-                            <button
-                              onClick={() => handleRemoveDetail(detail.id)}
-                              className="rounded-lg p-1.5 text-red-400 transition hover:bg-red-50 hover:text-red-600"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </td>
+                  return (
+                    <tr key={d.id} className="border-b border-slate-200 hover:bg-slate-50/30">
+                      <td className="border border-slate-300 px-2 py-2 text-center text-slate-500 font-semibold">{idx + 1}</td>
+                      <td className="border border-slate-300 px-3 py-2 text-center font-bold text-slate-700">{d.product?.internalSku || '—'}</td>
+                      <td className="border border-slate-300 px-3 py-2 text-slate-600">{d.product?.name || '—'}</td>
+                      <td className="border border-slate-300 px-3 py-2 text-center text-slate-500">{d.product?.unit || 'Cái'}</td>
+                      <td className="border border-slate-300 px-3 py-2 text-center font-bold text-slate-700 bg-yellow-50/20">{systemVal}</td>
+                      <td className="border border-slate-300 px-2 py-1 text-center bg-teal-50/20">
+                        {isEditingThis ? (
+                          <input
+                            type="number"
+                            min="0"
+                            value={displayQty}
+                            onChange={(e) => setEditCounts(prev => ({ ...prev, [d.id]: e.target.value }))}
+                            className="h-7 w-20 text-center rounded border border-slate-300 outline-none text-xs font-bold text-teal-800 focus:border-teal-500"
+                          />
+                        ) : (
+                          <span className="font-bold text-teal-700">{d.countedQty !== null ? d.countedQty : '—'}</span>
                         )}
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Approved Info */}
-          {stocktake.status === 'APPROVED' && stocktake.approvedBy && (
-            <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-sm text-emerald-700">
-                <b>Đã duyệt bởi:</b> {stocktake.approvedBy}
-                {stocktake.approvedAt && ` — ${new Date(stocktake.approvedAt).toLocaleString('vi-VN')}`}
-              </p>
-            </div>
-          )}
+                      </td>
+                      <td className="border border-slate-300 px-3 py-2 text-center font-bold bg-red-50/20">
+                        <span className={diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-red-600' : 'text-slate-500'}>
+                          {diff > 0 ? `+${diff}` : diff}
+                        </span>
+                      </td>
+                      <td className="border border-slate-300 px-3 py-2 text-slate-500">{d.note || ''}</td>
+                    </tr>
+                  );
+                })
+              )}
+              {/* Row Total */}
+              {detailsList.length > 0 && (
+                <tr className="bg-slate-100 font-bold text-slate-700 border border-slate-300">
+                  <td colSpan={4} className="border border-slate-300 px-3 py-2 text-right">Tổng:</td>
+                  <td className="border border-slate-300 px-3 py-2 text-center">{totalTon}</td>
+                  <td className="border border-slate-300 px-3 py-2 text-center text-teal-700">{totalThucTon}</td>
+                  <td className="border border-slate-300 px-3 py-2 text-center">
+                    <span className={totalLech > 0 ? 'text-emerald-600' : totalLech < 0 ? 'text-red-600' : 'text-slate-500'}>
+                      {totalLech > 0 ? `+${totalLech}` : totalLech}
+                    </span>
+                  </td>
+                  <td className="border border-slate-300 px-3 py-2"></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
-        {/* Modal Footer */}
-        <div className="flex items-center justify-between border-t-2 border-slate-200 px-6 py-4 flex-shrink-0 bg-slate-50/50">
+        {/* Note block */}
+        {stocktake.note && (
+          <div className="px-4 pb-3 flex-shrink-0 text-xs text-slate-600">
+            <span className="font-bold">Ghi chú:</span> {stocktake.note}
+          </div>
+        )}
+
+        {/* Footer actions */}
+        <div className="flex h-12 items-center justify-start gap-1.5 border-t border-slate-300 bg-slate-200 px-4 flex-shrink-0">
+          {isEditing ? (
+            <button
+              onClick={handleSaveAll}
+              disabled={submitting}
+              className="flex h-8 items-center gap-1 rounded bg-emerald-600 px-4 text-xs font-bold text-white shadow hover:bg-emerald-700 transition"
+            >
+              💾 Lưu thay đổi
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex h-8 items-center gap-1 rounded bg-emerald-600 px-4 text-xs font-bold text-white shadow hover:bg-emerald-700 transition"
+            >
+              📝 Mở =&gt; Sửa
+            </button>
+          )}
+
+          {canApprove && (
+            <button
+              onClick={handleApprove}
+              className="flex h-8 items-center gap-1 rounded bg-orange-500 px-4 text-xs font-bold text-white shadow hover:bg-orange-600 transition"
+            >
+              🛡 DUYỆT PHIẾU
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              // Export CSV
+              const header = ['TT', 'Mã hàng', 'Tên', 'ĐV', 'Số tồn', 'Thực tồn', 'Lệch', 'Ghi chú'];
+              const rows = stocktake.details.map((d, i) => [
+                i + 1,
+                d.product?.internalSku || '',
+                d.product?.name || '',
+                d.product?.unit || 'Cái',
+                d.systemQty,
+                d.countedQty !== null ? d.countedQty : '',
+                d.difference,
+                d.note || ''
+              ]);
+              const csv = [header, ...rows].map(r => r.join(',')).join('\n');
+              const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url; a.download = `chi_tiet_kiem_ke_${stocktake.stocktakeNo}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="flex h-8 items-center gap-1 rounded bg-blue-600 px-4 text-xs font-bold text-white shadow hover:bg-blue-700 transition"
+          >
+            📊 Excel
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="flex h-8 items-center gap-1 rounded bg-pink-600 px-4 text-xs font-bold text-white shadow hover:bg-pink-700 transition"
+          >
+            🖨 Print
+          </button>
           <button
             onClick={onClose}
-            className="rounded-xl border-2 border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+            className="flex h-8 items-center gap-1 rounded bg-red-600 px-4 text-xs font-bold text-white shadow hover:bg-red-700 transition"
           >
-            Đóng
+            ✕ Đóng
           </button>
-          <div className="flex items-center gap-3">
-            {canFinish && (
-              <button
-                onClick={handleFinishCounting}
-                disabled={!stocktake.details || stocktake.details.length === 0}
-                className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition ${!stocktake.details || stocktake.details.length === 0
-                    ? 'opacity-50 cursor-not-allowed grayscale'
-                    : 'hover:shadow-lg'
-                  }`}
-                style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)' }}
-              >
-                <span className="flex items-center gap-2">
-                  <ListChecks size={16} />
-                  Hoàn tất đếm
-                </span>
-              </button>
-            )}
-            {canApproveReject && (
-              <>
-                <button
-                  onClick={handleReject}
-                  className="rounded-xl border-2 border-red-200 bg-white px-5 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50"
-                >
-                  <span className="flex items-center gap-2">
-                    <Ban size={16} />
-                    Từ chối
-                  </span>
-                </button>
-                <button
-                  onClick={handleApprove}
-                  className="rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:shadow-lg"
-                  style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
-                >
-                  <span className="flex items-center gap-2">
-                    <ShieldCheck size={16} />
-                    Duyệt kiểm kê
-                  </span>
-                </button>
-              </>
-            )}
-          </div>
         </div>
       </div>
-
-      {/* Tích hợp Barcode Scanner */}
-      <BarcodeScanner
-        isOpen={scannerOpen}
-        onClose={() => setScannerOpen(false)}
-        onProductFound={handleProductScanned}
-        title="Quét mã vạch kiểm kê"
-      />
     </div>
   );
 }

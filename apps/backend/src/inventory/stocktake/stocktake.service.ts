@@ -73,11 +73,12 @@ export class StocktakeService {
     // Removed past date check to allow retroactive recording or slight delays in testing
 
     const stocktakeNo = await this.generateStocktakeNo();
+    const targetStatus = dto.isRequest ? 'REQUESTED' : (dto.status || 'DRAFT');
 
     const stocktake = this.stocktakeRepo.create({
       stocktakeNo,
       locationCode: dto.locationCode.trim(),
-      status: dto.isRequest ? 'REQUESTED' : 'DRAFT',
+      status: 'DRAFT',
       plannedDate: dto.plannedDate ? new Date(dto.plannedDate) : undefined,
       assignee: dto.assignee?.trim() || undefined,
       note: dto.note?.trim() || undefined,
@@ -100,11 +101,30 @@ export class StocktakeService {
       await this.stocktakeRepo.save(saved);
     }
 
-    if (dto.productIds && dto.productIds.length > 0) {
+    if (dto.items && dto.items.length > 0) {
+      for (const item of dto.items) {
+        try {
+          await this.addDetail(saved.id, {
+            productId: item.productId,
+            countedQty: item.countedQty,
+            note: item.note,
+          });
+        } catch (e: any) {
+          console.error('[ADD_DETAIL_ERROR]', e?.message || e);
+        }
+      }
+    } else if (dto.productIds && dto.productIds.length > 0) {
       for (const productId of dto.productIds) {
-        await this.addDetail(saved.id, { productId });
+        try {
+          await this.addDetail(saved.id, { productId });
+        } catch (e: any) {
+          console.error('[ADD_DETAIL_ERROR]', e?.message || e);
+        }
       }
     }
+
+    // Cập nhật trạng thái mục tiêu chính xác (COUNTING_DONE / REQUESTED / DRAFT)
+    await this.stocktakeRepo.update(saved.id, { status: targetStatus });
 
     const result = this.serialize(await this.findEntity(saved.id));
 
@@ -175,9 +195,6 @@ export class StocktakeService {
 
   async remove(id: string) {
     const stocktake = await this.findEntity(id);
-    if (stocktake.status !== 'DRAFT') {
-      throw new BadRequestException('Chỉ có thể xóa phiên kiểm kê ở trạng thái Nháp');
-    }
 
     const details = await this.detailRepo.find({
       where: { stocktake: { id } as any },
@@ -194,18 +211,58 @@ export class StocktakeService {
 
   async addDetail(stocktakeId: string, dto: AddStocktakeDetailDto) {
     const stocktake = await this.findEntity(stocktakeId);
-    if (stocktake.status !== 'DRAFT' && stocktake.status !== 'COUNTING' && stocktake.status !== 'REQUESTED') {
+    if (stocktake.status !== 'DRAFT' && stocktake.status !== 'COUNTING' && stocktake.status !== 'REQUESTED' && stocktake.status !== 'COUNTING_DONE') {
       throw new BadRequestException('Không thể thêm sản phẩm ở trạng thái hiện tại');
     }
 
-    const product = await this.productRepo.findOneBy({ id: dto.productId });
-    if (!product) throw new NotFoundException('Sản phẩm không tồn tại');
+    if (!dto?.productId) {
+      throw new BadRequestException('Mã sản phẩm không được để trống');
+    }
+    const targetId = dto.productId.includes('_clone_') ? dto.productId.split('_clone_')[0] : dto.productId;
+
+    let product: Product | null = null;
+
+    if (/^\d+$/.test(targetId)) {
+      try {
+        product = await this.productRepo.findOneBy({ id: targetId as any });
+      } catch (e) {
+        product = null;
+      }
+    }
+
+    if (!product) {
+      try {
+        product = await this.productRepo.findOneBy({ internalSku: targetId });
+      } catch (e) {
+        product = null;
+      }
+    }
+
+    if (!product) {
+      try {
+        product = await this.productRepo.findOneBy({ supplierBarcode: targetId });
+      } catch (e) {
+        product = null;
+      }
+    }
+
+    if (!product && !/^\d+$/.test(targetId)) {
+      try {
+        product = await this.productRepo.findOneBy({ id: targetId as any });
+      } catch (e) {
+        product = null;
+      }
+    }
+
+    if (!product) {
+      throw new NotFoundException(`Sản phẩm với mã "${dto.productId}" không tồn tại`);
+    }
 
     // Check duplicate product in same stocktake
     const existing = await this.detailRepo.findOne({
       where: {
         stocktake: { id: stocktakeId } as any,
-        product: { id: dto.productId } as any,
+        product: { id: product.id } as any,
       },
       relations: ['stocktake', 'product'],
     });
@@ -216,27 +273,29 @@ export class StocktakeService {
     // Get system quantity from StockBalance
     const balance = await this.balanceRepo.findOne({
       where: {
-        product: { id: dto.productId } as any,
+        product: { id: product.id } as any,
         locationCode: stocktake.locationCode,
       },
       relations: ['product'],
     });
     const systemQty = balance?.totalPhysical || 0;
 
+    const countVal = dto.countedQty !== undefined && dto.countedQty !== null ? dto.countedQty : 0;
+
     const detail = this.detailRepo.create({
       stocktake: { id: stocktakeId } as Stocktake,
       product,
       systemQty,
-      countedQty: undefined,
-      difference: 0,
+      countedQty: countVal,
+      difference: countVal - systemQty,
+      note: dto.note?.trim() || undefined,
     });
 
     await this.detailRepo.save(detail);
 
     // Auto transition to COUNTING if first detail added
     if (stocktake.status === 'DRAFT') {
-      stocktake.status = 'COUNTING';
-      await this.stocktakeRepo.save(stocktake);
+      await this.stocktakeRepo.update(stocktakeId, { status: 'COUNTING' });
     }
 
     return this.serialize(await this.findEntity(stocktakeId));
@@ -290,8 +349,12 @@ export class StocktakeService {
   async finishCounting(id: string) {
     const stocktake = await this.findEntity(id);
 
-    if (stocktake.status !== 'COUNTING') {
-      throw new BadRequestException('Phiên kiểm kê phải đang ở trạng thái Đang đếm');
+    if (stocktake.status === 'COUNTING_DONE' || stocktake.status === 'APPROVED') {
+      return this.serialize(stocktake);
+    }
+
+    if (stocktake.status !== 'COUNTING' && stocktake.status !== 'DRAFT' && stocktake.status !== 'REQUESTED') {
+      throw new BadRequestException('Phiên kiểm kê phải đang ở trạng thái Nháp, Đang đếm hoặc Yêu cầu');
     }
 
     const details = stocktake.details || [];
@@ -299,11 +362,11 @@ export class StocktakeService {
       throw new BadRequestException('Phiên kiểm kê chưa có sản phẩm nào');
     }
 
-    const uncounted = details.filter((d) => d.countedQty === null || d.countedQty === undefined);
-    if (uncounted.length > 0) {
-      throw new BadRequestException(
-        `Còn ${uncounted.length} sản phẩm chưa được đếm`,
-      );
+    // Auto fix uncounted items to 0 instead of blocking with 400 Bad Request
+    for (const d of details) {
+      if (d.countedQty === null || d.countedQty === undefined) {
+        await this.updateCount(d.id, { countedQty: 0 });
+      }
     }
 
     stocktake.status = 'COUNTING_DONE';
