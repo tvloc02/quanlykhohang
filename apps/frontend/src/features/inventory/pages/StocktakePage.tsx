@@ -1699,11 +1699,15 @@ function StocktakeDetailModal({
         if (val !== undefined && val !== '') {
           const qty = parseInt(val, 10);
           if (!isNaN(qty) && qty >= 0) {
-            await fetch(`${API_BASE}/inventory/stocktakes/details/${d.id}/count`, {
+            const res = await fetch(`${API_BASE}/inventory/stocktakes/details/${d.id}/count`, {
               method: 'PATCH',
               headers: authHeaders(),
               body: JSON.stringify({ countedQty: qty }),
             });
+            if (!res.ok) {
+              const errData = await res.json().catch(() => null);
+              throw new Error(errData?.message || 'Không thể cập nhật số lượng đếm');
+            }
           }
         }
       }
