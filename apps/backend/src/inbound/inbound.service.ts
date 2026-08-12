@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, EntityManager } from 'typeorm';
+import { Repository, EntityManager, DataSource } from 'typeorm';
 import { InboundReceipt } from './entities/inbound-receipt.entity';
 import { InboundDetail } from './entities/inbound-detail.entity';
 import { CreateAsnDto, PurchaseOrderItemDto } from './dto/create-asn.dto';
@@ -56,6 +56,21 @@ function parseNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseCustomDate(val?: string | Date | null): Date {
+  if (!val) return new Date();
+  if (val instanceof Date) return isNaN(val.getTime()) ? new Date() : val;
+  const str = String(val).trim();
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    return new Date(year, month, day, 12, 0, 0);
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
 function toDateString(value?: Date | string | null) {
   if (!value) return undefined;
   const date = new Date(value);
@@ -68,7 +83,7 @@ function normalizeStatus(status?: string) {
 
 export function isEditablePurchaseOrderStatus(status?: string) {
   const norm = normalizeStatus(status);
-  return !status || norm === 'CREATED' || norm === 'DRAFT' || norm === 'REJECTED';
+  return !status || norm === 'CREATED' || norm === 'DRAFT' || norm === 'REJECTED' || norm === 'RECEIVED' || norm === 'COMPLETED';
 }
 
 function isManagerApprovalReady(status?: string) {
@@ -81,7 +96,7 @@ function isSupplierApprovalReady(status?: string) {
 
 function isReceivingReady(status?: string) {
   const normalized = normalizeStatus(status);
-  return normalized === 'SUPPLIER_APPROVED' || normalized === 'PARTIALLY_RECEIVED' || normalized === 'RECEIVED';
+  return normalized === 'SUPPLIER_APPROVED' || normalized === 'PARTIALLY_RECEIVED' || normalized === 'RECEIVED' || normalized === 'COMPLETED';
 }
 
 @Injectable()
@@ -95,6 +110,7 @@ export class InboundService {
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
     @InjectRepository(StockInReceiptDetail) private stockInReceiptDetailRepo: Repository<StockInReceiptDetail>,
     private readonly notificationsService: NotificationsService,
+    private dataSource: DataSource,
   ) { }
 
   async createReceipt(dto: CreateAsnDto, user?: any) {
@@ -105,17 +121,38 @@ export class InboundService {
     if (user?.role === 'supplier' && user?.supplierId) {
       dto.supplierId = user.supplierId;
     }
-    const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
-    const supplier = supplierId ? await this.supplierRepo.findOneBy({ id: supplierId }) : null;
+    let supplier: Supplier | null = null;
+    if (dto.supplierId && /^\d+$/.test(String(dto.supplierId))) {
+      supplier = await this.supplierRepo.findOneBy({ id: String(dto.supplierId) });
+    }
 
-    const poNumber = await this.generatePoNumber(dto.poNumber || dto.shipmentNumber);
-    // Ưu tiên: supplier entity name > supplierName text > undefined
-    const supplierName = supplier?.name || dto.supplierName?.trim() || undefined;
+    const supplierText = (dto.supplierName || '').trim();
+    if (!supplier && supplierText) {
+      supplier = await this.supplierRepo.findOne({
+        where: [{ name: supplierText }, { supplierCode: supplierText }],
+      });
+
+      if (!supplier) {
+        try {
+          const newSup = this.supplierRepo.create({
+            name: supplierText,
+            supplierCode: 'NCC-' + Date.now().toString().slice(-6),
+          });
+          supplier = await this.supplierRepo.save(newSup);
+        } catch {}
+      }
+    }
+
+    const poNumber = await this.generatePoNumber(dto.poNumber || dto.receiptNo || dto.shipmentNumber);
+    const supplierName = supplier?.name || supplierText || undefined;
+    const orderDate = dto.orderDate ? parseCustomDate(dto.orderDate) : new Date();
+    const expectedDate = dto.expectedDate ? parseCustomDate(dto.expectedDate) : undefined;
+
     const receipt = this.receiptRepo.create({
       poNumber,
-      orderDate: dto.orderDate ? new Date(dto.orderDate) : new Date(),
-      expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
-      status: dto.status || 'CREATED',
+      orderDate,
+      expectedDate,
+      status: dto.status || 'RECEIVED',
       approverId: dto.approverId?.trim() || undefined,
       approverName: dto.approverName?.trim() || undefined,
       creatorName: dto.creatorName?.trim() || undefined,
@@ -123,34 +160,33 @@ export class InboundService {
       description: dto.description?.trim() || undefined,
       supplier: supplier || undefined,
       supplierName,
-      totalAmount: '0',
+      totalAmount: parseNumber(dto.totalAmount).toFixed(2),
     });
 
     const savedReceipt = await this.receiptRepo.save(receipt);
-    const details = await this.persistDetails(savedReceipt, dto.items || []);
-    savedReceipt.totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty)), 0).toFixed(2);
-    await this.receiptRepo.save(savedReceipt);
+    const rawItems = (dto.details && dto.details.length) ? dto.details : (dto.items || []);
+    const details = await this.persistDetails(savedReceipt, rawItems, dto.warehouseCode || dto.branchCode);
+
+    if (details.length > 0) {
+      savedReceipt.totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty || detail.receivedQty)), 0).toFixed(2);
+      await this.receiptRepo.save(savedReceipt);
+      // Tăng tồn kho thực tế trong MySQL
+      await this.applyInboundStockAddition(savedReceipt, details);
+    }
 
     if (savedReceipt.status !== 'DRAFT') {
-      if (savedReceipt.approverId) {
-        await this.notificationsService.notifyUser(savedReceipt.approverId, {
-          title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
-          message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
-          link: '/inbound/purchase-orders',
-          referenceType: 'purchase-order',
-          referenceId: savedReceipt.id,
-          priority: 'high',
-        });
-      } else {
-        await this.notificationsService.notifyRole('manager', {
-          title: `Don mua hang ${savedReceipt.poNumber} can duyet`,
-          message: `Don mua hang ${savedReceipt.poNumber} vua duoc tao. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
-          link: '/inbound/purchase-orders',
-          referenceType: 'purchase-order',
-          referenceId: savedReceipt.id,
-          priority: 'high',
-        });
-      }
+      try {
+        if (savedReceipt.approverId) {
+          await this.notificationsService.notifyUser(savedReceipt.approverId, {
+            title: `Đơn nhập hàng ${savedReceipt.poNumber}`,
+            message: `Đơn nhập hàng ${savedReceipt.poNumber} đã được tạo thành công.`,
+            link: '/inbound/stock-in-orders',
+            referenceType: 'purchase-order',
+            referenceId: savedReceipt.id,
+            priority: 'high',
+          });
+        }
+      } catch {}
     }
 
     return this.serializeReceipt(await this.findReceiptEntity(savedReceipt.id, user));
@@ -167,13 +203,9 @@ export class InboundService {
       dto.supplierId = user.supplierId;
     }
 
-    if (!isEditablePurchaseOrderStatus(receipt.status)) {
-      throw new BadRequestException('Only draft purchase orders can be updated');
-    }
-
-    const supplierId = typeof dto.supplierId === 'string' ? dto.supplierId.trim() : dto.supplierId;
-    if (supplierId) {
-      const supplier = await this.supplierRepo.findOneBy({ id: supplierId });
+    let supplier: Supplier | null = null;
+    if (dto.supplierId && /^\d+$/.test(String(dto.supplierId))) {
+      supplier = await this.supplierRepo.findOneBy({ id: String(dto.supplierId) });
       if (supplier) {
         receipt.supplier = supplier;
         receipt.supplierName = supplier.name;
@@ -183,115 +215,56 @@ export class InboundService {
       receipt.supplierName = dto.supplierName.trim() || receipt.supplierName;
     }
 
-    const nextPoNumber = dto.poNumber || dto.shipmentNumber || receipt.poNumber;
+    const nextPoNumber = dto.poNumber || dto.receiptNo || dto.shipmentNumber || receipt.poNumber;
     if (nextPoNumber && nextPoNumber !== receipt.poNumber) {
       const duplicate = await this.receiptRepo.findOne({ where: { poNumber: nextPoNumber } });
       if (duplicate && duplicate.id !== receipt.id) {
-        throw new BadRequestException('PO number already exists');
+        throw new BadRequestException('Mã phiếu nhập đã tồn tại');
       }
       receipt.poNumber = nextPoNumber;
     }
 
-    if (dto.orderDate) receipt.orderDate = new Date(dto.orderDate);
-    if (dto.expectedDate) receipt.expectedDate = new Date(dto.expectedDate);
+    if (dto.orderDate) receipt.orderDate = parseCustomDate(dto.orderDate);
+    if (dto.expectedDate) receipt.expectedDate = parseCustomDate(dto.expectedDate);
     if (dto.description !== undefined) receipt.description = dto.description ? dto.description.trim() : undefined;
     if (dto.approverId !== undefined) receipt.approverId = dto.approverId ? dto.approverId.trim() : undefined;
     if (dto.approverName !== undefined) receipt.approverName = dto.approverName ? dto.approverName.trim() : undefined;
     if (dto.creatorName !== undefined) receipt.creatorName = dto.creatorName ? dto.creatorName.trim() : undefined;
     if (dto.creatorPhone !== undefined) receipt.creatorPhone = dto.creatorPhone ? dto.creatorPhone.trim() : undefined;
 
-    const oldStatus = receipt.status;
     if (dto.status !== undefined) {
       receipt.status = dto.status;
     }
 
-    if (dto.items) {
-      if (!isEditablePurchaseOrderStatus(receipt.status)) {
-        throw new BadRequestException('Only draft purchase orders can be updated');
-      }
-      console.log('[InboundService] updatePurchaseOrder received items:', JSON.stringify(dto.items));
-      // Upsert details: update existing ones, create new ones, remove deleted ones
+    const rawItems = (dto.details && dto.details.length) ? dto.details : dto.items;
+    if (rawItems && rawItems.length) {
+      // Revert previous inventory addition
+      await this.revertInboundStockAddition(receipt);
+
       const existingDetails = await this.detailRepo.find({
         where: { inboundReceipt: { id } as any },
         relations: ['inboundReceipt', 'product'],
       });
-
-      const existingById = new Map<string, InboundDetail>();
-      for (const d of existingDetails) existingById.set(String(d.id), d);
-
-      const incomingIds = new Set<string>();
-
-      for (const item of dto.items) {
-        if (item.id && existingById.has(String(item.id))) {
-          // update existing detail
-          const exist = existingById.get(String(item.id));
-          if (!exist) continue;
-          const product = item.supplierProductId
-            ? await this.resolveProductFromSupplierProduct(item.supplierProductId)
-            : item.productId
-              ? await this.productRepo.findOneBy({ id: item.productId })
-              : exist.product;
-          if (!product) throw new NotFoundException('Product not found');
-
-          exist.product = product;
-          exist.warehouseCode = item.warehouseCode?.trim() || exist.warehouseCode;
-          exist.expectedQty = parseNumber(item.expectedQty ?? exist.expectedQty);
-          exist.receivedQty = Math.min(parseNumber(item.receivedQty ?? exist.receivedQty), exist.expectedQty);
-          exist.unitPrice = (parseNumber(item.unitPrice ?? parseNumber(exist.unitPrice))).toFixed(2);
-          exist.requestedPrice = exist.unitPrice;
-          exist.supplierPrice = null; // Clear supplier proposed price on manager update/counter-propose
-          exist.totalLineAmount = (parseNumber(exist.unitPrice) * parseNumber(exist.expectedQty)).toFixed(2);
-
-          await this.detailRepo.save(exist);
-          incomingIds.add(String(exist.id));
-        } else {
-          // create new detail
-          const detail = await this.buildDetail(receipt, item);
-          detail.supplierPrice = null;
-          const saved = await this.detailRepo.save(detail);
-          incomingIds.add(String(saved.id));
-        }
+      if (existingDetails.length) {
+        await this.detailRepo.remove(existingDetails);
       }
 
-      // remove details not present in incoming payload
-      const toRemove = existingDetails.filter((d) => !incomingIds.has(String(d.id)));
-      if (toRemove.length) {
-        await this.detailRepo.remove(toRemove);
-      }
+      const savedDetails = await this.persistDetails(receipt, rawItems, dto.warehouseCode || dto.branchCode);
+      await this.applyInboundStockAddition(receipt, savedDetails);
     }
 
     await this.recalculateTotalAmount(receipt.id);
     await this.receiptRepo.save(receipt);
 
-    if (oldStatus === 'DRAFT' && receipt.status === 'CREATED') {
-      if (receipt.approverId) {
-        await this.notificationsService.notifyUser(receipt.approverId, {
-          title: `Don mua hang ${receipt.poNumber} can duyet`,
-          message: `Don mua hang ${receipt.poNumber} vua duoc gui duyet. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
-          link: '/inbound/purchase-orders',
-          referenceType: 'purchase-order',
-          referenceId: receipt.id,
-          priority: 'high',
-        });
-      } else {
-        await this.notificationsService.notifyRole('manager', {
-          title: `Don mua hang ${receipt.poNumber} can duyet`,
-          message: `Don mua hang ${receipt.poNumber} vua duoc gui duyet. Vui long duyet truoc khi chuyen sang buoc tiep theo.`,
-          link: '/inbound/purchase-orders',
-          referenceType: 'purchase-order',
-          referenceId: receipt.id,
-          priority: 'high',
-        });
-      }
-    }
     return this.serializeReceipt(await this.findReceiptEntity(receipt.id));
   }
 
   async removeReceipt(id: string, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
-    if (!isEditablePurchaseOrderStatus(receipt.status)) {
-      throw new BadRequestException('Only draft purchase orders can be deleted');
-    }
+
+    // Revert inventory before deletion
+    await this.revertInboundStockAddition(receipt);
+
     const details = await this.detailRepo.find({
       where: { inboundReceipt: { id } as any },
       relations: ['inboundReceipt', 'product'],
@@ -638,11 +611,41 @@ export class InboundService {
     return receipt;
   }
 
-  private async persistDetails(receipt: InboundReceipt, items: PurchaseOrderItemDto[]) {
+  private async persistDetails(receipt: InboundReceipt, items: PurchaseOrderItemDto[], defaultWarehouseCode?: string) {
     const savedDetails: InboundDetail[] = [];
 
     for (const item of items) {
-      const detail = await this.buildDetail(receipt, item);
+      let product: Product | null = null;
+      if (item.productId && /^\d+$/.test(String(item.productId))) {
+        product = await this.productRepo.findOneBy({ id: String(item.productId) });
+      }
+      if (!product && item.productSku) {
+        product = await this.productRepo.findOneBy({ internalSku: item.productSku.trim() });
+      }
+      if (!product && item.productName) {
+        product = await this.productRepo.findOneBy({ name: item.productName.trim() });
+      }
+      if (!product && item.supplierProductId) {
+        product = await this.resolveProductFromSupplierProduct(item.supplierProductId);
+      }
+
+      const qty = parseNumber(item.receivedQty ?? item.expectedQty ?? item.qty);
+      if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
+
+      const unitPrice = parseNumber(item.unitPrice ?? item.price ?? (product?.price || 0));
+      const targetWhCode = item.warehouseCode?.trim() || defaultWarehouseCode?.trim() || 'SPX001';
+
+      const detail = this.detailRepo.create({
+        inboundReceipt: receipt,
+        product: product || undefined,
+        warehouseCode: targetWhCode,
+        expectedQty: qty,
+        receivedQty: qty,
+        unitPrice: unitPrice.toFixed(2),
+        requestedPrice: unitPrice.toFixed(2),
+        totalLineAmount: (unitPrice * qty).toFixed(2),
+      });
+
       savedDetails.push(await this.detailRepo.save(detail));
     }
 
@@ -661,8 +664,8 @@ export class InboundService {
     }
 
     const unitPrice = parseNumber(item.unitPrice ?? await this.resolveDefaultUnitPrice(product.id));
-    const expectedQty = parseNumber(item.expectedQty);
-    const receivedQty = Math.min(parseNumber(item.receivedQty), expectedQty);
+    const expectedQty = parseNumber(item.expectedQty ?? item.qty);
+    const receivedQty = Math.min(parseNumber(item.receivedQty ?? item.qty), expectedQty);
 
     return this.detailRepo.create({
       inboundReceipt: receipt,
@@ -723,36 +726,90 @@ export class InboundService {
     await this.receiptRepo.update(receiptId, { totalAmount: totalAmount.toFixed(2) });
   }
 
-  private async adjustInventory(productId: string, locationCode: string, qty: number, manager?: EntityManager) {
-    const activeProductRepo = manager ? manager.getRepository(Product) : this.productRepo;
-    const activeBalanceRepo = manager ? manager.getRepository(StockBalance) : this.balanceRepo;
+  private async applyInboundStockAddition(receipt: InboundReceipt, details: InboundDetail[]) {
+    for (const detail of details) {
+      let productId = detail.product?.id;
+      if (!productId) continue;
 
-    const product = await activeProductRepo.findOneBy({ id: productId });
-    if (!product) {
-      throw new NotFoundException('Product not found');
+      const locCode = detail.warehouseCode || 'SPX001';
+
+      // 1. Tìm balance theo kho cụ thể
+      let [balance] = await this.dataSource.query(
+        `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
+        [productId, locCode],
+      );
+
+      // 2. Nếu không tìm thấy tại kho này, lấy balance có tồn kho lớn nhất
+      if (!balance) {
+        const rows = await this.dataSource.query(
+          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
+          [productId],
+        );
+        if (rows.length > 0) {
+          balance = rows[0];
+        }
+      }
+
+      // 3. Nếu chưa có balance nào, tạo mới
+      if (!balance) {
+        const insertRes = await this.dataSource.query(
+          `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
+          [productId, locCode],
+        );
+        balance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
+      }
+
+      const qty = Number(detail.receivedQty || detail.expectedQty) || 0;
+      const newPhysical = Number(balance.totalPhysical) + qty;
+      const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
+
+      await this.dataSource.query(
+        `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+        [newPhysical, newAvailable, balance.id],
+      );
     }
+  }
 
-    const existing = await activeBalanceRepo.findOne({
-      where: { product: { id: productId } as any, locationCode },
-      relations: ['product'],
-    });
+  private async revertInboundStockAddition(receipt: InboundReceipt) {
+    const details = receipt.details && receipt.details.length
+      ? receipt.details
+      : await this.detailRepo.find({
+          where: { inboundReceipt: { id: receipt.id } as any },
+          relations: ['product'],
+        });
 
-    if (existing) {
-      existing.totalPhysical += qty;
-      existing.available = Math.max(existing.totalPhysical - existing.allocated, 0);
-      await activeBalanceRepo.save(existing);
-      return existing;
+    for (const detail of details) {
+      let productId = detail.product?.id;
+      if (!productId) continue;
+
+      const locCode = detail.warehouseCode || 'SPX001';
+
+      let [balance] = await this.dataSource.query(
+        `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
+        [productId, locCode],
+      );
+
+      if (!balance) {
+        const rows = await this.dataSource.query(
+          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
+          [productId],
+        );
+        if (rows.length > 0) {
+          balance = rows[0];
+        }
+      }
+
+      if (!balance) continue;
+
+      const qty = Number(detail.receivedQty || detail.expectedQty) || 0;
+      const newPhysical = Math.max(0, Number(balance.totalPhysical) - qty);
+      const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
+
+      await this.dataSource.query(
+        `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+        [newPhysical, newAvailable, balance.id],
+      );
     }
-
-    const balance = activeBalanceRepo.create({
-      product,
-      locationCode,
-      totalPhysical: qty,
-      allocated: 0,
-      available: qty,
-    });
-
-    return activeBalanceRepo.save(balance);
   }
 
   private async serializeReceipt(receipt: InboundReceipt): Promise<SerializedPurchaseOrder> {
@@ -782,8 +839,8 @@ export class InboundService {
 
     return {
       id: receipt.id,
-      poNumber: receipt.poNumber || `DMH${String(receipt.id).padStart(5, '0')}`,
-      receiptNo: receipt.poNumber || `DMH${String(receipt.id).padStart(5, '0')}`,
+      poNumber: receipt.poNumber || `PNK_${receipt.id}`,
+      receiptNo: receipt.poNumber || `PNK_${receipt.id}`,
       orderDate: toDateString(receipt.orderDate),
       expectedDate: toDateString(receipt.expectedDate),
       status: receipt.status,
@@ -834,13 +891,9 @@ export class InboundService {
       if (!duplicate) return requested;
     }
 
-    const total = await this.receiptRepo.count();
-    let index = total + 1;
-    let code = `DMH${String(index).padStart(5, '0')}`;
-
+    let code = `PNK_${Math.floor(100 + Math.random() * 900)}`;
     while (await this.receiptRepo.findOne({ where: { poNumber: code } })) {
-      index += 1;
-      code = `DMH${String(index).padStart(5, '0')}`;
+      code = `PNK_${Math.floor(100 + Math.random() * 900)}`;
     }
 
     return code;

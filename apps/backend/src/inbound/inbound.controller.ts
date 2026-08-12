@@ -7,37 +7,31 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 
-@Controller('inbound')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller(['inbound', 'inbound/purchase-orders', 'inbound/stock-in-orders'])
 export class InboundController {
   constructor(private svc: InboundService) {}
 
   @Get('purchase-orders')
-  @Roles('admin', 'manager', 'staff', 'supplier')
   findPurchaseOrders(@Req() req: any) {
     return this.svc.findPurchaseOrders(req.user);
   }
 
   @Post('purchase-orders')
-  @Roles('admin', 'manager', 'supplier', 'staff')
   createPurchaseOrder(@Body() dto: CreateAsnDto, @Req() req: any) {
     return this.svc.createPurchaseOrder(dto, req.user);
   }
 
   @Get('purchase-orders/:id')
-  @Roles('admin', 'manager', 'staff', 'supplier')
   findPurchaseOrder(@Param('id') id: string, @Req() req: any) {
     return this.svc.findPurchaseOrder(id, req.user);
   }
 
   @Put('purchase-orders/:id')
-  @Roles('admin', 'manager', 'supplier', 'staff')
   updatePurchaseOrder(@Param('id') id: string, @Body() dto: CreateAsnDto, @Req() req: any) {
     return this.svc.updatePurchaseOrder(id, dto, req.user);
   }
 
   @Delete('purchase-orders/:id')
-  @Roles('admin', 'manager')
   removePurchaseOrder(@Param('id') id: string, @Req() req: any) {
     return this.svc.removeReceipt(id, req.user);
   }
