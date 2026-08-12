@@ -211,18 +211,17 @@ function authHeaders() {
 // ─── MASTER DATA MẪU CHUẨN KHO ────────────────────────────────
 
 const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [
-  { id: 'wh-1', code: 'KHO-TONG', name: 'Kho Tổng TP. Hồ Chí Minh' },
-  { id: 'wh-2', code: 'KHO-HN', name: 'Kho Trung Luân Hà Nội' },
-  { id: 'wh-3', code: 'KHO-CUCHI', name: 'Kho Lạnh Củ Chi' },
-  { id: 'wh-4', code: 'KHO-DN', name: 'Kho Miền Trung Đà Nẵng' },
-  { id: 'wh-5', code: 'KHO-BD', name: 'Kho Linh Kiện Bình Dương' },
+  { id: '1', code: 'SPX001', name: 'SPX Express' },
+  { id: '2', code: 'KHO-MAIN', name: 'Kho Tổng' },
+  { id: '3', code: 'KHO-NVL', name: 'Kho Nguyên Vật Liệu' },
+  { id: '4', code: 'KHO-123', name: 'Kho 123' },
 ];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return 'Kho Tổng TP.HCM';
+  if (!codeOrName) return 'SPX Express';
   const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
   if (found) return found.name;
-  if (codeOrName === '4445') return 'Kho Tổng TP.HCM';
+  if (codeOrName === '4445') return 'SPX Express';
   return codeOrName;
 }
 
@@ -461,15 +460,15 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT): FormDetailRow[] {
   return Array.from({ length: count }, (_, i) => makeEmptyRow(i));
 }
 
-function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'): InboundTab {
+function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', defaultBranch = 'SPX001'): InboundTab {
   const d = new Date();
   const dateFormatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
 
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
-    title: `# PNK-${d.getFullYear()}-${String(tabIndex).padStart(4, '0')}`,
-    receiptNo: `PNK-${d.getFullYear()}-${String(tabIndex).padStart(4, '0')}`,
-    branchCode: 'KHO-TONG',
+    title: `# ${tabIndex}`,
+    receiptNo: '',
+    branchCode: defaultBranch,
     employeeName: currentUserName || 'Quản lý kho',
     supplier: '',
     supplierPhone: '',
@@ -639,7 +638,7 @@ export default function Inbound() {
             supplierId: item.supplierId || item.supplier?.id,
             supplierPhone: item.supplier?.phone || '',
             supplierAddress: item.supplier?.address || '',
-            warehouseCode: item.warehouseCode || 'KHO-TONG',
+            warehouseCode: item.warehouseCode || 'SPX001',
             employeeName: item.creatorName || currentUserName,
             orderDate: item.orderDate ? new Date(item.orderDate).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'),
             expectedDate: item.expectedDate ? new Date(item.expectedDate).toLocaleDateString('vi-VN') : '',
@@ -651,16 +650,16 @@ export default function Inbound() {
             totalAmount: Number(item.totalAmount || 0),
             amountPaid: Number(item.amountPaid || item.totalAmount || 0),
             itemsCount: item.details?.length || item.items || 1,
-            totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.expectedQty || d.receivedQty || 1)), 0) || 1,
+            totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.expectedQty || d.receivedQty || d.qty || 1)), 0) || 1,
             details: item.details?.map((d: any) => ({
               id: d.id,
-              productId: d.productId,
-              productSku: d.product?.internalSku || d.sku || 'SKU',
+              productId: d.productId || d.product?.id,
+              productSku: d.product?.internalSku || d.sku || d.productSku || 'SKU',
               productName: d.product?.name || d.productName || 'Sản phẩm',
-              unit: d.product?.unit || 'Cái',
-              qty: Number(d.expectedQty || d.receivedQty || 1),
+              unit: d.product?.unit || d.unit || 'Cái',
+              qty: Number(d.receivedQty || d.expectedQty || d.qty || 1),
               price: Number(d.unitPrice || d.price || 0),
-              totalLineAmount: Number(d.totalLineAmount || (d.expectedQty * d.unitPrice) || 0),
+              totalLineAmount: Number(d.totalLineAmount || (Number(d.expectedQty || d.receivedQty || d.qty || 1) * Number(d.unitPrice || d.price || 0)) || 0),
             })) || [],
           }));
           setOrders(formatted);
@@ -670,13 +669,33 @@ export default function Inbound() {
       if (supRes && supRes.ok) {
         const sData = await supRes.json();
         const sList = Array.isArray(sData) ? sData : sData.data || [];
-        if (sList.length > 0) setSuppliers(sList);
+        if (sList.length > 0) {
+          const normalizedSup = sList.map((s: any) => ({
+            id: String(s.id),
+            supplierCode: s.supplierCode || '',
+            name: s.name || '',
+            phone: s.phone || '',
+            address: s.address || '',
+            taxCode: s.taxCode || '',
+          }));
+          setSuppliers(normalizedSup);
+        }
       }
 
       if (prodRes && prodRes.ok) {
         const pData = await prodRes.json();
         const pList = Array.isArray(pData) ? pData : pData.data || [];
-        if (pList.length > 0) setProducts(pList);
+        if (pList.length > 0) {
+          const normalized = pList.map((p: any) => ({
+            id: String(p.id),
+            internalSku: p.internalSku || p.sku || '',
+            name: p.name || '',
+            unit: p.unit || 'Cái',
+            purchasePrice: Number(p.importPrice || p.purchasePrice || p.price || 0),
+            salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
+          }));
+          setProducts(normalized);
+        }
       }
 
       if (userRes && userRes.ok) {
@@ -967,15 +986,28 @@ export default function Inbound() {
     setSelectedIds(next);
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 phiếu để xóa', type: 'error' });
       return;
     }
     if (!confirm(`Bạn có chắc chắn muốn xóa ${selectedIds.size} phiếu nhập đã chọn?`)) return;
+
+    try {
+      for (const id of selectedIds) {
+        if (/^\d+$/.test(id)) {
+          await fetch(`${API_BASE_URL}/inbound/purchase-orders/${id}`, {
+            method: 'DELETE',
+            headers: authHeaders(),
+          }).catch(() => null);
+        }
+      }
+    } catch {}
+
     setOrders((prev) => prev.filter((o) => !selectedIds.has(o.id)));
     setSelectedIds(new Set());
     setToast({ message: `Đã xóa thành công ${selectedIds.size} phiếu nhập`, type: 'success' });
+    loadData();
   };
 
   const handleCopySelected = () => {
@@ -990,8 +1022,8 @@ export default function Inbound() {
     updateActiveTab((t) => ({
       ...t,
       id: undefined,
-      title: `# PNK-${new Date().getFullYear()}-COPY`,
-      receiptNo: `PNK-${new Date().getFullYear()}-COPY`,
+      title: `# COPY`,
+      receiptNo: '',
     }));
     setToast({ message: `Đã sao chép phiếu nhập ${source.receiptNo}`, type: 'success' });
   };
@@ -1011,15 +1043,18 @@ export default function Inbound() {
     const grandTotal = Math.max(0, subtotal - (activeTab.discount || 0) + (activeTab.shippingFee || 0) + vatAmount);
 
     const payload = {
-      poNumber: activeTab.receiptNo || `PNK${Date.now().toString().slice(-6)}`,
+      poNumber: activeTab.receiptNo.trim() || undefined,
+      receiptNo: activeTab.receiptNo.trim() || undefined,
       supplierId: activeTab.supplierId || suppliers[0]?.id,
       supplierName: activeTab.supplier || suppliers[0]?.name || 'Nhà cung cấp',
-      warehouseCode: activeTab.branchCode || 'KHO-TONG',
-      orderDate: new Date().toISOString(),
-      expectedDate: new Date().toISOString(),
+      warehouseCode: activeTab.branchCode || 'SPX001',
+      branchCode: activeTab.branchCode || 'SPX001',
+      orderDate: activeTab.orderDate,
+      expectedDate: activeTab.expectedDate,
       status: activeTab.status || 'RECEIVED',
       description: activeTab.description || 'Tạo phiếu nhập hàng trực tiếp',
       totalAmount: grandTotal,
+      subtotal,
       discount: activeTab.discount || 0,
       vatAmount,
       amountPaid: activeTab.amountPaid || grandTotal,
@@ -1028,10 +1063,24 @@ export default function Inbound() {
         productSku: r.productSku,
         productName: r.productName,
         unit: r.unit,
-        warehouseCode: activeTab.branchCode,
+        warehouseCode: activeTab.branchCode || 'SPX001',
         expectedQty: Number(r.qty),
         receivedQty: Number(r.qty),
+        qty: Number(r.qty),
         unitPrice: Number(r.price),
+        price: Number(r.price),
+      })),
+      items: validItems.map((r) => ({
+        productId: r.productId,
+        productSku: r.productSku,
+        productName: r.productName,
+        unit: r.unit,
+        warehouseCode: activeTab.branchCode || 'SPX001',
+        expectedQty: Number(r.qty),
+        receivedQty: Number(r.qty),
+        qty: Number(r.qty),
+        unitPrice: Number(r.price),
+        price: Number(r.price),
       })),
     };
 
@@ -1040,12 +1089,12 @@ export default function Inbound() {
 
     const newRecord: InboundReceiptOrder = {
       id: recordId,
-      receiptNo: payload.poNumber,
+      receiptNo: payload.poNumber || 'PNK_TỰ_ĐỘNG',
       supplier: payload.supplierName,
       supplierId: payload.supplierId,
       supplierPhone: activeTab.supplierPhone || '',
       supplierAddress: activeTab.supplierAddress || '',
-      warehouseCode: activeTab.branchCode || 'KHO-TONG',
+      warehouseCode: activeTab.branchCode || 'SPX001',
       employeeName: activeTab.employeeName || currentUserName,
       orderDate: activeTab.orderDate || new Date().toLocaleDateString('vi-VN'),
       status: activeTab.status || 'completed',
@@ -1074,11 +1123,19 @@ export default function Inbound() {
         : `${API_BASE_URL}/inbound/purchase-orders`;
       const method = isEdit ? 'PUT' : 'POST';
 
-      await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers: authHeaders(),
         body: JSON.stringify(payload),
       }).catch(() => null);
+
+      if (res && res.ok) {
+        const savedData = await res.json();
+        if (savedData && (savedData.poNumber || savedData.receiptNo)) {
+          newRecord.receiptNo = savedData.poNumber || savedData.receiptNo;
+          newRecord.id = String(savedData.id || newRecord.id);
+        }
+      }
 
       setOrders((prev) => {
         if (isEdit) {
@@ -1089,7 +1146,7 @@ export default function Inbound() {
       });
 
       setToast({
-        message: isEdit ? `Đã cập nhật thành công phiếu ${payload.poNumber}!` : `Đã lưu thành công phiếu ${payload.poNumber}!`,
+        message: isEdit ? `Đã cập nhật thành công phiếu ${newRecord.receiptNo}!` : `Đã lưu thành công phiếu ${newRecord.receiptNo}!`,
         type: 'success',
       });
 
@@ -1729,7 +1786,7 @@ export default function Inbound() {
                 type="text"
                 value={activeTab.receiptNo}
                 onChange={(e) => updateActiveTab((t) => ({ ...t, receiptNo: e.target.value }))}
-                placeholder="PNK Tự động..."
+                placeholder="Tự sinh nếu để trống..."
                 className="h-9 w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 text-xs font-bold text-cyan-700 outline-none focus:border-cyan-500"
               />
             </div>

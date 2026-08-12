@@ -12,6 +12,18 @@ export class PurchaseOrderItemDto {
 
   @IsOptional()
   @IsString()
+  productSku?: string;
+
+  @IsOptional()
+  @IsString()
+  productName?: string;
+
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @IsOptional()
+  @IsString()
   supplierProductId?: string;
 
   @IsOptional()
@@ -20,24 +32,38 @@ export class PurchaseOrderItemDto {
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
+  @IsNumber()
   expectedQty?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
+  @IsNumber()
   receivedQty?: number;
 
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  qty?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   unitPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  price?: number;
 }
 
 export class CreateAsnDto {
   @IsOptional()
   @IsString()
   poNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  receiptNo?: string;
 
   @IsOptional()
   @IsString()
@@ -50,6 +76,14 @@ export class CreateAsnDto {
   @IsOptional()
   @IsString()
   supplierName?: string;
+
+  @IsOptional()
+  @IsString()
+  warehouseCode?: string;
+
+  @IsOptional()
+  @IsString()
+  branchCode?: string;
 
   @IsOptional()
   @IsString()
@@ -84,7 +118,32 @@ export class CreateAsnDto {
   description?: string;
 
   @IsOptional()
+  @IsNumber()
+  totalAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  subtotal?: number;
+
+  @IsOptional()
+  @IsNumber()
+  discount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  vatAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  amountPaid?: number;
+
+  @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => PurchaseOrderItemDto)
   items?: PurchaseOrderItemDto[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseOrderItemDto)
+  details?: PurchaseOrderItemDto[];
 }
