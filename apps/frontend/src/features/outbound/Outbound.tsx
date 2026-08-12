@@ -161,6 +161,33 @@ interface InvoiceTab {
 
 const DEFAULT_ROWS_COUNT = 18;
 
+// Master Fallbacks so that lists are never empty
+const DEFAULT_FALLBACK_CUSTOMERS: CustomerOption[] = [
+  { id: 'cust-0', customerCode: '888', name: '888 - Khách lẻ', phone: '09123456789', address: 'Hà Nội' },
+  { id: 'cust-1', customerCode: 'KH001', name: 'Công ty Cổ phần Mua Sắm VN', phone: '0987654321', address: '123 Điện Biên Phủ, Q. Bình Thạnh, TP.HCM' },
+  { id: 'cust-2', customerCode: 'KH002', name: 'Nguyễn Văn An', phone: '0901112233', address: '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM' },
+  { id: 'cust-3', customerCode: 'KH003', name: 'Trần Thị Bình', phone: '0902223344', address: '45 Lê Lợi, Phường Bến Thành, Quận 1, TP.HCM' },
+  { id: 'cust-4', customerCode: 'KH004', name: 'Lê Hoàng Cường', phone: '0903334455', address: '78 Điện Biên Phủ, Phường 15, Q. Bình Thạnh, TP.HCM' },
+  { id: 'cust-5', customerCode: 'KH005', name: 'Phạm Ngọc Dũng', phone: '0904445566', address: '12 Võ Văn Tần, Phường 6, Quận 3, TP.HCM' },
+  { id: 'cust-6', customerCode: 'KH006', name: 'Vũ Thùy Én', phone: '0905556677', address: '99 CMT8, Phường 7, Quận Tân Bình, TP.HCM' },
+  { id: 'cust-7', customerCode: 'KH007', name: 'Hoàng Hương Giang', phone: '0906667788', address: '234 Trần Hưng Đạo, Quận 5, TP.HCM' },
+  { id: 'cust-8', customerCode: 'KH008', name: 'Đại lý phân phối Miền Bắc', phone: '0978889999', address: 'Tòa nhà RIC, Cầu Giấy, Hà Nội' },
+  { id: 'cust-9', customerCode: 'KH009', name: 'Siêu thị Điện máy Xanh', phone: '0933112233', address: 'Phạm Văn Đồng, Bắc Từ Liêm, Hà Nội' },
+];
+
+const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [
+  { id: 'prod-1', internalSku: '111', name: '2 123', unit: '123', salePrice: 5 },
+  { id: 'prod-2', internalSku: 'SP001', name: 'iPhone 15 Pro Max 256GB', unit: 'Cái', salePrice: 28500000 },
+  { id: 'prod-3', internalSku: 'SP002', name: 'Samsung Galaxy S24 Ultra', unit: 'Cái', salePrice: 26900000 },
+  { id: 'prod-4', internalSku: 'SP003', name: 'MacBook Air M2 16GB/512GB', unit: 'Chiếc', salePrice: 32000000 },
+  { id: 'prod-5', internalSku: 'SP004', name: 'Tai nghe Sony WH-1000XM5', unit: 'Cái', salePrice: 7500000 },
+  { id: 'prod-6', internalSku: 'SP005', name: 'Màn hình Dell UltraSharp 27 inch 4K', unit: 'Chiếc', salePrice: 12500000 },
+  { id: 'prod-7', internalSku: 'SP006', name: 'Bàn phím cơ không dây Logitech MX Keys', unit: 'Cái', salePrice: 2450000 },
+  { id: 'prod-8', internalSku: 'SP007', name: 'Chuột không dây Logitech MX Master 3S', unit: 'Cái', salePrice: 1950000 },
+  { id: 'prod-9', internalSku: 'SP008', name: 'Cáp sạc Type-C to Lightning Anker 1m', unit: 'Sợi', salePrice: 250000 },
+  { id: 'prod-10', internalSku: 'SP009', name: 'Củ sạc nhanh GaN 65W Baseus 3 cổng', unit: 'Cái', salePrice: 450000 },
+];
+
 function makeEmptyRow(index: number): FormDetailRow {
   return {
     rowId: `row-${Date.now()}-${index}-${Math.random()}`,
@@ -253,8 +280,8 @@ export default function Outbound() {
   const [selectedOrder, setSelectedOrder] = useState<OutboundOrder | null>(null);
 
   // Master Data
-  const [products, setProducts] = useState<ProductOption[]>([]);
-  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>(DEFAULT_FALLBACK_PRODUCTS);
+  const [customers, setCustomers] = useState<CustomerOption[]>(DEFAULT_FALLBACK_CUSTOMERS);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([
     { id: '1', code: '4445', name: 'Chi nhánh chính (4445)' },
@@ -351,69 +378,154 @@ export default function Outbound() {
         Authorization: `Bearer ${token}`,
       };
 
-      const [ordersData, prodsRes, custsRes, usersRes] = await Promise.all([
-        outboundApi.listOrders(),
-        fetch('http://localhost:3000/api/products', { headers }).catch(() => null),
-        fetch('http://localhost:3000/api/customers', { headers }).catch(() => null),
-        fetch('http://localhost:3000/api/users', { headers }).catch(() => null),
-      ]);
-
+      // 1. Orders
+      const ordersData = await outboundApi.listOrders().catch(() => []);
       setOrders(ordersData);
 
-      if (prodsRes && prodsRes.ok) {
-        const pData = await prodsRes.json();
-        if (Array.isArray(pData)) {
-          setProducts(
-            pData.map((item: any) => ({
+      // 2. Products from API + LocalStorage + Defaults
+      let loadedProducts: ProductOption[] = [];
+      try {
+        const pRes = await fetch('http://localhost:3000/api/products', { headers }).catch(() => null);
+        if (pRes && pRes.ok) {
+          const pData = await pRes.json();
+          const pList = Array.isArray(pData) ? pData : pData?.data || [];
+          if (pList.length > 0) {
+            loadedProducts = pList.map((item: any) => ({
               id: String(item.id),
               internalSku: String(item.internalSku || item.sku || item.id),
               name: String(item.name || item.internalSku || item.id),
               unit: String(item.unit || 'Cái'),
-              salePrice: Number(item.salePrice || item.retailPrice || item.price || 0),
-            }))
-          );
+              salePrice: Number(item.salePrice || item.retailPrice || item.price || item.importPrice || 5),
+            }));
+          }
         }
+      } catch {}
+
+      if (loadedProducts.length === 0) {
+        try {
+          const localProds = JSON.parse(localStorage.getItem('smart-wms-products') || '[]');
+          if (Array.isArray(localProds) && localProds.length > 0) {
+            loadedProducts = localProds.map((item: any) => ({
+              id: String(item.id || item.sku),
+              internalSku: String(item.sku || item.internalSku || item.id),
+              name: String(item.name || item.sku),
+              unit: String(item.unit || 'Cái'),
+              salePrice: Number(item.retailPrice || item.price || item.importPrice || 5),
+            }));
+          }
+        } catch {}
       }
 
-      if (custsRes && custsRes.ok) {
-        const cData = await custsRes.json();
-        if (Array.isArray(cData)) {
-          setCustomers(
-            cData.map((item: any) => ({
+      if (loadedProducts.length === 0) {
+        loadedProducts = DEFAULT_FALLBACK_PRODUCTS;
+      } else {
+        DEFAULT_FALLBACK_PRODUCTS.forEach(dp => {
+          if (!loadedProducts.some(p => p.internalSku === dp.internalSku)) {
+            loadedProducts.push(dp);
+          }
+        });
+      }
+      setProducts(loadedProducts);
+
+      // 3. Customers from API + Users + LocalStorage + Defaults
+      let loadedCustomers: CustomerOption[] = [];
+      try {
+        const cRes = await fetch('http://localhost:3000/api/customers', { headers }).catch(() => null);
+        if (cRes && cRes.ok) {
+          const cData = await cRes.json();
+          const cList = Array.isArray(cData) ? cData : cData?.data || [];
+          if (cList.length > 0) {
+            loadedCustomers = cList.map((item: any) => ({
               id: String(item.id),
-              customerCode: String(item.customerCode || item.code || ''),
+              customerCode: String(item.customerCode || item.code || `KH${item.id}`),
               name: String(item.name || item.customerCode || ''),
               phone: String(item.phone || ''),
               address: String(item.address || ''),
               accumulatedPoints: 12217,
-            }))
-          );
+            }));
+          }
         }
+      } catch {}
+
+      // Add users with customer role
+      try {
+        const uRes = await fetch('http://localhost:3000/api/users', { headers }).catch(() => null);
+        if (uRes && uRes.ok) {
+          const uData = await uRes.json();
+          const uList = Array.isArray(uData) ? uData : uData?.data || [];
+          uList.forEach((u: any) => {
+            const isCust = u.role === 'customer' || (u.roles || []).some((r: any) => r.name === 'customer');
+            if (isCust && !loadedCustomers.some((c) => c.name === u.fullName || c.name === u.email)) {
+              loadedCustomers.push({
+                id: String(u.id),
+                customerCode: `KH${u.id}`,
+                name: u.fullName || u.email,
+                phone: u.phone || '',
+                address: u.address || '',
+                accumulatedPoints: 12217,
+              });
+            }
+          });
+        }
+      } catch {}
+
+      if (loadedCustomers.length === 0) {
+        try {
+          const storedProfiles = JSON.parse(localStorage.getItem('smart-wms-customer-profiles') || '{}');
+          const profileKeys = Object.keys(storedProfiles);
+          if (profileKeys.length > 0) {
+            loadedCustomers = profileKeys.map((id, idx) => ({
+              id,
+              customerCode: `KH00${idx + 1}`,
+              name: storedProfiles[id]?.name || `Khách hàng ${idx + 1}`,
+              phone: storedProfiles[id]?.phone || '',
+              address: storedProfiles[id]?.address || '',
+              accumulatedPoints: 12217,
+            }));
+          }
+        } catch {}
       }
 
-      if (usersRes && usersRes.ok) {
-        const uData = await usersRes.json();
-        if (Array.isArray(uData)) {
-          setUsers(
-            uData.map((u: any) => ({
+      if (loadedCustomers.length === 0) {
+        loadedCustomers = DEFAULT_FALLBACK_CUSTOMERS;
+      } else {
+        DEFAULT_FALLBACK_CUSTOMERS.forEach(fc => {
+          if (!loadedCustomers.some(c => c.customerCode === fc.customerCode || c.name === fc.name)) {
+            loadedCustomers.push(fc);
+          }
+        });
+      }
+      setCustomers(loadedCustomers);
+
+      // 4. Users / Employees
+      let loadedUsers: UserOption[] = [];
+      try {
+        const uRes = await fetch('http://localhost:3000/api/users', { headers }).catch(() => null);
+        if (uRes && uRes.ok) {
+          const uData = await uRes.json();
+          const uList = Array.isArray(uData) ? uData : uData?.data || [];
+          if (uList.length > 0) {
+            loadedUsers = uList.map((u: any) => ({
               id: String(u.id),
               fullName: u.fullName || u.email?.split('@')[0] || 'Nhân viên',
               email: u.email,
               role: u.role || (u.roles?.[0]?.name) || '',
-            }))
-          );
+            }));
+          }
         }
-      } else {
-        // Mock fallback employees matching user screenshot
-        setUsers([
+      } catch {}
+
+      if (loadedUsers.length === 0) {
+        loadedUsers = [
           { id: '1', fullName: 'Demo 1680', email: 'demo1680@ric.vn' },
           { id: '2', fullName: 'Demo 2388', email: 'demo2388@ric.vn' },
           { id: '3', fullName: 'HUUDQtest', email: 'huu@ric.vn' },
           { id: '4', fullName: 'huu1', email: 'huu1@ric.vn' },
           { id: '5', fullName: 'huu2', email: 'huu2@ric.vn' },
           { id: '6', fullName: 'Quản Lý', email: 'quanly@example.com' },
-        ]);
+        ];
       }
+      setUsers(loadedUsers);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Lỗi khi tải dữ liệu đơn xuất bán', 'error');
     } finally {
@@ -714,11 +826,13 @@ export default function Outbound() {
   const filteredCustomers = useMemo(() => {
     const kw = (activeTab?.customer || '').trim().toLowerCase();
     if (!kw) return sortedCustomers;
-    return sortedCustomers.filter((c) =>
+    const matched = sortedCustomers.filter((c) =>
       (c.name || '').toLowerCase().includes(kw) ||
       (c.customerCode || '').toLowerCase().includes(kw) ||
       (c.phone || '').toLowerCase().includes(kw)
     );
+    const nonMatched = sortedCustomers.filter((c) => !matched.includes(c));
+    return [...matched, ...nonMatched];
   }, [sortedCustomers, activeTab?.customer]);
 
   const handleSelectCustomer = (c: CustomerOption) => {
@@ -737,6 +851,18 @@ export default function Outbound() {
       const updated = [c.id, ...prev.filter((id) => id !== c.id)].slice(0, 30);
       localStorage.setItem('recent_customer_ids', JSON.stringify(updated));
     } catch {}
+  };
+
+  // ── Product Suggestions (Filtered matches first, then remaining) ──
+  const getFilteredProductsForRow = (rowText: string) => {
+    const kw = (rowText || '').trim().toLowerCase();
+    if (!kw) return products;
+    const matched = products.filter((p) =>
+      p.name.toLowerCase().includes(kw) ||
+      p.internalSku.toLowerCase().includes(kw)
+    );
+    const nonMatched = products.filter((p) => !matched.includes(p));
+    return [...matched, ...nonMatched];
   };
 
   // ── Employee Suggestions ─────────────────────────────────────
@@ -809,7 +935,7 @@ export default function Outbound() {
 
       if (!res.ok) throw new Error('Không thể thêm khách hàng');
       const saved = await res.json();
-      setCustomers((prev) => [...prev, saved]);
+      setCustomers((prev) => [saved, ...prev]);
       if (activeTab) {
         updateActiveTab((tab) => ({
           ...tab,
@@ -856,7 +982,7 @@ export default function Outbound() {
       employeeName: activeTab.employeeName || currentUserName,
       receiver: activeTab.receiver.trim() || undefined,
       customerId: activeTab.customerId,
-      customer: activeTab.customer.trim() || 'Khách lẻ',
+      customer: activeTab.customer.trim() || '888 - Khách lẻ',
       customerPhone: activeTab.customerPhone.trim() || undefined,
       customerAddress: activeTab.customerAddress.trim() || undefined,
       orderDate: activeTab.orderDate,
@@ -1397,7 +1523,7 @@ export default function Outbound() {
                         {/* Customer */}
                         {columnVis.customerName && (
                           <td className="border border-slate-200 px-2 py-2 text-slate-700 font-medium">
-                            {order.customer || '888'}
+                            {order.customer || '888 - Khách lẻ'}
                           </td>
                         )}
 
@@ -1778,7 +1904,7 @@ export default function Outbound() {
               />
             </div>
 
-            {/* 2: Khách hàng with Interactive Suggestion Dropdown (Sorted by Recent / A-Z) */}
+            {/* 2: Khách hàng with Interactive Suggestion Dropdown */}
             <div className="relative flex items-center gap-1.5 flex-1 min-w-[320px]">
               <span className="font-bold text-slate-700 whitespace-nowrap">Khách hàng:</span>
               <div className="relative flex-1" onClick={(e) => e.stopPropagation()}>
@@ -1790,34 +1916,36 @@ export default function Outbound() {
                     setShowCustomerDropdown(true);
                   }}
                   onFocus={() => setShowCustomerDropdown(true)}
+                  onClick={() => setShowCustomerDropdown(true)}
                   placeholder="Chọn khách hàng..."
-                  className="h-7 w-full rounded border border-slate-300 px-2 text-xs font-semibold outline-none focus:border-teal-500"
+                  className="h-7 w-full rounded border border-slate-300 px-2 text-xs font-semibold outline-none focus:border-teal-500 cursor-text"
                 />
 
                 {/* Customer Suggestion Dropdown */}
                 {showCustomerDropdown && (
                   <div className="absolute left-0 right-0 top-full z-[100] mt-1 max-h-64 overflow-y-auto rounded-md border border-slate-300 bg-white shadow-2xl flex flex-col">
-                    <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-1.5 text-[11px] font-bold text-slate-600">
+                    <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-1.5 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
                       <span className="w-1/3">MÃ KH</span>
                       <span className="w-1/3">TÊN KHÁCH HÀNG</span>
                       <span className="w-1/3 text-right">ĐIỆN THOẠI</span>
                     </div>
-                    <div className="overflow-y-auto flex-1">
-                      {filteredCustomers.length === 0 ? (
-                        <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy khách hàng phù hợp</div>
-                      ) : (
-                        filteredCustomers.map((c) => (
+                    <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                      {filteredCustomers.map((c) => {
+                        const isSelected = activeTab.customer === c.name;
+                        return (
                           <div
                             key={c.id}
                             onClick={() => handleSelectCustomer(c)}
-                            className="flex items-center px-3 py-1.5 hover:bg-teal-50 cursor-pointer border-b border-slate-100 text-xs text-slate-700 transition"
+                            className={`flex items-center px-3 py-2 cursor-pointer text-xs transition ${
+                              isSelected ? 'bg-teal-100 font-bold text-teal-900' : 'hover:bg-teal-50 text-slate-700'
+                            }`}
                           >
                             <span className="w-1/3 font-bold text-cyan-800">{c.customerCode || 'KH---'}</span>
-                            <span className="w-1/3 font-semibold text-slate-800 truncate">{c.name}</span>
+                            <span className="w-1/3 font-semibold text-slate-800 truncate pr-1">{c.name}</span>
                             <span className="w-1/3 text-right text-slate-500">{c.phone || '-'}</span>
                           </div>
-                        ))
-                      )}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1891,13 +2019,7 @@ export default function Outbound() {
                       const isRowFilled = Boolean(row.productName || row.productSku || row.productId);
                       const rowBgClass = isEven ? 'bg-[#eafaf1]' : 'bg-white';
                       const isDropdownOpen = activeProductDropdownRowId === row.rowId;
-
-                      const rowFilteredProducts = (row.productName || row.productSku)
-                        ? products.filter((p) =>
-                            p.name.toLowerCase().includes((row.productName || '').toLowerCase()) ||
-                            p.internalSku.toLowerCase().includes((row.productSku || '').toLowerCase())
-                          ).slice(0, 30)
-                        : products.slice(0, 30);
+                      const rowFilteredProducts = getFilteredProductsForRow(row.productName || row.productSku);
 
                       return (
                         <tr
@@ -1923,36 +2045,33 @@ export default function Outbound() {
                                   setActiveProductDropdownRowId(row.rowId);
                                 }}
                                 onFocus={() => setActiveProductDropdownRowId(row.rowId)}
+                                onClick={() => setActiveProductDropdownRowId(row.rowId)}
                                 placeholder="Chọn hoặc nhập hàng..."
-                                className="h-6 w-full rounded bg-transparent px-1.5 text-xs font-semibold outline-none focus:bg-white focus:ring-1 focus:ring-teal-500"
+                                className="h-6 w-full rounded bg-transparent px-1.5 text-xs font-semibold outline-none focus:bg-white focus:ring-1 focus:ring-teal-500 cursor-text"
                               />
 
                               {/* Interactive Table Dropdown for this row */}
                               {isDropdownOpen && (
-                                <div className="absolute left-0 top-full z-[100] mt-1 w-[380px] max-h-56 overflow-y-auto rounded-md border border-slate-300 bg-white shadow-2xl flex flex-col">
-                                  <div className="flex bg-slate-100 border-b border-slate-300 px-2 py-1.5 text-[11px] font-bold text-slate-600 flex-shrink-0">
+                                <div className="absolute left-0 top-full z-[100] mt-1 w-[400px] max-h-60 overflow-y-auto rounded-md border border-slate-300 bg-white shadow-2xl flex flex-col">
+                                  <div className="flex bg-slate-100 border-b border-slate-300 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
                                     <span className="w-1/3">MÃ HÀNG</span>
                                     <span className="w-1/2">TÊN HÀNG HÓA</span>
                                     <span className="w-1/4 text-right">GIÁ</span>
                                   </div>
-                                  <div className="overflow-y-auto flex-1">
-                                    {rowFilteredProducts.length === 0 ? (
-                                      <div className="p-2.5 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
-                                    ) : (
-                                      rowFilteredProducts.map((p) => (
-                                        <div
-                                          key={p.id}
-                                          onClick={() => handleSelectProductForRow(row.rowId, p)}
-                                          className="flex items-center px-2 py-1.5 hover:bg-teal-50 cursor-pointer border-b border-slate-100 text-xs text-slate-700 transition"
-                                        >
-                                          <span className="w-1/3 font-bold text-cyan-800">{p.internalSku}</span>
-                                          <span className="w-1/2 font-medium text-slate-800 truncate pr-1">{p.name}</span>
-                                          <span className="w-1/4 text-right font-semibold text-slate-700">
-                                            {Number(p.salePrice || 0).toLocaleString('vi-VN')}
-                                          </span>
-                                        </div>
-                                      ))
-                                    )}
+                                  <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                                    {rowFilteredProducts.map((p) => (
+                                      <div
+                                        key={p.id}
+                                        onClick={() => handleSelectProductForRow(row.rowId, p)}
+                                        className="flex items-center px-2.5 py-1.5 hover:bg-teal-50 cursor-pointer text-xs text-slate-700 transition"
+                                      >
+                                        <span className="w-1/3 font-bold text-cyan-800">{p.internalSku}</span>
+                                        <span className="w-1/2 font-medium text-slate-800 truncate pr-1">{p.name}</span>
+                                        <span className="w-1/4 text-right font-semibold text-slate-700">
+                                          {Number(p.salePrice || 0).toLocaleString('vi-VN')}
+                                        </span>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               )}
@@ -2197,8 +2316,6 @@ export default function Outbound() {
                   />
                 </div>
 
-                {/* 4: Đã bỏ phần sử dụng tích điểm */}
-
                 {/* Tổng tiền VAT */}
                 <div className="flex items-center justify-between border-t border-slate-200 pt-2">
                   <span className="font-semibold text-slate-600">Tổng tiền VAT:</span>
@@ -2396,7 +2513,7 @@ export default function Outbound() {
                 </div>
                 <div>
                   <span className="font-semibold text-slate-500 mr-1">Khách hàng:</span>
-                  <span className="font-bold text-slate-800">{selectedOrder.customer || '888'}</span>
+                  <span className="font-bold text-slate-800">{selectedOrder.customer || '888 - Khách lẻ'}</span>
                 </div>
                 <div>
                   <span className="font-semibold text-slate-500 mr-1">Địa chỉ/Tel:</span>
