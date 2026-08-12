@@ -18,8 +18,8 @@ export class ProductsService {
   ) {}
 
   /**
-   * Tra cứu sản phẩm theo mã vạch (supplierBarcode) hoặc mã SKU nội bộ (internalSku).
-   * Trả về thông tin sản phẩm kèm tồn kho tại các vị trí kho.
+   * Tra cứu hàng hóa theo mã vạch (supplierBarcode) hoặc mã SKU nội bộ (internalSku).
+   * Trả về thông tin hàng hóa kèm tồn kho tại các vị trí kho.
    */
   async findByBarcode(code: string) {
     const trimmed = code.trim();
@@ -40,7 +40,7 @@ export class ProductsService {
     }
 
     if (!product) {
-      throw new NotFoundException(`Không tìm thấy sản phẩm với mã "${trimmed}"`);
+      throw new NotFoundException(`Không tìm thấy hàng hóa với mã "${trimmed}"`);
     }
 
     // Lấy tồn kho tại tất cả các vị trí
@@ -87,9 +87,9 @@ export class ProductsService {
       return await this.productRepo.save(product);
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
-        throw new BadRequestException(`Mã sản phẩm "${dto.internalSku}" đã tồn tại trong hệ thống (có thể thuộc Sản phẩm NCC). Vui lòng chọn mã khác.`);
+        throw new BadRequestException(`Mã hàng hóa "${dto.internalSku}" đã tồn tại trong hệ thống (có thể thuộc Hàng hóa NCC). Vui lòng chọn mã khác.`);
       }
-      throw new BadRequestException(error.sqlMessage || error.message || 'Lỗi khi tạo sản phẩm');
+      throw new BadRequestException(error.sqlMessage || error.message || 'Lỗi khi tạo hàng hóa');
     }
   }
 
@@ -175,9 +175,9 @@ export class ProductsService {
       return await this.productRepo.save(p);
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
-        throw new BadRequestException(`Mã sản phẩm đã bị trùng lặp.`);
+        throw new BadRequestException(`Mã hàng hóa đã bị trùng lặp.`);
       }
-      throw new BadRequestException(error.sqlMessage || error.message || 'Lỗi khi cập nhật sản phẩm');
+      throw new BadRequestException(error.sqlMessage || error.message || 'Lỗi khi cập nhật hàng hóa');
     }
   }
 
@@ -188,16 +188,16 @@ export class ProductsService {
     });
 
     if (hasBalances > 0) {
-      throw new BadRequestException('Sản phẩm đang có dữ liệu tồn kho, không thể xóa');
+      throw new BadRequestException('Hàng hóa đang có dữ liệu tồn kho, không thể xóa');
     }
 
     try {
       await this.productRepo.delete(id);
       return { deleted: true };
     } catch (err: any) {
-      // Bắt lỗi khóa ngoại nếu sản phẩm đang nằm trong đơn đặt hàng, phiếu xuất, v.v.
+      // Bắt lỗi khóa ngoại nếu hàng hóa đang nằm trong đơn đặt hàng, phiếu xuất, v.v.
       if (err.code === 'ER_ROW_IS_REFERENCED_2') {
-        throw new BadRequestException('Sản phẩm đang có giao dịch liên quan (chưa xóa hết), không thể xóa');
+        throw new BadRequestException('Hàng hóa đang có giao dịch liên quan (chưa xóa hết), không thể xóa');
       }
       throw err;
     }

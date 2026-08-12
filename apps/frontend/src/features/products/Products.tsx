@@ -9,16 +9,29 @@ import {
   X,
   XCircle,
   CheckCircle,
+  CheckCircle2,
   SlidersHorizontal,
   Columns,
   History,
   Plus,
+  Warehouse as WarehouseIcon,
+  Save,
+  Building2,
+  DollarSign,
+  Workflow,
+  Boxes,
+  Globe,
+  RefreshCw,
+  ArrowRightLeft,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import {
   getActiveItemGroupCategories,
   getStoredCatalogCategories,
 } from '../../shared/utils/catalogCategories';
 import { getStoredWarehouses } from '../../shared/utils/warehouseAssignments';
+import { readStoredUnits, saveStoredUnits, UnitConversion } from './UnitsPage';
 
 // Internal Toast component
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
@@ -38,6 +51,111 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
       <button onClick={onClose} className="ml-2 rounded-lg p-1 hover:bg-white/50 transition">
         <X size={16} />
       </button>
+    </div>
+  );
+}
+
+// Reusable Searchable Select Component with rounded corners & search input
+type SearchableOption = {
+  value: string;
+  label: string;
+};
+
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  placeholder = 'Chọn...',
+  disabled = false,
+  className = '',
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: SearchableOption[];
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  const selectedOption = options.find((o) => o.value === value);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredOptions = options.filter((o) =>
+    o.label.toLowerCase().includes(searchTerm.trim().toLowerCase())
+  );
+
+  return (
+    <div ref={dropdownRef} className={`relative w-full ${className}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) setIsOpen(!isOpen);
+        }}
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 disabled:bg-slate-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+      >
+        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+        <ChevronDown className={`h-4 w-4 text-slate-500 flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-64 overflow-hidden rounded-xl border-2 border-slate-300 bg-white p-2 shadow-xl animate-in fade-in-50 zoom-in-95 flex flex-col">
+          {/* Search Input on Top */}
+          <div className="relative mb-1.5">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm kiếm..."
+              autoFocus
+              className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 text-xs font-semibold text-slate-800 outline-none focus:border-cyan-500 focus:bg-white transition"
+            />
+          </div>
+
+          {/* Options list */}
+          <div className="overflow-y-auto max-h-48 space-y-0.5 pr-0.5">
+            {filteredOptions.length === 0 ? (
+              <div className="p-3 text-center text-xs text-slate-400 italic">Không tìm thấy kết quả</div>
+            ) : (
+              filteredOptions.map((opt) => {
+                const isSelected = opt.value === value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                      setSearchTerm('');
+                    }}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
+                      isSelected
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
+                    }`}
+                  >
+                    <span className="truncate">{opt.label}</span>
+                    {isSelected && <Check className="h-3.5 w-3.5 flex-shrink-0" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -87,23 +205,62 @@ type Product = {
   supplier: string;
   price: number;
   stock: number;
+  warehouseStocks?: Record<string, number>;
   images: string[];
   isVisible: boolean;
 };
 
+type ConversionUnitItem = {
+  id: string;
+  unitName: string;
+  conversionRate: number | '';
+  price: number | '';
+  barcode: string;
+  importPrice?: number | '';
+  wholesalePrice?: number | '';
+  retailPrice?: number | '';
+};
+
+type ComboProductItem = {
+  id: string;
+  sku: string;
+  name: string;
+  quantity: number | '';
+};
+
 type ProductForm = {
+  barcode: string;
   sku: string;
   name: string;
   category: string;
   unit: string;
+  description: string;
+  importPrice: number | '';
+  wholesalePrice: number | '';
+  retailPrice: number | '';
+  trackSerial: boolean;
+  bonusAmount: number | '';
+  taxType: string;
+  vatRate: number | '';
+  
+  hasConversionUnits: boolean;
+  conversionUnits: ConversionUnitItem[];
+  warehouseUnitStocks: Record<string, number | ''>;
+  stock: number | '';
+  warehouseStocks: Record<string, number | ''>;
+  
+  images: string[];
+  isVisible: boolean;
+  webTitle: string;
+  webDescription: string;
+  
+  comboItems: ComboProductItem[];
+
   defaultWarehouse: string;
   location: string;
   managementType: string;
   supplier: string;
   price: number | '';
-  stock: number | '';
-  images: string[];
-  isVisible: boolean;
 };
 
 type ModalMode = 'create' | 'view' | 'edit' | 'delete' | null;
@@ -136,20 +293,48 @@ function authHeaders() {
   };
 }
 
-function buildEmptyForm(): ProductForm {
+function buildEmptyForm(warehousesList: any[] = []): ProductForm {
+  const initialWarehouseStocks: Record<string, number | ''> = {};
+  warehousesList.forEach((wh) => {
+    const key = wh.name || wh.code || wh.id;
+    if (key) initialWarehouseStocks[key] = 0;
+  });
+
+  const defaultWhName = warehousesList.find((w) => w.isDefault)?.name || warehousesList[0]?.name || 'Kho Thanh Trì';
+
   return {
+    barcode: '',
     sku: '',
     name: '',
     category: '',
-    unit: '',
-    defaultWarehouse: '',
+    unit: 'Cái',
+    description: '',
+    importPrice: '',
+    wholesalePrice: '',
+    retailPrice: '',
+    trackSerial: false,
+    bonusAmount: '',
+    taxType: 'RA',
+    vatRate: 10,
+
+    hasConversionUnits: false,
+    conversionUnits: [],
+    warehouseUnitStocks: {},
+    stock: 0,
+    warehouseStocks: initialWarehouseStocks,
+
+    images: [],
+    isVisible: true,
+    webTitle: '',
+    webDescription: '',
+
+    comboItems: [],
+
+    defaultWarehouse: defaultWhName,
     location: '',
     managementType: '',
     supplier: '',
     price: '',
-    stock: '',
-    images: [],
-    isVisible: false,
   };
 }
 
@@ -179,9 +364,21 @@ function normalizeCategory(category?: string | { name?: string }): string {
   return typeof category === 'string' ? category : category.name || '';
 }
 
+function safeUUID(): string {
+  if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.randomUUID === 'function') {
+    try {
+      return window.crypto.randomUUID();
+    } catch {
+      // fallback
+    }
+  }
+  return 'id_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+}
+
 function normalizeProduct(product: RawProduct): Product {
+  const stockVal = Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0));
   return {
-    id: product.id || crypto.randomUUID(),
+    id: product.id || safeUUID(),
     sku: product.internalSku || product.sku || '',
     name: product.name || '',
     category: normalizeCategory(product.category),
@@ -191,7 +388,8 @@ function normalizeProduct(product: RawProduct): Product {
     managementType: product.managementType || '',
     supplier: normalizeSupplierField(product.supplier || ''),
     price: Number(product.price || 0),
-    stock: Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0)),
+    stock: stockVal,
+    warehouseStocks: (product as any).warehouseStocks || {},
     images: (product as any).images || [],
     isVisible: !!product.isVisible,
   };
@@ -207,6 +405,7 @@ export default function Products() {
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [selectedProduct, setSelectedProduct] = React.useState<Product | null>(null);
   const [form, setForm] = React.useState<ProductForm>(buildEmptyForm());
+  const [activeTab, setActiveTab] = React.useState<'general' | 'combo' | 'web' | 'conversion'>('general');
   const [catalogCategories, setCatalogCategories] = React.useState(() => getStoredCatalogCategories());
   const [warehouses, setWarehouses] = React.useState(() => getStoredWarehouses());
 
@@ -214,7 +413,7 @@ export default function Products() {
   const [columnsConfig, setColumnsConfig] = React.useState<ColumnConfig[]>([
     { key: 'stt', label: 'STT', visible: true },
     { key: 'image', label: 'Ảnh', visible: true },
-    { key: 'sku', label: 'Mã sản phẩm', visible: true },
+    { key: 'sku', label: 'Mã hàng hóa', visible: true },
     { key: 'name', label: 'Tên hàng hóa', visible: true },
     { key: 'category', label: 'Danh mục', visible: true },
     { key: 'unit', label: 'ĐV Tính', visible: true },
@@ -235,6 +434,35 @@ export default function Products() {
   // History modal state
   const [historyModalOpen, setHistoryModalOpen] = React.useState(false);
   const [historyProduct, setHistoryProduct] = React.useState<Product | null>(null);
+
+  // Quick Add Unit Modal state
+  const [showQuickAddUnitModal, setShowQuickAddUnitModal] = React.useState(false);
+  const [quickUnitName, setQuickUnitName] = React.useState('');
+  const [quickUnitDesc, setQuickUnitDesc] = React.useState('');
+
+  const handleSaveQuickUnit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = quickUnitName.trim();
+    if (!trimmed) {
+      setError('Vui lòng nhập tên đơn vị tính.');
+      return;
+    }
+    const existing = readStoredUnits();
+    const newUnit: UnitConversion = {
+      id: `unit_${Date.now()}`,
+      convertedUnit: trimmed,
+      quantity: 1,
+      status: 'active',
+      description: quickUnitDesc.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    saveStoredUnits([newUnit, ...existing]);
+    setForm((c) => ({ ...c, unit: trimmed }));
+    setSuccess(`Đã thêm mới và chọn đơn vị tính "${trimmed}".`);
+    setShowQuickAddUnitModal(false);
+    setQuickUnitName('');
+    setQuickUnitDesc('');
+  };
 
   // Pagination states
   const [pageSize, setPageSize] = React.useState(20);
@@ -258,7 +486,7 @@ export default function Products() {
       const response = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách sản phẩm');
+        throw new Error(data?.message || 'Không tải được danh sách hàng hóa');
       }
 
       const data = (await response.json()) as RawProduct[];
@@ -344,10 +572,29 @@ export default function Products() {
       ? [{ value: form.category, label: form.category }]
       : []),
   ];
-  const productUnitOptions = [
-    ...unitOptions.map((unit) => ({ value: unit.name, label: `${unit.code} - ${unit.name}` })),
-    ...(form.unit && !unitOptions.some((unit) => unit.name === form.unit) ? [{ value: form.unit, label: form.unit }] : []),
+  const storedUnits = readStoredUnits();
+  const rawUnitOptionsList = [
+    ...unitOptions.map((unit) => ({ value: unit.name, label: unit.code ? `${unit.code} - ${unit.name}` : unit.name })),
+    ...storedUnits.map((u) => ({ value: u.convertedUnit, label: u.convertedUnit })),
+    { value: 'Cái', label: 'Cái' },
+    { value: 'Hộp', label: 'Hộp' },
+    { value: 'Bộ', label: 'Bộ' },
+    { value: 'Kg', label: 'Kg' },
+    { value: 'Bao', label: 'Bao' },
+    { value: 'Thùng', label: 'Thùng' },
+    { value: 'Lốc', label: 'Lốc' },
+    { value: '123', label: '123' },
   ];
+  const unitMap = new Map<string, { value: string; label: string }>();
+  rawUnitOptionsList.forEach((u) => {
+    if (u.value && !unitMap.has(u.value)) {
+      unitMap.set(u.value, u);
+    }
+  });
+  if (form.unit && !unitMap.has(form.unit)) {
+    unitMap.set(form.unit, { value: form.unit, label: form.unit });
+  }
+  const productUnitOptions = Array.from(unitMap.values());
   const productManagementTypeOptions = [
     ...managementTypeOptions.map((type) => ({ value: type.name, label: `${type.code} - ${type.name}` })),
     ...(form.managementType && !managementTypeOptions.some((type) => type.name === form.managementType)
@@ -377,12 +624,13 @@ export default function Products() {
     setError('');
     setSuccess('');
     setSelectedProduct(null);
+    setActiveTab('general');
     setForm({
-      ...buildEmptyForm(),
+      ...buildEmptyForm(warehouses),
       category: categoryOptions[0]?.name || '',
-      unit: unitOptions[0]?.name || '',
+      unit: unitOptions[0]?.name || 'Cái',
       managementType: managementTypeOptions[0]?.name || '',
-      defaultWarehouse: warehouses[0]?.name || '',
+      defaultWarehouse: warehouses.find((w: any) => w.isDefault)?.name || warehouses[0]?.name || 'Kho Thanh Trì',
       location: locationOptions[0]?.name || '',
     });
     setModalMode('create');
@@ -392,41 +640,78 @@ export default function Products() {
     setError('');
     setSuccess('');
     setSelectedProduct(product);
+    setActiveTab('general');
+
+    const existingStocks: Record<string, number | ''> = {};
+    warehouses.forEach((wh) => {
+      const key = wh.name || wh.code || wh.id;
+      if (key) {
+        if (product.warehouseStocks && product.warehouseStocks[key] !== undefined) {
+          existingStocks[key] = product.warehouseStocks[key];
+        } else {
+          existingStocks[key] = product.stock || 0;
+        }
+      }
+    });
+
+    const existingConversionUnits = (product as any).conversionUnits || [];
+
     setForm({
+      barcode: (product as any).barcode || (product as any).supplierBarcode || '',
       sku: product.sku,
       name: product.name,
       category: product.category,
-      unit: product.unit || '',
-      defaultWarehouse: product.defaultWarehouse || '',
-      location: product.location || '',
-      managementType: product.managementType || '',
-      supplier: product.supplier,
-      price: product.price,
+      unit: product.unit || 'Cái',
+      description: (product as any).description || product.supplier || '',
+      importPrice: (product as any).importPrice ?? '',
+      wholesalePrice: (product as any).wholesalePrice ?? '',
+      retailPrice: (product as any).retailPrice || product.price || '',
+      trackSerial: !!(product as any).trackSerial,
+      bonusAmount: (product as any).bonusAmount ?? '',
+      taxType: (product as any).taxType || 'RA',
+      vatRate: (product as any).vatRate ?? 10,
+      hasConversionUnits: existingConversionUnits.length > 0,
+      conversionUnits: existingConversionUnits,
+      warehouseUnitStocks: (product as any).warehouseUnitStocks || {},
       stock: product.stock,
+      warehouseStocks: existingStocks,
       images: product.images || [],
       isVisible: product.isVisible || false,
+      webTitle: (product as any).webTitle || '',
+      webDescription: (product as any).webDescription || '',
+      comboItems: (product as any).comboItems || [],
+      defaultWarehouse: product.defaultWarehouse || warehouses[0]?.name || 'Kho Thanh Trì',
+      location: product.location || '',
+      managementType: product.managementType || '',
+      supplier: product.supplier || '',
+      price: product.price || 0,
     });
     setModalMode(mode);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (
-      !form.sku.trim() ||
-      !form.name.trim() ||
-      form.price === ''
-    ) {
-      setError('Vui lòng nhập Mã sản phẩm, Tên sản phẩm và Giá bán.');
+    
+    // Auto generate SKU if empty!
+    let finalSku = form.sku.trim().toUpperCase();
+    if (!finalSku) {
+      finalSku = 'HH' + Math.floor(100000 + Math.random() * 900000);
+    }
+
+    const priceToUse = form.retailPrice !== '' ? Number(form.retailPrice) : (form.price !== '' ? Number(form.price) : 0);
+
+    if (!form.name.trim()) {
+      setError('Vui lòng nhập Tên hàng hóa.');
       return;
     }
 
     if (categoryOptions.length === 0) {
-      setError('Vui lòng tạo danh mục loại "Nhóm hàng vật tư hàng hóa" trước khi thêm sản phẩm.');
+      setError('Vui lòng tạo danh mục loại "Nhóm hàng vật tư hàng hóa" trước khi thêm hàng hóa.');
       return;
     }
 
     if (!form.category) {
-      setError('Vui lòng chọn Danh mục cho sản phẩm.');
+      setError('Vui lòng chọn Danh mục cho hàng hóa.');
       return;
     }
 
@@ -438,20 +723,52 @@ export default function Products() {
       const url = isEdit && selectedProduct ? `${API_BASE_URL}/products/${selectedProduct.id}` : `${API_BASE_URL}/products`;
       
       const foundCategory = categoryOptions.find(c => c.name === form.category);
+      let calculatedTotalStock = 0;
+      warehouses.forEach((wh) => {
+        const whKey = wh.name || wh.code || wh.id;
+        const baseQ = Number(form.warehouseStocks[whKey]) || 0;
+        let unitQ = 0;
+        if (form.hasConversionUnits && form.conversionUnits.length > 0) {
+          form.conversionUnits.forEach((u) => {
+            const q = Number(form.warehouseUnitStocks[`${whKey}_${u.id}`]) || 0;
+            const rate = Number(u.conversionRate) || 1;
+            unitQ += q * rate;
+          });
+        }
+        calculatedTotalStock += baseQ + unitQ;
+      });
+
       const payload = {
-        internalSku: form.sku.trim().toUpperCase(),
-        sku: form.sku.trim().toUpperCase(),
+        internalSku: finalSku,
+        sku: finalSku,
+        supplierBarcode: form.barcode.trim(),
+        barcode: form.barcode.trim(),
         name: form.name.trim(),
         categoryId: foundCategory ? foundCategory.id : undefined,
         category: form.category.trim(),
         unit: form.unit.trim(),
+        description: form.description.trim(),
+        importPrice: form.importPrice !== '' ? Number(form.importPrice) : undefined,
+        wholesalePrice: form.wholesalePrice !== '' ? Number(form.wholesalePrice) : undefined,
+        retailPrice: priceToUse,
+        price: priceToUse,
+        trackSerial: form.trackSerial,
+        bonusAmount: form.bonusAmount !== '' ? Number(form.bonusAmount) : undefined,
+        taxType: form.taxType,
+        vatRate: form.vatRate !== '' ? Number(form.vatRate) : undefined,
         defaultWarehouse: form.defaultWarehouse.trim(),
         location: form.location.trim(),
         managementType: form.managementType.trim(),
-        supplier: form.supplier.trim(),
-        price: Number(form.price),
-        stock: Number(form.stock),
+        supplier: form.supplier.trim() || form.description.trim(),
+        stock: calculatedTotalStock,
+        warehouseStocks: form.warehouseStocks,
+        warehouseUnitStocks: form.warehouseUnitStocks,
+        hasConversionUnits: form.hasConversionUnits,
+        conversionUnits: form.hasConversionUnits ? form.conversionUnits : [],
         images: form.images.filter(Boolean),
+        isVisible: form.isVisible,
+        webTitle: form.webTitle,
+        comboItems: form.comboItems,
       };
 
       const response = await fetch(url, {
@@ -462,10 +779,10 @@ export default function Products() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không thể lưu sản phẩm. Vui lòng kiểm tra lại thông tin (có thể trùng mã sản phẩm).');
+        throw new Error(data?.message || 'Không thể lưu hàng hóa. Vui lòng kiểm tra lại thông tin (có thể trùng mã hàng hóa).');
       }
 
-      setSuccess(isEdit ? 'Đã cập nhật sản phẩm.' : 'Đã thêm sản phẩm mới.');
+      setSuccess(isEdit ? 'Đã cập nhật hàng hóa.' : 'Đã thêm hàng hóa mới.');
       closeModal();
       await loadData();
     } catch (err: any) {
@@ -488,14 +805,14 @@ export default function Products() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không thể xóa sản phẩm. Có thể do sản phẩm đang có dữ liệu liên quan.');
+        throw new Error(data?.message || 'Không thể xóa hàng hóa. Có thể do hàng hóa đang có dữ liệu liên quan.');
       }
 
-      setSuccess('Đã xóa sản phẩm thành công.');
+      setSuccess('Đã xóa hàng hóa thành công.');
       closeModal();
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi hệ thống khi xóa sản phẩm');
+      setError(err instanceof Error ? err.message : 'Lỗi hệ thống khi xóa hàng hóa');
       closeModal();
     } finally {
       setSaving(false);
@@ -504,12 +821,12 @@ export default function Products() {
 
   const modalTitle =
     modalMode === 'create'
-      ? 'Thêm sản phẩm'
+      ? 'Thêm hàng hóa'
       : modalMode === 'view'
-        ? 'Chi tiết sản phẩm'
+        ? 'Chi tiết hàng hóa'
         : modalMode === 'edit'
-          ? 'Sửa sản phẩm'
-          : 'Xóa sản phẩm';
+          ? 'Sửa hàng hóa'
+          : 'Xóa hàng hóa';
 
   const visibleColCount = columnsConfig.filter(c => c.visible).length + 1;
 
@@ -529,7 +846,7 @@ export default function Products() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Package className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Quản lý sản phẩm</h1>
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản lý hàng hóa</h1>
           </div>
         </div>
 
@@ -539,7 +856,7 @@ export default function Products() {
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Thêm sản phẩm
+          Thêm hàng hóa
         </button>
       </div>
 
@@ -547,12 +864,12 @@ export default function Products() {
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
           <p className="text-base font-black text-cyan-700 uppercase">
-            {products.length} TỔNG SẢN PHẨM
+            {products.length} TỔNG HÀNG HÓA
           </p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
           <p className="text-base font-black text-cyan-700 uppercase">
-            {products.reduce((sum, p) => sum + (p.stock || 0), 0).toLocaleString('vi-VN')} TỔNG SỐ LƯỢNG SẢN PHẨM
+            {products.reduce((sum, p) => sum + (p.stock || 0), 0).toLocaleString('vi-VN')} TỔNG SỐ LƯỢNG HÀNG HÓA
           </p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
@@ -577,7 +894,7 @@ export default function Products() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-base outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
-              placeholder="Tìm kiếm sản phẩm theo tên, SKU, danh mục..."
+              placeholder="Tìm kiếm hàng hóa theo tên, SKU, danh mục..."
             />
           </div>
 
@@ -627,7 +944,7 @@ export default function Products() {
 
             {/* Danh mục - mỗi mục là một button */}
             <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">Danh mục sản phẩm</label>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">Danh mục hàng hóa</label>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -726,7 +1043,7 @@ export default function Products() {
                   <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ảnh</th>
                 )}
                 {isColVisible('sku') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã sản phẩm</th>
+                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã hàng hóa</th>
                 )}
                 {isColVisible('name') && (
                   <th className="min-w-[200px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên hàng hóa</th>
@@ -757,13 +1074,13 @@ export default function Products() {
               {loading ? (
                 <tr>
                   <td colSpan={visibleColCount} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Đang tải dữ liệu sản phẩm...
+                    Đang tải dữ liệu hàng hóa...
                   </td>
                 </tr>
               ) : paginatedProducts.length === 0 ? (
                 <tr>
                   <td colSpan={visibleColCount} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Chưa có sản phẩm phù hợp.
+                    Chưa có hàng hóa phù hợp.
                   </td>
                 </tr>
               ) : (
@@ -877,7 +1194,7 @@ export default function Products() {
                           <button
                             type="button"
                             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Sửa sản phẩm"
+                            title="Sửa hàng hóa"
                             onClick={() => openProductModal('edit', product)}
                           >
                             <Pencil size={18} strokeWidth={2.5} />
@@ -885,7 +1202,7 @@ export default function Products() {
                           <button
                             type="button"
                             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Xóa sản phẩm"
+                            title="Xóa hàng hóa"
                             onClick={() => openProductModal('delete', product)}
                           >
                             <Trash2 size={18} strokeWidth={2.5} />
@@ -970,7 +1287,7 @@ export default function Products() {
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-slate-800">Cấu hình hiển thị cột</h3>
-                  <p className="text-xs font-medium text-slate-500">Tích chọn các mục/cột muốn hiển thị trên bảng sản phẩm</p>
+                  <p className="text-xs font-medium text-slate-500">Tích chọn các mục/cột muốn hiển thị trên bảng hàng hóa</p>
                 </div>
               </div>
               <button
@@ -1054,7 +1371,7 @@ export default function Products() {
                 <div>
                   <h3 className="text-lg font-black text-slate-800">Lịch sử đơn hàng</h3>
                   <p className="text-xs font-medium text-slate-500">
-                    Sản phẩm: <span className="font-bold text-slate-900">{historyProduct.name}</span> (Mã: {historyProduct.sku})
+                    Hàng hóa: <span className="font-bold text-slate-900">{historyProduct.name}</span> (Mã: {historyProduct.sku})
                   </p>
                 </div>
               </div>
@@ -1118,181 +1435,1328 @@ export default function Products() {
       {/* Main CRUD Modals */}
       {modalMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm">
-          <div className="flex w-full max-w-[95vw] flex-col" style={{ height: '92vh', borderRadius: '1rem', background: '#fff', boxShadow: '0 25px 60px rgba(0,0,0,0.18)' }}>
-            {/* Modal Header */}
-            <div className="flex shrink-0 items-center justify-between border-b-2 border-slate-100 px-6 py-4">
+          <div className="flex w-full max-w-[96vw] flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border-2 border-slate-200" style={{ height: '92vh' }}>
+            {/* Modal Header Strip - Matching CreateStockInOrderPage style */}
+            <div className="flex shrink-0 items-center justify-between border-b-2 border-slate-200 bg-slate-50 px-6 py-3.5 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-cyan-50 p-2 text-cyan-600">
-                  <Package className="h-6 w-6" />
+                <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-3.5 py-1.5 text-white shadow-md">
+                  <Package className="h-4 w-4 text-cyan-100" />
+                  <h2 className="text-sm font-bold tracking-tight text-white uppercase">{modalTitle}</h2>
                 </div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-800">{modalTitle}</h2>
-                  <p className="text-sm font-medium text-slate-500">
-                    {modalMode === 'view' ? 'Thông tin sản phẩm chi tiết' : 'Khai báo thông tin sản phẩm và phân bổ theo kho'}
-                  </p>
-                </div>
+                <p className="text-xs font-semibold text-slate-500 hidden sm:block">
+                  {modalMode === 'view'
+                    ? 'Thông tin chi tiết hàng hóa và tồn kho thực tế từng vị trí'
+                    : 'Khai báo thông tin chi tiết hàng hóa và nhập số lượng tồn kho ban đầu cho từng kho'}
+                </p>
               </div>
-              <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition">
-                <X className="h-5 w-5" />
+              <button
+                type="button"
+                onClick={closeModal}
+                className="rounded-xl border-2 border-slate-200 bg-white p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
 
             {modalMode === 'delete' ? (
-              <div className="px-6 py-5">
-                <p className="text-base text-slate-700">
-                  Bạn có chắc muốn xóa sản phẩm{' '}
-                  <span className="font-black text-slate-950">{selectedProduct?.name}</span> (Mã: {selectedProduct?.sku}) không?
-                </p>
-                <p className="mt-2 text-sm text-red-500 font-medium">Hành động này không thể hoàn tác.</p>
-                <div className="mt-8 flex justify-end gap-3">
-                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50 transition">Hủy</button>
-                  <button type="button" onClick={handleDelete} disabled={saving} className="rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60">
-                    {saving ? 'Đang xóa...' : 'Xóa sản phẩm'}
+              <div className="p-8 space-y-6">
+                <div className="rounded-xl border-2 border-red-200 bg-red-50/50 p-5 space-y-2">
+                  <p className="text-base text-slate-800">
+                    Bạn có chắc chắn muốn xóa hàng hóa{' '}
+                    <span className="font-black text-red-700">{selectedProduct?.name}</span> (Mã SKU: <span className="font-bold">{selectedProduct?.sku}</span>) khỏi hệ thống?
+                  </p>
+                  <p className="text-xs text-red-600 font-semibold">Cảnh báo: Hành động này không thể hoàn tác và sẽ ảnh hưởng tới dữ liệu tồn kho liên quan.</p>
+                </div>
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="rounded-xl border-2 border-slate-200 bg-white px-6 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={saving}
+                    className="rounded-xl border-2 border-red-600 bg-red-600 px-7 py-2.5 text-xs font-bold text-white shadow-md hover:bg-red-700 transition disabled:opacity-60 cursor-pointer"
+                  >
+                    {saving ? 'Đang xóa...' : 'Xóa hàng hóa'}
                   </button>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-                <div className="flex min-h-0 flex-1 divide-x divide-slate-100 overflow-hidden">
-                  {/* Column 1: Image uploads */}
-                  <div className="w-44 shrink-0 flex flex-col gap-2 overflow-y-auto p-4 bg-slate-50/60">
-                    <p className="text-xs font-black uppercase tracking-wider text-slate-400 mb-1">Ảnh sản phẩm</p>
-                    <div className="relative">
-                      {form.images[0] ? (
-                        <div className="group relative">
-                          <img src={form.images[0]} alt="Ảnh chính" className="w-full aspect-square object-cover rounded-xl border-2 border-cyan-400" />
-                          <span className="absolute top-1 left-1 rounded-md bg-cyan-500 px-1.5 py-0.5 text-[10px] font-bold text-white">Chính</span>
-                          {modalMode !== 'view' && (
-                            <button type="button" onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== 0) }))} className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs">×</button>
-                          )}
-                        </div>
-                      ) : modalMode !== 'view' && (
-                        <label className="flex flex-col items-center justify-center w-full aspect-square rounded-xl border-2 border-dashed border-slate-300 bg-white cursor-pointer hover:border-cyan-400 transition">
-                          <span className="text-2xl text-slate-300">+</span>
-                          <span className="text-[10px] text-slate-400 mt-1">Ảnh chính</span>
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const reader = new FileReader(); reader.onload = (ev) => { const url = ev.target?.result as string; setForm((c) => { const imgs = [...c.images]; imgs[0] = url; return { ...c, images: imgs }; }); }; reader.readAsDataURL(f); }} />
-                        </label>
-                      )}
-                    </div>
-                    {[1, 2, 3].map((idx) => (
-                      <div key={idx} className="relative">
-                        {form.images[idx] ? (
-                          <div className="group relative">
-                            <img src={form.images[idx]} alt={`Ảnh ${idx + 1}`} className="w-full aspect-square object-cover rounded-xl border border-slate-200" />
-                            {modalMode !== 'view' && (
-                              <button type="button" onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== idx) }))} className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs">×</button>
-                            )}
-                          </div>
-                        ) : modalMode !== 'view' && (
-                          <label className="flex flex-col items-center justify-center w-full aspect-square rounded-xl border border-dashed border-slate-200 bg-white cursor-pointer hover:border-cyan-400 transition">
-                            <span className="text-xl text-slate-300">+</span>
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const reader = new FileReader(); reader.onload = (ev) => { const url = ev.target?.result as string; setForm((c) => { const imgs = [...c.images]; while (imgs.length <= idx) imgs.push(''); imgs[idx] = url; return { ...c, images: imgs }; }); }; reader.readAsDataURL(f); }} />
-                          </label>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+              <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {/* MODAL NAVIGATION TABS BAR */}
+                <div className="flex items-center gap-1 border-b-2 border-slate-200 bg-slate-100/70 px-6 pt-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('general')}
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
+                      activeTab === 'general'
+                        ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                    }`}
+                  >
+                    <Package className="h-4 w-4 text-cyan-600" />
+                    <span>Thông tin chung</span>
+                  </button>
 
-                  {/* Column 2: Product Fields */}
-                  <div className="w-64 shrink-0 space-y-4 overflow-y-auto p-6">
-                    <p className="text-xs font-black uppercase tracking-wider text-slate-400">Thông tin sản phẩm</p>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Mã sản phẩm <span className="text-red-500">*</span></label>
-                      <input value={form.sku} onChange={(e) => setForm((c) => ({ ...c, sku: e.target.value }))} readOnly={modalMode === 'view'} className="h-9 w-full rounded-lg border-2 border-slate-200 px-3 text-sm uppercase outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="VD: SP001" required />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Tên sản phẩm <span className="text-red-500">*</span></label>
-                      <input value={form.name} onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))} readOnly={modalMode === 'view'} className="h-9 w-full rounded-lg border-2 border-slate-200 px-3 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="Nhập tên sản phẩm..." required />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Danh mục</label>
-                      <select value={form.category} onChange={(e) => setForm((c) => ({ ...c, category: e.target.value }))} disabled={modalMode === 'view' || productCategoryOptions.length === 0} className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500 disabled:bg-slate-50">
-                        {productCategoryOptions.length === 0 ? <option value="">Chưa có danh mục</option> : <><option value="" disabled>-- Chọn danh mục --</option>{productCategoryOptions.map((cat) => <option key={cat.value} value={cat.value}>{cat.label}</option>)}</>}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Giới thiệu</label>
-                      <textarea value={form.supplier} onChange={(e) => setForm((c) => ({ ...c, supplier: e.target.value }))} readOnly={modalMode === 'view'} rows={5} className="w-full resize-none rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="Mô tả ngắn về sản phẩm..." />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-bold text-slate-600">Giá bán (₫) <span className="text-red-500">*</span></label>
-                      <input type="number" min="0" value={form.price} onChange={(e) => setForm((c) => ({ ...c, price: e.target.value ? Number(e.target.value) : '' }))} readOnly={modalMode === 'view'} className="h-9 w-full rounded-lg border-2 border-slate-200 px-3 text-sm outline-none transition focus:border-cyan-500 read-only:bg-slate-50" placeholder="0" required />
-                    </div>
-                    <div className="flex items-center gap-2 pt-2">
-                      <input type="checkbox" id="isVisible" checked={form.isVisible} onChange={(e) => setForm(c => ({...c, isVisible: e.target.checked}))} disabled={modalMode === 'view'} className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer" />
-                      <label htmlFor="isVisible" className="text-xs font-bold text-slate-700 cursor-pointer leading-tight">Hiển thị sản phẩm ở trang bán hàng (Shop)</label>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('combo')}
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
+                      activeTab === 'combo'
+                        ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                    }`}
+                  >
+                    <Boxes className="h-4 w-4 text-cyan-600" />
+                    <span>Bộ sản phẩm / Combo</span>
+                  </button>
 
-                  {/* Column 3: Warehouse Matrix */}
-                  <div className="min-w-0 flex-1 overflow-y-auto p-6">
-                    <p className="mb-3 text-xs font-black uppercase tracking-wider text-slate-400">Phân bổ theo kho</p>
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
-                      <table className="w-full border-collapse text-sm">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200">
-                            <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left font-bold text-slate-700 border-r border-slate-200 min-w-[160px]">Kho</th>
-                            <th className="px-4 py-3 text-center font-bold text-slate-700 border-r border-slate-200 min-w-[110px]">Tồn kho</th>
-                            <th className="px-4 py-3 text-center font-bold text-slate-700 border-r border-slate-200 min-w-[100px]">Đã bán</th>
-                            <th className="px-4 py-3 text-center font-bold text-slate-700 border-r border-slate-200 min-w-[100px]">Nhập gần nhất (+)</th>
-                            <th className="px-4 py-3 text-center font-bold text-slate-700 min-w-[100px]">Xuất gần nhất (−)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {warehouses.length === 0 ? (
-                            <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400">Chưa có kho nào được cấu hình.</td></tr>
-                          ) : warehouses.map((wh) => {
-                            const isDef = form.defaultWarehouse === wh.name;
-                            return (
-                              <tr key={wh.id || wh.name} className={`border-b border-slate-100 transition hover:bg-slate-50 ${isDef ? 'bg-slate-50/80' : ''}`}>
-                                <td className="sticky left-0 z-10 bg-inherit border-r border-slate-100 px-4 py-3">
-                                  <div className="flex items-center gap-2">
-                                    {isDef && <span className="h-2 w-2 rounded-full bg-cyan-500 shrink-0" />}
-                                    <div>
-                                      <p className="font-semibold text-slate-800">{wh.name}</p>
-                                      <p className="text-xs text-slate-400">{wh.code}</p>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="border-r border-slate-100 px-3 py-3 text-center">
-                                  {isDef ? (
-                                    <input type="number" min="0" value={form.stock} onChange={(e) => setForm((c) => ({ ...c, stock: e.target.value ? Number(e.target.value) : '' }))} readOnly={modalMode === 'view'} className="w-full rounded-lg border-2 border-slate-200 px-2 py-1.5 text-center text-sm font-semibold text-slate-800 outline-none focus:border-cyan-500 read-only:border-transparent read-only:bg-transparent" placeholder="0" required />
-                                  ) : <span className="text-slate-300">—</span>}
-                                </td>
-                                <td className="border-r border-slate-100 px-4 py-3 text-center text-slate-400">—</td>
-                                <td className="border-r border-slate-100 px-4 py-3 text-center text-slate-400">—</td>
-                                <td className="px-4 py-3 text-center text-slate-400">—</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-slate-50 border-t-2 border-slate-200">
-                            <td className="sticky left-0 z-10 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-600 border-r border-slate-200">Tổng cộng</td>
-                            <td className="border-r border-slate-200 px-4 py-2.5 text-center text-sm font-bold text-slate-700">{Number(form.stock) || 0}</td>
-                            <td className="border-r border-slate-200 px-4 py-2.5 text-center text-sm font-bold text-slate-400">0</td>
-                            <td className="border-r border-slate-200 px-4 py-2.5" />
-                            <td className="px-4 py-2.5" />
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('web')}
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
+                      activeTab === 'web'
+                        ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                    }`}
+                  >
+                    <Globe className="h-4 w-4 text-cyan-600" />
+                    <span>Thông tin đăng web</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('conversion')}
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
+                      activeTab === 'conversion'
+                        ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                    }`}
+                  >
+                    <RefreshCw className="h-4 w-4 text-cyan-600" />
+                    <span>Đơn vị quy đổi</span>
+                  </button>
                 </div>
 
-                {/* Modal Footer */}
-                <div className="flex shrink-0 justify-end gap-3 border-t-2 border-slate-100 px-6 py-4">
-                  <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition">
-                    {modalMode === 'view' ? 'Đóng' : 'Hủy bỏ'}
-                  </button>
-                  {modalMode !== 'view' && (
-                    <button type="submit" disabled={saving} className="rounded-xl bg-cyan-600 px-8 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60">
-                      {saving ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo sản phẩm' : 'Lưu thay đổi'}
-                    </button>
+                {/* TAB CONTENT AREA */}
+                <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 bg-slate-50/60">
+
+                  {/* TAB 1: THÔNG TIN CHUNG */}
+                  {activeTab === 'general' && (
+                    <>
+                      {/* Top Card: Basic Information & Photo Gallery */}
+                      <div className="rounded-2xl border-2 border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                        <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                          <div className="flex items-center gap-2 text-cyan-700">
+                            <Package className="h-4 w-4 text-cyan-600" />
+                            <span>THÔNG TIN CHI TIẾT HÀNG HÓA</span>
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-400">Các trường đánh dấu (*) là bắt buộc</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                          {/* Left Column: Product Images (3 cols) */}
+                          <div className="lg:col-span-3 space-y-3 border-r-2 border-slate-100 pr-4">
+                            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Hình ảnh hàng hóa</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {/* Main Image */}
+                              <div className="col-span-2 relative aspect-square rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 overflow-hidden flex items-center justify-center group shadow-inner">
+                                {form.images[0] ? (
+                                  <>
+                                    <img src={form.images[0]} alt="Ảnh chính" className="w-full h-full object-cover" />
+                                    <span className="absolute top-2 left-2 rounded-md bg-cyan-600 px-2 py-0.5 text-[10px] font-bold text-white shadow">Ảnh chính</span>
+                                    {modalMode !== 'view' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== 0) }))}
+                                        className="absolute top-2 right-2 h-6 w-6 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
+                                      >
+                                        ×
+                                      </button>
+                                    )}
+                                  </>
+                                ) : modalMode !== 'view' ? (
+                                  <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-cyan-50/50 transition">
+                                    <Plus className="h-7 w-7 text-slate-400" />
+                                    <span className="text-xs font-bold text-slate-600 mt-1">Tải ảnh chính</span>
+                                    <span className="text-[10px] text-slate-400">JPG, PNG, WEBP</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (!f) return;
+                                        const reader = new FileReader();
+                                        reader.onload = (ev) => {
+                                          const url = ev.target?.result as string;
+                                          setForm((c) => {
+                                            const imgs = [...c.images];
+                                            imgs[0] = url;
+                                            return { ...c, images: imgs };
+                                          });
+                                        };
+                                        reader.readAsDataURL(f);
+                                      }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span className="text-xs text-slate-400">Chưa có ảnh</span>
+                                )}
+                              </div>
+
+                              {/* Sub Images */}
+                              {[1, 2].map((idx) => (
+                                <div key={idx} className="relative aspect-square rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center group">
+                                  {form.images[idx] ? (
+                                    <>
+                                      <img src={form.images[idx]} alt={`Sub ${idx}`} className="w-full h-full object-cover" />
+                                      {modalMode !== 'view' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== idx) }))}
+                                          className="absolute top-1 right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
+                                        >
+                                          ×
+                                        </button>
+                                      )}
+                                    </>
+                                  ) : modalMode !== 'view' ? (
+                                    <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-cyan-50/50 transition">
+                                      <Plus className="h-5 w-5 text-slate-400" />
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0];
+                                          if (!f) return;
+                                          const reader = new FileReader();
+                                          reader.onload = (ev) => {
+                                            const url = ev.target?.result as string;
+                                            setForm((c) => {
+                                              const imgs = [...c.images];
+                                              while (imgs.length <= idx) imgs.push('');
+                                              imgs[idx] = url;
+                                              return { ...c, images: imgs };
+                                            });
+                                          };
+                                          reader.readAsDataURL(f);
+                                        }}
+                                      />
+                                    </label>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-300">Trống</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Right Column: Form Inputs Grid (9 cols) */}
+                          <div className="lg:col-span-9 space-y-4">
+                            {/* Row 1: Nhóm, Mã vạch, Mã */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              {/* Nhóm hàng hóa (Category) */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                                  Nhóm hàng hóa <span className="text-red-500">*</span>
+                                </label>
+                                <SearchableSelect
+                                  options={productCategoryOptions}
+                                  value={form.category}
+                                  onChange={(val) => setForm((c) => ({ ...c, category: val }))}
+                                  placeholder="Chọn nhóm hàng hóa..."
+                                  disabled={modalMode === 'view'}
+                                />
+                              </div>
+
+                              {/* Mã vạch */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Mã vạch</label>
+                                <input
+                                  type="text"
+                                  value={form.barcode}
+                                  onChange={(e) => setForm((c) => ({ ...c, barcode: e.target.value }))}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="Nhập hoặc quét mã vạch..."
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+
+                              {/* Mã hàng hóa */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                                  Mã hàng hóa
+                                </label>
+                                <input
+                                  type="text"
+                                  value={form.sku}
+                                  onChange={(e) => setForm((c) => ({ ...c, sku: e.target.value }))}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="Mã tự động tạo nếu để trống"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold uppercase text-cyan-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Row 2: Tên hàng hóa, Đơn vị tính */}
+                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                              {/* Tên hàng hóa (8 cols) */}
+                              <div className="sm:col-span-8">
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                                  Tên hàng hóa <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={form.name}
+                                  onChange={(e) => setForm((c) => ({ ...c, name: e.target.value }))}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="Nhập tên hàng hóa chi tiết..."
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                  required
+                                />
+                              </div>
+
+                              {/* Đơn vị tính (4 cols) */}
+                              <div className="sm:col-span-4">
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Đơn vị tính</label>
+                                <div className="flex items-center gap-1.5">
+                                  <SearchableSelect
+                                    options={productUnitOptions}
+                                    value={form.unit}
+                                    onChange={(val) => setForm((c) => ({ ...c, unit: val }))}
+                                    placeholder="Chọn đơn vị..."
+                                    disabled={modalMode === 'view'}
+                                    className="flex-1"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setQuickUnitName('');
+                                      setQuickUnitDesc('');
+                                      setShowQuickAddUnitModal(true);
+                                    }}
+                                    className="h-10 w-10 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition shadow-sm flex items-center justify-center cursor-pointer text-lg shrink-0"
+                                    title="Thêm nhanh đơn vị tính"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Row 3: Prices (Giá nhập, Giá bán buôn, Giá bán lẻ) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              {/* Giá nhập */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Giá nhập (₫)</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={form.importPrice}
+                                  onChange={(e) => setForm((c) => ({ ...c, importPrice: e.target.value ? Number(e.target.value) : '' }))}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="0"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+
+                              {/* Giá bán buôn */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Giá bán buôn (₫)</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={form.wholesalePrice}
+                                  onChange={(e) => setForm((c) => ({ ...c, wholesalePrice: e.target.value ? Number(e.target.value) : '' }))}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="0"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+
+                              {/* Giá bán lẻ (Giá bán) */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                                  Giá bán lẻ (₫) <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={form.retailPrice !== '' ? form.retailPrice : form.price}
+                                  onChange={(e) => {
+                                    const val = e.target.value ? Number(e.target.value) : '';
+                                    setForm((c) => ({ ...c, retailPrice: val, price: val }));
+                                  }}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="0"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-cyan-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            {/* Row 4: Financial Bonus & Tax Settings */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                              {/* Tiền thưởng nhân viên */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Tiền thưởng nhân viên (₫)</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={form.bonusAmount}
+                                  onChange={(e) => setForm((c) => ({ ...c, bonusAmount: e.target.value ? Number(e.target.value) : '' }))}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="0"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+
+                              {/* Loại thuế */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Loại thuế</label>
+                                <select
+                                  value={form.taxType}
+                                  onChange={(e) => setForm((c) => ({ ...c, taxType: e.target.value }))}
+                                  disabled={modalMode === 'view'}
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 disabled:bg-slate-50"
+                                >
+                                  <option value="RA">Thuế GTGT Đầu ra (10%)</option>
+                                  <option value="VAO">Thuế GTGT Đầu vào</option>
+                                  <option value="BOTH">Thuế Cả hai</option>
+                                  <option value="NONE">Không chịu thuế</option>
+                                </select>
+                              </div>
+
+                              {/* VAT */}
+                              <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Thuế VAT (%)</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  value={form.vatRate}
+                                  onChange={(e) => setForm((c) => ({ ...c, vatRate: e.target.value ? Number(e.target.value) : '' }))}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="10"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Row 5: Mô tả */}
+                            <div>
+                              <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Mô tả / Ghi chú chi tiết</label>
+                              <textarea
+                                value={form.description}
+                                onChange={(e) => setForm((c) => ({ ...c, description: e.target.value, supplier: e.target.value }))}
+                                readOnly={modalMode === 'view'}
+                                rows={2}
+                                placeholder="Nhập mô tả chi tiết sản phẩm..."
+                                className="w-full rounded-xl border-2 border-slate-300 bg-white p-3 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 resize-none read-only:bg-slate-50"
+                              />
+                            </div>
+
+                            {/* Section Đơn vị quy đổi Checkbox + Badge Pills (Nằm ngay dưới cột Mô tả, không dùng style xanh nữa) */}
+                            <div className="rounded-xl border-2 border-slate-200 bg-slate-50 p-3.5 flex flex-wrap items-center justify-between gap-3">
+                              <label className="inline-flex items-center gap-2.5 text-xs font-bold text-slate-800 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={form.hasConversionUnits}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setForm((c) => {
+                                      let nextUnits = c.conversionUnits;
+                                      if (checked && nextUnits.length === 0) {
+                                        nextUnits = [
+                                          { id: safeUUID(), unitName: 'Hộp', conversionRate: 10, price: '', barcode: '', importPrice: '', wholesalePrice: '', retailPrice: '' }
+                                        ];
+                                      }
+                                      return { ...c, hasConversionUnits: checked, conversionUnits: nextUnits };
+                                    });
+                                  }}
+                                  disabled={modalMode === 'view'}
+                                  className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer"
+                                />
+                                <span className="font-extrabold text-slate-800 text-xs uppercase tracking-wide">Đơn vị quy đổi:</span>
+                              </label>
+
+                              {/* Dynamic Badge Pills for multiple conversion units */}
+                              {form.hasConversionUnits && form.conversionUnits.length > 0 ? (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {form.conversionUnits.map((u) => (
+                                    <span key={u.id} className="inline-flex items-center gap-1 bg-cyan-700 text-white font-bold text-xs px-3 py-1 rounded-lg shadow-xs">
+                                      <span>×</span>
+                                      <span>{u.conversionRate || '10'}</span>
+                                      <span className="font-medium opacity-90 text-[11px]">({u.unitName || 'Quy đổi'})</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic">Tích chọn để thêm nhiều đơn vị quy đổi ở bảng bên dưới</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bottom Card: Warehouse Stock Matrix */}
+                      <div className="rounded-2xl border-2 border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                        <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                          <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                            <WarehouseIcon className="h-4 w-4 text-cyan-600" />
+                            <span>SỐ LƯỢNG TỒN KHO THEO CÁC KHO ({warehouses.length} KHO)</span>
+                          </div>
+                          <div className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 bg-slate-100 px-4 py-1.5 rounded-xl border border-slate-200">
+                            <span>TỔNG TỒN KHO TẤT CẢ CÁC KHO:</span>
+                            <span className="text-sm font-black text-cyan-800">
+                              {(Number(form.stock) || 0).toLocaleString('vi-VN')} {form.unit}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Stock Allocation Table - Per-warehouse Multi-Unit Pricing & Stock Matrix */}
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-xs">
+                              <tr>
+                                <th className="p-3 w-10 text-center border-r border-slate-200">STT</th>
+                                <th className="p-3 w-40 border-r border-slate-200">TÊN KHO HÀNG</th>
+                                <th className="p-3 w-20 text-center border-r border-slate-200">MÃ KHO</th>
+                                <th className="p-3 w-28 border-r border-slate-200">ĐƠN VỊ TÍNH</th>
+                                <th className="p-3 w-28 text-center border-r border-slate-200 bg-slate-200/60 text-slate-800">
+                                  TỒN KHO BAN ĐẦU
+                                </th>
+                                <th className="p-3 min-w-[130px] text-center border-r border-slate-200">GIÁ NHẬP (₫)</th>
+                                <th className="p-3 min-w-[130px] text-center border-r border-slate-200">GIÁ BÁN BUÔN (₫)</th>
+                                <th className="p-3 min-w-[130px] text-center border-r border-slate-200">GIÁ BÁN LẺ (₫)</th>
+                                <th className="p-3 w-28 text-center bg-cyan-100/50 text-cyan-900">TỔNG QUY ĐỔI</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {warehouses.length === 0 ? (
+                                <tr>
+                                  <td colSpan={9} className="p-8 text-center text-slate-400 font-medium">
+                                    Chưa có kho nào được cấu hình trong hệ thống.
+                                  </td>
+                                </tr>
+                              ) : (
+                                warehouses.map((wh, idx) => {
+                                  const whKey = wh.name || wh.code || wh.id;
+                                  const baseStockVal = form.warehouseStocks[whKey] ?? '';
+
+                                  // Units list for this warehouse
+                                  const warehouseUnits = [
+                                    {
+                                      id: 'base',
+                                      unitName: form.unit || 'Cái',
+                                      rate: 1,
+                                      isBase: true,
+                                      stockKey: whKey,
+                                      importKey: `${whKey}_base_importPrice`,
+                                      wholesaleKey: `${whKey}_base_wholesalePrice`,
+                                      retailKey: `${whKey}_base_retailPrice`,
+                                      stockVal: baseStockVal,
+                                      importVal: form.warehouseUnitStocks[`${whKey}_base_importPrice`] ?? '',
+                                      wholesaleVal: form.warehouseUnitStocks[`${whKey}_base_wholesalePrice`] ?? '',
+                                      retailVal: form.warehouseUnitStocks[`${whKey}_base_retailPrice`] ?? '',
+                                      defaultImport: form.importPrice,
+                                      defaultWholesale: form.wholesalePrice,
+                                      defaultRetail: form.retailPrice || form.price,
+                                    },
+                                    ...(form.hasConversionUnits
+                                      ? form.conversionUnits.map((u) => {
+                                          const uStockKey = `${whKey}_${u.id}_stock`;
+                                          const altStockKey = `${whKey}_${u.id}`;
+                                          return {
+                                            id: u.id,
+                                            unitName: u.unitName || 'Quy đổi',
+                                            rate: Number(u.conversionRate) || 1,
+                                            isBase: false,
+                                            stockKey: uStockKey,
+                                            importKey: `${whKey}_${u.id}_importPrice`,
+                                            wholesaleKey: `${whKey}_${u.id}_wholesalePrice`,
+                                            retailKey: `${whKey}_${u.id}_retailPrice`,
+                                            stockVal: form.warehouseUnitStocks[uStockKey] ?? form.warehouseUnitStocks[altStockKey] ?? '',
+                                            importVal: form.warehouseUnitStocks[`${whKey}_${u.id}_importPrice`] ?? '',
+                                            wholesaleVal: form.warehouseUnitStocks[`${whKey}_${u.id}_wholesalePrice`] ?? '',
+                                            retailVal: form.warehouseUnitStocks[`${whKey}_${u.id}_retailPrice`] ?? '',
+                                            defaultImport: u.importPrice,
+                                            defaultWholesale: u.wholesalePrice,
+                                            defaultRetail: u.retailPrice || u.price,
+                                          };
+                                        })
+                                      : []),
+                                  ];
+
+                                  // Calculate warehouse converted stock total
+                                  let whTotalQty = Number(baseStockVal) || 0;
+                                  if (form.hasConversionUnits && form.conversionUnits.length > 0) {
+                                    form.conversionUnits.forEach((u) => {
+                                      const sKey = `${whKey}_${u.id}_stock`;
+                                      const altKey = `${whKey}_${u.id}`;
+                                      const qVal = form.warehouseUnitStocks[sKey] !== undefined ? form.warehouseUnitStocks[sKey] : form.warehouseUnitStocks[altKey];
+                                      const q = Number(qVal) || 0;
+                                      const r = Number(u.conversionRate) || 1;
+                                      whTotalQty += q * r;
+                                    });
+                                  }
+
+                                  const updateUnitField = (key: string, val: number | '') => {
+                                    setForm((c) => {
+                                      let nextBaseStocks = { ...c.warehouseStocks };
+                                      let nextUnitStocks = { ...c.warehouseUnitStocks, [key]: val };
+
+                                      if (key === whKey) {
+                                        nextBaseStocks[whKey] = val;
+                                      }
+
+                                      // Sum all warehouses
+                                      let grandTotal = 0;
+                                      warehouses.forEach((wItem) => {
+                                        const k = wItem.name || wItem.code || wItem.id;
+                                        const bQ = Number(nextBaseStocks[k]) || 0;
+                                        let uQ = 0;
+                                        if (c.hasConversionUnits && c.conversionUnits.length > 0) {
+                                          c.conversionUnits.forEach((u) => {
+                                            const sK = `${k}_${u.id}_stock`;
+                                            const altK = `${k}_${u.id}`;
+                                            const qV = nextUnitStocks[sK] !== undefined ? nextUnitStocks[sK] : nextUnitStocks[altK];
+                                            const q = Number(qV) || 0;
+                                            const r = Number(u.conversionRate) || 1;
+                                            uQ += q * r;
+                                          });
+                                        }
+                                        grandTotal += bQ + uQ;
+                                      });
+
+                                      return {
+                                        ...c,
+                                        warehouseStocks: nextBaseStocks,
+                                        warehouseUnitStocks: nextUnitStocks,
+                                        stock: grandTotal,
+                                      };
+                                    });
+                                  };
+
+                                  return warehouseUnits.map((uItem, uIdx) => (
+                                    <tr key={`${whKey}_${uItem.id}`} className="hover:bg-slate-50 transition-colors">
+                                      {/* STT */}
+                                      {uIdx === 0 && (
+                                        <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-500 border-r border-slate-200 bg-slate-50/50 align-middle">
+                                          {idx + 1}
+                                        </td>
+                                      )}
+
+                                      {/* TÊN KHO HÀNG */}
+                                      {uIdx === 0 && (
+                                        <td rowSpan={warehouseUnits.length} className="p-3 border-r border-slate-200 bg-slate-50/50 align-middle">
+                                          <p className="font-extrabold text-slate-800 text-xs truncate max-w-[150px]" title={wh.name}>{wh.name}</p>
+                                          {wh.address && (
+                                            <p className="text-[10px] text-slate-400 truncate max-w-[150px]" title={wh.address}>
+                                              {wh.address}
+                                            </p>
+                                          )}
+                                        </td>
+                                      )}
+
+                                      {/* MÃ KHO */}
+                                      {uIdx === 0 && (
+                                        <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-600 border-r border-slate-200 bg-slate-50/50 align-middle">
+                                          {wh.code}
+                                        </td>
+                                      )}
+
+                                      {/* ĐƠN VỊ TÍNH */}
+                                      <td className="p-2.5 border-r border-slate-200">
+                                        {uItem.isBase ? (
+                                          <span className="inline-flex items-center gap-1 font-bold text-slate-800 text-xs">
+                                            <span>{uItem.unitName}</span>
+                                            <span className="text-[10px] font-semibold text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200">(Gốc)</span>
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1 font-bold text-emerald-800 text-xs">
+                                            <span>{uItem.unitName}</span>
+                                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">(x{uItem.rate})</span>
+                                          </span>
+                                        )}
+                                      </td>
+
+                                      {/* TỒN KHO BAN ĐẦU */}
+                                      <td className="p-2 border-r border-slate-200">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={uItem.stockVal}
+                                          onChange={(e) => {
+                                            const rawVal = e.target.value;
+                                            const val = rawVal === '' ? '' : Math.max(0, Number(rawVal));
+                                            updateUnitField(uItem.stockKey, val);
+                                          }}
+                                          readOnly={modalMode === 'view'}
+                                          placeholder="0"
+                                          className={`w-full h-8 px-2 text-center rounded border font-bold text-xs outline-none transition read-only:bg-slate-50 ${
+                                            uItem.isBase
+                                              ? 'border-slate-300 text-slate-800 focus:border-cyan-500'
+                                              : 'border-emerald-300 bg-emerald-50/40 text-emerald-900 focus:border-emerald-500'
+                                          }`}
+                                        />
+                                      </td>
+
+                                      {/* GIÁ NHẬP (₫) */}
+                                      <td className="p-2 border-r border-slate-200">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={uItem.importVal}
+                                          onChange={(e) => {
+                                            const rawVal = e.target.value;
+                                            const val = rawVal === '' ? '' : Math.max(0, Number(rawVal));
+                                            updateUnitField(uItem.importKey, val);
+                                          }}
+                                          readOnly={modalMode === 'view'}
+                                          placeholder={uItem.defaultImport ? String(uItem.defaultImport) : '0'}
+                                          className="w-full h-8 px-2 text-right rounded border border-slate-300 font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500 transition read-only:bg-slate-50"
+                                        />
+                                      </td>
+
+                                      {/* GIÁ BÁN BUÔN (₫) */}
+                                      <td className="p-2 border-r border-slate-200">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={uItem.wholesaleVal}
+                                          onChange={(e) => {
+                                            const rawVal = e.target.value;
+                                            const val = rawVal === '' ? '' : Math.max(0, Number(rawVal));
+                                            updateUnitField(uItem.wholesaleKey, val);
+                                          }}
+                                          readOnly={modalMode === 'view'}
+                                          placeholder={uItem.defaultWholesale ? String(uItem.defaultWholesale) : '0'}
+                                          className="w-full h-8 px-2 text-right rounded border border-slate-300 font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500 transition read-only:bg-slate-50"
+                                        />
+                                      </td>
+
+                                      {/* GIÁ BÁN LẺ (₫) */}
+                                      <td className="p-2 border-r border-slate-200">
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          value={uItem.retailVal}
+                                          onChange={(e) => {
+                                            const rawVal = e.target.value;
+                                            const val = rawVal === '' ? '' : Math.max(0, Number(rawVal));
+                                            updateUnitField(uItem.retailKey, val);
+                                          }}
+                                          readOnly={modalMode === 'view'}
+                                          placeholder={uItem.defaultRetail ? String(uItem.defaultRetail) : '0'}
+                                          className="w-full h-8 px-2 text-right rounded border border-slate-300 font-bold text-cyan-800 text-xs outline-none focus:border-cyan-500 transition read-only:bg-slate-50"
+                                        />
+                                      </td>
+
+                                      {/* TỔNG TỒN QUY ĐỔI KHO NÀY */}
+                                      {uIdx === 0 && (
+                                        <td rowSpan={warehouseUnits.length} className="p-3 text-center border-slate-200 bg-cyan-50/30 align-middle">
+                                          <span className="text-xs font-black text-cyan-900">
+                                            {whTotalQty.toLocaleString('vi-VN')} {form.unit}
+                                          </span>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ));
+                                })
+                              )}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-slate-100 border-t-2 border-slate-200 font-bold">
+                                <td colSpan={4} className="p-3 text-right text-slate-700 text-xs uppercase">
+                                  TỔNG CỘNG TỒN KHO TẤT CẢ CÁC KHO:
+                                </td>
+                                <td className="p-3 text-center font-black text-cyan-900 text-sm border-r border-slate-200">
+                                  {(Number(form.stock) || 0).toLocaleString('vi-VN')} {form.unit}
+                                </td>
+                                <td colSpan={4} className="p-3 text-slate-500 font-semibold text-xs">
+                                  (Tổng số lượng được tính tự động từ các kho)
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Card 3: CHUYỂN ĐỔI ĐƠN VỊ (NẰM DƯỚI CÙNG BẢNG TỒN KHO) */}
+                      {form.hasConversionUnits && (
+                        <div className="rounded-2xl border-2 border-emerald-200 bg-white p-6 shadow-sm space-y-4">
+                          <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                            <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                              <ArrowRightLeft className="h-5 w-5 text-emerald-600" />
+                              <span>DANH SÁCH & BẢNG CẤU HÌNH CHUYỂN ĐỔI ĐƠN VỊ TÍNH (NẰM DƯỚI CÙNG)</span>
+                            </div>
+                            {modalMode !== 'view' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setForm((c) => ({
+                                    ...c,
+                                    conversionUnits: [
+                                      ...c.conversionUnits,
+                                      { id: safeUUID(), unitName: 'Thùng', conversionRate: 20, price: '', barcode: '', importPrice: '', wholesalePrice: '', retailPrice: '' },
+                                    ],
+                                  }));
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer shadow-sm"
+                              >
+                                <Plus className="h-4 w-4" />
+                                <span>Thêm đơn vị quy đổi</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Table of Conversion Units */}
+                          <div className="overflow-x-auto rounded-xl border border-slate-300 bg-white shadow-sm">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300 uppercase">
+                                <tr>
+                                  <th className="p-3 w-40 border-r border-slate-300">Mã (Barcode)</th>
+                                  <th className="p-3 w-36 border-r border-slate-300">Đơn vị quy đổi</th>
+                                  <th className="p-3 w-28 border-r border-slate-300 text-center">Tỷ lệ quy đổi</th>
+                                  <th className="p-3 min-w-[130px] border-r border-slate-300 text-center">Giá nhập mặc định (₫)</th>
+                                  <th className="p-3 min-w-[130px] border-r border-slate-300 text-center">Giá bán buôn mặc định (₫)</th>
+                                  <th className="p-3 min-w-[130px] border-r border-slate-300 text-center">Giá bán lẻ mặc định (₫)</th>
+                                  {modalMode !== 'view' && <th className="p-3 w-24 text-center">Thao tác</th>}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-200 bg-white">
+                                {form.conversionUnits.map((unitItem, idx) => (
+                                  <tr key={unitItem.id} className="hover:bg-slate-50 transition-colors">
+                                    {/* Mã Barcode */}
+                                    <td className="p-2 border-r border-slate-200">
+                                      <input
+                                        type="text"
+                                        value={unitItem.barcode || ''}
+                                        onChange={(e) => {
+                                          const next = [...form.conversionUnits];
+                                          next[idx].barcode = e.target.value;
+                                          setForm((c) => ({ ...c, conversionUnits: next }));
+                                        }}
+                                        readOnly={modalMode === 'view'}
+                                        placeholder="Để trống sẽ tự sinh"
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 font-medium text-xs text-slate-800 outline-none focus:border-emerald-500 read-only:bg-slate-50"
+                                      />
+                                    </td>
+
+                                    {/* Đơn vị quy đổi */}
+                                    <td className="p-2 border-r border-slate-200">
+                                      <input
+                                        type="text"
+                                        value={unitItem.unitName}
+                                        onChange={(e) => {
+                                          const next = [...form.conversionUnits];
+                                          next[idx].unitName = e.target.value;
+                                          setForm((c) => ({ ...c, conversionUnits: next }));
+                                        }}
+                                        readOnly={modalMode === 'view'}
+                                        placeholder="VD: Hộp, Thùng..."
+                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 font-bold text-xs text-emerald-900 outline-none focus:border-emerald-500 read-only:bg-slate-50"
+                                      />
+                                    </td>
+
+                                    {/* Tỷ lệ quy đổi */}
+                                    <td className="p-2 border-r border-slate-200 text-center">
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        value={unitItem.conversionRate}
+                                        onChange={(e) => {
+                                          const next = [...form.conversionUnits];
+                                          next[idx].conversionRate = e.target.value ? Number(e.target.value) : '';
+                                          setForm((c) => ({ ...c, conversionUnits: next }));
+                                        }}
+                                        readOnly={modalMode === 'view'}
+                                        className="w-full h-8 px-2 text-center rounded-lg border border-slate-300 font-bold text-xs text-slate-800 outline-none focus:border-emerald-500 read-only:bg-slate-50"
+                                      />
+                                    </td>
+
+                                    {/* Giá nhập */}
+                                    <td className="p-2 border-r border-slate-200 text-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={unitItem.importPrice ?? ''}
+                                        onChange={(e) => {
+                                          const next = [...form.conversionUnits];
+                                          next[idx].importPrice = e.target.value ? Number(e.target.value) : '';
+                                          setForm((c) => ({ ...c, conversionUnits: next }));
+                                        }}
+                                        readOnly={modalMode === 'view'}
+                                        placeholder="0"
+                                        className="w-full h-8 px-2.5 text-right rounded-lg border border-slate-300 font-semibold text-slate-800 text-xs outline-none focus:border-emerald-500 read-only:bg-slate-50"
+                                      />
+                                    </td>
+
+                                    {/* Giá bán buôn */}
+                                    <td className="p-2 border-r border-slate-200 text-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={unitItem.wholesalePrice ?? ''}
+                                        onChange={(e) => {
+                                          const next = [...form.conversionUnits];
+                                          next[idx].wholesalePrice = e.target.value ? Number(e.target.value) : '';
+                                          setForm((c) => ({ ...c, conversionUnits: next }));
+                                        }}
+                                        readOnly={modalMode === 'view'}
+                                        placeholder="0"
+                                        className="w-full h-8 px-2.5 text-right rounded-lg border border-slate-300 font-semibold text-slate-800 text-xs outline-none focus:border-emerald-500 read-only:bg-slate-50"
+                                      />
+                                    </td>
+
+                                    {/* Giá bán lẻ */}
+                                    <td className="p-2 border-r border-slate-200 text-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={unitItem.retailPrice ?? (unitItem.price || '')}
+                                        onChange={(e) => {
+                                          const next = [...form.conversionUnits];
+                                          const val = e.target.value ? Number(e.target.value) : '';
+                                          next[idx].retailPrice = val;
+                                          next[idx].price = val;
+                                          setForm((c) => ({ ...c, conversionUnits: next }));
+                                        }}
+                                        readOnly={modalMode === 'view'}
+                                        placeholder="0"
+                                        className="w-full h-8 px-2.5 text-right rounded-lg border border-slate-300 font-bold text-cyan-800 text-xs outline-none focus:border-emerald-500 read-only:bg-slate-50"
+                                      />
+                                    </td>
+
+                                    {/* Thao tác xóa */}
+                                    {modalMode !== 'view' && (
+                                      <td className="p-2 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setForm((c) => ({
+                                              ...c,
+                                              conversionUnits: c.conversionUnits.filter((_, i) => i !== idx),
+                                            }));
+                                          }}
+                                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-100 hover:border-red-300 transition shadow-sm cursor-pointer"
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                          <span>Xóa</span>
+                                        </button>
+                                      </td>
+                                    )}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
+
+                  {/* TAB 2: BỘ SẢN PHẨM / COMBO */}
+                  {activeTab === 'combo' && (
+                    <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                        <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                          <Boxes className="h-5 w-5 text-cyan-600" />
+                          <span>DANH SÁCH HÀNG HÓA THÀNH PHẦN TRONG COMBO</span>
+                        </div>
+                        {modalMode !== 'view' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm((c) => ({
+                                ...c,
+                                comboItems: [
+                                  ...c.comboItems,
+                                  { id: safeUUID(), sku: '', name: '', quantity: 1 },
+                                ],
+                              }));
+                            }}
+                            className="inline-flex items-center gap-2 rounded-xl border border-cyan-500 bg-cyan-50 px-4 py-2 text-xs font-bold text-cyan-700 hover:bg-cyan-100 transition cursor-pointer"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span>Thêm hàng hóa vào Combo</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {form.comboItems.length === 0 ? (
+                        <div className="rounded-xl border-2 border-dashed border-slate-200 p-12 text-center text-slate-400 space-y-2">
+                          <Boxes className="h-10 w-10 mx-auto text-slate-300" />
+                          <p className="font-semibold text-sm">Chưa có thành phần nào trong bộ sản phẩm / Combo này.</p>
+                          <p className="text-xs">Bấm "Thêm hàng hóa vào Combo" để ghép nhiều hàng hóa thành một bộ.</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-slate-100 text-slate-700 font-bold uppercase border-b border-slate-200">
+                              <tr>
+                                <th className="p-3 w-12 text-center">STT</th>
+                                <th className="p-3 w-40">MÃ HÀNG HÓA</th>
+                                <th className="p-3">TÊN HÀNG HÓA THÀNH PHẦN</th>
+                                <th className="p-3 w-36 text-center">SỐ LƯỢNG THÀNH PHẦN</th>
+                                {modalMode !== 'view' && <th className="p-3 w-20 text-center">THAO TÁC</th>}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {form.comboItems.map((item, idx) => (
+                                <tr key={item.id} className="hover:bg-slate-50">
+                                  <td className="p-3 text-center font-bold text-slate-500">{idx + 1}</td>
+                                  <td className="p-2">
+                                    <input
+                                      type="text"
+                                      value={item.sku}
+                                      onChange={(e) => {
+                                        const next = [...form.comboItems];
+                                        next[idx].sku = e.target.value;
+                                        setForm((c) => ({ ...c, comboItems: next }));
+                                      }}
+                                      placeholder="Mã SKU..."
+                                      className="w-full h-8 px-2 rounded-lg border border-slate-300 font-bold uppercase text-xs outline-none focus:border-cyan-500"
+                                    />
+                                  </td>
+                                  <td className="p-2">
+                                    <input
+                                      type="text"
+                                      value={item.name}
+                                      onChange={(e) => {
+                                        const next = [...form.comboItems];
+                                        next[idx].name = e.target.value;
+                                        setForm((c) => ({ ...c, comboItems: next }));
+                                      }}
+                                      placeholder="Nhập tên thành phần..."
+                                      className="w-full h-8 px-2 rounded-lg border border-slate-300 font-semibold text-xs outline-none focus:border-cyan-500"
+                                    />
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={item.quantity}
+                                      onChange={(e) => {
+                                        const next = [...form.comboItems];
+                                        next[idx].quantity = e.target.value ? Number(e.target.value) : '';
+                                        setForm((c) => ({ ...c, comboItems: next }));
+                                      }}
+                                      className="w-24 h-8 px-2 text-center rounded-lg border border-slate-300 font-bold text-xs outline-none focus:border-cyan-500"
+                                    />
+                                  </td>
+                                  {modalMode !== 'view' && (
+                                    <td className="p-2 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setForm((c) => ({
+                                            ...c,
+                                            comboItems: c.comboItems.filter((_, i) => i !== idx),
+                                          }));
+                                        }}
+                                        className="p-1 text-red-500 hover:bg-red-50 rounded-lg transition"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 3: THÔNG TIN ĐĂNG WEB */}
+                  {activeTab === 'web' && (
+                    <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                        <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                          <Globe className="h-5 w-5 text-cyan-600" />
+                          <span>CẤU HÌNH ĐĂNG SẢN PHẨM LÊN WEBSITE BÁN HÀNG</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4 max-w-3xl">
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Tiêu đề hiển thị Web</label>
+                          <input
+                            type="text"
+                            value={form.webTitle}
+                            onChange={(e) => setForm((c) => ({ ...c, webTitle: e.target.value }))}
+                            readOnly={modalMode === 'view'}
+                            placeholder="Nhập tiêu đề hiển thị chuẩn SEO..."
+                            className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500 read-only:bg-slate-50"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="inline-flex items-center gap-3 rounded-xl border-2 border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-800 cursor-pointer transition hover:bg-slate-100 w-full">
+                            <input
+                              type="checkbox"
+                              checked={form.isVisible}
+                              onChange={(e) => setForm((c) => ({ ...c, isVisible: e.target.checked }))}
+                              disabled={modalMode === 'view'}
+                              className="h-5 w-5 rounded border-slate-300 accent-cyan-600 cursor-pointer"
+                            />
+                            <span>Cho phép hiển thị sản phẩm này trên Trang bán hàng (Shop / E-commerce)</span>
+                          </label>
+                        </div>
+
+                        <div>
+                          <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Mô tả chi tiết đăng Web</label>
+                          <textarea
+                            value={form.webDescription}
+                            onChange={(e) => setForm((c) => ({ ...c, webDescription: e.target.value }))}
+                            readOnly={modalMode === 'view'}
+                            rows={6}
+                            placeholder="Mô tả nội dung bài viết bán hàng chi tiết..."
+                            className="w-full rounded-xl border-2 border-slate-300 bg-white p-3 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 resize-none read-only:bg-slate-50"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 4: ĐƠN VỊ QUY ĐỔI */}
+                  {activeTab === 'conversion' && (
+                    <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                      <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                        <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                          <RefreshCw className="h-5 w-5 text-cyan-600" />
+                          <span>DANH SÁCH ĐƠN VỊ QUY ĐỔI (VD: 1 HỘP = 10 CÁI, 1 THÙNG = 20 HỘP)</span>
+                        </div>
+                        {modalMode !== 'view' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm((c) => ({
+                                ...c,
+                                conversionUnits: [
+                                  ...c.conversionUnits,
+                                  { id: safeUUID(), unitName: 'Hộp', conversionRate: 10, price: '', barcode: '' },
+                                ],
+                              }));
+                            }}
+                            className="inline-flex items-center gap-2 rounded-xl border border-cyan-500 bg-cyan-50 px-4 py-2 text-xs font-bold text-cyan-700 hover:bg-cyan-100 transition cursor-pointer"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span>Thêm đơn vị quy đổi</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {form.conversionUnits.length === 0 ? (
+                        <div className="rounded-xl border-2 border-dashed border-slate-200 p-12 text-center text-slate-400 space-y-2">
+                          <RefreshCw className="h-10 w-10 mx-auto text-slate-300" />
+                          <p className="font-semibold text-sm">Chưa khai báo đơn vị quy đổi nào.</p>
+                          <p className="text-xs">Bấm "Thêm đơn vị quy đổi" để thiết lập đơn vị bán buôn/bán sỉ (Hộp, Thùng, Lốc...).</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-slate-100 text-slate-700 font-bold uppercase border-b border-slate-200">
+                              <tr>
+                                <th className="p-3 w-12 text-center">STT</th>
+                                <th className="p-3 w-36">TÊN ĐƠN VỊ QUY ĐỔI</th>
+                                <th className="p-3 w-36 text-center">TỶ LỆ QUY ĐỔI</th>
+                                <th className="p-3 w-40 text-center">GIÁ BÁN QUY ĐỔI (₫)</th>
+                                <th className="p-3">MÃ VẠCH QUY ĐỔI</th>
+                                {modalMode !== 'view' && <th className="p-3 w-20 text-center">THAO TÁC</th>}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {form.conversionUnits.map((unitItem, idx) => (
+                                <tr key={unitItem.id} className="hover:bg-slate-50">
+                                  <td className="p-3 text-center font-bold text-slate-500">{idx + 1}</td>
+                                  <td className="p-2">
+                                    <input
+                                      type="text"
+                                      value={unitItem.unitName}
+                                      onChange={(e) => {
+                                        const next = [...form.conversionUnits];
+                                        next[idx].unitName = e.target.value;
+                                        setForm((c) => ({ ...c, conversionUnits: next }));
+                                      }}
+                                      placeholder="VD: Hộp..."
+                                      className="w-full h-8 px-2 rounded-lg border border-slate-300 font-bold text-xs outline-none focus:border-cyan-500"
+                                    />
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={unitItem.conversionRate}
+                                      onChange={(e) => {
+                                        const next = [...form.conversionUnits];
+                                        next[idx].conversionRate = e.target.value ? Number(e.target.value) : '';
+                                        setForm((c) => ({ ...c, conversionUnits: next }));
+                                      }}
+                                      className="w-24 h-8 px-2 text-center rounded-lg border border-slate-300 font-bold text-xs outline-none focus:border-cyan-500"
+                                    />
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={unitItem.price}
+                                      onChange={(e) => {
+                                        const next = [...form.conversionUnits];
+                                        next[idx].price = e.target.value ? Number(e.target.value) : '';
+                                        setForm((c) => ({ ...c, conversionUnits: next }));
+                                      }}
+                                      placeholder="0"
+                                      className="w-full h-8 px-2 text-center rounded-lg border border-slate-300 font-bold text-xs text-cyan-800 outline-none focus:border-cyan-500"
+                                    />
+                                  </td>
+                                  <td className="p-2">
+                                    <input
+                                      type="text"
+                                      value={unitItem.barcode}
+                                      onChange={(e) => {
+                                        const next = [...form.conversionUnits];
+                                        next[idx].barcode = e.target.value;
+                                        setForm((c) => ({ ...c, conversionUnits: next }));
+                                      }}
+                                      placeholder="Mã vạch riêng..."
+                                      className="w-full h-8 px-2 rounded-lg border border-slate-300 font-semibold text-xs outline-none focus:border-cyan-500"
+                                    />
+                                  </td>
+                                  {modalMode !== 'view' && (
+                                    <td className="p-2 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setForm((c) => ({
+                                            ...c,
+                                            conversionUnits: c.conversionUnits.filter((_, i) => i !== idx),
+                                          }));
+                                        }}
+                                        className="p-1 text-red-500 hover:bg-red-50 rounded-lg transition"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+
+                {/* MODAL FOOTER BAR */}
+                <div className="flex shrink-0 items-center justify-between border-t-2 border-slate-200 bg-white px-6 py-3.5 shadow-md">
+                  <div className="text-xs font-semibold text-slate-500">
+                    {modalMode === 'create'
+                      ? 'Tạo mới hàng hóa vào hệ thống'
+                      : modalMode === 'edit'
+                      ? `Cập nhật thông tin: ${selectedProduct?.name}`
+                      : 'Đang xem thông tin hàng hóa'}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="rounded-xl border-2 border-slate-200 bg-white px-6 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                    >
+                      {modalMode === 'view' ? 'Đóng' : 'Hủy bỏ'}
+                    </button>
+                    {modalMode !== 'view' && (
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-8 py-2.5 text-xs font-bold text-white shadow-md hover:bg-cyan-700 transition cursor-pointer disabled:opacity-60"
+                      >
+                        <Save className="h-4 w-4" />
+                        <span>{saving ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo hàng hóa' : 'Lưu thay đổi'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* QUICK ADD UNIT MODAL */}
+      {showQuickAddUnitModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in-50">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <PlusCircle className="h-5 w-5 text-amber-500" />
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">Thêm nhanh Đơn vị tính</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuickAddUnitModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuickUnit} className="p-5 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                  Tên đơn vị tính <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={quickUnitName}
+                  onChange={(e) => setQuickUnitName(e.target.value)}
+                  placeholder="VD: Thùng, Lốc, Khay, Chai, Chiếc..."
+                  autoFocus
+                  required
+                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Mô tả / Ghi chú</label>
+                <textarea
+                  value={quickUnitDesc}
+                  onChange={(e) => setQuickUnitDesc(e.target.value)}
+                  rows={2}
+                  placeholder="Ghi chú thêm về đơn vị..."
+                  className="w-full rounded-xl border-2 border-slate-300 bg-white p-3 text-xs font-medium text-slate-800 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickAddUnitModal(false)}
+                  className="rounded-xl border-2 border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-amber-600 transition cursor-pointer"
+                >
+                  <Save className="h-4 w-4" />
+                  <span>Tạo & Chọn</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
