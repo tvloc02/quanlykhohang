@@ -134,6 +134,24 @@ export default function CreateStockInOrderPage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Dropdown states (matching Outbound UI enhancements)
+  const [activeProductDropdownRowId, setActiveProductDropdownRowId] = useState<string | null>(null);
+  const [supplierSearch, setSupplierSearch] = useState<string>('');
+  const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState<boolean>(false);
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.product-dropdown-container') && !target.closest('.supplier-dropdown-container')) {
+        setActiveProductDropdownRowId(null);
+        setIsSupplierDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 3500);
@@ -241,6 +259,31 @@ export default function CreateStockInOrderPage() {
       return next;
     });
     setToast({ type: 'success', message: `Đã nhân đôi dòng số ${index + 1}` });
+  };
+
+  // Supplier Filtered Suggestions (matching Outbound UI)
+  const filteredSuppliers = useMemo(() => {
+    const kw = supplierSearch.trim().toLowerCase();
+    if (!kw) return suppliers;
+    return suppliers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(kw) ||
+        (s.supplierCode || '').toLowerCase().includes(kw) ||
+        (s.phone || '').toLowerCase().includes(kw)
+    );
+  }, [suppliers, supplierSearch]);
+
+  // Product Filtered Suggestions for Table Rows (matching Outbound UI)
+  const getFilteredProductsForRow = (rowText: string) => {
+    const kw = (rowText || '').trim().toLowerCase();
+    if (!kw) return products;
+    const matched = products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(kw) ||
+        (p.internalSku || '').toLowerCase().includes(kw)
+    );
+    const nonMatched = products.filter((p) => !matched.includes(p));
+    return [...matched, ...nonMatched];
   };
 
   const totalQty = useMemo(() => {
@@ -396,25 +439,67 @@ export default function CreateStockInOrderPage() {
               />
             </div>
 
-            {/* Chọn Nhà cung cấp */}
-            <div>
+            {/* Chọn Nhà cung cấp - Searchable Interactive Dropdown */}
+            <div className="relative supplier-dropdown-container">
               <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
                 <Building2 className="h-3.5 w-3.5 text-cyan-600" />
                 <span>Nhà cung cấp</span>
               </label>
-              <select
-                value={selectedSupplierId}
-                onChange={(e) => setSelectedSupplierId(e.target.value)}
-                className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500"
-              >
-                <option value="">-- Chọn nhà cung cấp --</option>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.supplierCode ? `[${s.supplierCode}] ` : ''}
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="text"
+                value={
+                  isSupplierDropdownOpen
+                    ? supplierSearch
+                    : (suppliers.find((s) => s.id === selectedSupplierId)?.name || '')
+                }
+                onChange={(e) => {
+                  setSupplierSearch(e.target.value);
+                  setIsSupplierDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  setSupplierSearch('');
+                  setIsSupplierDropdownOpen(true);
+                }}
+                onClick={() => setIsSupplierDropdownOpen(true)}
+                placeholder="Tìm hoặc chọn nhà cung cấp..."
+                className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500 cursor-text"
+              />
+
+              {isSupplierDropdownOpen && (
+                <div className="absolute left-0 top-full z-[100] mt-1 w-[380px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
+                  <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
+                    <span className="w-1/3 uppercase">Mã NCC</span>
+                    <span className="w-1/3 uppercase">Tên nhà cung cấp</span>
+                    <span className="w-1/3 text-right uppercase">SĐT</span>
+                  </div>
+                  <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                    {filteredSuppliers.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy nhà cung cấp</div>
+                    ) : (
+                      filteredSuppliers.map((s) => {
+                        const isSelected = selectedSupplierId === s.id;
+                        return (
+                          <div
+                            key={s.id}
+                            onClick={() => {
+                              setSelectedSupplierId(s.id);
+                              setSupplierSearch(s.name);
+                              setIsSupplierDropdownOpen(false);
+                            }}
+                            className={`flex items-center px-3 py-2 cursor-pointer text-xs transition ${
+                              isSelected ? 'bg-cyan-100 font-bold text-cyan-900' : 'hover:bg-cyan-50 text-slate-700'
+                            }`}
+                          >
+                            <span className="w-1/3 font-bold text-cyan-800">{s.supplierCode || 'NCC---'}</span>
+                            <span className="w-1/3 font-semibold text-slate-800 truncate pr-1">{s.name}</span>
+                            <span className="w-1/3 text-right text-slate-500">{s.phone || '-'}</span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Chọn Kho nhập hàng (Button / Dropdown Control) */}
@@ -491,7 +576,7 @@ export default function CreateStockInOrderPage() {
                       <tr
                         key={row.rowId}
                         className={`${
-                          isEven ? 'bg-slate-50/50' : 'bg-white'
+                          isEven ? 'bg-[#eafaf1]' : 'bg-white'
                         } hover:bg-cyan-50/50 transition-colors`}
                       >
                         {/* STT */}
@@ -510,20 +595,61 @@ export default function CreateStockInOrderPage() {
                           />
                         </td>
 
-                        {/* TÊN HÀNG HÓA */}
-                        <td className="p-1 border-r border-slate-200">
-                          <select
-                            value={row.productId}
-                            onChange={(e) => updateRow(row.rowId, { productId: e.target.value })}
-                            className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500"
-                          >
-                            <option value="">-- Chọn sản phẩm --</option>
-                            {products.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                [{p.internalSku}] {p.name}
-                              </option>
-                            ))}
-                          </select>
+                        {/* TÊN HÀNG HÓA - Searchable Interactive Inline Dropdown */}
+                        <td className="p-1 border-r border-slate-200 relative product-dropdown-container">
+                          <input
+                            type="text"
+                            value={row.productName ? `${row.sku ? row.sku + ' - ' : ''}${row.productName}` : ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateRow(row.rowId, { productName: val });
+                              setActiveProductDropdownRowId(row.rowId);
+                            }}
+                            onFocus={() => setActiveProductDropdownRowId(row.rowId)}
+                            onClick={() => setActiveProductDropdownRowId(row.rowId)}
+                            placeholder="Chọn hoặc nhập hàng..."
+                            className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500 text-xs cursor-text"
+                          />
+
+                          {/* Interactive Table Dropdown for this row */}
+                          {activeProductDropdownRowId === row.rowId && (
+                            <div className="absolute left-0 top-full z-[100] mt-1 w-[420px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
+                              <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
+                                <span className="w-1/3 uppercase">Mã hàng</span>
+                                <span className="w-1/2 uppercase">Tên hàng hóa</span>
+                                <span className="w-1/4 text-right uppercase">Giá mua</span>
+                              </div>
+                              <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                                {getFilteredProductsForRow(row.productName || row.sku).length === 0 ? (
+                                  <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
+                                ) : (
+                                  getFilteredProductsForRow(row.productName || row.sku).map((p) => (
+                                    <div
+                                      key={p.id}
+                                      onClick={() => {
+                                        updateRow(row.rowId, {
+                                          productId: p.id,
+                                          sku: p.internalSku,
+                                          productName: p.name,
+                                          unit: p.unit || 'Cái',
+                                          price: p.purchasePrice || p.salePrice || 0,
+                                          qty: row.qty === 0 ? 1 : row.qty,
+                                        });
+                                        setActiveProductDropdownRowId(null);
+                                      }}
+                                      className="flex items-center px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs text-slate-700 transition"
+                                    >
+                                      <span className="w-1/3 font-bold text-cyan-800">{p.internalSku}</span>
+                                      <span className="w-1/2 font-medium text-slate-800 truncate pr-1">{p.name}</span>
+                                      <span className="w-1/4 text-right font-semibold text-slate-700">
+                                        {Number(p.purchasePrice || p.salePrice || 0).toLocaleString('vi-VN')}
+                                      </span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </td>
 
                         {/* ĐVT */}

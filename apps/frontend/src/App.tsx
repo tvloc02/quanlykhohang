@@ -35,6 +35,7 @@ import Settings, { MailSettings, AiSettings, StoreSettings } from './features/se
 import ProfilePage from './features/user-management/pages/ProfilePage';
 import SupplierProfilePage from './features/supplier-portal/pages/SupplierProfilePage';
 import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
+import Inbound from './features/inbound/Inbound';
 import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSectionPlaceholderPage';
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import CreateStockInOrderPage from './features/inbound/pages/CreateStockInOrderPage';
@@ -272,7 +273,17 @@ function App() {
           path="/inbound"
           element={
             <ProtectedRoute>
-              <Navigate to="/inbound/purchase-orders" replace />
+              <Navigate to="/inbound/orders" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inbound/orders"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <Inbound />
+              </MainLayout>
             </ProtectedRoute>
           }
         />
@@ -281,7 +292,7 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <PurchaseOrdersPage />
+                <Inbound />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -301,7 +312,7 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <StockInOrdersPage />
+                <Inbound />
               </MainLayout>
             </ProtectedRoute>
           }
