@@ -22,8 +22,14 @@ import CashflowReportPage from './features/reports/pages/CashflowReportPage';
 import InventoryReportPage from './features/reports/pages/InventoryReportPage';
 import InventoryBaseUnitReportPage from './features/reports/pages/InventoryBaseUnitReportPage';
 import GenericReportPage from './features/reports/pages/GenericReportPage';
+import BillProfitReportPage from './features/reports/pages/BillProfitReportPage';
+import CategoryProfitReportPage from './features/reports/pages/CategoryProfitReportPage';
+import CustomerProfitReportPage from './features/reports/pages/CustomerProfitReportPage';
 import VatManagementPage from './features/vat/pages/VatManagementPage';
 import VatConfigPage from './features/vat/pages/VatConfigPage';
+import ReceiptVouchersPage from './features/finance/pages/ReceiptVouchersPage';
+import PaymentVouchersPage from './features/finance/pages/PaymentVouchersPage';
+import ReceiptFromBillPage from './features/finance/pages/ReceiptFromBillPage';
 import AuditLog from './features/audit-log/AuditLog';
 import Settings, { MailSettings, AiSettings, StoreSettings } from './features/settings/Settings';
 import ProfilePage from './features/user-management/pages/ProfilePage';
@@ -764,6 +770,36 @@ function App() {
           }
         />
         <Route
+          path="/reports/bill-profit"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <BillProfitReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/category-profit"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <CategoryProfitReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/customer-profit"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <CustomerProfitReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/reports/business-summary"
           element={
             <ProtectedRoute>
@@ -869,6 +905,36 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <VatConfigPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/finance/receipts"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ReceiptVouchersPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/finance/payment-vouchers"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <PaymentVouchersPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/finance/receipt-from-bill"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ReceiptFromBillPage />
               </MainLayout>
             </ProtectedRoute>
           }
