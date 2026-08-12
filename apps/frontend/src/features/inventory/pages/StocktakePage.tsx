@@ -183,13 +183,13 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
     { key: 'code', label: 'Mã', isDetail: false },
     { key: 'date', label: 'Ngày', isDetail: false },
     { key: 'totalDiff', label: 'Tổng lệch', isDetail: false },
-    { key: 'note', label: 'Ghi chú', isDetail: false },
     { key: 'status', label: 'Trạng thái', isDetail: false },
     { key: 'productSku', label: 'Mã hàng', isDetail: true },
     { key: 'productName', label: 'Tên hàng', isDetail: true },
     { key: 'systemQty', label: 'Tồn', isDetail: true },
     { key: 'countedQty', label: 'Thực tồn', isDetail: true },
     { key: 'difference', label: 'Lệch', isDetail: true },
+    { key: 'note', label: 'Ghi chú', isDetail: false },
   ];
 
   const [columnVis, setColumnVis] = React.useState<Record<string, boolean>>(() => {
@@ -825,13 +825,6 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                     </div>
                   </th>
                 )}
-                {columnVis.note && (
-                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                    <div className="flex items-center justify-center gap-1">
-                      Ghi chú <ChevronDown className="h-3 w-3 text-slate-400" />
-                    </div>
-                  </th>
-                )}
                 {columnVis.status && (
                   <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
@@ -877,6 +870,13 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                       </th>
                     )}
                   </>
+                )}
+                {columnVis.note && (
+                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
+                    <div className="flex items-center justify-center gap-1">
+                      Ghi chú <ChevronDown className="h-3 w-3 text-slate-400" />
+                    </div>
+                  </th>
                 )}
                 <th className="w-24 border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                   Thao tác
@@ -953,11 +953,6 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                             </span>
                           </td>
                         )}
-                        {columnVis.note && (
-                          <td className="border border-slate-200 px-2 py-2 text-center text-xs text-slate-500" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            {item.note || ''}
-                          </td>
-                        )}
                         {columnVis.status && (
                           <td className="border border-slate-200 px-2 py-2 text-center" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
                             <StatusBadge status={item.status} />
@@ -996,6 +991,11 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                             )}
                           </>
                         )}
+                        {columnVis.note && (
+                          <td className="border border-slate-200 px-2 py-2 text-center text-xs text-slate-500" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                            {item.note || ''}
+                          </td>
+                        )}
                         <td className="border border-slate-200 px-2 py-2 text-center" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
                           <div className="flex items-center justify-center gap-1">
                             <button
@@ -1005,19 +1005,19 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                             >
                               <Eye size={14} />
                             </button>
-                            {item.status === 'COUNTING_DONE' && isManager && (
+                            {(item.status === 'COUNTING_DONE' || item.status === 'COUNTING' || item.status === 'DRAFT') && isManager && (
                               <>
                                 <button
                                   onClick={() => handleApprove(item.id)}
                                   className="rounded p-1 text-emerald-500 transition hover:bg-emerald-50 hover:text-emerald-700"
-                                  title="Duyệt"
+                                  title="Duyệt kiểm kê"
                                 >
                                   <Check size={14} />
                                 </button>
                                 <button
                                   onClick={() => handleReject(item.id)}
                                   className="rounded p-1 text-red-400 transition hover:bg-red-50 hover:text-red-600"
-                                  title="Từ chối"
+                                  title="Từ chối kiểm kê"
                                 >
                                   <Ban size={14} />
                                 </button>
@@ -1091,7 +1091,6 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                       {footerTotalTongLech !== 0 ? footerTotalTongLech.toFixed(1) : '0.0'}
                     </td>
                   )}
-                  {columnVis.note && <td className="border border-slate-300 px-2 py-2" />}
                   {columnVis.status && <td className="border border-slate-300 px-2 py-2" />}
                   {isDetailActive && (
                     <>
@@ -1114,6 +1113,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                       )}
                     </>
                   )}
+                  {columnVis.note && <td className="border border-slate-300 px-2 py-2" />}
                   <td className="border border-slate-300 px-2 py-2" />
                 </tr>
               </tfoot>
@@ -1950,7 +1950,7 @@ function StocktakeDetailModal({
     }
   };
 
-  const canApprove = stocktake.status === 'COUNTING_DONE' && isManager;
+  const canApprove = (stocktake.status === 'COUNTING_DONE' || stocktake.status === 'COUNTING' || stocktake.status === 'DRAFT') && isManager;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 backdrop-blur-xs" onClick={onClose}>
