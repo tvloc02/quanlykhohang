@@ -97,6 +97,7 @@ interface ProductOption {
   unit?: string;
   purchasePrice?: number;
   salePrice?: number;
+  price?: number;
 }
 
 interface CustomerOption {
@@ -204,21 +205,53 @@ function authHeaders() {
   };
 }
 
+function toDateOnlyString(dateStr?: string | Date | null): string {
+  if (!dateStr) return '';
+  const str = String(dateStr).trim();
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDateDisplay(dateVal?: string | Date | null): string {
+  if (!dateVal) return '';
+  const str = String(dateVal).trim();
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[1].padStart(2, '0')}/${dmyMatch[2].padStart(2, '0')}/${dmyMatch[3]}`;
+  }
+  const d = new Date(dateVal);
+  if (Number.isNaN(d.getTime())) return String(dateVal);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 // ─── MASTER DATA MẪU CHUẨN XUẤT KHO ───────────────────────────
 
 const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [
-  { id: 'wh-1', code: 'KHO-TONG', name: 'Kho Tổng TP. Hồ Chí Minh' },
-  { id: 'wh-2', code: 'KHO-HN', name: 'Kho Trung Luân Hà Nội' },
-  { id: 'wh-3', code: 'KHO-CUCHI', name: 'Kho Lạnh Củ Chi' },
-  { id: 'wh-4', code: 'KHO-DN', name: 'Kho Miền Trung Đà Nẵng' },
-  { id: 'wh-5', code: 'KHO-BD', name: 'Kho Linh Kiện Bình Dương' },
+  { id: 'wh-1', code: 'SPX001', name: 'SPX Express' },
+  { id: 'wh-2', code: 'KHO-MAIN', name: 'Kho trung tâm' },
+  { id: 'wh-3', code: 'KHO-NVL', name: 'Kho nguyên vật liệu' },
+  { id: 'wh-4', code: 'KHO-123', name: 'Apple' },
 ];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return 'Kho Tổng TP.HCM';
+  if (!codeOrName) return 'SPX Express';
   const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
   if (found) return found.name;
-  if (codeOrName === '4445') return 'Kho Tổng TP.HCM';
+  if (codeOrName === '4445' || codeOrName === 'KHO-TONG') return 'SPX Express';
   return codeOrName;
 }
 
@@ -429,9 +462,9 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'):
 
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
-    title: `# PXK-${d.getFullYear()}-${String(tabIndex).padStart(4, '0')}`,
-    orderNo: `PXK-${d.getFullYear()}-${String(tabIndex).padStart(4, '0')}`,
-    branchCode: 'KHO-TONG',
+    title: `# ${tabIndex}`,
+    orderNo: '',
+    branchCode: 'SPX001',
     employeeName: currentUserName || 'Quản lý kho',
     customer: 'Khách hàng bán lẻ',
     customerPhone: '',
@@ -583,7 +616,7 @@ export default function Outbound() {
     setLoading(true);
     try {
       const [ordRes, custRes, prodRes, userRes, whRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/outbound/orders`, { headers: authHeaders() }).catch(() => null),
+        fetch(`${API_BASE_URL}/outbounds`, { headers: authHeaders() }).catch(() => null),
         fetch(`${API_BASE_URL}/customers`, { headers: authHeaders() }).catch(() => null),
         fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(() => null),
         fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(() => null),
@@ -596,15 +629,15 @@ export default function Outbound() {
         if (list.length > 0) {
           const formatted: OutboundOrder[] = list.map((item: any, idx: number) => ({
             id: String(item.id || idx),
-            orderNo: item.orderNo || item.receiptNo || `PXK-${1000 + idx}`,
-            customer: item.customerName || item.customer?.name || 'Khách hàng',
+            orderNo: item.orderNo || item.receiptNo || `XBH_${1000 + idx}`,
+            customer: item.customer || item.customerName || item.customer?.name || '888 - Khách lẻ',
             customerId: item.customerId || item.customer?.id,
-            customerPhone: item.customer?.phone || '',
-            customerAddress: item.customer?.address || '',
-            branchCode: item.branchCode || item.warehouseCode || 'KHO-TONG',
+            customerPhone: item.customerPhone || item.customer?.phone || '',
+            customerAddress: item.customerAddress || item.customer?.address || '',
+            branchCode: item.branchCode || item.warehouseCode || '4445',
             employeeName: item.employeeName || item.creatorName || currentUserName,
-            orderDate: item.orderDate ? new Date(item.orderDate).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'),
-            expectedDate: item.expectedDate ? new Date(item.expectedDate).toLocaleDateString('vi-VN') : '',
+            orderDate: item.orderDate || item.createdAt || new Date().toISOString(),
+            expectedDate: item.expectedDate || '',
             status: item.status || 'Đã giao hàng',
             description: item.description || '',
             subtotal: Number(item.subtotal || item.totalAmount || 0),
@@ -613,19 +646,21 @@ export default function Outbound() {
             totalAmount: Number(item.totalAmount || 0),
             amountPaid: Number(item.amountPaid || item.totalAmount || 0),
             itemsCount: item.details?.length || item.items || 1,
-            totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.qty || d.receivedQty || 1)), 0) || 1,
+            totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
             details: item.details?.map((d: any) => ({
               id: d.id,
-              productId: d.productId,
-              productSku: d.product?.internalSku || d.sku || 'SKU',
+              productId: d.product?.id || d.productId,
+              productSku: d.product?.internalSku || d.productSku || d.sku || 'SKU',
               productName: d.product?.name || d.productName || 'Sản phẩm',
-              unit: d.product?.unit || 'Cái',
-              qty: Number(d.qty || 1),
-              price: Number(d.price || d.unitPrice || 0),
-              totalLineAmount: Number(d.totalLineAmount || (d.qty * d.price) || 0),
+              unit: d.product?.unit || d.unit || 'Cái',
+              qty: Number(d.requiredQty || d.qty || 1),
+              price: Number(d.unitPrice || d.price || 0),
+              totalLineAmount: Number(d.totalLineAmount || (Number(d.requiredQty || d.qty || 1) * Number(d.unitPrice || d.price || 0))),
             })) || [],
           }));
           setOrders(formatted);
+        } else {
+          setOrders([]);
         }
       }
 
@@ -638,7 +673,19 @@ export default function Outbound() {
       if (prodRes && prodRes.ok) {
         const pData = await prodRes.json();
         const pList = Array.isArray(pData) ? pData : pData.data || [];
-        if (pList.length > 0) setProducts(pList);
+        if (pList.length > 0) {
+          setProducts(
+            pList.map((p: any) => ({
+              id: String(p.id),
+              internalSku: p.internalSku || p.sku || `SKU${p.id}`,
+              name: p.name || p.internalSku || 'Sản phẩm',
+              unit: p.unit || 'Cái',
+              price: Number(p.price || p.salePrice || p.retailPrice || p.purchasePrice || 0),
+              salePrice: Number(p.salePrice || p.price || p.retailPrice || p.purchasePrice || 0),
+              purchasePrice: Number(p.purchasePrice || p.price || 0),
+            }))
+          );
+        }
       }
 
       if (userRes && userRes.ok) {
@@ -741,7 +788,7 @@ export default function Outbound() {
       const updatedDetails = tab.details.map((row) => {
         if (row.rowId !== rowId) return row;
         const qty = row.qty === 0 ? 1 : row.qty;
-        const price = product.salePrice || product.purchasePrice || 0;
+        const price = Number(product.salePrice || product.price || product.purchasePrice || 0);
         const totalAmount = qty * price;
         return {
           ...row,
@@ -928,15 +975,24 @@ export default function Outbound() {
     setSelectedIds(next);
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedIds.size === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 phiếu để xóa', type: 'error' });
       return;
     }
     if (!confirm(`Bạn có chắc chắn muốn xóa ${selectedIds.size} phiếu xuất đã chọn?`)) return;
-    setOrders((prev) => prev.filter((o) => !selectedIds.has(o.id)));
+
+    for (const id of selectedIds) {
+      try {
+        await fetch(`${API_BASE_URL}/outbounds/${id}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        });
+      } catch {}
+    }
     setSelectedIds(new Set());
     setToast({ message: `Đã xóa thành công ${selectedIds.size} phiếu xuất`, type: 'success' });
+    await loadData();
   };
 
   const handleCopySelected = () => {
@@ -961,7 +1017,7 @@ export default function Outbound() {
 
   const handleSaveOutboundOrder = async (isPrint = false) => {
     if (!activeTab) return;
-    const validItems = activeTab.details.filter((r) => (r.productId || r.productName.trim() || r.productSku.trim()) && r.qty > 0);
+    const validItems = activeTab.details.filter((r) => (r.productId || r.productName?.trim() || r.productSku?.trim()) && r.qty > 0);
     if (validItems.length === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
       return;
@@ -970,96 +1026,85 @@ export default function Outbound() {
     const subtotal = validItems.reduce((s, r) => s + (Number(r.totalAmount) || (Number(r.qty) * Number(r.price))), 0);
     const vatAmount = (subtotal * (activeTab.vatRate || 0)) / 100;
     const grandTotal = Math.max(0, subtotal - (activeTab.discount || 0) + (activeTab.shippingFee || 0) + vatAmount);
+    const debt = Math.max(0, grandTotal - (activeTab.amountPaid || 0));
+
+    const finalOrderNo = activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : undefined;
 
     const payload = {
-      orderNo: activeTab.orderNo || `PXK${Date.now().toString().slice(-6)}`,
-      customerId: activeTab.customerId || customers[0]?.id,
-      customerName: activeTab.customer || customers[0]?.name || 'Khách hàng',
-      branchCode: activeTab.branchCode || 'KHO-TONG',
-      orderDate: new Date().toISOString(),
-      expectedDate: new Date().toISOString(),
+      orderNo: finalOrderNo,
+      customerId: activeTab.customerId,
+      customer: activeTab.customer?.trim() || '888 - Khách lẻ',
+      customerName: activeTab.customer?.trim() || '888 - Khách lẻ',
+      customerPhone: activeTab.customerPhone?.trim() || undefined,
+      customerAddress: activeTab.customerAddress?.trim() || undefined,
+      branchCode: activeTab.branchCode || '4445',
+      employeeName: activeTab.employeeName || currentUserName,
+      receiver: activeTab.receiver?.trim() || undefined,
+      orderDate: activeTab.orderDate,
+      expectedDate: activeTab.orderDate,
       status: activeTab.status || 'Đã giao hàng',
-      description: activeTab.description || 'Tạo phiếu xuất bán hàng trực tiếp',
-      totalAmount: grandTotal,
+      description: activeTab.description?.trim() || undefined,
+      subtotal,
       discount: activeTab.discount || 0,
+      vatRate: activeTab.vatRate || 0,
       vatAmount,
+      totalAmount: grandTotal,
       amountPaid: activeTab.amountPaid || grandTotal,
+      debt,
+      paymentMethod: activeTab.paymentMethod || 'Tiền mặt',
+      paymentAccount: activeTab.paymentAccount || undefined,
+      items: validItems.length,
       details: validItems.map((r) => ({
-        productId: r.productId,
-        productSku: r.productSku,
-        productName: r.productName,
-        unit: r.unit,
+        productId: r.productId || undefined,
+        productSku: r.productSku || undefined,
+        productName: r.productName || undefined,
+        unit: r.unit || 'Cái',
+        requiredQty: Number(r.qty),
         qty: Number(r.qty),
+        unitPrice: Number(r.price),
         price: Number(r.price),
+        discountPercent: Number(r.discountPercent || 0),
+        discountAmount: Number(r.discountAmount || 0),
+        vatPercent: Number(r.vatPercent || 0),
+        vatAmount: Number(r.vatAmount || 0),
+        totalLineAmount: Number(r.totalAmount) || (Number(r.qty) * Number(r.price)),
+        note: r.note || undefined,
       })),
     };
 
     const isEdit = !!activeTab.id;
-    const recordId = activeTab.id || `out-${Date.now()}`;
-
-    const newRecord: OutboundOrder = {
-      id: recordId,
-      orderNo: payload.orderNo,
-      customer: payload.customerName,
-      customerId: payload.customerId,
-      customerPhone: activeTab.customerPhone || '',
-      customerAddress: activeTab.customerAddress || '',
-      branchCode: activeTab.branchCode || 'KHO-TONG',
-      employeeName: activeTab.employeeName || currentUserName,
-      orderDate: activeTab.orderDate || new Date().toLocaleDateString('vi-VN'),
-      status: activeTab.status || 'Đã giao hàng',
-      description: activeTab.description,
-      subtotal,
-      discount: activeTab.discount || 0,
-      vatAmount,
-      totalAmount: grandTotal,
-      amountPaid: activeTab.amountPaid || grandTotal,
-      itemsCount: validItems.length,
-      totalQty: validItems.reduce((sum, r) => sum + Number(r.qty), 0),
-      details: validItems.map((r) => ({
-        productId: r.productId,
-        productSku: r.productSku || 'SKU',
-        productName: r.productName || 'Sản phẩm',
-        unit: r.unit || 'Cái',
-        qty: Number(r.qty),
-        price: Number(r.price),
-        totalLineAmount: Number(r.totalAmount) || (Number(r.qty) * Number(r.price)),
-      })),
-    };
 
     try {
       const url = isEdit
-        ? `${API_BASE_URL}/outbound/orders/${activeTab.id}`
-        : `${API_BASE_URL}/outbound/orders`;
+        ? `${API_BASE_URL}/outbounds/${activeTab.id}`
+        : `${API_BASE_URL}/outbounds`;
       const method = isEdit ? 'PUT' : 'POST';
 
-      await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: authHeaders(),
         body: JSON.stringify(payload),
-      }).catch(() => null);
-
-      setOrders((prev) => {
-        if (isEdit) {
-          return prev.map((o) => (o.id === activeTab.id ? newRecord : o));
-        } else {
-          return [newRecord, ...prev];
-        }
       });
 
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Lỗi khi lưu phiếu xuất');
+      }
+
+      const savedData = await response.json();
+
       setToast({
-        message: isEdit ? `Đã cập nhật thành công phiếu ${payload.orderNo}!` : `Đã lưu thành công phiếu ${payload.orderNo}!`,
+        message: isEdit ? `Đã cập nhật thành công phiếu ${savedData.orderNo || ''}!` : `Đã lưu thành công phiếu ${savedData.orderNo || ''}!`,
         type: 'success',
       });
 
-      loadData();
+      setShowFormModal(false);
+      await loadData();
 
       if (isPrint) {
-        setSelectedOrder(newRecord);
+        setSelectedOrder(savedData);
         setShowPrintModal(true);
       }
-
-      setShowFormModal(false);
     } catch (err: any) {
       setToast({ message: err.message || 'Lỗi khi kết nối máy chủ', type: 'error' });
     }
@@ -1081,9 +1126,18 @@ export default function Outbound() {
         statusFilter === 'all' ||
         (o.status || '').toLowerCase() === statusFilter.toLowerCase();
 
+      if (dateFrom || dateTo) {
+        const itemDateStr = o.orderDate || o.expectedDate || o.createdAt;
+        if (itemDateStr) {
+          const itemDate = toDateOnlyString(itemDateStr);
+          if (dateFrom && itemDate && itemDate < dateFrom) return false;
+          if (dateTo && itemDate && itemDate > dateTo) return false;
+        }
+      }
+
       return matchSearch && matchStatus;
     });
-  }, [orders, search, statusFilter]);
+  }, [orders, search, statusFilter, dateFrom, dateTo]);
 
   const totalPages = Math.ceil(filteredOrders.length / pageSize) || 1;
   const paginatedOrders = useMemo(() => {
@@ -1118,7 +1172,7 @@ export default function Outbound() {
           <div className="flex flex-wrap items-center gap-1.5 mb-2 bg-slate-50 border border-slate-200 rounded-lg p-2">
             <button
               onClick={() => {
-                const newTab = createNewOutboundTab(tabs.length + 1, currentUserName);
+                const newTab = createNewOutboundTab(1, currentUserName);
                 setTabs([newTab]);
                 setActiveTabId(newTab.tabId);
                 setShowFormModal(true);
@@ -1509,7 +1563,7 @@ export default function Outbound() {
                                 </button>
                               </td>
                             )}
-                            {columnVis.date && <td className="border border-slate-200 px-2 py-2 text-center font-medium text-slate-600">{ord.orderDate}</td>}
+                            {columnVis.date && <td className="border border-slate-200 px-2 py-2 text-center font-medium text-slate-600">{formatDateDisplay(ord.orderDate)}</td>}
                             {columnVis.customerName && <td className="border border-slate-200 px-2 py-2 font-semibold text-slate-800">{ord.customer}</td>}
                             {columnVis.customerAddress && <td className="border border-slate-200 px-2 py-2 text-slate-600 max-w-[150px] truncate">{ord.customerAddress || '-'}</td>}
                             {columnVis.customerPhone && <td className="border border-slate-200 px-2 py-2 text-slate-600">{ord.customerPhone || '-'}</td>}
@@ -1627,7 +1681,7 @@ export default function Outbound() {
                     }`}
                   >
                     <Package size={14} className={isActive ? 'text-cyan-600' : 'text-slate-400'} />
-                    <span>{tab.title}</span>
+                    <span>{tab.orderNo ? `# ${tab.orderNo}` : tab.title}</span>
                     <button
                       onClick={(e) => handleCloseTab(tab.tabId, e)}
                       className="ml-1 rounded-full p-0.5 hover:bg-slate-200 hover:text-slate-800 transition"
@@ -1688,8 +1742,8 @@ export default function Outbound() {
                 type="text"
                 value={activeTab.orderNo}
                 onChange={(e) => updateActiveTab((t) => ({ ...t, orderNo: e.target.value }))}
-                placeholder="PXK Tự động..."
-                className="h-9 w-full rounded-xl border border-slate-300 bg-slate-50 px-2.5 text-xs font-bold text-cyan-700 outline-none focus:border-cyan-500"
+                placeholder="Tự sinh nếu để trống..."
+                className="h-9 w-full rounded-xl border border-slate-300 bg-white px-2.5 text-xs font-bold text-cyan-700 outline-none focus:border-cyan-500"
               />
             </div>
 
@@ -1877,7 +1931,7 @@ export default function Outbound() {
                                           <span className="w-1/3 font-bold text-cyan-800">{p.internalSku}</span>
                                           <span className="w-1/2 font-medium text-slate-800 truncate pr-1">{p.name}</span>
                                           <span className="w-1/4 text-right font-semibold text-slate-700">
-                                            {Number(p.salePrice || p.purchasePrice || 0).toLocaleString('vi-VN')}
+                                            {Number(p.salePrice || p.price || p.purchasePrice || 0).toLocaleString('vi-VN')}
                                           </span>
                                         </div>
                                       ))

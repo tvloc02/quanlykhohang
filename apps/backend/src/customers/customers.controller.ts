@@ -1,10 +1,8 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { Controller, Get, Post, Put, Delete, Param, Body } from '@nestjs/common';
 import { CustomersService } from './customers.service';
 import { Customer } from '../entities/customer.entity';
 
 @Controller('customers')
-@UseGuards(JwtAuthGuard)
 export class CustomersController {
   constructor(private readonly service: CustomersService) {}
 
@@ -33,3 +31,4 @@ export class CustomersController {
     return this.service.remove(id);
   }
 }
+

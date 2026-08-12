@@ -6,7 +6,7 @@ import { PickDetailDto } from './dto/pick-detail.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { ConfirmPickingDto } from './dto/confirm-picking.dto';
 
-@Controller('outbounds')
+@Controller(['outbounds', 'outbound/orders'])
 export class OutboundController {
   constructor(private service: OutboundService) {}
 

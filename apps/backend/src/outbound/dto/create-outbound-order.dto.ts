@@ -23,12 +23,20 @@ export class OutboundItemDto {
   requiredQty?: number;
 
   @IsOptional()
+  @IsNumber()
+  qty?: number;
+
+  @IsOptional()
   @IsString()
   warehouseCode?: string;
 
   @IsOptional()
   @IsNumber()
   unitPrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  price?: number;
 
   @IsOptional()
   @IsNumber()
@@ -79,6 +87,10 @@ export class CreateOutboundOrderDto {
   @IsOptional()
   @IsString()
   customer?: string;
+
+  @IsOptional()
+  @IsString()
+  customerName?: string;
 
   @IsOptional()
   @IsString()
