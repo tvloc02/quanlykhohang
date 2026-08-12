@@ -223,6 +223,7 @@ export function PurchaseOrderFormModal({
 }: PurchaseOrderFormModalProps) {
   const [selectedRows, setSelectedRows] = React.useState<string[]>([]);
   const [selectingProductRowId, setSelectingProductRowId] = React.useState<string | null>(null);
+  const [activeProductDropdownRowId, setActiveProductDropdownRowId] = React.useState<string | null>(null);
   const [productSearch, setProductSearch] = React.useState('');
   const [mounted, setMounted] = React.useState(false);
 
@@ -279,6 +280,19 @@ export function PurchaseOrderFormModal({
           (p.internalSku || '').toLowerCase().includes(query))
     );
   }, [allSelectableProducts, productSearch]);
+
+  const getFilteredProductsForRow = (rowText: string) => {
+    const kw = (rowText || '').trim().toLowerCase();
+    if (!kw) return allSelectableProducts;
+    const matched = allSelectableProducts.filter(
+      (p) =>
+        p &&
+        ((p.name || '').toLowerCase().includes(kw) ||
+          (p.internalSku || '').toLowerCase().includes(kw))
+    );
+    const nonMatched = allSelectableProducts.filter((p) => !matched.includes(p));
+    return [...matched, ...nonMatched];
+  };
 
   const selectedWarehouse = form ? (warehouses || []).find(
     (w) => w && (w.code === form.warehouseCode || w.id === form.warehouseCode)
@@ -732,21 +746,72 @@ export function PurchaseOrderFormModal({
                               <td className="border border-slate-200 px-3 py-3 text-center text-sm text-slate-600">
                                 {index + 1}
                               </td>
-                              <td className="border border-slate-200 px-3 py-3">
+                              <td className="border border-slate-200 px-3 py-3 relative product-dropdown-container">
                                 {mode === 'create' || mode === 'edit' ? (
                                   (() => {
                                     const selectedProduct = allSelectableProducts.find((p) => p.id === item.productId);
+                                    const displayVal = selectedProduct
+                                      ? `${selectedProduct.internalSku ? selectedProduct.internalSku + ' - ' : ''}${selectedProduct.name}`
+                                      : '';
+
                                     return (
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectingProductRowId(item.rowId)}
-                                        className="h-11 w-full bg-transparent px-3 text-left text-sm outline-none font-bold text-slate-700 hover:bg-slate-100/50 rounded-xl transition flex items-center justify-between group border border-dashed border-slate-300 hover:border-cyan-500 cursor-pointer"
-                                      >
-                                        <span className="truncate">
-                                          {selectedProduct ? `${selectedProduct.internalSku} - ${selectedProduct.name}` : 'Chọn sản phẩm...'}
-                                        </span>
-                                        <Search className="h-4 w-4 text-slate-400 group-hover:text-cyan-600 transition shrink-0 ml-1" />
-                                      </button>
+                                      <div className="relative">
+                                        <input
+                                          type="text"
+                                          value={displayVal}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            const matched = getFilteredProductsForRow(val)[0];
+                                            if (matched) {
+                                              onProductChange(item.rowId, matched.id);
+                                              if (matched.price) {
+                                                onUpdateRow(item.rowId, { unitPrice: matched.price });
+                                              }
+                                            }
+                                            setActiveProductDropdownRowId(item.rowId);
+                                          }}
+                                          onFocus={() => setActiveProductDropdownRowId(item.rowId)}
+                                          onClick={() => setActiveProductDropdownRowId(item.rowId)}
+                                          placeholder="Chọn hoặc nhập hàng..."
+                                          className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 cursor-text"
+                                        />
+
+                                        {/* Interactive Table Dropdown for this row */}
+                                        {activeProductDropdownRowId === item.rowId && (
+                                          <div className="absolute left-0 top-full z-[100] mt-1 w-[420px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
+                                            <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
+                                              <span className="w-1/3 uppercase">Mã hàng</span>
+                                              <span className="w-1/2 uppercase">Tên hàng hóa</span>
+                                              <span className="w-1/4 text-right uppercase">Giá mua</span>
+                                            </div>
+                                            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                                              {getFilteredProductsForRow(displayVal).length === 0 ? (
+                                                <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
+                                              ) : (
+                                                getFilteredProductsForRow(displayVal).map((p) => (
+                                                  <div
+                                                    key={p.id}
+                                                    onClick={() => {
+                                                      onProductChange(item.rowId, p.id);
+                                                      if (p.price) {
+                                                        onUpdateRow(item.rowId, { unitPrice: p.price });
+                                                      }
+                                                      setActiveProductDropdownRowId(null);
+                                                    }}
+                                                    className="flex items-center px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs text-slate-700 transition"
+                                                  >
+                                                    <span className="w-1/3 font-bold text-cyan-800">{p.internalSku}</span>
+                                                    <span className="w-1/2 font-medium text-slate-800 truncate pr-1">{p.name}</span>
+                                                    <span className="w-1/4 text-right font-semibold text-slate-700">
+                                                      {Number(p.price || 0).toLocaleString('vi-VN')}
+                                                    </span>
+                                                  </div>
+                                                ))
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
                                     );
                                   })()
                                 ) : (
