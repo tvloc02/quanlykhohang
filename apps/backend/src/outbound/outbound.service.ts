@@ -68,9 +68,31 @@ function parseNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseCustomDate(dateStr?: string | Date | null): Date {
+  if (!dateStr) return new Date();
+  if (dateStr instanceof Date) return dateStr;
+  const str = String(dateStr).trim();
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    return new Date(year, month, day, 12, 0, 0);
+  }
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    return new Date(year, month, day, 12, 0, 0);
+  }
+  const parsed = new Date(str);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 function toDateString(value?: Date | string | null) {
   if (!value) return '';
-  const date = new Date(value);
+  const date = parseCustomDate(value);
   return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 }
 
@@ -104,7 +126,7 @@ export class OutboundService {
       noteNo,
       status: 'READY',
       description: dto.description,
-      expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : undefined,
+      expectedDate: dto.expectedDate ? parseCustomDate(dto.expectedDate) : undefined,
       assignee: dto.assignee,
       orders,
     });
@@ -125,7 +147,7 @@ export class OutboundService {
 
   async createOutbound(dto: CreateOutboundOrderDto) {
     const orderNo = await this.generateOrderNo(dto.orderNo);
-    const now = new Date();
+    const parsedOrderDate = dto.orderDate ? parseCustomDate(dto.orderDate) : new Date();
 
     const order = this.orderRepo.create({
       orderNo,
@@ -134,8 +156,8 @@ export class OutboundService {
       receiver: dto.receiver?.trim() || undefined,
       customerPhone: dto.customerPhone?.trim() || undefined,
       customerAddress: dto.customerAddress?.trim() || undefined,
-      orderDate: dto.orderDate ? new Date(dto.orderDate) : now,
-      expectedDate: (dto.expectedDate || dto.dueDate) ? new Date(dto.expectedDate || dto.dueDate!) : undefined,
+      orderDate: parsedOrderDate,
+      expectedDate: (dto.expectedDate || dto.dueDate) ? parseCustomDate(dto.expectedDate || dto.dueDate!) : undefined,
       status: dto.status || 'Đã giao hàng',
       description: dto.description?.trim() || undefined,
       items: dto.items ?? dto.details?.length ?? 0,
@@ -154,38 +176,46 @@ export class OutboundService {
     });
 
     // Attach customer by id or name
-    if (dto.customerId) {
-      const customer = await this.customerRepo.findOneBy({ id: dto.customerId });
-      if (customer) {
-        order.customer = customer;
-        order.customerName = customer.name;
-        if (!order.customerPhone) order.customerPhone = customer.phone;
-        if (!order.customerAddress) order.customerAddress = customer.address;
+    let attachedCustomer: Customer | null = null;
+    if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
+      attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
+    }
+
+    const customerText = (dto.customer || dto.customerName || '').trim();
+    if (!attachedCustomer && customerText) {
+      attachedCustomer = await this.customerRepo.findOne({
+        where: [{ name: customerText }, { customerCode: customerText }],
+      });
+
+      if (!attachedCustomer) {
+        try {
+          const newCust = this.customerRepo.create({
+            name: customerText,
+            customerCode: 'KH-' + Date.now().toString().slice(-6),
+            phone: dto.customerPhone?.trim() || undefined,
+            address: dto.customerAddress?.trim() || undefined,
+          });
+          attachedCustomer = await this.customerRepo.save(newCust);
+        } catch {}
       }
-    } else if (dto.customer) {
-      let customer = await this.customerRepo.findOneBy({ name: dto.customer.trim() });
-      if (!customer) {
-        customer = this.customerRepo.create({ 
-          name: dto.customer.trim(),
-          customerCode: 'CUS-' + Date.now().toString().slice(-6),
-          phone: dto.customerPhone?.trim() || undefined,
-          address: dto.customerAddress?.trim() || undefined,
-        });
-        customer = await this.customerRepo.save(customer);
-      }
-      order.customer = customer;
-      order.customerName = customer.name;
-      if (!order.customerPhone) order.customerPhone = customer.phone;
-      if (!order.customerAddress) order.customerAddress = customer.address;
+    }
+
+    if (attachedCustomer) {
+      order.customer = attachedCustomer;
+      order.customerName = attachedCustomer.name;
+      if (!order.customerPhone) order.customerPhone = attachedCustomer.phone;
+      if (!order.customerAddress) order.customerAddress = attachedCustomer.address;
+    } else {
+      order.customerName = customerText || '888 - Khách lẻ';
     }
 
     const savedOrder = await this.orderRepo.save(order);
 
     // Persist detail items if provided
     if (dto.details?.length) {
-      await this.persistDetails(savedOrder.id, dto.details);
-      // US03.01: Reserve inventory nếu có sản phẩm và kho
-      await this.reserveInventory(savedOrder.id);
+      const savedDetails = await this.persistDetails(savedOrder.id, dto.details, savedOrder.branchCode);
+      // Deduct inventory for outbound sales order
+      await this.applyInventoryDeduction(savedOrder, savedDetails);
     }
 
     return this.serializeOutbound(await this.findOrderEntity(savedOrder.id));
@@ -211,32 +241,44 @@ export class OutboundService {
     if (dto.customerAddress !== undefined) order.customerAddress = dto.customerAddress.trim() || undefined;
 
     // Update customer
-    if (dto.customerId) {
-      const customer = await this.customerRepo.findOneBy({ id: dto.customerId });
-      if (customer) {
-        order.customer = customer;
-        order.customerName = customer.name;
+    let attachedCustomer: Customer | null = null;
+    if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
+      attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
+    }
+
+    const updateCustText = (dto.customer || dto.customerName || '').trim();
+    if (!attachedCustomer && updateCustText) {
+      attachedCustomer = await this.customerRepo.findOne({
+        where: [{ name: updateCustText }, { customerCode: updateCustText }],
+      });
+
+      if (!attachedCustomer) {
+        try {
+          const newCust = this.customerRepo.create({
+            name: updateCustText,
+            customerCode: 'KH-' + Date.now().toString().slice(-6),
+            phone: dto.customerPhone?.trim() || undefined,
+            address: dto.customerAddress?.trim() || undefined,
+          });
+          attachedCustomer = await this.customerRepo.save(newCust);
+        } catch {}
       }
-    } else if (dto.customer) {
-      let customer = await this.customerRepo.findOneBy({ name: dto.customer.trim() });
-      if (!customer) {
-        customer = this.customerRepo.create({ 
-          name: dto.customer.trim(),
-          customerCode: 'CUS-' + Date.now().toString().slice(-6),
-          phone: dto.customerPhone?.trim() || undefined,
-          address: dto.customerAddress?.trim() || undefined,
-        });
-        customer = await this.customerRepo.save(customer);
-      }
-      order.customer = customer;
-      order.customerName = customer.name;
+    }
+
+    if (attachedCustomer) {
+      order.customer = attachedCustomer;
+      order.customerName = attachedCustomer.name;
+      if (dto.customerPhone) order.customerPhone = dto.customerPhone.trim();
+      if (dto.customerAddress) order.customerAddress = dto.customerAddress.trim();
+    } else if (updateCustText) {
+      order.customerName = updateCustText;
     }
 
     if (dto.orderDate) {
-      order.orderDate = new Date(dto.orderDate);
+      order.orderDate = parseCustomDate(dto.orderDate);
     }
     if (dto.expectedDate || dto.dueDate) {
-      order.expectedDate = new Date(dto.expectedDate || dto.dueDate!);
+      order.expectedDate = parseCustomDate(dto.expectedDate || dto.dueDate!);
     }
     if (dto.status) {
       order.status = dto.status;
@@ -262,6 +304,8 @@ export class OutboundService {
 
     // Replace details if provided
     if (dto.details?.length) {
+      await this.revertInventoryDeduction(order);
+
       const existing = await this.detailRepo.find({
         where: { outboundOrder: { id } as any },
         relations: ['outboundOrder', 'product'],
@@ -269,7 +313,8 @@ export class OutboundService {
       if (existing.length) {
         await this.detailRepo.remove(existing);
       }
-      await this.persistDetails(id, dto.details);
+      const savedDetails = await this.persistDetails(id, dto.details, order.branchCode);
+      await this.applyInventoryDeduction(order, savedDetails);
     }
 
     await this.orderRepo.save(order);
@@ -279,10 +324,8 @@ export class OutboundService {
   async removeOutbound(id: string) {
     const order = await this.findOrderEntity(id);
 
-    // US03.01: Giải phóng reserved trước khi xóa (chỉ nếu chưa shipped)
-    if (order.status !== 'shipped') {
-      await this.releaseInventory(order);
-    }
+    // Revert inventory before deleting
+    await this.revertInventoryDeduction(order);
 
     // Delete details first
     const details = await this.detailRepo.find({
@@ -456,18 +499,24 @@ export class OutboundService {
     return order;
   }
 
-  private async persistDetails(orderId: string, items: OutboundItemDto[]) {
+  private async persistDetails(orderId: string, items: OutboundItemDto[], branchCode?: string) {
     const saved: OutboundDetail[] = [];
     for (const item of items) {
       let product: Product | null = null;
-      if (item.productId) {
-        product = await this.productRepo.findOneBy({ id: item.productId });
+      if (item.productId && /^\d+$/.test(String(item.productId))) {
+        product = await this.productRepo.findOneBy({ id: String(item.productId) });
+      }
+      if (!product && item.productSku) {
+        product = await this.productRepo.findOneBy({ internalSku: item.productSku.trim() });
+      }
+      if (!product && item.productName) {
+        product = await this.productRepo.findOneBy({ name: item.productName.trim() });
       }
 
-      const qty = parseNumber(item.requiredQty);
-      if (qty <= 0 && !item.productName && !item.productId) continue;
+      const qty = parseNumber(item.requiredQty ?? item.qty);
+      if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
 
-      const unitPrice = parseNumber(item.unitPrice);
+      const unitPrice = parseNumber(item.unitPrice ?? item.price);
       const discountPercent = parseNumber(item.discountPercent);
       const discountAmount = parseNumber(item.discountAmount) || ((unitPrice * qty * discountPercent) / 100);
       const vatPercent = parseNumber(item.vatPercent);
@@ -475,13 +524,15 @@ export class OutboundService {
       const vatAmount = parseNumber(item.vatAmount) || ((sub * vatPercent) / 100);
       const totalLineAmount = parseNumber(item.totalLineAmount) || (sub + vatAmount);
 
+      const targetWhCode = item.warehouseCode?.trim() || branchCode?.trim() || 'SPX001';
+
       const detail = this.detailRepo.create({
         outboundOrder: { id: orderId } as OutboundOrder,
         product: product || undefined,
         productSku: item.productSku?.trim() || product?.internalSku || undefined,
         productName: item.productName?.trim() || product?.name || undefined,
-        unit: item.unit?.trim() || product?.unit || undefined,
-        warehouseCode: item.warehouseCode?.trim() || undefined,
+        unit: item.unit?.trim() || product?.unit || 'Cái',
+        warehouseCode: targetWhCode,
         requiredQty: qty,
         pickedQty: 0,
         unitPrice: unitPrice.toFixed(2),
@@ -497,65 +548,138 @@ export class OutboundService {
     return saved;
   }
 
-  // US03.01: Giữ chỗ tồn kho khi tạo đơn xuất
-  private async reserveInventory(orderId: string) {
-    const details = await this.detailRepo.find({
-      where: { outboundOrder: { id: orderId } as any },
-      relations: ['outboundOrder', 'product'],
-    });
-
+  // Khấu trừ tồn kho khi tạo đơn xuất hàng
+  private async applyInventoryDeduction(order: OutboundOrder, details: OutboundDetail[]) {
     for (const detail of details) {
-      if (!detail.product?.id) continue;
-      const locCode = detail.warehouseCode || 'DEFAULT';
+      let productId = detail.product?.id;
+      if (!productId && detail.productSku) {
+        const [prod] = await this.dataSource.query(
+          `SELECT id FROM products WHERE internalSku = ? LIMIT 1`,
+          [detail.productSku.trim()],
+        );
+        productId = prod?.id;
+      }
+      if (!productId && detail.productName) {
+        const [prod] = await this.dataSource.query(
+          `SELECT id FROM products WHERE name = ? LIMIT 1`,
+          [detail.productName.trim()],
+        );
+        productId = prod?.id;
+      }
+      if (!productId) continue;
 
-      // US05.01: Chặn giao dịch nếu kho đang bị đóng băng để kiểm kê
-      const frozenCheck = await this.dataSource.query(
-        `SELECT isFrozen FROM warehouses WHERE code = ? OR id = ? LIMIT 1`,
-        [locCode, locCode],
-      ).catch(() => []);
-      if (frozenCheck?.[0]?.isFrozen) {
-        throw new BadRequestException(
-          `Khu vực kho "${locCode}" đang bị đóng băng để kiểm kê. Không thể tạo đơn xuất.`,
+      const locCode = detail.warehouseCode || order.branchCode || 'SPX001';
+
+      // 1. Tìm balance theo kho cụ thể
+      let [balance] = await this.dataSource.query(
+        `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
+        [productId, locCode],
+      );
+
+      // 2. Nếu không tìm thấy tại kho này, lấy balance có tồn kho lớn nhất
+      if (!balance) {
+        const rows = await this.dataSource.query(
+          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
+          [productId],
+        );
+        if (rows.length > 0) {
+          balance = rows[0];
+        }
+      }
+
+      // 3. Nếu chưa có balance nào, tạo mới
+      if (!balance) {
+        const insertRes = await this.dataSource.query(
+          `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
+          [productId, locCode],
+        );
+        balance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
+      }
+
+      const qty = Number(detail.requiredQty) || 0;
+      const isDirectShipped = !order.status || order.status === 'Đã giao hàng' || order.status === 'shipped';
+
+      if (isDirectShipped) {
+        const newPhysical = Math.max(0, Number(balance.totalPhysical) - qty);
+        const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
+        await this.dataSource.query(
+          `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+          [newPhysical, newAvailable, balance.id],
+        );
+      } else {
+        const newAllocated = Number(balance.allocated) + qty;
+        const newAvailable = Math.max(0, Number(balance.totalPhysical) - newAllocated);
+        await this.dataSource.query(
+          `UPDATE stock_balances SET allocated = ?, available = ? WHERE id = ?`,
+          [newAllocated, newAvailable, balance.id],
         );
       }
-      let balance = await this.balanceRepo.findOne({
-        where: { product: { id: detail.product.id } as any, locationCode: locCode },
-        relations: ['product'],
-      });
-
-      if (!balance) {
-        // Tự động tạo balance nếu chưa có để không chặn demo / tạo phiếu
-        continue;
-      }
-
-      if (balance.available < detail.requiredQty) {
-        // Log cảnh báo nhưng không chặn nếu hàng có sẵn
-        balance.allocated += detail.requiredQty;
-        balance.available = balance.totalPhysical - balance.allocated;
-        await this.balanceRepo.save(balance);
-        continue;
-      }
-
-      balance.allocated += detail.requiredQty;
-      balance.available = balance.totalPhysical - balance.allocated;
-      await this.balanceRepo.save(balance);
     }
   }
 
-  // US03.01: Giải phóng tồn kho đã giữ chỗ khi hủy/xóa đơn
-  private async releaseInventory(order: OutboundOrder) {
-    for (const detail of order.details || []) {
-      if (!detail.product?.id) continue;
-      const locCode = detail.warehouseCode || 'DEFAULT';
-      const balance = await this.balanceRepo.findOne({
-        where: { product: { id: detail.product.id } as any, locationCode: locCode },
-        relations: ['product'],
-      });
+  // Hoàn trả tồn kho khi hủy/xóa đơn xuất hàng
+  private async revertInventoryDeduction(order: OutboundOrder) {
+    const details = (order.details && order.details.length)
+      ? order.details
+      : await this.detailRepo.find({
+          where: { outboundOrder: { id: order.id } as any },
+          relations: ['product'],
+        });
 
-      if (balance) {
-        balance.allocated = Math.max(balance.allocated - detail.requiredQty, 0);
-        balance.available = balance.totalPhysical - balance.allocated;
-        await this.balanceRepo.save(balance);
+    for (const detail of details) {
+      let productId = detail.product?.id;
+      if (!productId && detail.productSku) {
+        const [prod] = await this.dataSource.query(
+          `SELECT id FROM products WHERE internalSku = ? LIMIT 1`,
+          [detail.productSku.trim()],
+        );
+        productId = prod?.id;
+      }
+      if (!productId && detail.productName) {
+        const [prod] = await this.dataSource.query(
+          `SELECT id FROM products WHERE name = ? LIMIT 1`,
+          [detail.productName.trim()],
+        );
+        productId = prod?.id;
+      }
+      if (!productId) continue;
+
+      const locCode = detail.warehouseCode || order.branchCode || 'SPX001';
+
+      let [balance] = await this.dataSource.query(
+        `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
+        [productId, locCode],
+      );
+
+      if (!balance) {
+        const rows = await this.dataSource.query(
+          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
+          [productId],
+        );
+        if (rows.length > 0) {
+          balance = rows[0];
+        }
+      }
+
+      if (!balance) continue;
+
+      const qty = Number(detail.requiredQty) || 0;
+      const isDirectShipped = !order.status || order.status === 'Đã giao hàng' || order.status === 'shipped';
+
+      if (isDirectShipped) {
+        const newPhysical = Number(balance.totalPhysical) + qty;
+        const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
+        await this.dataSource.query(
+          `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+          [newPhysical, newAvailable, balance.id],
+        );
+      } else {
+        const newAllocated = Math.max(0, Number(balance.allocated) - qty);
+        const newAvailable = Math.max(0, Number(balance.totalPhysical) - newAllocated);
+        await this.dataSource.query(
+          `UPDATE stock_balances SET allocated = ?, available = ? WHERE id = ?`,
+          [newAllocated, newAvailable, balance.id],
+        );
       }
     }
   }
@@ -575,7 +699,7 @@ export class OutboundService {
       branchCode: order.branchCode || '4445',
       employeeName: order.employeeName || 'HUUDQtest',
       receiver: order.receiver || '',
-      customer: order.customerName || order.customer?.name || '',
+      customer: order.customerName || order.customer?.name || '888 - Khách lẻ',
       customerPhone: order.customerPhone || order.customer?.phone || '',
       customerAddress: order.customerAddress || order.customer?.address || '',
       orderDate: toDateString(order.orderDate || order.createdAt),
@@ -616,12 +740,12 @@ export class OutboundService {
               name: d.productName || d.product.name,
               unit: d.unit || d.product.unit,
             }
-          : d.productName
+          : (d.productName || d.productSku)
           ? {
               id: '',
               internalSku: d.productSku || '',
-              name: d.productName || '',
-              unit: d.unit || '',
+              name: d.productName || d.productSku || '',
+              unit: d.unit || 'Cái',
             }
           : null,
       })),

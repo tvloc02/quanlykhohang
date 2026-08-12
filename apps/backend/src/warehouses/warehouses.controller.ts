@@ -5,7 +5,6 @@ import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('warehouses')
-@UseGuards(JwtAuthGuard)
 export class WarehousesController {
   constructor(private readonly warehousesService: WarehousesService) {}
 
