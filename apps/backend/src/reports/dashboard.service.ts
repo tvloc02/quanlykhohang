@@ -147,8 +147,7 @@ export class DashboardService {
   }
 
   async getStockReport(locationCode?: string) {
-    const qb = this.stockRepo.createQueryBuilder('balance')
-      .leftJoinAndSelect('balance.product', 'product');
+    const qb = this.stockRepo.createQueryBuilder('balance').leftJoinAndSelect('balance.product', 'product');
 
     if (locationCode) {
       qb.where('balance.locationCode = :locationCode', { locationCode });
@@ -243,10 +242,6 @@ export class DashboardService {
     }));
   }
 
-  /**
-   * US 6.3 – Trend xuất nhập tồn kho theo tuần/tháng
-   * Trả về mảng { label, inbound, outbound, available } để vẽ biểu đồ
-   */
   async getStockTrend(period: 'week' | 'month' = 'week') {
     const points = period === 'week' ? 8 : 6;
     const unitDays = period === 'week' ? 7 : 30;
@@ -289,10 +284,6 @@ export class DashboardService {
     return result;
   }
 
-  /**
-   * US 6.4 – Cảnh báo tồn kho thấp
-   * Trả về danh sách sản phẩm đang có available < minimumStock
-   */
   async getLowStockAlerts() {
     const balances = await this.stockRepo.createQueryBuilder('balance')
       .innerJoinAndSelect('balance.product', 'product')
@@ -313,6 +304,160 @@ export class DashboardService {
         unit: b.product.unit,
       },
       severity: b.available === 0 ? 'critical' : b.available < (b.product.minimumStock || 0) * 0.5 ? 'high' : 'medium',
+    }));
+  }
+
+  /**
+   * BÁO CÁO BÁN HÀNG (REAL DATABASE QUERY)
+   */
+  async getSalesReport(startDate?: string, endDate?: string, groupBy: string = 'day') {
+    const qb = this.outboundRepo.createQueryBuilder('o')
+      .leftJoin('o.details', 'd')
+      .select('DATE(o.createdAt)', 'date')
+      .addSelect('COUNT(DISTINCT o.id)', 'salesOrderCount')
+      .addSelect('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'revenue')
+      .groupBy('DATE(o.createdAt)')
+      .orderBy('DATE(o.createdAt)', 'DESC');
+
+    if (startDate) {
+      qb.andWhere('o.createdAt >= :startDate', { startDate: new Date(startDate) });
+    }
+    if (endDate) {
+      qb.andWhere('o.createdAt <= :endDate', { endDate: new Date(endDate) });
+    }
+
+    const rows = await qb.getRawMany();
+    return rows.map((r, idx) => ({
+      id: String(idx + 1),
+      dateOrName: r.date ? new Date(r.date).toLocaleDateString('vi-VN') : 'Hôm nay',
+      salesOrderCount: Number(r.salesOrderCount || 0),
+      revenue: Number(r.revenue || 0),
+      discount: 0,
+      returnOrderCount: 0,
+      returnAmount: 0,
+      netRevenue: Number(r.revenue || 0),
+    }));
+  }
+
+  /**
+   * BÁO CÁO DOANH THU (REAL DATABASE QUERY)
+   */
+  async getRevenueReport(startDate?: string, endDate?: string, branch?: string) {
+    const qb = this.outboundRepo.createQueryBuilder('o')
+      .leftJoin('o.details', 'd')
+      .leftJoin('o.customer', 'c')
+      .select("COALESCE(d.warehouseCode, 'Chi nhánh chính')", 'groupName')
+      .addSelect("COALESCE(c.name, 'Khách hàng')", 'staffName')
+      .addSelect('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'revenue')
+      .groupBy("COALESCE(d.warehouseCode, 'Chi nhánh chính')")
+      .addGroupBy("COALESCE(c.name, 'Khách hàng')");
+
+    if (startDate) {
+      qb.andWhere('o.createdAt >= :startDate', { startDate: new Date(startDate) });
+    }
+    if (endDate) {
+      qb.andWhere('o.createdAt <= :endDate', { endDate: new Date(endDate) });
+    }
+
+    const rows = await qb.getRawMany();
+    const groupsMap = new Map<string, any[]>();
+    
+    rows.forEach((r, idx) => {
+      const gName = r.groupName || 'Chi nhánh chính';
+      if (!groupsMap.has(gName)) groupsMap.set(gName, []);
+      groupsMap.get(gName)?.push({
+        id: String(idx + 1),
+        staffName: r.staffName,
+        revenue: Number(r.revenue || 0),
+        returnAmount: 0,
+        netRevenue: Number(r.revenue || 0),
+        cashReceived: Number(r.revenue || 0),
+      });
+    });
+
+    return Array.from(groupsMap.entries()).map(([groupName, items]) => ({
+      groupName,
+      items,
+    }));
+  }
+
+  /**
+   * BÁO CÁO THU CHI (REAL DATABASE QUERY)
+   */
+  async getCashflowReport(startDate?: string, endDate?: string, branch?: string) {
+    const [inboundTotal, outboundTotal] = await Promise.all([
+      this.inboundRepo.createQueryBuilder('i')
+        .select('COALESCE(SUM(CAST(i.totalAmount AS DECIMAL(15,2))), 0)', 'total')
+        .getRawOne<{ total: string }>(),
+      this.outboundRepo.createQueryBuilder('o')
+        .leftJoin('o.details', 'd')
+        .select('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'total')
+        .getRawOne<{ total: string }>(),
+    ]);
+
+    const income = Number(outboundTotal?.total || 0);
+    const expense = Number(inboundTotal?.total || 0);
+    const balance = income - expense;
+
+    return [
+      {
+        groupName: 'Tổng quan thu chi hệ thống',
+        items: [
+          { id: '1', title: 'Tồn quỹ đầu kỳ', income: 0, expense: 0, balance: 0 },
+          { id: '2', title: 'Tổng doanh thu bán hàng (Thu)', income, expense: 0, balance: income },
+          { id: '3', title: 'Tổng chi phí nhập hàng (Chi)', income: 0, expense, balance: -expense },
+          { id: '4', title: 'Tồn quỹ cuối kỳ', income, expense, balance },
+        ],
+      },
+    ];
+  }
+
+  /**
+   * BÁO CÁO HÀNG TỒN KHO & HÀNG TỒN THEO ĐƠN VỊ GỐC (REAL DATABASE QUERY)
+   */
+  async getInventorySummaryReport(startDate?: string, endDate?: string, categoryId?: string, groupBy: string = 'category') {
+    const qb = this.stockRepo.createQueryBuilder('b')
+      .innerJoin('b.product', 'p')
+      .leftJoin('p.category', 'c')
+      .select("COALESCE(c.name, 'Mặc định')", 'categoryName')
+      .addSelect('p.internalSku', 'sku')
+      .addSelect('p.name', 'name')
+      .addSelect('b.available', 'finalStock')
+      .addSelect('b.allocated', 'allocated')
+      .addSelect('b.totalPhysical', 'totalPhysical')
+      .addSelect('CAST(p.wholesalePrice AS DECIMAL(14,2))', 'unitPrice')
+      .orderBy('c.name', 'ASC');
+
+    if (categoryId && categoryId !== 'all') {
+      qb.andWhere('c.id = :categoryId', { categoryId });
+    }
+
+    const rows = await qb.getRawMany();
+    const groupsMap = new Map<string, any[]>();
+
+    rows.forEach((r, idx) => {
+      const catName = `Nhóm hàng: ${r.categoryName || 'Mặc định'}`;
+      if (!groupsMap.has(catName)) groupsMap.set(catName, []);
+      const finalStock = Number(r.finalStock || 0);
+      const price = Number(r.unitPrice || 0);
+      groupsMap.get(catName)?.push({
+        id: String(idx + 1),
+        sku: r.sku || 'SKU-' + idx,
+        name: r.name,
+        initialStock: Number(r.totalPhysical || 0),
+        importQty: 0,
+        exportQty: 0,
+        finalStock,
+        unitPrice: price,
+        totalValue: finalStock * price,
+        pendingExportQty: Number(r.allocated || 0),
+        pendingOrderQty: 0,
+      });
+    });
+
+    return Array.from(groupsMap.entries()).map(([groupName, items]) => ({
+      groupName,
+      items,
     }));
   }
 }

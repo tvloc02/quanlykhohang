@@ -43,4 +43,24 @@ export class DashboardController {
   getLowStockAlerts() {
     return this.dashboardService.getLowStockAlerts();
   }
+
+  @Get('sales-summary')
+  getSalesReport(@Query() query: ReportFilterDto & { groupBy?: string }) {
+    return this.dashboardService.getSalesReport(query.startDate, query.endDate, query.groupBy);
+  }
+
+  @Get('revenue-summary')
+  getRevenueReport(@Query() query: ReportFilterDto & { branch?: string }) {
+    return this.dashboardService.getRevenueReport(query.startDate, query.endDate, query.branch);
+  }
+
+  @Get('cashflow-summary')
+  getCashflowReport(@Query() query: ReportFilterDto & { branch?: string }) {
+    return this.dashboardService.getCashflowReport(query.startDate, query.endDate, query.branch);
+  }
+
+  @Get('inventory-summary-report')
+  getInventorySummaryReport(@Query() query: ReportFilterDto & { categoryId?: string; groupBy?: string }) {
+    return this.dashboardService.getInventorySummaryReport(query.startDate, query.endDate, query.categoryId, query.groupBy);
+  }
 }
