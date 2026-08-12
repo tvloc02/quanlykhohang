@@ -1886,31 +1886,90 @@ export default function Products() {
                                 <span className="font-extrabold text-slate-800 text-xs uppercase tracking-wide">Đơn vị quy đổi:</span>
                               </label>
 
-                              {/* Dynamic Badge Pills for multiple conversion units */}
-                              {form.hasConversionUnits && form.conversionUnits.length > 0 ? (
+                              {/* Interactive Conversion Unit List: 1 [Đơn vị] = [Tỷ lệ] [Đơn vị gốc] */}
+                              {form.hasConversionUnits && (
                                 <div className="flex flex-wrap items-center gap-2">
-                                  {form.conversionUnits.map((u) => (
-                                    <span key={u.id} className="inline-flex items-center gap-1 bg-cyan-700 text-white font-bold text-xs px-3 py-1 rounded-lg shadow-xs">
-                                      <span>×</span>
-                                      <span>{u.conversionRate || '10'}</span>
-                                      <span className="font-medium opacity-90 text-[11px]">({u.unitName || 'Quy đổi'})</span>
-                                    </span>
+                                  {form.conversionUnits.map((u, uIdx) => (
+                                    <div key={u.id} className="inline-flex items-center gap-1.5 bg-white border border-cyan-400 px-2.5 py-1 rounded-xl shadow-xs">
+                                      <span className="text-xs font-extrabold text-cyan-700">1</span>
+                                      <input
+                                        type="text"
+                                        value={u.unitName}
+                                        onChange={(e) => {
+                                          const next = [...form.conversionUnits];
+                                          next[uIdx].unitName = e.target.value;
+                                          setForm((c) => ({ ...c, conversionUnits: next }));
+                                        }}
+                                        readOnly={modalMode === 'view'}
+                                        placeholder="Đơn vị"
+                                        className="w-16 h-6 px-1 rounded border border-slate-300 text-xs font-extrabold text-slate-800 outline-none focus:border-cyan-500"
+                                      />
+                                      <span className="text-xs font-bold text-slate-500">=</span>
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        value={u.conversionRate}
+                                        onChange={(e) => {
+                                          const val = e.target.value ? Number(e.target.value) : '';
+                                          const next = [...form.conversionUnits];
+                                          next[uIdx].conversionRate = val;
+                                          setForm((c) => ({ ...c, conversionUnits: next }));
+                                        }}
+                                        readOnly={modalMode === 'view'}
+                                        className="w-12 h-6 text-center rounded border border-slate-300 text-xs font-black text-cyan-800 outline-none focus:border-cyan-500"
+                                      />
+                                      <span className="text-xs font-bold text-slate-600">{form.unit || 'Cái'}</span>
+
+                                      {modalMode !== 'view' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setForm((c) => ({
+                                              ...c,
+                                              conversionUnits: c.conversionUnits.filter((_, i) => i !== uIdx)
+                                            }));
+                                          }}
+                                          className="text-slate-400 hover:text-red-600 transition ml-0.5"
+                                          title="Xóa đơn vị"
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
                                   ))}
+
+                                  {modalMode !== 'view' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setForm((c) => ({
+                                          ...c,
+                                          conversionUnits: [
+                                            ...c.conversionUnits,
+                                            { id: safeUUID(), unitName: 'Thùng', conversionRate: 20, price: '', barcode: '', importPrice: '', wholesalePrice: '', retailPrice: '' }
+                                          ]
+                                        }));
+                                      }}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-cyan-500 bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-700 hover:bg-cyan-100 transition cursor-pointer"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                      <span>Thêm đơn vị</span>
+                                    </button>
+                                  )}
                                 </div>
-                              ) : (
-                                <span className="text-[11px] text-slate-400 italic">Tích chọn để thêm nhiều đơn vị quy đổi ở bảng bên dưới</span>
                               )}
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Bottom Card: Warehouse Stock Matrix */}
-                      <div className="rounded-2xl border-2 border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                      {/* Bottom Card: Combined Warehouse Stock & Unit Conversion Matrix */}
+                      <div className="rounded-2xl border-2 border-slate-200 bg-white p-5 shadow-sm space-y-6">
+                        {/* Card Main Header */}
                         <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
                           <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
                             <WarehouseIcon className="h-4 w-4 text-cyan-600" />
-                            <span>SỐ LƯỢNG TỒN KHO THEO CÁC KHO ({warehouses.length} KHO)</span>
+                            <span>SỐ LƯỢNG TỒN KHO VÀ ĐƠN VỊ QUY ĐỔI THEO KHO ({warehouses.length} KHO)</span>
                           </div>
                           <div className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 bg-slate-100 px-4 py-1.5 rounded-xl border border-slate-200">
                             <span>TỔNG TỒN KHO TẤT CẢ CÁC KHO:</span>
@@ -1920,7 +1979,7 @@ export default function Products() {
                           </div>
                         </div>
 
-                        {/* Stock Allocation Table - Per-warehouse Multi-Unit Pricing & Stock Matrix */}
+                        {/* SECTION 1: Stock Allocation Table - Per-warehouse Multi-Unit Pricing & Stock Matrix */}
                         <div className="overflow-x-auto rounded-xl border border-slate-200">
                           <table className="w-full text-left border-collapse text-xs">
                             <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-xs">
@@ -2188,178 +2247,6 @@ export default function Products() {
                           </table>
                         </div>
                       </div>
-
-                      {/* Card 3: CHUYỂN ĐỔI ĐƠN VỊ (NẰM DƯỚI CÙNG BẢNG TỒN KHO) */}
-                      {form.hasConversionUnits && (
-                        <div className="rounded-2xl border-2 border-emerald-200 bg-white p-6 shadow-sm space-y-4">
-                          <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
-                            <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
-                              <ArrowRightLeft className="h-5 w-5 text-emerald-600" />
-                              <span>DANH SÁCH & BẢNG CẤU HÌNH CHUYỂN ĐỔI ĐƠN VỊ TÍNH (NẰM DƯỚI CÙNG)</span>
-                            </div>
-                            {modalMode !== 'view' && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setForm((c) => ({
-                                    ...c,
-                                    conversionUnits: [
-                                      ...c.conversionUnits,
-                                      { id: safeUUID(), unitName: 'Thùng', conversionRate: 20, price: '', barcode: '', importPrice: '', wholesalePrice: '', retailPrice: '' },
-                                    ],
-                                  }));
-                                }}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition cursor-pointer shadow-sm"
-                              >
-                                <Plus className="h-4 w-4" />
-                                <span>Thêm đơn vị quy đổi</span>
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Table of Conversion Units */}
-                          <div className="overflow-x-auto rounded-xl border border-slate-300 bg-white shadow-sm">
-                            <table className="w-full text-left text-xs border-collapse">
-                              <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300 uppercase">
-                                <tr>
-                                  <th className="p-3 w-40 border-r border-slate-300">Mã (Barcode)</th>
-                                  <th className="p-3 w-36 border-r border-slate-300">Đơn vị quy đổi</th>
-                                  <th className="p-3 w-28 border-r border-slate-300 text-center">Tỷ lệ quy đổi</th>
-                                  <th className="p-3 min-w-[130px] border-r border-slate-300 text-center">Giá nhập mặc định (₫)</th>
-                                  <th className="p-3 min-w-[130px] border-r border-slate-300 text-center">Giá bán buôn mặc định (₫)</th>
-                                  <th className="p-3 min-w-[130px] border-r border-slate-300 text-center">Giá bán lẻ mặc định (₫)</th>
-                                  {modalMode !== 'view' && <th className="p-3 w-24 text-center">Thao tác</th>}
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-200 bg-white">
-                                {form.conversionUnits.map((unitItem, idx) => (
-                                  <tr key={unitItem.id} className="hover:bg-slate-50 transition-colors">
-                                    {/* Mã Barcode */}
-                                    <td className="p-2 border-r border-slate-200">
-                                      <input
-                                        type="text"
-                                        value={unitItem.barcode || ''}
-                                        onChange={(e) => {
-                                          const next = [...form.conversionUnits];
-                                          next[idx].barcode = e.target.value;
-                                          setForm((c) => ({ ...c, conversionUnits: next }));
-                                        }}
-                                        readOnly={modalMode === 'view'}
-                                        placeholder="Để trống sẽ tự sinh"
-                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 font-medium text-xs text-slate-800 outline-none focus:border-emerald-500 read-only:bg-slate-50"
-                                      />
-                                    </td>
-
-                                    {/* Đơn vị quy đổi */}
-                                    <td className="p-2 border-r border-slate-200">
-                                      <input
-                                        type="text"
-                                        value={unitItem.unitName}
-                                        onChange={(e) => {
-                                          const next = [...form.conversionUnits];
-                                          next[idx].unitName = e.target.value;
-                                          setForm((c) => ({ ...c, conversionUnits: next }));
-                                        }}
-                                        readOnly={modalMode === 'view'}
-                                        placeholder="VD: Hộp, Thùng..."
-                                        className="w-full h-8 px-2.5 rounded-lg border border-slate-300 font-bold text-xs text-emerald-900 outline-none focus:border-emerald-500 read-only:bg-slate-50"
-                                      />
-                                    </td>
-
-                                    {/* Tỷ lệ quy đổi */}
-                                    <td className="p-2 border-r border-slate-200 text-center">
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        value={unitItem.conversionRate}
-                                        onChange={(e) => {
-                                          const next = [...form.conversionUnits];
-                                          next[idx].conversionRate = e.target.value ? Number(e.target.value) : '';
-                                          setForm((c) => ({ ...c, conversionUnits: next }));
-                                        }}
-                                        readOnly={modalMode === 'view'}
-                                        className="w-full h-8 px-2 text-center rounded-lg border border-slate-300 font-bold text-xs text-slate-800 outline-none focus:border-emerald-500 read-only:bg-slate-50"
-                                      />
-                                    </td>
-
-                                    {/* Giá nhập */}
-                                    <td className="p-2 border-r border-slate-200 text-center">
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        value={unitItem.importPrice ?? ''}
-                                        onChange={(e) => {
-                                          const next = [...form.conversionUnits];
-                                          next[idx].importPrice = e.target.value ? Number(e.target.value) : '';
-                                          setForm((c) => ({ ...c, conversionUnits: next }));
-                                        }}
-                                        readOnly={modalMode === 'view'}
-                                        placeholder="0"
-                                        className="w-full h-8 px-2.5 text-right rounded-lg border border-slate-300 font-semibold text-slate-800 text-xs outline-none focus:border-emerald-500 read-only:bg-slate-50"
-                                      />
-                                    </td>
-
-                                    {/* Giá bán buôn */}
-                                    <td className="p-2 border-r border-slate-200 text-center">
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        value={unitItem.wholesalePrice ?? ''}
-                                        onChange={(e) => {
-                                          const next = [...form.conversionUnits];
-                                          next[idx].wholesalePrice = e.target.value ? Number(e.target.value) : '';
-                                          setForm((c) => ({ ...c, conversionUnits: next }));
-                                        }}
-                                        readOnly={modalMode === 'view'}
-                                        placeholder="0"
-                                        className="w-full h-8 px-2.5 text-right rounded-lg border border-slate-300 font-semibold text-slate-800 text-xs outline-none focus:border-emerald-500 read-only:bg-slate-50"
-                                      />
-                                    </td>
-
-                                    {/* Giá bán lẻ */}
-                                    <td className="p-2 border-r border-slate-200 text-center">
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        value={unitItem.retailPrice ?? (unitItem.price || '')}
-                                        onChange={(e) => {
-                                          const next = [...form.conversionUnits];
-                                          const val = e.target.value ? Number(e.target.value) : '';
-                                          next[idx].retailPrice = val;
-                                          next[idx].price = val;
-                                          setForm((c) => ({ ...c, conversionUnits: next }));
-                                        }}
-                                        readOnly={modalMode === 'view'}
-                                        placeholder="0"
-                                        className="w-full h-8 px-2.5 text-right rounded-lg border border-slate-300 font-bold text-cyan-800 text-xs outline-none focus:border-emerald-500 read-only:bg-slate-50"
-                                      />
-                                    </td>
-
-                                    {/* Thao tác xóa */}
-                                    {modalMode !== 'view' && (
-                                      <td className="p-2 text-center">
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setForm((c) => ({
-                                              ...c,
-                                              conversionUnits: c.conversionUnits.filter((_, i) => i !== idx),
-                                            }));
-                                          }}
-                                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-100 hover:border-red-300 transition shadow-sm cursor-pointer"
-                                        >
-                                          <X className="h-3.5 w-3.5" />
-                                          <span>Xóa</span>
-                                        </button>
-                                      </td>
-                                    )}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
                     </>
                   )}
 
