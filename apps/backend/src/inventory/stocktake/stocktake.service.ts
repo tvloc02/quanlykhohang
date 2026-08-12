@@ -399,8 +399,8 @@ export class StocktakeService {
   async approve(id: string, approvedBy?: string) {
     const stocktake = await this.findEntity(id);
 
-    if (stocktake.status !== 'COUNTING_DONE') {
-      throw new BadRequestException('Chỉ có thể duyệt phiên kiểm kê đã hoàn tất đếm');
+    if (stocktake.status === 'APPROVED' || stocktake.status === 'REJECTED') {
+      throw new BadRequestException('Phiên kiểm kê đã được xử lý trước đó');
     }
 
     // Bọc toàn bộ cập nhật điều chỉnh tồn kho và mở khóa kho trong 1 Database Transaction duy nhất
@@ -476,8 +476,8 @@ export class StocktakeService {
   async reject(id: string) {
     const stocktake = await this.findEntity(id);
 
-    if (stocktake.status !== 'COUNTING_DONE') {
-      throw new BadRequestException('Chỉ có thể từ chối phiên kiểm kê đã hoàn tất đếm');
+    if (stocktake.status === 'APPROVED' || stocktake.status === 'REJECTED') {
+      throw new BadRequestException('Phiên kiểm kê đã được xử lý trước đó');
     }
 
     stocktake.status = 'REJECTED';
