@@ -20,33 +20,87 @@ export interface OutboundDetail {
   requiredQty: number;
   pickedQty: number;
   unitPrice: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  vatPercent?: number;
+  vatAmount?: number;
   totalLineAmount: number;
+  note?: string;
   product?: OutboundProduct | null;
 }
 
 export interface OutboundOrder {
   id: string;
   orderNo: string;
+  branchCode?: string;
+  employeeName?: string;
+  receiver?: string;
   customer: string;
-  dueDate: string;
-  status: 'pending' | 'picking' | 'READY_TO_SHIP' | 'shipped';
+  customerPhone?: string;
+  customerAddress?: string;
+  orderDate?: string;
+  dueDate?: string;
+  expectedDate?: string;
+  status: string;
   items: number;
   description?: string;
+  subtotal?: number;
+  discount?: number;
+  vatRate?: number;
+  vatAmount?: number;
+  totalAmount?: number;
+  amountPaid?: number;
+  debt?: number;
+  paymentMethod?: string;
+  paymentAccount?: string;
+  usePoints?: boolean;
+  pointsUsed?: number;
+  pointsAvailable?: number;
+  createdAt?: string;
   details?: OutboundDetail[];
 }
 
 export interface OutboundCreatePayload {
-  orderNo: string;
+  orderNo?: string;
+  branchCode?: string;
+  employeeName?: string;
+  receiver?: string;
+  customerId?: string;
   customer: string;
-  dueDate: string;
-  status: string;
-  items: number;
+  customerPhone?: string;
+  customerAddress?: string;
+  orderDate?: string;
+  dueDate?: string;
+  expectedDate?: string;
+  status?: string;
+  items?: number;
   description?: string;
+  subtotal?: number;
+  discount?: number;
+  vatRate?: number;
+  vatAmount?: number;
+  totalAmount?: number;
+  amountPaid?: number;
+  debt?: number;
+  paymentMethod?: string;
+  paymentAccount?: string;
+  usePoints?: boolean;
+  pointsUsed?: number;
+  pointsAvailable?: number;
   details?: Array<{
-    productId: string;
+    productId?: string;
+    productSku?: string;
+    productName?: string;
+    unit?: string;
     requiredQty: number;
     warehouseCode?: string;
     unitPrice?: number;
+    discountPercent?: number;
+    discountAmount?: number;
+    vatPercent?: number;
+    vatAmount?: number;
+    totalLineAmount?: number;
+    note?: string;
   }>;
 }
 
