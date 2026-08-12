@@ -164,6 +164,28 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'production', label: 'Sản xuất', parentId: 'prod-dist' },
   { id: 'distribution', label: 'Phân phối', parentId: 'prod-dist' },
 
+  { id: 'bao-cao-tong-hop', label: 'Báo cáo Tổng hợp', isHeader: true },
+  { id: 'report-sales', label: 'Báo cáo Bán hàng', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-revenue', label: 'Báo cáo Doanh thu', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-cashflow', label: 'Báo cáo Thu chi', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-inventory', label: 'Hàng tồn', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-inventory-base-unit', label: 'Hàng tồn Theo đơn vị gốc', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-inventory-summary', label: 'Hàng tồn Tổng hợp', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-customer-debt', label: 'Công nợ Khách hàng', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-supplier-debt', label: 'Công nợ Nhà cung cấp', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-fund-balance', label: 'Tồn quỹ', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-cashbook', label: 'Sao kê - Sổ quỹ', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-stock-card', label: 'Thẻ kho', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-sales-detail', label: 'Chi tiết hàng bán ra', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-sales-by-staff', label: 'Hàng bán ra theo Nhân viên', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-business-summary', label: 'Tổng hợp Kinh doanh', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-below-min-stock', label: 'Hàng tồn dưới định mức', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-revenue-huu', label: 'Báo cáo doanh thu - Huu', parentId: 'bao-cao-tong-hop' },
+
+  { id: 'vat-dien-tu', label: 'VAT Điện tử', isHeader: true },
+  { id: 'vat-management', label: 'Quản lý VAT Điện tử', parentId: 'vat-dien-tu' },
+  { id: 'vat-config', label: 'Thiết lập thông tin VAT', parentId: 'vat-dien-tu' },
+
   { id: 'reports', label: 'Báo cáo' },
   { id: 'scanner', label: 'Quét mã vạch' },
   { id: 'erp-status', label: 'Giám sát ERP Sync' },
@@ -211,7 +233,7 @@ export function getFallbackPermissionGroups(): PermissionGroup[] {
   const defaultPerms = getDefaultMenuPermissions(false);
 
   const managerPerms = { ...defaultPerms };
-  ['pos', 'nhap-xuat', 'outbound-orders', 'outbound-retail', 'inbound-stock-in-orders', 'inbound-return-requests', 'inbound-return-customers', 'delivery-transfer-orders', 'delivery-transfer-requests', 'inventory-initial-stock', 'inventory-stocktake', 'outbound-sales-orders', 'inbound-purchase-orders', 'documents-quotes', 'danh-muc', 'products-main', 'categories', 'customers', 'suppliers', 'warehouses', 'home', 'documents', 'doc-sales-invoice', 'doc-stock-in-note', 'doc-stock-out-note', 'inventory', 'inventory-main', 'reports', 'scanner'].forEach((key) => {
+  ['pos', 'nhap-xuat', 'outbound-orders', 'outbound-retail', 'inbound-stock-in-orders', 'inbound-return-requests', 'inbound-return-customers', 'delivery-transfer-orders', 'delivery-transfer-requests', 'inventory-initial-stock', 'inventory-stocktake', 'outbound-sales-orders', 'inbound-purchase-orders', 'documents-quotes', 'danh-muc', 'products-main', 'categories', 'customers', 'suppliers', 'warehouses', 'home', 'documents', 'doc-sales-invoice', 'doc-stock-in-note', 'doc-stock-out-note', 'inventory', 'inventory-main', 'bao-cao-tong-hop', 'report-sales', 'report-revenue', 'report-cashflow', 'report-inventory', 'report-inventory-base-unit', 'report-inventory-summary', 'report-customer-debt', 'report-supplier-debt', 'report-fund-balance', 'report-cashbook', 'report-stock-card', 'report-sales-detail', 'report-sales-by-staff', 'report-business-summary', 'report-below-min-stock', 'report-revenue-huu', 'reports', 'scanner'].forEach((key) => {
     if (managerPerms[key]) {
       managerPerms[key] = { view: true, create: true, edit: true, delete: false, print: true, status: true, import: true, export: true };
     }

@@ -16,6 +16,14 @@ import TransferRequestsPage from './features/delivery/pages/TransferRequestsPage
 import CreateTransferOrderPage from './features/delivery/pages/CreateTransferOrderPage';
 import Inventory from './features/inventory/Inventory';
 import Reports from './features/reports/Reports';
+import SalesReportPage from './features/reports/pages/SalesReportPage';
+import RevenueReportPage from './features/reports/pages/RevenueReportPage';
+import CashflowReportPage from './features/reports/pages/CashflowReportPage';
+import InventoryReportPage from './features/reports/pages/InventoryReportPage';
+import InventoryBaseUnitReportPage from './features/reports/pages/InventoryBaseUnitReportPage';
+import GenericReportPage from './features/reports/pages/GenericReportPage';
+import VatManagementPage from './features/vat/pages/VatManagementPage';
+import VatConfigPage from './features/vat/pages/VatConfigPage';
 import AuditLog from './features/audit-log/AuditLog';
 import Settings, { MailSettings, AiSettings, StoreSettings } from './features/settings/Settings';
 import ProfilePage from './features/user-management/pages/ProfilePage';
@@ -626,6 +634,176 @@ function App() {
           }
         />
         <Route
+          path="/reports/sales"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <SalesReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/revenue"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <RevenueReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/cashflow"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <CashflowReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/inventory"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <InventoryReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/inventory-base-unit"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <InventoryBaseUnitReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/inventory-summary"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Hàng tồn Tổng hợp" description="Báo cáo tổng hợp số lượng tồn kho toàn hệ thống" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/customer-debt"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Công nợ Khách hàng" description="Báo cáo theo dõi công nợ phải thu của khách hàng" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/supplier-debt"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Công nợ Nhà cung cấp" description="Báo cáo theo dõi công nợ phải trả cho nhà cung cấp" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/fund-balance"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Tồn quỹ" description="Báo cáo theo dõi số dư tồn quỹ tiền mặt và tài khoản" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/cashbook"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Sao kê - Sổ quỹ" description="Sao kê sổ quỹ chi tiết thu chi theo từng giao dịch" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/stock-card"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Thẻ kho" description="Thẻ kho theo dõi biến động xuất nhập tồn của từng sản phẩm" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/sales-detail"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Chi tiết hàng bán ra" description="Báo cáo chi tiết từng mặt hàng đã bán trong kỳ" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/sales-by-staff"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Hàng bán ra theo Nhân viên" description="Thống kê sản phẩm bán ra theo từng nhân viên" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/business-summary"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Tổng hợp Kinh doanh" description="Báo cáo kết quả kinh doanh tổng hợp toàn công ty" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/below-min-stock"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Hàng tồn dưới định mức" description="Cảnh báo các sản phẩm đang có số lượng tồn kho dưới định mức tối thiểu" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports/revenue-huu"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <GenericReportPage title="Báo cáo doanh thu - Huu" description="Báo cáo doanh thu phân tích chuyên sâu" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reports-summary"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <SalesReportPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/documents"
           element={
             <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
@@ -673,6 +851,26 @@ function App() {
                 <TransferDocPage />
               </MainLayout>
             </RoleRoute>
+          }
+        />
+        <Route
+          path="/vat/management"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <VatManagementPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/vat/config"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <VatConfigPage />
+              </MainLayout>
+            </ProtectedRoute>
           }
         />
         <Route

@@ -13,12 +13,63 @@ export const reportsApi = {
     const response = await fetch(`${API_BASE_URL}/reports/dashboard`, {
       headers: authHeaders(),
     });
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
       throw new Error(errorData?.message || 'Không tải được dữ liệu báo cáo');
     }
+    return await response.json();
+  },
 
-    return (await response.json()) as unknown;
+  getSalesReport: async (startDate?: string, endDate?: string, groupBy: string = 'day') => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    if (groupBy) params.append('groupBy', groupBy);
+
+    const response = await fetch(`${API_BASE_URL}/reports/sales-summary?${params.toString()}`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) throw new Error('Không tải được dữ liệu Báo cáo bán hàng');
+    return await response.json();
+  },
+
+  getRevenueReport: async (startDate?: string, endDate?: string, branch?: string) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    if (branch) params.append('branch', branch);
+
+    const response = await fetch(`${API_BASE_URL}/reports/revenue-summary?${params.toString()}`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) throw new Error('Không tải được dữ liệu Báo cáo doanh thu');
+    return await response.json();
+  },
+
+  getCashflowReport: async (startDate?: string, endDate?: string, branch?: string) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    if (branch) params.append('branch', branch);
+
+    const response = await fetch(`${API_BASE_URL}/reports/cashflow-summary?${params.toString()}`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) throw new Error('Không tải được dữ liệu Báo cáo thu chi');
+    return await response.json();
+  },
+
+  getInventorySummaryReport: async (startDate?: string, endDate?: string, categoryId?: string, groupBy: string = 'category') => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    if (categoryId) params.append('categoryId', categoryId);
+    if (groupBy) params.append('groupBy', groupBy);
+
+    const response = await fetch(`${API_BASE_URL}/reports/inventory-summary-report?${params.toString()}`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) throw new Error('Không tải được dữ liệu Báo cáo tồn kho');
+    return await response.json();
   },
 };
