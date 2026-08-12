@@ -115,6 +115,16 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'outbound-disposal', label: 'Xuất hủy', parentId: 'nhap-xuat' },
   { id: 'inbound-assembly', label: 'Tạo bộ/Combo', parentId: 'nhap-xuat' },
 
+  { id: 'thu-chi', label: 'Thu chi', isHeader: true },
+  { id: 'finance-receipts', label: 'Viết phiếu thu', parentId: 'thu-chi' },
+  { id: 'finance-receipt-from-bill', label: 'Thu tiền từ Phiếu xuất', parentId: 'thu-chi' },
+  { id: 'finance-payment-vouchers', label: 'Viết phiếu chi', parentId: 'thu-chi' },
+
+  { id: 'bao-cao-phan-tich', label: 'Báo cáo Phân tích', isHeader: true },
+  { id: 'report-bill-profit', label: 'Lợi nhuận theo Hóa đơn', parentId: 'bao-cao-phan-tich' },
+  { id: 'report-category-profit', label: 'Lợi nhuận theo Nhóm hàng', parentId: 'bao-cao-phan-tich' },
+  { id: 'report-customer-profit', label: 'Lợi nhuận theo Khách hàng', parentId: 'bao-cao-phan-tich' },
+
   { id: 'danh-muc', label: 'Danh mục', isHeader: true },
   { id: 'products-main', label: 'Hàng hóa', parentId: 'danh-muc' },
   { id: 'categories', label: 'Nhóm hàng', parentId: 'danh-muc' },

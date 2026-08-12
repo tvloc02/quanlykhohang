@@ -54,7 +54,15 @@ import {
   Printer,
   Database,
   MessageCircle,
-  Download
+  Download,
+  ArrowLeftRight,
+  PieChart,
+  BookOpen,
+  PhoneCall,
+  Bike,
+  Edit3,
+  HelpCircle,
+  BookMarked,
 } from 'lucide-react';
 import { readStoredPermissionGroups } from '../../features/personnel/PermissionGroupsPage';
 
@@ -69,6 +77,7 @@ type MenuItem = {
   label: string;
   path: string;
   badge?: null | string;
+  isSpecialButton?: boolean;
   allowedRoles?: string[];
   children?: Array<{
     id: string;
@@ -79,17 +88,19 @@ type MenuItem = {
   }>;
 };
 
-// Cấu trúc danh mục menu: POS - Bán lẻ, Nhập - Xuất, Danh mục, Hệ thống & các tiện ích còn lại
+// Cấu trúc danh mục menu xếp chuẩn theo Ảnh Mẫu:
+// POS - Bán lẻ (Trang chủ), Nhập - Xuất, Thu chi, Báo cáo Tổng hợp, Báo cáo Phân tích, Sổ sách kế toán, Danh mục, CSKH, Hệ thống, Shipper, VAT Điện tử, Ghi đơn Thị trường, Trợ giúp, Hướng dẫn sử dụng
 const menuItems: MenuItem[] = [
-  // 1. Nút POS - Bán lẻ
+  // 1. POS - Bán lẻ (Nút Vàng Nổi Bật - Trang chủ)
   {
     id: 'pos',
     icon: ShoppingBag,
     label: 'POS - Bán lẻ',
-    path: '/shop',
+    path: '/dashboard',
+    isSpecialButton: true,
     allowedRoles: ['admin', 'manager', 'staff'],
   },
-  // 2. Khối Nhập - Xuất (14 mục con)
+  // 2. Nhập - Xuất
   {
     id: 'nhap-xuat',
     icon: FileCheck,
@@ -113,92 +124,20 @@ const menuItems: MenuItem[] = [
       { id: 'inbound-assembly', icon: LinkIcon, label: 'Tạo bộ/Combo', path: '/inbound/assembly' },
     ],
   },
-  // 3. Khối Danh mục
+  // 3. Thu chi (Viết phiếu thu, Thu tiền từ Phiếu xuất, Viết phiếu chi)
   {
-    id: 'danh-muc',
-    icon: AlignLeft,
-    label: 'Danh mục',
-    path: '/categories-menu',
+    id: 'thu-chi',
+    icon: ArrowLeftRight,
+    label: 'Thu chi',
+    path: '/finance/receipts',
     allowedRoles: ['admin', 'manager', 'staff'],
     children: [
-      { id: 'products-main', icon: LayoutGrid, label: 'Hàng hóa', path: '/products/main' },
-      { id: 'categories', icon: FolderTree, label: 'Nhóm hàng', path: '/categories' },
-      { id: 'customers', icon: UserPlus, label: 'Khách hàng', path: '/customers' },
-      { id: 'suppliers', icon: Contact, label: 'Nhà cung cấp', path: '/suppliers' },
-      { id: 'warehouses', icon: MapPin, label: 'Khu vực', path: '/warehouses' },
-      { id: 'units', icon: Scale, label: 'Đơn vị quy đổi', path: '/units' },
-      { id: 'currency', icon: DollarSign, label: 'Ngoại tệ', path: '/settings' },
-      { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/settings' },
-      { id: 'receipt-expense-types', icon: Terminal, label: 'Nội dung thu chi', path: '/reports' },
-      { id: 'customer-groups', icon: Users, label: 'Nhóm KH/NCC', path: '/customers' },
-      { id: 'price-lists', icon: Tag, label: 'Bảng giá', path: '/products/main' },
+      { id: 'finance-receipts', icon: DollarSign, label: 'Viết phiếu thu', path: '/finance/receipts' },
+      { id: 'finance-receipt-from-bill', icon: Repeat, label: 'Thu tiền từ Phiếu xuất', path: '/finance/receipt-from-bill' },
+      { id: 'finance-payment-vouchers', icon: Wallet, label: 'Viết phiếu chi', path: '/finance/payment-vouchers' },
     ],
   },
-  // 4. Khối Hệ thống
-  {
-    id: 'he-thong',
-    icon: Settings,
-    label: 'Hệ thống',
-    path: '/system-menu',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'logout', icon: LogOut, label: 'Đăng xuất', path: '/login' },
-      { id: 'change-password', icon: Lock, label: 'Đổi mật khẩu', path: '/profile' },
-      { id: 'personnel', icon: User, label: 'Người dùng / Nhân viên', path: '/personnel', allowedRoles: ['admin'] },
-      { id: 'permission-groups', icon: ShieldCheck, label: 'Nhóm quyền', path: '/personnel/permission-groups', allowedRoles: ['admin'] },
-      { id: 'sys-info', icon: Info, label: 'Thông tin sử dụng', path: '/settings' },
-      { id: 'branches', icon: Store, label: 'Chi nhánh', path: '/warehouses' },
-      { id: 'audit-log', icon: History, label: 'Lịch sử thao tác', path: '/audit-log', allowedRoles: ['admin'] },
-      { id: 'deposit', icon: Wallet, label: 'Nạp tiền', path: '/settings' },
-      { id: 'print-barcode', icon: ScanLine, label: 'In Barcode + QRCode', path: '/scanner' },
-      { id: 'print-template-edit', icon: FileEdit, label: 'Chỉnh sửa mẫu in', path: '/documents' },
-      { id: 'print-templates', icon: Printer, label: 'Chỉnh mẫu in', path: '/documents' },
-      { id: 'data-maintenance', icon: Database, label: 'Bảo trì Dữ liệu', path: '/sync-conflicts', allowedRoles: ['admin', 'manager'] },
-      { id: 'sys-config', icon: Settings, label: 'Cấu hình hệ thống', path: '/settings', allowedRoles: ['admin'] },
-      { id: 'zalo-config', icon: MessageCircle, label: 'Cấu hình Zalo OA', path: '/settings' },
-      { id: 'evat-config', icon: Receipt, label: 'Cấu hình e-VAT', path: '/settings' },
-      { id: 'data-transfer', icon: Database, label: 'Kết chuyển dữ liệu', path: '/settings' },
-      { id: 'data-transfer-view', icon: Download, label: 'Xem dữ liệu đã Kết chuyển', path: '/settings' },
-    ],
-  },
-  // 5. Trang chủ & Các tiện ích quản lý kho bổ sung
-  { id: 'home', icon: Home, label: 'Trang chủ', path: '/dashboard' },
-  {
-    id: 'documents',
-    icon: FileCheck,
-    label: 'Chứng từ',
-    path: '/documents',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'doc-sales-invoice', icon: FileText, label: 'Hóa đơn bán hàng', path: '/documents/sales-invoice' },
-      { id: 'doc-stock-in-note', icon: TrendingDown, label: 'Phiếu nhập kho', path: '/documents/stock-in-note' },
-      { id: 'doc-stock-out-note', icon: TrendingUp, label: 'Phiếu xuất kho', path: '/documents/stock-out-note' },
-      { id: 'doc-transfer-note', icon: Truck, label: 'Phiếu điều chuyển', path: '/documents/transfer-note' },
-    ],
-  },
-  {
-    id: 'inventory',
-    icon: Warehouse,
-    label: 'Tồn kho',
-    path: '/inventory',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'inventory-2d', icon: Layers, label: 'Sơ đồ 2D & Heatmap', path: '/inventory/visualizer' },
-      { id: 'inventory-smart-slotting', icon: Cpu, label: 'Gợi ý cất hàng (Smart Slotting)', path: '/inventory/smart-slotting' },
-      { id: 'inventory-main', icon: Warehouse, label: 'Bảng tồn kho tổng hợp', path: '/inventory' },
-    ],
-  },
-  {
-    id: 'prod-dist',
-    icon: Package,
-    label: 'Sản xuất & Phân phối',
-    path: '/inbound/production',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'production', icon: Package, label: 'Sản xuất', path: '/inbound/production' },
-      { id: 'distribution', icon: Truck, label: 'Phân phối', path: '/inbound/distribution' },
-    ],
-  },
+  // 4. Báo cáo Tổng hợp
   {
     id: 'bao-cao-tong-hop',
     icon: BarChart3,
@@ -224,6 +163,103 @@ const menuItems: MenuItem[] = [
       { id: 'report-revenue-huu', icon: BarChart3, label: 'Báo cáo doanh thu - Huu', path: '/reports/revenue-huu' },
     ],
   },
+  // 5. Báo cáo Phân tích
+  {
+    id: 'bao-cao-phan-tich',
+    icon: PieChart,
+    label: 'Báo cáo Phân tích',
+    path: '/reports/bill-profit',
+    allowedRoles: ['admin', 'manager', 'staff'],
+    children: [
+      { id: 'report-bill-profit', icon: Receipt, label: 'Lợi nhuận theo Hóa đơn', path: '/reports/bill-profit' },
+      { id: 'report-category-profit', icon: LayoutGrid, label: 'Lợi nhuận theo Nhóm hàng', path: '/reports/category-profit' },
+      { id: 'report-customer-profit', icon: Users, label: 'Lợi nhuận theo Khách hàng', path: '/reports/customer-profit' },
+    ],
+  },
+  // 6. Sổ sách kế toán
+  {
+    id: 'so-sach-ke-toan',
+    icon: BookOpen,
+    label: 'Sổ sách kế toán',
+    path: '/reports/cashbook',
+    allowedRoles: ['admin', 'manager', 'staff'],
+    children: [
+      { id: 'accounting-cashbook', icon: Landmark, label: 'Sổ quỹ tiền mặt', path: '/reports/cashbook' },
+      { id: 'accounting-sales-journal', icon: Receipt, label: 'Nhật ký bán hàng', path: '/reports/sales-detail' },
+    ],
+  },
+  // 7. Danh mục
+  {
+    id: 'danh-muc',
+    icon: AlignLeft,
+    label: 'Danh mục',
+    path: '/categories-menu',
+    allowedRoles: ['admin', 'manager', 'staff'],
+    children: [
+      { id: 'products-main', icon: LayoutGrid, label: 'Hàng hóa', path: '/products/main' },
+      { id: 'categories', icon: FolderTree, label: 'Nhóm hàng', path: '/categories' },
+      { id: 'customers', icon: UserPlus, label: 'Khách hàng', path: '/customers' },
+      { id: 'suppliers', icon: Contact, label: 'Nhà cung cấp', path: '/suppliers' },
+      { id: 'warehouses', icon: MapPin, label: 'Khu vực', path: '/warehouses' },
+      { id: 'units', icon: Scale, label: 'Đơn vị quy đổi', path: '/units' },
+      { id: 'currency', icon: DollarSign, label: 'Ngoại tệ', path: '/settings' },
+      { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/settings' },
+      { id: 'receipt-expense-types', icon: Terminal, label: 'Nội dung thu chi', path: '/reports' },
+      { id: 'customer-groups', icon: Users, label: 'Nhóm KH/NCC', path: '/customers' },
+      { id: 'price-lists', icon: Tag, label: 'Bảng giá', path: '/products/main' },
+    ],
+  },
+  // 8. Chăm sóc Khách hàng
+  {
+    id: 'cham-soc-khach-hang',
+    icon: PhoneCall,
+    label: 'Chăm sóc Khách hàng',
+    path: '/customers',
+    allowedRoles: ['admin', 'manager', 'staff'],
+    children: [
+      { id: 'cskh-customers', icon: UserPlus, label: 'Danh sách Khách hàng', path: '/customers' },
+      { id: 'cskh-suppliers', icon: Contact, label: 'Nhà cung cấp', path: '/suppliers' },
+    ],
+  },
+  // 9. Hệ thống
+  {
+    id: 'he-thong',
+    icon: Settings,
+    label: 'Hệ thống',
+    path: '/system-menu',
+    allowedRoles: ['admin', 'manager', 'staff'],
+    children: [
+      { id: 'logout', icon: LogOut, label: 'Đăng xuất', path: '/login' },
+      { id: 'change-password', icon: Lock, label: 'Đổi mật khẩu', path: '/profile' },
+      { id: 'personnel', icon: User, label: 'Người dùng / Nhân viên', path: '/personnel', allowedRoles: ['admin'] },
+      { id: 'permission-groups', icon: ShieldCheck, label: 'Nhóm quyền', path: '/personnel/permission-groups', allowedRoles: ['admin'] },
+      { id: 'sys-info', icon: Info, label: 'Thông tin sử dụng', path: '/settings' },
+      { id: 'branches', icon: Store, label: 'Chi nhánh', path: '/warehouses' },
+      { id: 'audit-log', icon: History, label: 'Lịch sử thao tác', path: '/audit-log', allowedRoles: ['admin'] },
+      { id: 'deposit', icon: Wallet, label: 'Nạp tiền', path: '/settings' },
+      { id: 'print-barcode', icon: ScanLine, label: 'In Barcode + QRCode', path: '/scanner' },
+      { id: 'print-template-edit', icon: FileEdit, label: 'Chỉnh sửa mẫu in', path: '/documents' },
+      { id: 'print-templates', icon: Printer, label: 'Chỉnh mẫu in', path: '/documents' },
+      { id: 'data-maintenance', icon: Database, label: 'Bảo trì Dữ liệu', path: '/sync-conflicts', allowedRoles: ['admin', 'manager'] },
+      { id: 'sys-config', icon: Settings, label: 'Cấu hình hệ thống', path: '/settings', allowedRoles: ['admin'] },
+      { id: 'zalo-config', icon: MessageCircle, label: 'Cấu hình Zalo OA', path: '/settings' },
+      { id: 'evat-config', icon: Receipt, label: 'Cấu hình e-VAT', path: '/vat/config' },
+      { id: 'data-transfer', icon: Database, label: 'Kết chuyển dữ liệu', path: '/settings' },
+      { id: 'data-transfer-view', icon: Download, label: 'Xem dữ liệu đã Kết chuyển', path: '/settings' },
+    ],
+  },
+  // 10. Shipper
+  {
+    id: 'shipper',
+    icon: Bike,
+    label: 'Shipper',
+    path: '/delivery/transfer-orders',
+    allowedRoles: ['admin', 'manager', 'staff'],
+    children: [
+      { id: 'shipper-delivery', icon: Truck, label: 'Quản lý Giao hàng', path: '/delivery/transfer-orders' },
+    ],
+  },
+  // 11. VAT Điện tử
   {
     id: 'vat-dien-tu',
     icon: Receipt,
@@ -235,9 +271,33 @@ const menuItems: MenuItem[] = [
       { id: 'vat-config', icon: Settings, label: 'Thiết lập thông tin VAT', path: '/vat/config' },
     ],
   },
-  { id: 'reports', icon: BarChart3, label: 'Báo cáo', path: '/reports', allowedRoles: ['admin', 'manager', 'staff'] },
-  { id: 'scanner', icon: ScanLine, label: 'Quét mã vạch', path: '/scanner', allowedRoles: ['admin', 'manager', 'staff'] },
-  { id: 'erp-status', icon: Zap, label: 'Giám sát ERP Sync', path: '/erp-status', allowedRoles: ['admin', 'manager'] },
+  // 12. Ghi đơn Thị trường
+  {
+    id: 'ghi-don-thi-truong',
+    icon: Edit3,
+    label: 'Ghi đơn Thị trường',
+    path: '/outbound/sales-orders',
+    allowedRoles: ['admin', 'manager', 'staff'],
+  },
+  // 13. Trợ giúp
+  {
+    id: 'tro-giup',
+    icon: HelpCircle,
+    label: 'Trợ giúp',
+    path: '/settings',
+    allowedRoles: ['admin', 'manager', 'staff'],
+    children: [
+      { id: 'help-support', icon: Info, label: 'Hỗ trợ hệ thống', path: '/settings' },
+    ],
+  },
+  // 14. Hướng dẫn sử dụng
+  {
+    id: 'huong-dan-su-dung',
+    icon: BookMarked,
+    label: 'Hướng dẫn sử dụng',
+    path: '/settings',
+    allowedRoles: ['admin', 'manager', 'staff'],
+  },
 ];
 
 function getStoredUser() {
@@ -280,7 +340,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     return readStoredPermissionGroups();
   }, [permissionTick]);
 
-  // Determine active permission groups for current user
   const userActiveGroups = useMemo(() => {
     let matched = permissionGroups.filter((g) => {
       const inGroupIds = userGroupIds.includes(g.id);
@@ -291,7 +350,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     });
 
     if (matched.length === 0) {
-      // Fallback matching by user role
       matched = permissionGroups.filter((g) => {
         const code = (g.code || '').toUpperCase();
         const name = g.name.toLowerCase();
@@ -308,7 +366,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
   const isMenuAllowed = useCallback(
     (item: { id: string; allowedRoles?: string[] }) => {
-      // If user has active permission groups, menuPermissions setting directly controls access
       if (userActiveGroups.length > 0) {
         const hasPermissionConfig = userActiveGroups.some(
           (g) => g.menuPermissions && g.menuPermissions[item.id] !== undefined
@@ -320,7 +377,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         }
       }
 
-      // Fallback role check if no explicit permission group config found for this menu item
       if (userRole === 'admin') return true;
       if (!item.allowedRoles || item.allowedRoles.length === 0) return true;
       return item.allowedRoles.includes(userRole);
@@ -328,7 +384,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     [userRole, userActiveGroups]
   );
 
-  // Khởi tạo mục mở rộng ban đầu theo trang hiện tại
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
     const initialPath = location.pathname;
     const activeParent = menuItems.find((item) => item.children?.some((c) => initialPath === c.path));
@@ -383,6 +438,23 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     const hasChildren = Boolean(item.children && item.children.length > 0);
     const isChildActive = hasChildren && item.children?.some((c) => location.pathname === c.path);
     const isExpanded = expandedItems.has(item.path);
+
+    // SPECIAL YELLOW BUTTON FOR POS - BÁN LẺ (TRANG CHỦ)
+    if (item.isSpecialButton) {
+      return (
+        <Link
+          key={item.path + item.id}
+          to={item.path}
+          className={`w-full flex items-center ${
+            isOpen ? 'px-4 py-3' : 'justify-center p-3'
+          } text-sm font-black rounded-xl transition-all duration-200 bg-amber-400 hover:bg-amber-500 text-slate-900 shadow-md mb-2 cursor-pointer border-2 border-amber-300`}
+          title={!isOpen ? item.label : ''}
+        >
+          <Icon className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 text-slate-900`} />
+          {isOpen && <span className="flex-1 text-left truncate font-black tracking-wide">{item.label}</span>}
+        </Link>
+      );
+    }
 
     if (hasChildren) {
       return (
