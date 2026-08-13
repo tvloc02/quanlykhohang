@@ -217,8 +217,8 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
 
   const navigate = useNavigate();
   React.useEffect(() => {
-    if (isStaff && (viewMode === 'stocktake' || viewMode === 'requests' || viewMode === 'create')) {
-      navigate('/inventory/stocktake/my-tasks', { replace: true });
+    if (isStaff && (viewMode === 'requests' || viewMode === 'request-new')) {
+      navigate('/inventory/stocktake', { replace: true });
     }
   }, [isStaff, viewMode, navigate]);
 
@@ -917,6 +917,8 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                   const detailRows = isDetailActive && hasDetails ? item.details : [];
                   const firstDetail = hasDetails ? item.details[0] : null;
                   const extraDetails = detailRows.length > 1 ? detailRows.slice(1) : [];
+                  const detailNotes = item.details ? item.details.map(d => d.note).filter(Boolean).join('; ') : '';
+                  const displayNote = item.note ? (detailNotes ? `${item.note} (${detailNotes})` : item.note) : detailNotes;
 
                   return (
                     <React.Fragment key={item.id}>
@@ -1004,8 +1006,8 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                           </>
                         )}
                         {columnVis.note && (
-                          <td className="w-48 max-w-[200px] border border-slate-200 px-2 py-2 text-left text-xs text-slate-500 truncate" title={item.note || ''} rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            {item.note || ''}
+                          <td className="w-48 max-w-[200px] border border-slate-200 px-2 py-2 text-left text-xs text-slate-500 truncate" title={displayNote} rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                            {displayNote || ''}
                           </td>
                         )}
                         <td className="border border-slate-200 px-2 py-2 text-center" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
@@ -1842,7 +1844,7 @@ function CreateStocktakeModal({
       {/* RIC Footer Action Buttons */}
       <div className="flex h-12 items-center justify-end gap-1.5 border-t border-slate-300 bg-slate-200 px-4 flex-shrink-0">
         <button
-          onClick={() => executeSubmit('COUNTING_DONE')}
+          onClick={() => executeSubmit(isManager ? 'COUNTING' : 'COUNTING_DONE')}
           disabled={submitting || items.length === 0}
           className="flex h-8 items-center gap-1 rounded bg-emerald-600 px-4 text-xs font-bold text-white shadow hover:bg-emerald-700 disabled:opacity-50 transition"
         >
@@ -1856,7 +1858,7 @@ function CreateStocktakeModal({
         </button>
         <button
           onClick={async () => {
-            await executeSubmit('COUNTING_DONE');
+            await executeSubmit(isManager ? 'COUNTING' : 'COUNTING_DONE');
             window.print();
           }}
           disabled={submitting || items.length === 0}

@@ -65,7 +65,7 @@ export class StocktakeService {
     @InjectRepository(Product) private productRepo: Repository<Product>,
     private readonly notificationsService: NotificationsService,
     @InjectDataSource() private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   // ─── CRUD ──────────────────────────────────────────────────────
 
@@ -173,7 +173,7 @@ export class StocktakeService {
     });
     // Filter by assignee or createdBy matching user identifier (case-insensitive)
     const filtered = stocktakes.filter(
-      (s) => 
+      (s) =>
         (s.assignee && s.assignee.toLowerCase() === userIdentifier.toLowerCase()) ||
         (s.createdBy && s.createdBy.toLowerCase() === userIdentifier.toLowerCase())
     );
@@ -451,7 +451,7 @@ export class StocktakeService {
       await manager.query(
         `UPDATE warehouses SET isFrozen = false WHERE code = ? OR id = ?`,
         [stocktake.locationCode, stocktake.locationCode],
-      ).catch(() => {});
+      ).catch(() => { });
 
       // 3. Cập nhật trạng thái phiên kiểm kê -> APPROVED
       stocktake.status = 'APPROVED';
@@ -477,7 +477,7 @@ export class StocktakeService {
       if (stocktake.createdBy && stocktake.createdBy !== stocktake.assignee) {
         await this.notificationsService.notifyUserByIdentifier(stocktake.createdBy, msgData);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return this.serialize(await this.findEntity(id));
   }
@@ -509,7 +509,7 @@ export class StocktakeService {
       if (stocktake.createdBy && stocktake.createdBy !== stocktake.assignee) {
         await this.notificationsService.notifyUserByIdentifier(stocktake.createdBy, msgData);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return this.serialize(await this.findEntity(id));
   }
@@ -598,11 +598,11 @@ export class StocktakeService {
       note: detail.note,
       product: detail.product
         ? {
-            id: detail.product.id,
-            internalSku: detail.product.internalSku,
-            name: detail.product.name,
-            unit: detail.product.unit,
-          }
+          id: detail.product.id,
+          internalSku: detail.product.internalSku,
+          name: detail.product.name,
+          unit: detail.product.unit,
+        }
         : null,
     };
   }
