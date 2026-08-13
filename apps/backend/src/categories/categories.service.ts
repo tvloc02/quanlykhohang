@@ -50,11 +50,15 @@ export class CategoriesService {
       existingByKey.set(this.getCategoryKey(saved.type, saved.code), saved);
     }
 
-    await Promise.all(
-      existing
-        .filter((category) => !keptIds.has(String(category.id)))
-        .map((category) => this.repo.delete(category.id)),
-    );
+    for (const category of existing) {
+      if (!keptIds.has(String(category.id))) {
+        try {
+          await this.repo.delete(category.id);
+        } catch {
+          // Ignore delete if referenced by products or constraints
+        }
+      }
+    }
 
     return this.findAll();
   }

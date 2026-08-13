@@ -99,6 +99,10 @@ export class CreateAsnDto {
 
   @IsOptional()
   @IsString()
+  receiptType?: string;
+
+  @IsOptional()
+  @IsString()
   approverId?: string;
 
   @IsOptional()

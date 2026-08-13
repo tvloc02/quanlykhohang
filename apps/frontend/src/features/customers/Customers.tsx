@@ -102,56 +102,7 @@ function saveStoredCustomerProfiles(profiles: Record<string, CustomerProfile>) {
 }
 
 function getFallbackCustomers(): CustomerUser[] {
-  return [
-    {
-      id: 'cust-1',
-      email: 'khachhang.an@gmail.com',
-      fullName: 'Nguyễn Văn An',
-      phone: '0901112233',
-      address: '123 Nguyễn Huệ, Phường Bến Nghé, Quận 1, TP.HCM',
-      roles: [{ id: 'role-customer', name: 'customer' }],
-    },
-    {
-      id: 'cust-2',
-      email: 'khachhang.binh@gmail.com',
-      fullName: 'Trần Thị Bình',
-      phone: '0902223344',
-      address: '45 Lê Lợi, Phường Bến Thành, Quận 1, TP.HCM',
-      roles: [{ id: 'role-customer', name: 'customer' }],
-    },
-    {
-      id: 'cust-3',
-      email: 'khachhang.cuong@gmail.com',
-      fullName: 'Lê Hoàng Cường',
-      phone: '0903334455',
-      address: '78 Điện Biên Phủ, Phường 15, Quận Bình Thạnh, TP.HCM',
-      roles: [{ id: 'role-customer', name: 'customer' }],
-    },
-    {
-      id: 'cust-4',
-      email: 'khachhang.dung@gmail.com',
-      fullName: 'Phạm Ngọc Dũng',
-      phone: '0904445566',
-      address: '12 Võ Văn Tần, Phường 6, Quận 3, TP.HCM',
-      roles: [{ id: 'role-customer', name: 'customer' }],
-    },
-    {
-      id: 'cust-5',
-      email: 'khachhang.en@gmail.com',
-      fullName: 'Vũ Thùy Én',
-      phone: '0905556677',
-      address: '99 CMT8, Phường 7, Quận Tân Bình, TP.HCM',
-      roles: [{ id: 'role-customer', name: 'customer' }],
-    },
-    {
-      id: 'cust-6',
-      email: 'khachhang.giang@gmail.com',
-      fullName: 'Hoàng Hương Giang',
-      phone: '0906667788',
-      address: '234 Trần Hưng Đạo, Quận 5, TP.HCM',
-      roles: [{ id: 'role-customer', name: 'customer' }],
-    },
-  ];
+  return [];
 }
 
 function StyledSelect({
@@ -371,15 +322,14 @@ export default function CustomersManagement() {
       }
 
       const userData = (await usersResponse.json()) as CustomerUser[];
-      const nextUsers = userData.length > 0 ? userData : getFallbackCustomers();
+      const nextUsers = userData;
       setUsers(nextUsers);
 
       const customerList = nextUsers.filter(isCustomer);
       initializeProfilesDefaults(customerList, getStoredCustomerProfiles());
     } catch {
-      const fallbackList = getFallbackCustomers();
-      setUsers(fallbackList);
-      initializeProfilesDefaults(fallbackList, getStoredCustomerProfiles());
+      setUsers([]);
+      initializeProfilesDefaults([], getStoredCustomerProfiles());
     } fontally: {
       setLoading(false);
     }

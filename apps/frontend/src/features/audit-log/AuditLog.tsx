@@ -60,56 +60,7 @@ function authHeaders() {
 }
 
 function getFallbackLogs(): AuditLogItem[] {
-  return [
-    {
-      id: 'log-101',
-      actorEmail: 'admin@smartwms.vn',
-      action: 'CREATE_USER',
-      resource: 'Quản lý nhân sự',
-      createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      metadata: { fullName: 'Nguyễn Văn An', role: 'Staff', email: 'an.nguyen@smartwms.vn' },
-    },
-    {
-      id: 'log-102',
-      actorEmail: 'manager.kho@smartwms.vn',
-      action: 'LOCK_ACCOUNT',
-      resource: 'Quản lý khách hàng',
-      createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-      metadata: { customer: 'Trần Văn Bình', reason: 'Tài khoản có hành vi gian lận đơn hàng' },
-    },
-    {
-      id: 'log-103',
-      actorEmail: 'admin@smartwms.vn',
-      action: 'UPDATE_PRODUCT',
-      resource: 'Quản lý sản phẩm',
-      createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-      metadata: { sku: 'SKU-LAP-001', field: 'Giá bán lẻ', oldValue: '15,000,000 VNĐ', newValue: '14,500,000 VNĐ' },
-    },
-    {
-      id: 'log-104',
-      actorEmail: 'staff.kho@smartwms.vn',
-      action: 'CREATE_RECEIPT',
-      resource: 'Nhập kho vật tư',
-      createdAt: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
-      metadata: { poCode: 'PO-2026-0089', totalItems: 120, warehouse: 'Kho Tổng TP.HCM' },
-    },
-    {
-      id: 'log-105',
-      actorEmail: 'admin@smartwms.vn',
-      action: 'UPDATE_SETTINGS',
-      resource: 'Cấu hình Mail',
-      createdAt: new Date(Date.now() - 1000 * 60 * 400).toISOString(),
-      metadata: { smtpServer: 'smtp.gmail.com', port: 587, status: 'Đã mã hóa TLS' },
-    },
-    {
-      id: 'log-106',
-      actorEmail: 'khachhang.an@gmail.com',
-      action: 'LOGIN',
-      resource: 'Hệ thống Khách hàng',
-      createdAt: new Date(Date.now() - 1000 * 60 * 720).toISOString(),
-      metadata: { ip: '116.108.45.12', device: 'Chrome Windows' },
-    },
-  ];
+  return [];
 }
 
 // Hàm thông minh chuyển đổi Thao tác & Metadata thành Mô tả Tiếng Việt dễ hiểu

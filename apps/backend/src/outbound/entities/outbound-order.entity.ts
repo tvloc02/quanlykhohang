@@ -40,6 +40,9 @@ export class OutboundOrder extends BaseEntity {
   @Column({ nullable: true, default: 'Đã giao hàng' })
   status?: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true, default: 'outbound_sales' })
+  orderType?: string;
+
   @Column({ length: 500, nullable: true })
   description?: string;
 

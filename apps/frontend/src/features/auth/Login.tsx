@@ -25,8 +25,8 @@ type Toast = {
 
 export default function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = React.useState('admin@example.com');
-  const [password, setPassword] = React.useState('Admin@123');
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
   const [toast, setToast] = React.useState<Toast | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [googleReady, setGoogleReady] = React.useState(false);

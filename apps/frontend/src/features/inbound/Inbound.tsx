@@ -210,233 +210,20 @@ function authHeaders() {
 
 // ─── MASTER DATA MẪU CHUẨN KHO ────────────────────────────────
 
-const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [
-  { id: '1', code: 'SPX001', name: 'SPX Express' },
-  { id: '2', code: 'KHO-MAIN', name: 'Kho Tổng' },
-  { id: '3', code: 'KHO-NVL', name: 'Kho Nguyên Vật Liệu' },
-  { id: '4', code: 'KHO-123', name: 'Kho 123' },
-];
+const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return 'SPX Express';
+  if (!codeOrName) return '';
   const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
   if (found) return found.name;
-  if (codeOrName === '4445') return 'SPX Express';
   return codeOrName;
 }
 
-const DEFAULT_FALLBACK_SUPPLIERS: SupplierOption[] = [
-  { id: 'sup-0', supplierCode: '999', name: '999 - Nhà cung cấp mặc định', phone: '0281234567', address: 'TP.HCM' },
-  { id: 'sup-1', supplierCode: 'NCC001', name: 'Hoàng Gia Electronics', phone: '0281234567', address: '123 Nguyễn Huệ, Q1, TP.HCM', taxCode: '0301234567' },
-  { id: 'sup-2', supplierCode: 'NCC002', name: 'Phú Thành Foods', phone: '0281234568', address: '456 Lê Lợi, Q3, TP.HCM', taxCode: '0301234568' },
-  { id: 'sup-3', supplierCode: 'NCC003', name: 'Minh Tâm Textiles', phone: '0281234569', address: '789 Trần Hưng Đạo, Q5, TP.HCM', taxCode: '0301234569' },
-  { id: 'sup-4', supplierCode: 'NCC004', name: 'Apple Vietnam Authorized Distributor', phone: '0283999888', address: 'Tòa nhà Phú Mỹ Hưng, Q7, TP.HCM', taxCode: '0308889991' },
-  { id: 'sup-5', supplierCode: 'NCC005', name: 'Samsung Electronics Vietnam', phone: '0222388899', address: 'KCN Yên Phong, Bắc Ninh', taxCode: '2300123456' },
-];
+const DEFAULT_FALLBACK_SUPPLIERS: SupplierOption[] = [];
 
-const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [
-  { id: 'prod-1', internalSku: 'SP-DT-001', name: 'Tai nghe Bluetooth Sony WH-1000XM5', unit: 'Cái', purchasePrice: 6200000, salePrice: 7500000 },
-  { id: 'prod-2', internalSku: 'SP-DT-002', name: 'Ổ cứng SSD Samsung 1TB 870 EVO', unit: 'Cái', purchasePrice: 2200000, salePrice: 2800000 },
-  { id: 'prod-3', internalSku: 'SP-DT-003', name: 'Chuột không dây Logitech MX Master 3S', unit: 'Cái', purchasePrice: 1750000, salePrice: 2200000 },
-  { id: 'prod-4', internalSku: 'SP-DT-006', name: 'MacBook Pro 14 inch M3 Max 36GB/1TB', unit: 'Cái', purchasePrice: 58000000, salePrice: 64500000 },
-  { id: 'prod-5', internalSku: 'SP-DT-007', name: 'iPhone 15 Pro Max 256GB Natural Titanium', unit: 'Cái', purchasePrice: 31000000, salePrice: 34990000 },
-  { id: 'prod-6', internalSku: 'SP-TP-001', name: 'Gạo ST25 Sóc Trăng 5kg', unit: 'Bao', purchasePrice: 130000, salePrice: 160000 },
-  { id: 'prod-7', internalSku: 'SP-TP-006', name: 'Sữa tươi tiệt trùng Vinamilk 100% 1L (Thùng 12)', unit: 'Thùng', purchasePrice: 360000, salePrice: 420000 },
-  { id: 'prod-8', internalSku: 'SP-VL-001', name: 'Vải Lụa Tơ Tằm Cao Cấp', unit: 'Cuộn', purchasePrice: 850000, salePrice: 1200000 },
-];
+const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [];
 
-const DEFAULT_FALLBACK_ORDERS: InboundReceiptOrder[] = [
-  {
-    id: 'ord-1001',
-    receiptNo: 'PNK-2026-0001',
-    supplier: 'Apple Vietnam Authorized Distributor',
-    supplierId: 'sup-4',
-    supplierPhone: '0283999888',
-    supplierAddress: 'Tòa nhà Phú Mỹ Hưng, Q7, TP.HCM',
-    warehouseCode: 'KHO-TONG',
-    employeeName: 'Trần Văn Nam (Quản lý kho)',
-    orderDate: '12/08/2026',
-    status: 'completed',
-    description: 'Nhập lô hàng iPhone & MacBook chính hãng đợt 1 tháng 8',
-    subtotal: 639900000,
-    discount: 0,
-    vatAmount: 0,
-    totalAmount: 639900000,
-    amountPaid: 639900000,
-    itemsCount: 2,
-    totalQty: 15,
-    details: [
-      {
-        id: 'det-1',
-        productId: 'prod-4',
-        productSku: 'SP-DT-006',
-        productName: 'MacBook Pro 14 inch M3 Max 36GB/1TB',
-        unit: 'Cái',
-        qty: 5,
-        price: 58000000,
-        totalLineAmount: 290000000,
-      },
-      {
-        id: 'det-2',
-        productId: 'prod-5',
-        productSku: 'SP-DT-007',
-        productName: 'iPhone 15 Pro Max 256GB Natural Titanium',
-        unit: 'Cái',
-        qty: 10,
-        price: 34990000,
-        totalLineAmount: 349900000,
-      },
-    ],
-  },
-  {
-    id: 'ord-1002',
-    receiptNo: 'PNK-2026-0002',
-    supplier: 'Samsung Electronics Vietnam',
-    supplierId: 'sup-5',
-    supplierPhone: '0222388899',
-    supplierAddress: 'KCN Yên Phong, Bắc Ninh',
-    warehouseCode: 'KHO-HN',
-    employeeName: 'Nguyễn Thị Hoa (Kho Hà Nội)',
-    orderDate: '11/08/2026',
-    status: 'completed',
-    description: 'Nhập phụ kiện và tai nghe Sony, SSD Samsung',
-    subtotal: 137000000,
-    discount: 2000000,
-    vatAmount: 0,
-    totalAmount: 135000000,
-    amountPaid: 135000000,
-    itemsCount: 2,
-    totalQty: 35,
-    details: [
-      {
-        id: 'det-3',
-        productId: 'prod-2',
-        productSku: 'SP-DT-002',
-        productName: 'Ổ cứng SSD Samsung 1TB 870 EVO',
-        unit: 'Cái',
-        qty: 20,
-        price: 2200000,
-        totalLineAmount: 44000000,
-      },
-      {
-        id: 'det-4',
-        productId: 'prod-1',
-        productSku: 'SP-DT-001',
-        productName: 'Tai nghe Bluetooth Sony WH-1000XM5',
-        unit: 'Cái',
-        qty: 15,
-        price: 6200000,
-        totalLineAmount: 93000000,
-      },
-    ],
-  },
-  {
-    id: 'ord-1003',
-    receiptNo: 'PNK-2026-0003',
-    supplier: 'Hoàng Gia Electronics',
-    supplierId: 'sup-1',
-    supplierPhone: '0281234567',
-    supplierAddress: '123 Nguyễn Huệ, Q1, TP.HCM',
-    warehouseCode: 'KHO-BD',
-    employeeName: 'Lê Hoàng Anh',
-    orderDate: '10/08/2026',
-    status: 'completed',
-    description: 'Nhập lô chuột không dây Logitech MX Master 3S',
-    subtotal: 52500000,
-    discount: 500000,
-    vatAmount: 0,
-    totalAmount: 52000000,
-    amountPaid: 50000000,
-    itemsCount: 1,
-    totalQty: 30,
-    details: [
-      {
-        id: 'det-5',
-        productId: 'prod-3',
-        productSku: 'SP-DT-003',
-        productName: 'Chuột không dây Logitech MX Master 3S',
-        unit: 'Cái',
-        qty: 30,
-        price: 1750000,
-        totalLineAmount: 52500000,
-      },
-    ],
-  },
-  {
-    id: 'ord-1004',
-    receiptNo: 'PNK-2026-0004',
-    supplier: 'Phú Thành Foods',
-    supplierId: 'sup-2',
-    supplierPhone: '0281234568',
-    supplierAddress: '456 Lê Lợi, Q3, TP.HCM',
-    warehouseCode: 'KHO-CUCHI',
-    employeeName: 'Phạm Minh Tuấn',
-    orderDate: '09/08/2026',
-    status: 'completed',
-    description: 'Nhập lương thực thực phẩm kho lạnh Củ Chi',
-    subtotal: 42500000,
-    discount: 0,
-    vatAmount: 0,
-    totalAmount: 42500000,
-    amountPaid: 42500000,
-    itemsCount: 2,
-    totalQty: 150,
-    details: [
-      {
-        id: 'det-6',
-        productId: 'prod-6',
-        productSku: 'SP-TP-001',
-        productName: 'Gạo ST25 Sóc Trăng 5kg',
-        unit: 'Bao',
-        qty: 50,
-        price: 130000,
-        totalLineAmount: 6500000,
-      },
-      {
-        id: 'det-7',
-        productId: 'prod-7',
-        productSku: 'SP-TP-006',
-        productName: 'Sữa tươi tiệt trùng Vinamilk 100% 1L (Thùng 12)',
-        unit: 'Thùng',
-        qty: 100,
-        price: 360000,
-        totalLineAmount: 36000000,
-      },
-    ],
-  },
-  {
-    id: 'ord-1005',
-    receiptNo: 'PNK-2026-0005',
-    supplier: 'Minh Tâm Textiles',
-    supplierId: 'sup-3',
-    supplierPhone: '0281234569',
-    supplierAddress: '789 Trần Hưng Đạo, Q5, TP.HCM',
-    warehouseCode: 'KHO-DN',
-    employeeName: 'Vũ Thị Thanh',
-    orderDate: '08/08/2026',
-    status: 'pending',
-    description: 'Đơn hàng nhập vải nguyên liệu kho Đà Nẵng (Đang kiểm kê)',
-    subtotal: 85000000,
-    discount: 1000000,
-    vatAmount: 0,
-    totalAmount: 84000000,
-    amountPaid: 0,
-    itemsCount: 1,
-    totalQty: 100,
-    details: [
-      {
-        id: 'det-8',
-        productId: 'prod-8',
-        productSku: 'SP-VL-001',
-        productName: 'Vải Lụa Tơ Tằm Cao Cấp',
-        unit: 'Cuộn',
-        qty: 100,
-        price: 850000,
-        totalLineAmount: 85000000,
-      },
-    ],
-  },
-];
+const DEFAULT_FALLBACK_ORDERS: InboundReceiptOrder[] = [];
 
 function makeEmptyRow(index: number): FormDetailRow {
   return {
@@ -487,7 +274,19 @@ function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', d
   };
 }
 
-export default function Inbound() {
+export interface InboundProps {
+  featureMode?: 'stock-in' | 'return-supplier' | 'return-customer' | 'transfer-in' | 'initial-stock' | 'purchase-order' | 'assembly';
+  title?: string;
+  codePrefix?: string;
+  partnerLabel?: string;
+}
+
+export default function Inbound({
+  featureMode = 'stock-in',
+  title = 'DANH SÁCH PHIẾU NHẬP HÀNG KHO',
+  codePrefix = 'PNK',
+  partnerLabel = 'Nhà cung cấp',
+}: InboundProps) {
   const [orders, setOrders] = useState<InboundReceiptOrder[]>(DEFAULT_FALLBACK_ORDERS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -1050,10 +849,11 @@ export default function Inbound() {
     const payload = {
       poNumber: activeTab.receiptNo.trim() || undefined,
       receiptNo: activeTab.receiptNo.trim() || undefined,
+      receiptType: featureMode,
       supplierId: activeTab.supplierId || suppliers[0]?.id,
       supplierName: activeTab.supplier || suppliers[0]?.name || 'Nhà cung cấp',
-      warehouseCode: activeTab.branchCode || 'SPX001',
-      branchCode: activeTab.branchCode || 'SPX001',
+      warehouseCode: activeTab.branchCode || 'KHO-TONG',
+      branchCode: activeTab.branchCode || 'KHO-TONG',
       orderDate: activeTab.orderDate,
       expectedDate: activeTab.expectedDate,
       status: activeTab.status || 'RECEIVED',
@@ -1209,12 +1009,12 @@ export default function Inbound() {
                 Home
               </Link>
               <span className="text-slate-400">·</span>
-              <span className="text-slate-700 font-semibold">Nhập hàng</span>
+              <span className="text-slate-700 font-semibold">{title.replace('DANH SÁCH PHIẾU ', '').replace('DANH SÁCH ', '')}</span>
             </div>
           </div>
 
           <div className="mb-3">
-            <h1 className="text-xl font-black text-slate-800 uppercase tracking-wide">DANH SÁCH PHIẾU NHẬP KHO HÀNG HÓA</h1>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-wide">{title}</h1>
           </div>
 
           {/* RIC Colored Toolbar */}
@@ -1365,16 +1165,6 @@ export default function Inbound() {
             >
               <Search className="h-3.5 w-3.5" />
               Tìm kiếm
-            </button>
-
-            <button
-              onClick={handleResetSampleData}
-              className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:opacity-90 cursor-pointer"
-              style={{ background: '#FF9800' }}
-              title="Reset dữ liệu mẫu chuẩn Nhập Kho"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reset Dữ liệu
             </button>
 
             <button

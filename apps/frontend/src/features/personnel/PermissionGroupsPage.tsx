@@ -239,61 +239,7 @@ export function getDefaultMenuPermissions(isFull = false): Record<string, Action
 }
 
 export function getFallbackPermissionGroups(): PermissionGroup[] {
-  const fullPerms = getDefaultMenuPermissions(true);
-  const defaultPerms = getDefaultMenuPermissions(false);
-
-  const managerPerms = { ...defaultPerms };
-  ['pos', 'nhap-xuat', 'outbound-orders', 'outbound-retail', 'inbound-stock-in-orders', 'inbound-return-requests', 'inbound-return-customers', 'delivery-transfer-orders', 'delivery-transfer-requests', 'inventory-initial-stock', 'inventory-stocktake', 'outbound-sales-orders', 'inbound-purchase-orders', 'documents-quotes', 'danh-muc', 'products-main', 'categories', 'customers', 'suppliers', 'warehouses', 'home', 'documents', 'doc-sales-invoice', 'doc-stock-in-note', 'doc-stock-out-note', 'inventory', 'inventory-main', 'bao-cao-tong-hop', 'report-sales', 'report-revenue', 'report-cashflow', 'report-inventory', 'report-inventory-base-unit', 'report-inventory-summary', 'report-customer-debt', 'report-supplier-debt', 'report-fund-balance', 'report-cashbook', 'report-stock-card', 'report-sales-detail', 'report-sales-by-staff', 'report-business-summary', 'report-below-min-stock', 'report-revenue-huu', 'reports', 'scanner'].forEach((key) => {
-    if (managerPerms[key]) {
-      managerPerms[key] = { view: true, create: true, edit: true, delete: false, print: true, status: true, import: true, export: true };
-    }
-  });
-
-  const storekeeperPerms = { ...defaultPerms };
-  ['nhap-xuat', 'inbound-stock-in-orders', 'outbound-orders', 'delivery-transfer-orders', 'delivery-transfer-requests', 'inventory-stocktake', 'inventory', 'inventory-main', 'doc-stock-in-note', 'doc-stock-out-note', 'scanner'].forEach((key) => {
-    if (storekeeperPerms[key]) {
-      storekeeperPerms[key] = { view: true, create: true, edit: true, delete: false, print: true, status: false, import: false, export: true };
-    }
-  });
-
-  return [
-    {
-      id: 'group-admin',
-      name: 'Quản trị hệ thống',
-      code: 'ADMIN_GROUP',
-      description: 'Nhóm toàn quyền quản trị và điều hành toàn bộ hệ thống kho',
-      memberIds: ['admin@smartwms.vn', 'current-user'],
-      generalPermissions: getDefaultGeneralPermissions(),
-      menuPermissions: fullPerms,
-    },
-    {
-      id: 'group-manager',
-      name: 'Quản lý kho',
-      code: 'MANAGER_GROUP',
-      description: 'Quản lý vận hành kho hàng, lập kế hoạch nhập xuất và phê duyệt chứng từ',
-      memberIds: ['manager.khoa@smartwms.vn'],
-      generalPermissions: getDefaultGeneralPermissions(),
-      menuPermissions: managerPerms,
-    },
-    {
-      id: 'group-storekeeper',
-      name: 'Thủ kho',
-      code: 'STOREKEEPER_GROUP',
-      description: 'Chịu trách nhiệm thực tế nhập kho, xuất kho và bảo quản tài sản hàng hóa',
-      memberIds: ['nhanvien.huyen@smartwms.vn', 'nhanvien.minh@smartwms.vn'],
-      generalPermissions: { ...getDefaultGeneralPermissions(), canViewImportPrice: false, showProfitLoss: false },
-      menuPermissions: storekeeperPerms,
-    },
-    {
-      id: 'group-inventory-checker',
-      name: 'Nhân viên kiểm kê',
-      code: 'CHECKER_GROUP',
-      description: 'Đội kiểm kê định kỳ, rà soát chênh lệch hàng hóa và đề xuất điều chỉnh',
-      memberIds: ['nhanvien.tuan@smartwms.vn'],
-      generalPermissions: { ...getDefaultGeneralPermissions(), canViewImportPrice: false, showRevenue: false, showProfitLoss: false },
-      menuPermissions: storekeeperPerms,
-    },
-  ];
+  return [];
 }
 
 export function readStoredPermissionGroups(): PermissionGroup[] {
@@ -301,13 +247,11 @@ export function readStoredPermissionGroups(): PermissionGroup[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
-    const fallbacks = getFallbackPermissionGroups();
-    saveStoredPermissionGroups(fallbacks);
-    return fallbacks;
+    return [];
   } catch {
-    return getFallbackPermissionGroups();
+    return [];
   }
 }
 

@@ -118,6 +118,10 @@ export class CreateOutboundOrderDto {
 
   @IsOptional()
   @IsString()
+  orderType?: string;
+
+  @IsOptional()
+  @IsString()
   description?: string;
 
   @IsOptional()
