@@ -1640,7 +1640,7 @@ function CreateStocktakeModal({
               } else {
                 // Thêm mới với tồn kho theo kho đang chọn
                 const matchBal = (product.stockBalances || []).find((b: any) => b.locationCode === locationCode);
-                const systemQty = matchBal ? matchBal.totalPhysical : (product.totalPhysical ?? product.stockQty ?? 0);
+                const systemQty = matchBal ? matchBal.totalPhysical : ((product as any).totalPhysical ?? (product as any).stockQty ?? product.totalStock ?? 0);
                 setItems(prev => [
                   ...prev,
                   {

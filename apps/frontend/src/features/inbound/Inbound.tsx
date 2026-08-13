@@ -869,6 +869,11 @@ export default function Inbound() {
 
   const handleProductScanned = (scanned: ScannedProduct) => {
     if (!activeTabId) return;
+    if (!scanned || scanned.isExternal || scanned.id === 'NEW' || !scanned.name) {
+      setToast({ message: 'Chưa có sản phẩm này', type: 'error' });
+      return;
+    }
+
     updateActiveTab((tab) => {
       const details = [...tab.details];
       const emptyIdx = details.findIndex((r) => !r.productId && !r.productName);
@@ -897,7 +902,7 @@ export default function Inbound() {
       return { ...tab, details };
     });
     setShowScannerModal(false);
-    setToast({ message: `Đã thêm sản phẩm quét: ${scanned.name}`, type: 'success' });
+    setToast({ message: `Đã thêm sản phẩm: ${scanned.name}`, type: 'success' });
   };
 
   const handleCreateSupplier = (e: React.FormEvent) => {
