@@ -87,6 +87,11 @@ export class StocktakeController {
     return this.service.findOne(id);
   }
 
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() body: { note?: string }) {
+    return this.service.updateStocktake(id, body);
+  }
+
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.service.remove(id);
