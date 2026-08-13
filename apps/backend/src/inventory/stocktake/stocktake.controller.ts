@@ -41,9 +41,8 @@ export class StocktakeController {
     const role = getRoleFromRequest(req);
     const userIdentifier = getUserIdentifier(req);
 
-    // Staff: bắt buộc isRequest = true, assignee = chính mình
+    // Staff: mặc định assignee & createdBy = chính mình
     if (role === 'staff' || role === 'inventory_checker') {
-      dto.isRequest = true;
       dto.assignee = userIdentifier;
       dto.createdBy = userIdentifier;
     }
@@ -54,11 +53,8 @@ export class StocktakeController {
   @Get()
   findAll(@Req() req: Request) {
     const role = getRoleFromRequest(req);
-    if (role === 'inventory_checker') {
+    if (role === 'inventory_checker' || role === 'staff') {
       return this.service.findMyTasks(getUserIdentifier(req));
-    }
-    if (role !== 'manager' && role !== 'admin') {
-      throw new ForbiddenException('Chỉ quản lý mới có quyền xem toàn bộ kiểm kê');
     }
     return this.service.findAll();
   }
