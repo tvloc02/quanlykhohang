@@ -431,34 +431,27 @@ export default function BarcodeScanner({
 
     try {
       const product = await lookupBarcode(code);
-      
-      // Nếu là chế độ không cho phép thêm nhanh (Xuất kho, Kiểm kê) mà sản phẩm lại chưa có trong hệ thống
-      if (product.isExternal && allowQuickAdd === false) {
-        throw new Error('Sản phẩm chưa có trong hệ thống. Không thể quét mã này ở chế độ hiện tại.');
+
+      if (product.isExternal || !product.id || product.id === 'NEW') {
+        throw new Error('Chưa có sản phẩm này');
       }
 
       setFoundProduct(product);
-
-      if (product.isExternal) {
-        setQuickAddName(product.name);
-        setQuickAddPrice('0');
-        setQuickAddCategory('');
-      } else if (!showQtyDialog) {
-        onProductFound?.(product, defaultQty);
-        onClose();
-      }
+      onProductFound?.(product, defaultQty);
+      onClose();
     } catch (err: any) {
-      setError(err.message || 'Lỗi tra cứu sản phẩm');
+      const errorMsg = 'Chưa có sản phẩm này';
+      setError(errorMsg);
       // Allow re-scanning after error — restart camera
       setTimeout(() => {
         processingRef.current = false;
         lastScannedRef.current = '';
         restartCamera();
-      }, 2000);
+      }, 1500);
     } finally {
       setLoading(false);
     }
-  }, [loading, mode, showQtyDialog, defaultQty, allowQuickAdd, onProductFound, onBarcodeScanned, onClose, restartCamera]);
+  }, [loading, mode, defaultQty, onProductFound, onBarcodeScanned, onClose, restartCamera]);
 
   const handleCreateExternalProduct = async () => {
     if (!quickAddName.trim()) {

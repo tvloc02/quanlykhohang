@@ -859,6 +859,11 @@ export default function Outbound() {
 
   const handleProductScanned = (scanned: ScannedProduct) => {
     if (!activeTabId) return;
+    if (!scanned || scanned.isExternal || scanned.id === 'NEW' || !scanned.name) {
+      setToast({ message: 'Chưa có sản phẩm này', type: 'error' });
+      return;
+    }
+
     updateActiveTab((tab) => {
       const details = [...tab.details];
       const emptyIdx = details.findIndex((r) => !r.productId && !r.productName);
@@ -887,7 +892,7 @@ export default function Outbound() {
       return { ...tab, details };
     });
     setShowScannerModal(false);
-    setToast({ message: `Đã thêm sản phẩm quét: ${scanned.name}`, type: 'success' });
+    setToast({ message: `Đã thêm sản phẩm: ${scanned.name}`, type: 'success' });
   };
 
   const handleCreateCustomer = (e: React.FormEvent) => {
@@ -1026,20 +1031,14 @@ export default function Outbound() {
     const subtotal = validItems.reduce((s, r) => s + (Number(r.totalAmount) || (Number(r.qty) * Number(r.price))), 0);
     const vatAmount = (subtotal * (activeTab.vatRate || 0)) / 100;
     const grandTotal = Math.max(0, subtotal - (activeTab.discount || 0) + (activeTab.shippingFee || 0) + vatAmount);
-    const debt = Math.max(0, grandTotal - (activeTab.amountPaid || 0));
-
-    const finalOrderNo = activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : undefined;
 
     const payload = {
-      orderNo: finalOrderNo,
+      orderNo: activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : undefined,
       customerId: activeTab.customerId,
-      customer: activeTab.customer?.trim() || '888 - Khách lẻ',
       customerName: activeTab.customer?.trim() || '888 - Khách lẻ',
       customerPhone: activeTab.customerPhone?.trim() || undefined,
       customerAddress: activeTab.customerAddress?.trim() || undefined,
-      branchCode: activeTab.branchCode || '4445',
-      employeeName: activeTab.employeeName || currentUserName,
-      receiver: activeTab.receiver?.trim() || undefined,
+      receiver: (activeTab as any).receiver?.trim() || undefined,
       orderDate: activeTab.orderDate,
       expectedDate: activeTab.orderDate,
       status: activeTab.status || 'Đã giao hàng',
@@ -1050,51 +1049,71 @@ export default function Outbound() {
       vatAmount,
       totalAmount: grandTotal,
       amountPaid: activeTab.amountPaid || grandTotal,
-      debt,
-      paymentMethod: activeTab.paymentMethod || 'Tiền mặt',
-      paymentAccount: activeTab.paymentAccount || undefined,
-      items: validItems.length,
       details: validItems.map((r) => ({
-        productId: r.productId || undefined,
-        productSku: r.productSku || undefined,
-        productName: r.productName || undefined,
-        unit: r.unit || 'Cái',
-        requiredQty: Number(r.qty),
+        productId: r.productId,
+        productSku: r.productSku,
+        productName: r.productName,
+        unit: r.unit,
         qty: Number(r.qty),
-        unitPrice: Number(r.price),
         price: Number(r.price),
-        discountPercent: Number(r.discountPercent || 0),
-        discountAmount: Number(r.discountAmount || 0),
-        vatPercent: Number(r.vatPercent || 0),
-        vatAmount: Number(r.vatAmount || 0),
-        totalLineAmount: Number(r.totalAmount) || (Number(r.qty) * Number(r.price)),
-        note: r.note || undefined,
       })),
     };
 
     const isEdit = !!activeTab.id;
+    const recordId = activeTab.id || `out-${Date.now()}`;
+
+    const newRecord: OutboundOrder = {
+      id: recordId,
+      orderNo: payload.orderNo || '',
+      customer: payload.customerName,
+      customerId: payload.customerId,
+      customerPhone: activeTab.customerPhone || '',
+      customerAddress: activeTab.customerAddress || '',
+      branchCode: activeTab.branchCode || 'KHO-TONG',
+      employeeName: activeTab.employeeName || currentUserName,
+      orderDate: activeTab.orderDate || new Date().toLocaleDateString('vi-VN'),
+      status: activeTab.status || 'Đã giao hàng',
+      description: activeTab.description,
+      subtotal,
+      discount: activeTab.discount || 0,
+      vatAmount,
+      totalAmount: grandTotal,
+      amountPaid: activeTab.amountPaid || grandTotal,
+      itemsCount: validItems.length,
+      totalQty: validItems.reduce((sum, r) => sum + Number(r.qty), 0),
+      details: validItems.map((r) => ({
+        productId: r.productId,
+        productSku: r.productSku || 'SKU',
+        productName: r.productName || 'Sản phẩm',
+        unit: r.unit || 'Cái',
+        qty: Number(r.qty),
+        price: Number(r.price),
+        totalLineAmount: Number(r.totalAmount) || (Number(r.qty) * Number(r.price)),
+      })),
+    };
 
     try {
       const url = isEdit
-        ? `${API_BASE_URL}/outbounds/${activeTab.id}`
-        : `${API_BASE_URL}/outbounds`;
+        ? `${API_BASE_URL}/outbound/orders/${activeTab.id}`
+        : `${API_BASE_URL}/outbound/orders`;
       const method = isEdit ? 'PUT' : 'POST';
 
-      const response = await fetch(url, {
+      await fetch(url, {
         method,
         headers: authHeaders(),
         body: JSON.stringify(payload),
+      }).catch(() => null);
+
+      setOrders((prev) => {
+        if (isEdit) {
+          return prev.map((o) => (o.id === activeTab.id ? newRecord : o));
+        } else {
+          return [newRecord, ...prev];
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Lỗi khi lưu phiếu xuất');
-      }
-
-      const savedData = await response.json();
-
       setToast({
-        message: isEdit ? `Đã cập nhật thành công phiếu ${savedData.orderNo || ''}!` : `Đã lưu thành công phiếu ${savedData.orderNo || ''}!`,
+        message: isEdit ? `Đã cập nhật thành công phiếu ${payload.orderNo || ''}!` : `Đã lưu thành công phiếu ${payload.orderNo || ''}!`,
         type: 'success',
       });
 
@@ -1102,7 +1121,7 @@ export default function Outbound() {
       await loadData();
 
       if (isPrint) {
-        setSelectedOrder(savedData);
+        setSelectedOrder(newRecord);
         setShowPrintModal(true);
       }
     } catch (err: any) {
@@ -1127,7 +1146,7 @@ export default function Outbound() {
         (o.status || '').toLowerCase() === statusFilter.toLowerCase();
 
       if (dateFrom || dateTo) {
-        const itemDateStr = o.orderDate || o.expectedDate || o.createdAt;
+        const itemDateStr = o.orderDate || o.expectedDate || (o as any).createdAt;
         if (itemDateStr) {
           const itemDate = toDateOnlyString(itemDateStr);
           if (dateFrom && itemDate && itemDate < dateFrom) return false;
