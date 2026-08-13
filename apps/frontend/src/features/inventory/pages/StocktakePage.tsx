@@ -800,42 +800,42 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                 {columnVis.nv && (
                   <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
-                      NV <ChevronDown className="h-3 w-3 text-slate-400" />
+                      NV <Filter className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
                 )}
                 {columnVis.code && (
                   <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
-                      Mã <ChevronDown className="h-3 w-3 text-slate-400" />
+                      Mã <Filter className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
                 )}
                 {columnVis.location && (
                   <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
-                      Kho <ChevronDown className="h-3 w-3 text-slate-400" />
+                      Kho <Filter className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
                 )}
                 {columnVis.date && (
                   <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
-                      Ngày <ChevronDown className="h-3 w-3 text-slate-400" />
+                      Ngày <Filter className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
                 )}
                 {columnVis.totalDiff && (
                   <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
-                      Tổng lệch <ChevronDown className="h-3 w-3 text-slate-400" />
+                      Tổng lệch <Filter className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
                 )}
                 {columnVis.status && (
                   <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
-                      Trạng thái <ChevronDown className="h-3 w-3 text-slate-400" />
+                      Trạng thái <Filter className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
                 )}
@@ -844,35 +844,35 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                     {columnVis.productSku && (
                       <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                         <div className="flex items-center justify-center gap-1">
-                          Mã hàng <ChevronDown className="h-3 w-3 text-slate-400" />
+                          Mã hàng <Filter className="h-3 w-3 text-slate-400" />
                         </div>
                       </th>
                     )}
                     {columnVis.productName && (
                       <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                         <div className="flex items-center justify-center gap-1">
-                          Tên hàng <ChevronDown className="h-3 w-3 text-slate-400" />
+                          Tên hàng <Filter className="h-3 w-3 text-slate-400" />
                         </div>
                       </th>
                     )}
                     {columnVis.systemQty && (
                       <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                         <div className="flex items-center justify-center gap-1">
-                          Tồn <ChevronDown className="h-3 w-3 text-slate-400" />
+                          Tồn <Filter className="h-3 w-3 text-slate-400" />
                         </div>
                       </th>
                     )}
                     {columnVis.countedQty && (
                       <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                         <div className="flex items-center justify-center gap-1">
-                          Thực tồn <ChevronDown className="h-3 w-3 text-slate-400" />
+                          Thực tồn <Filter className="h-3 w-3 text-slate-400" />
                         </div>
                       </th>
                     )}
                     {columnVis.difference && (
                       <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                         <div className="flex items-center justify-center gap-1">
-                          Lệch <ChevronDown className="h-3 w-3 text-slate-400" />
+                          Lệch <Filter className="h-3 w-3 text-slate-400" />
                         </div>
                       </th>
                     )}
@@ -881,7 +881,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                 {columnVis.note && (
                   <th className="w-48 max-w-[200px] border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
-                      Ghi chú <ChevronDown className="h-3 w-3 text-slate-400" />
+                      Ghi chú <Filter className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
                 )}
@@ -1666,14 +1666,13 @@ function CreateStocktakeModal({
                   <th className="border-r border-slate-300 px-3 py-2 text-center bg-yellow-50">Số tồn</th>
                   <th className="border-r border-slate-300 px-3 py-2 text-center bg-teal-50">Thực tồn</th>
                   <th className="border-r border-slate-300 px-3 py-2 text-center bg-red-50">Lệch</th>
-                  <th className="border-r border-slate-300 px-3 py-2">Ghi chú</th>
                   <th className="w-16 px-2 py-2 text-center">Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-20 text-center text-xs text-slate-400 italic">
+                    <td colSpan={7} className="px-6 py-20 text-center text-xs text-slate-400 italic">
                       Chưa có hàng hóa nào được chọn. Vui lòng nhập tìm kiếm sản phẩm phía trên.
                     </td>
                   </tr>
@@ -1701,15 +1700,6 @@ function CreateStocktakeModal({
                           <span className={diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-red-600' : 'text-slate-500'}>
                             {diff > 0 ? `+${diff}` : diff}
                           </span>
-                        </td>
-                        <td className="border-r border-slate-300 px-2 py-1">
-                          <input
-                            type="text"
-                            value={item.note}
-                            onChange={(e) => handleUpdateItemNote(idx, e.target.value)}
-                            placeholder="Ghi chú dòng..."
-                            className="h-7 w-full border-none outline-none text-xs text-slate-600 px-1 bg-transparent focus:bg-white"
-                          />
                         </td>
                         <td className="px-2 py-2 text-center">
                           <div className="flex items-center justify-center gap-1.5">
