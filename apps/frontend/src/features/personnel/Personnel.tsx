@@ -92,44 +92,7 @@ const DEFAULT_ROLES = [
 ];
 
 export function getFallbackPersonnelUsers(): PersonnelUser[] {
-  return [
-    {
-      id: 'admin@smartwms.vn',
-      email: 'admin@smartwms.vn',
-      fullName: 'Dương Ngọc Anh',
-      phone: '0988123456',
-      status: 'active',
-      roles: [{ name: 'admin' }],
-      groupIds: ['group-admin'],
-    },
-    {
-      id: 'manager.khoa@smartwms.vn',
-      email: 'manager.khoa@smartwms.vn',
-      fullName: 'Nguyễn Đăng Khoa',
-      phone: '0977234567',
-      status: 'active',
-      roles: [{ name: 'manager' }],
-      groupIds: ['group-manager'],
-    },
-    {
-      id: 'nhanvien.huyen@smartwms.vn',
-      email: 'nhanvien.huyen@smartwms.vn',
-      fullName: 'Trần Thu Huyền',
-      phone: '0966345678',
-      status: 'active',
-      roles: [{ name: 'storekeeper' }],
-      groupIds: ['group-storekeeper'],
-    },
-    {
-      id: 'nhanvien.tuan@smartwms.vn',
-      email: 'nhanvien.tuan@smartwms.vn',
-      fullName: 'Phạm Minh Tuấn',
-      phone: '0955456789',
-      status: 'active',
-      roles: [{ name: 'inventory-checker' }],
-      groupIds: ['group-inventory-checker'],
-    },
-  ];
+  return [];
 }
 
 export function readStoredPersonnelUsers(): PersonnelUser[] {
@@ -137,13 +100,11 @@ export function readStoredPersonnelUsers(): PersonnelUser[] {
     const raw = localStorage.getItem(USERS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
-    const fallbacks = getFallbackPersonnelUsers();
-    saveStoredPersonnelUsers(fallbacks);
-    return fallbacks;
+    return [];
   } catch {
-    return getFallbackPersonnelUsers();
+    return [];
   }
 }
 

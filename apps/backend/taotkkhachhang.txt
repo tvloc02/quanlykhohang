@@ -1,3 +1,0 @@
-tạo tài khoản khách hàng
-cd app/backend
-npx ts-node ./src/seed-customer.ts

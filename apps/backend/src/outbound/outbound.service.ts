@@ -159,6 +159,7 @@ export class OutboundService {
       orderDate: parsedOrderDate,
       expectedDate: (dto.expectedDate || dto.dueDate) ? parseCustomDate(dto.expectedDate || dto.dueDate!) : undefined,
       status: dto.status || 'Đã giao hàng',
+      orderType: dto.orderType || 'outbound_sales',
       description: dto.description?.trim() || undefined,
       items: dto.items ?? dto.details?.length ?? 0,
       subtotal: parseNumber(dto.subtotal).toFixed(2),

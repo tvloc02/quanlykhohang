@@ -175,8 +175,10 @@ export default function CategoryManagement() {
     const [productCounts, setProductCounts] = React.useState<Record<string, number>>({});
 
     React.useEffect(() => {
-        saveStoredCatalogCategories(categories);
-        void syncCategoriesToBackend(categories);
+        if (categories.length > 0) {
+            saveStoredCatalogCategories(categories);
+            void syncCategoriesToBackend(categories);
+        }
     }, [categories]);
 
     React.useEffect(() => {

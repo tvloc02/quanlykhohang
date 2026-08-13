@@ -76,7 +76,15 @@ import TransferDocPage from './features/documents/pages/TransferDocPage';
 
 function getStoredUser() {
   try {
-    return JSON.parse(localStorage.getItem('user') || '{}') as { role?: string };
+    const raw = localStorage.getItem('user');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    let role = parsed.role;
+    if (!role && Array.isArray(parsed.roles) && parsed.roles.length > 0) {
+      const r = parsed.roles[0];
+      role = typeof r === 'string' ? r : (r?.name || r?.role || r?.id);
+    }
+    return { ...parsed, role: String(role || 'admin').toLowerCase() };
   } catch {
     return {};
   }
@@ -176,6 +184,10 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/system-menu" element={<Navigate to="/personnel" replace />} />
+        <Route path="/categories-menu" element={<Navigate to="/categories" replace />} />
+        <Route path="/nhap-xuat" element={<Navigate to="/inbound/stock-in-orders" replace />} />
+        <Route path="/reports-summary" element={<Navigate to="/reports/sales" replace />} />
         <Route path="/products" element={<Navigate to="/products/main" replace />} />
         <Route
           path="/products/main"
@@ -282,7 +294,7 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <Inbound />
+                <Inbound featureMode="stock-in" title="DANH SÁCH PHIẾU NHẬP HÀNG KHO" codePrefix="PNK" partnerLabel="Nhà cung cấp" />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -292,7 +304,7 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <Inbound />
+                <Inbound featureMode="purchase-order" title="DANH SÁCH ĐƠN ĐẶT HÀNG NHÀ CUNG CẤP" codePrefix="PO" partnerLabel="Nhà cung cấp" />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -302,7 +314,7 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <StockInReceiptsPage receiptTypeFilter="RETURNED_GOODS" />
+                <Inbound featureMode="return-supplier" title="DANH SÁCH PHIẾU XUẤT TRẢ NHÀ CUNG CẤP" codePrefix="XNCC" partnerLabel="Nhà cung cấp" />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -312,7 +324,7 @@ function App() {
           element={
             <ProtectedRoute>
               <MainLayout>
-                <Inbound />
+                <Inbound featureMode="stock-in" title="DANH SÁCH PHIẾU NHẬP HÀNG KHO" codePrefix="PNK" partnerLabel="Nhà cung cấp" />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -329,7 +341,29 @@ function App() {
           path="/inbound/return-customers"
           element={
             <ProtectedRoute>
-              <Navigate to="/inbound/return-requests" replace />
+              <MainLayout>
+                <Inbound featureMode="return-customer" title="DANH SÁCH PHIẾU NHẬP HÀNG KHÁCH TRẢ LẠI" codePrefix="NHKT" partnerLabel="Khách hàng" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/delivery/transfer-orders"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <Outbound featureMode="transfer-out" title="DANH SÁCH PHIẾU XUẤT CHUYỂN KHO" codePrefix="XCK" partnerLabel="Kho nhận" />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/delivery/transfer-requests"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <Inbound featureMode="transfer-in" title="DANH SÁCH PHIẾU NHẬP CHUYỂN KHO" codePrefix="NCK" partnerLabel="Kho xuất" />
+              </MainLayout>
             </ProtectedRoute>
           }
         />
@@ -337,7 +371,9 @@ function App() {
           path="/inventory/initial-stock"
           element={
             <ProtectedRoute>
-              <Navigate to="/inventory" replace />
+              <MainLayout>
+                <Inbound featureMode="initial-stock" title="DANH SÁCH PHIẾU NHẬP TỒN ĐẦU KỲ" codePrefix="TDK" partnerLabel="Ghi chú kho" />
+              </MainLayout>
             </ProtectedRoute>
           }
         />
@@ -345,7 +381,9 @@ function App() {
           path="/outbound/retail"
           element={
             <ProtectedRoute>
-              <Navigate to="/outbound/orders" replace />
+              <MainLayout>
+                <Outbound featureMode="orders" title="DANH SÁCH PHIẾU XUẤT BÁN LẺ" codePrefix="PXK" partnerLabel="Khách hàng" />
+              </MainLayout>
             </ProtectedRoute>
           }
         />
@@ -353,7 +391,9 @@ function App() {
           path="/outbound/sales-orders"
           element={
             <ProtectedRoute>
-              <Navigate to="/outbound/orders" replace />
+              <MainLayout>
+                <Outbound featureMode="sales-order" title="DANH SÁCH ĐƠN ĐẶT HÀNG CỦA KHÁCH HÀNG" codePrefix="DDH" partnerLabel="Khách hàng" />
+              </MainLayout>
             </ProtectedRoute>
           }
         />
@@ -361,7 +401,9 @@ function App() {
           path="/outbound/disposal"
           element={
             <ProtectedRoute>
-              <Navigate to="/outbound/orders" replace />
+              <MainLayout>
+                <Outbound featureMode="disposal" title="DANH SÁCH PHIẾU XUẤT HỦY HÀNG HÓA" codePrefix="XH" partnerLabel="Lý do xuất hủy" />
+              </MainLayout>
             </ProtectedRoute>
           }
         />
@@ -369,7 +411,9 @@ function App() {
           path="/documents/quotes"
           element={
             <ProtectedRoute>
-              <Navigate to="/documents/sales-invoice" replace />
+              <MainLayout>
+                <Outbound featureMode="quote" title="DANH SÁCH PHIẾU BÁO GIÁ HÀNG HÓA" codePrefix="BG" partnerLabel="Khách hàng" />
+              </MainLayout>
             </ProtectedRoute>
           }
         />
@@ -377,7 +421,9 @@ function App() {
           path="/inbound/assembly"
           element={
             <ProtectedRoute>
-              <Navigate to="/inbound/production" replace />
+              <MainLayout>
+                <Inbound featureMode="assembly" title="DANH SÁCH PHIẾU TẠO BỘ / COMBO HÀNG HÓA" codePrefix="COMBO" partnerLabel="Ghi chú Combo" />
+              </MainLayout>
             </ProtectedRoute>
           }
         />

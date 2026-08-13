@@ -240,199 +240,22 @@ function formatDateDisplay(dateVal?: string | Date | null): string {
 
 // ─── MASTER DATA MẪU CHUẨN XUẤT KHO ───────────────────────────
 
-const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [
-  { id: 'wh-1', code: 'SPX001', name: 'SPX Express' },
-  { id: 'wh-2', code: 'KHO-MAIN', name: 'Kho trung tâm' },
-  { id: 'wh-3', code: 'KHO-NVL', name: 'Kho nguyên vật liệu' },
-  { id: 'wh-4', code: 'KHO-123', name: 'Apple' },
-];
+const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return 'SPX Express';
+  if (!codeOrName) return '';
   const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
   if (found) return found.name;
-  if (codeOrName === '4445' || codeOrName === 'KHO-TONG') return 'SPX Express';
   return codeOrName;
 }
 
-const DEFAULT_FALLBACK_CUSTOMERS: CustomerOption[] = [
-  { id: 'cust-0', customerCode: 'KH999', name: 'Khách hàng bán lẻ', phone: '0901234567', address: 'TP.HCM' },
-  { id: 'cust-1', customerCode: 'KH001', name: 'Công ty TNHH Công Nghệ Minh Phát', phone: '0988123456', address: '15 Nguyễn Thị Minh Khai, Q1, TP.HCM' },
-  { id: 'cust-2', customerCode: 'KH002', name: 'Tập đoàn Bán Lẻ VinMart / WinMart', phone: '0283822110', address: '72 Lê Thánh Tôn, Q1, TP.HCM' },
-  { id: 'cust-3', customerCode: 'KH003', name: 'Siêu thị Điện máy Xanh TP.HCM', phone: '0283811223', address: '128 Trần Quang Khải, Q1, TP.HCM' },
-  { id: 'cust-4', customerCode: 'KH004', name: 'Trường Đại học Bách Khoa TP.HCM', phone: '02838647256', address: '268 Lý Thường Kiệt, Q10, TP.HCM' },
-];
+const DEFAULT_FALLBACK_CUSTOMERS: CustomerOption[] = [];
 
-const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [
-  { id: 'prod-1', internalSku: 'SP-DT-001', name: 'Tai nghe Bluetooth Sony WH-1000XM5', unit: 'Cái', purchasePrice: 6200000, salePrice: 7500000 },
-  { id: 'prod-2', internalSku: 'SP-DT-002', name: 'Ổ cứng SSD Samsung 1TB 870 EVO', unit: 'Cái', purchasePrice: 2200000, salePrice: 2800000 },
-  { id: 'prod-3', internalSku: 'SP-DT-003', name: 'Chuột không dây Logitech MX Master 3S', unit: 'Cái', purchasePrice: 1750000, salePrice: 2200000 },
-  { id: 'prod-4', internalSku: 'SP-DT-006', name: 'MacBook Pro 14 inch M3 Max 36GB/1TB', unit: 'Cái', purchasePrice: 58000000, salePrice: 64500000 },
-  { id: 'prod-5', internalSku: 'SP-DT-007', name: 'iPhone 15 Pro Max 256GB Natural Titanium', unit: 'Cái', purchasePrice: 31000000, salePrice: 34990000 },
-  { id: 'prod-6', internalSku: 'SP-TP-001', name: 'Gạo ST25 Sóc Trăng 5kg', unit: 'Bao', purchasePrice: 130000, salePrice: 160000 },
-  { id: 'prod-7', internalSku: 'SP-TP-006', name: 'Sữa tươi tiệt trùng Vinamilk 100% 1L (Thùng 12)', unit: 'Thùng', purchasePrice: 360000, salePrice: 420000 },
-];
+const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [];
 
-const DEFAULT_FALLBACK_ORDERS: OutboundOrder[] = [
-  {
-    id: 'out-1001',
-    orderNo: 'PXK-2026-0001',
-    customer: 'Công ty TNHH Công Nghệ Minh Phát',
-    customerId: 'cust-1',
-    customerPhone: '0988123456',
-    customerAddress: '15 Nguyễn Thị Minh Khai, Q1, TP.HCM',
-    branchCode: 'KHO-TONG',
-    employeeName: 'Nguyễn Văn Minh (Trưởng kho)',
-    orderDate: '12/08/2026',
-    status: 'Đã giao hàng',
-    description: 'Xuất bán lô hàng MacBook Pro & iPhone cho doanh nghiệp',
-    subtotal: 394890000,
-    discount: 4890000,
-    vatAmount: 0,
-    totalAmount: 390000000,
-    amountPaid: 390000000,
-    itemsCount: 2,
-    totalQty: 8,
-    details: [
-      {
-        id: 'out-det-1',
-        productId: 'prod-4',
-        productSku: 'SP-DT-006',
-        productName: 'MacBook Pro 14 inch M3 Max 36GB/1TB',
-        unit: 'Cái',
-        qty: 3,
-        price: 64500000,
-        totalLineAmount: 193500000,
-      },
-      {
-        id: 'out-det-2',
-        productId: 'prod-5',
-        productSku: 'SP-DT-007',
-        productName: 'iPhone 15 Pro Max 256GB Natural Titanium',
-        unit: 'Cái',
-        qty: 5,
-        price: 34990000,
-        totalLineAmount: 174950000,
-      },
-    ],
-  },
-  {
-    id: 'out-1002',
-    orderNo: 'PXK-2026-0002',
-    customer: 'Siêu thị Điện máy Xanh TP.HCM',
-    customerId: 'cust-3',
-    customerPhone: '0283811223',
-    customerAddress: '128 Trần Quang Khải, Q1, TP.HCM',
-    branchCode: 'KHO-HN',
-    employeeName: 'Lê Thu Hà (Kho Hà Nội)',
-    orderDate: '11/08/2026',
-    status: 'Đã giao hàng',
-    description: 'Xuất hàng SSD Samsung & Tai nghe Sony phân phối hệ thống',
-    subtotal: 104000000,
-    discount: 2000000,
-    vatAmount: 0,
-    totalAmount: 102000000,
-    amountPaid: 102000000,
-    itemsCount: 2,
-    totalQty: 30,
-    details: [
-      {
-        id: 'out-det-3',
-        productId: 'prod-2',
-        productSku: 'SP-DT-002',
-        productName: 'Ổ cứng SSD Samsung 1TB 870 EVO',
-        unit: 'Cái',
-        qty: 20,
-        price: 2800000,
-        totalLineAmount: 56000000,
-      },
-      {
-        id: 'out-det-4',
-        productId: 'prod-1',
-        productSku: 'SP-DT-001',
-        productName: 'Tai nghe Bluetooth Sony WH-1000XM5',
-        unit: 'Cái',
-        qty: 10,
-        price: 7500000,
-        totalLineAmount: 75000000,
-      },
-    ],
-  },
-  {
-    id: 'out-1003',
-    orderNo: 'PXK-2026-0003',
-    customer: 'Khách hàng bán lẻ',
-    customerId: 'cust-0',
-    customerPhone: '0901234567',
-    customerAddress: 'Quận 3, TP.HCM',
-    branchCode: 'KHO-BD',
-    employeeName: 'Phần mềm POS',
-    orderDate: '10/08/2026',
-    status: 'Đã giao hàng',
-    description: 'Bán lẻ chuột Logitech MX Master 3S tại cửa hàng',
-    subtotal: 11000000,
-    discount: 0,
-    vatAmount: 0,
-    totalAmount: 11000000,
-    amountPaid: 11000000,
-    itemsCount: 1,
-    totalQty: 5,
-    details: [
-      {
-        id: 'out-det-5',
-        productId: 'prod-3',
-        productSku: 'SP-DT-003',
-        productName: 'Chuột không dây Logitech MX Master 3S',
-        unit: 'Cái',
-        qty: 5,
-        price: 2200000,
-        totalLineAmount: 11000000,
-      },
-    ],
-  },
-  {
-    id: 'out-1004',
-    orderNo: 'PXK-2026-0004',
-    customer: 'Tập đoàn Bán Lẻ VinMart / WinMart',
-    customerId: 'cust-2',
-    customerPhone: '0283822110',
-    customerAddress: '72 Lê Thánh Tôn, Q1, TP.HCM',
-    branchCode: 'KHO-CUCHI',
-    employeeName: 'Trần Văn Nam',
-    orderDate: '09/08/2026',
-    status: 'Chờ xử lý',
-    description: 'Xuất kho lương thực thực phẩm giao chuỗi VinMart Củ Chi',
-    subtotal: 58000000,
-    discount: 1000000,
-    vatAmount: 0,
-    totalAmount: 57000000,
-    amountPaid: 0,
-    itemsCount: 2,
-    totalQty: 200,
-    details: [
-      {
-        id: 'out-det-6',
-        productId: 'prod-6',
-        productSku: 'SP-TP-001',
-        productName: 'Gạo ST25 Sóc Trăng 5kg',
-        unit: 'Bao',
-        qty: 100,
-        price: 160000,
-        totalLineAmount: 16000000,
-      },
-      {
-        id: 'out-det-7',
-        productId: 'prod-7',
-        productSku: 'SP-TP-006',
-        productName: 'Sữa tươi tiệt trùng Vinamilk 100% 1L (Thùng 12)',
-        unit: 'Thùng',
-        qty: 100,
-        price: 420000,
-        totalLineAmount: 42000000,
-      },
-    ],
-  },
-];
+const DEFAULT_FALLBACK_ORDERS: OutboundOrder[] = [];
+
+
 
 function makeEmptyRow(index: number): FormDetailRow {
   return {
@@ -483,7 +306,19 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'):
   };
 }
 
-export default function Outbound() {
+export interface OutboundProps {
+  featureMode?: 'orders' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal';
+  title?: string;
+  codePrefix?: string;
+  partnerLabel?: string;
+}
+
+export default function Outbound({
+  featureMode = 'orders',
+  title = 'DANH SÁCH PHIẾU XUẤT BÁN HÀNG',
+  codePrefix = 'PXK',
+  partnerLabel = 'Khách hàng',
+}: OutboundProps) {
   const [orders, setOrders] = useState<OutboundOrder[]>(DEFAULT_FALLBACK_ORDERS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -1034,6 +869,7 @@ export default function Outbound() {
 
     const payload = {
       orderNo: activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : undefined,
+      orderType: featureMode,
       customerId: activeTab.customerId,
       customerName: activeTab.customer?.trim() || '888 - Khách lẻ',
       customerPhone: activeTab.customerPhone?.trim() || undefined,
@@ -1179,12 +1015,12 @@ export default function Outbound() {
                 Home
               </Link>
               <span className="text-slate-400">·</span>
-              <span className="text-slate-700 font-semibold">Xuất bán</span>
+              <span className="text-slate-700 font-semibold">{title.replace('DANH SÁCH PHIẾU ', '').replace('DANH SÁCH ', '')}</span>
             </div>
           </div>
 
           <div className="mb-3">
-            <h1 className="text-xl font-black text-slate-800 uppercase tracking-wide">DANH SÁCH PHIẾU XUẤT BÁN HÀNG</h1>
+            <h1 className="text-xl font-black text-slate-800 uppercase tracking-wide">{title}</h1>
           </div>
 
           {/* RIC Colored Toolbar */}
@@ -1335,16 +1171,6 @@ export default function Outbound() {
             >
               <Search className="h-3.5 w-3.5" />
               Tìm kiếm
-            </button>
-
-            <button
-              onClick={handleResetSampleData}
-              className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition hover:opacity-90 cursor-pointer"
-              style={{ background: '#FF9800' }}
-              title="Reset dữ liệu mẫu chuẩn Xuất Kho"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reset Dữ liệu
             </button>
 
             <button

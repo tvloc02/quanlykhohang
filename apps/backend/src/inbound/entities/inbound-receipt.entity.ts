@@ -23,6 +23,9 @@ export class InboundReceipt extends BaseEntity {
   @Column({ nullable: true })
   status?: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true, default: 'stock_in' })
+  receiptType?: string;
+
   @Column({ nullable: true })
   approverId?: string;
 
