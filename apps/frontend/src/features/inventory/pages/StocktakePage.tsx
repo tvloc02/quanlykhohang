@@ -1331,6 +1331,35 @@ function CreateStocktakeModal({
       .catch(() => { });
   }, []);
 
+  // Tự động cập nhật số lượng tồn hệ thống (và thực tồn nếu chưa chỉnh sửa) cho các sản phẩm đã chọn khi đổi Kho kiểm
+  React.useEffect(() => {
+    if (!locationCode || products.length === 0) return;
+    setItems((prevItems) => {
+      if (prevItems.length === 0) return prevItems;
+      return prevItems.map((item) => {
+        const p = products.find(
+          (prod) => prod.id === item.product.id || prod.internalSku === item.product.internalSku
+        );
+        const matchBal = p ? (p.stockBalances || []).find((b: any) => b.locationCode === locationCode) : null;
+        const newSystemQty = matchBal ? matchBal.totalPhysical : (p?.totalPhysical ?? p?.stockQty ?? 0);
+        const oldSystemQty = item.product.systemQty ?? 0;
+
+        // Nếu thực tồn bằng số tồn cũ (mặc định), cập nhật thực tồn bằng số tồn mới theo kho mới
+        const isCountedDefault = item.countedQty === oldSystemQty;
+        const newCountedQty = isCountedDefault ? newSystemQty : item.countedQty;
+
+        return {
+          ...item,
+          product: {
+            ...item.product,
+            systemQty: newSystemQty,
+          },
+          countedQty: newCountedQty,
+        };
+      });
+    });
+  }, [locationCode, products]);
+
   const handleAddProduct = (p: any) => {
     // Check if already in list
     if (items.some(item => item.product.id === p.id)) {
@@ -1529,7 +1558,8 @@ function CreateStocktakeModal({
                       <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
                     ) : (
                       filteredProducts.map(p => {
-                        const systemQty = p.stockQty !== undefined ? p.stockQty : Math.floor(Math.random() * 20);
+                        const matchBal = (p.stockBalances || []).find((b: any) => b.locationCode === locationCode);
+                        const systemQty = matchBal ? matchBal.totalPhysical : (p.totalPhysical ?? p.stockQty ?? 0);
                         const price = p.price !== undefined ? p.price : 0;
                         return (
                           <div
@@ -1596,12 +1626,14 @@ function CreateStocktakeModal({
                 // Cộng dồn thực tồn
                 handleUpdateCounted(existIdx, items[existIdx].countedQty + qty);
               } else {
-                // Thêm mới
+                // Thêm mới với tồn kho theo kho đang chọn
+                const matchBal = (product.stockBalances || []).find((b: any) => b.locationCode === locationCode);
+                const systemQty = matchBal ? matchBal.totalPhysical : (product.totalPhysical ?? product.stockQty ?? 0);
                 setItems(prev => [
                   ...prev,
                   {
-                    product: { id: product.id, internalSku: product.internalSku, name: product.name, unit: product.unit || 'Cái', systemQty: 0 },
-                    countedQty: qty,
+                    product: { id: product.id, internalSku: product.internalSku, name: product.name, unit: product.unit || 'Cái', systemQty },
+                    countedQty: systemQty,
                     note: 'Quét từ Barcode'
                   }
                 ]);
