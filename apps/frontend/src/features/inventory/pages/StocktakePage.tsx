@@ -167,6 +167,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   const DEFAULT_COLUMN_VIS = {
     nv: true,
     code: true,
+    location: true,
     date: true,
     totalDiff: true,
     note: true,
@@ -181,6 +182,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   const COLUMN_LIST = [
     { key: 'nv', label: 'NV', isDetail: false },
     { key: 'code', label: 'Mã', isDetail: false },
+    { key: 'location', label: 'Kho', isDetail: false },
     { key: 'date', label: 'Ngày', isDetail: false },
     { key: 'totalDiff', label: 'Tổng lệch', isDetail: false },
     { key: 'status', label: 'Trạng thái', isDetail: false },
@@ -327,12 +329,9 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   }, 0);
   const footerTotalLech = paginated.reduce((sum, item) => {
     if (!item.details) return sum;
-    return sum + item.details.reduce((s, d) => s + Math.abs(d.difference || 0), 0);
-  }, 0);
-  const footerTotalTongLech = paginated.reduce((sum, item) => {
-    if (!item.details) return sum;
     return sum + item.details.reduce((s, d) => s + (d.difference || 0), 0);
   }, 0);
+  const footerTotalTongLech = footerTotalLech;
 
   // ── Actions ─────────────────────────────────────────────────
 
@@ -477,6 +476,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   const visibleMainCount = [
     columnVis.nv,
     columnVis.code,
+    columnVis.location,
     columnVis.date,
     columnVis.totalDiff,
     columnVis.note,
@@ -811,6 +811,13 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                     </div>
                   </th>
                 )}
+                {columnVis.location && (
+                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
+                    <div className="flex items-center justify-center gap-1">
+                      Kho <ChevronDown className="h-3 w-3 text-slate-400" />
+                    </div>
+                  </th>
+                )}
                 {columnVis.date && (
                   <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
@@ -939,6 +946,11 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                             >
                               {item.stocktakeNo}
                             </button>
+                          </td>
+                        )}
+                        {columnVis.location && (
+                          <td className="border border-slate-200 px-2 py-2 text-center text-xs font-semibold text-slate-700" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                            {item.locationCode || '—'}
                           </td>
                         )}
                         {columnVis.date && (
@@ -1081,7 +1093,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
               <tfoot>
                 <tr className="bg-slate-100 border-t-2 border-slate-300">
                   <td
-                    colSpan={2 + (columnVis.nv ? 1 : 0) + (columnVis.code ? 1 : 0) + (columnVis.date ? 1 : 0) + (!columnVis.totalDiff ? 1 : 0)}
+                    colSpan={2 + (columnVis.nv ? 1 : 0) + (columnVis.code ? 1 : 0) + (columnVis.location ? 1 : 0) + (columnVis.date ? 1 : 0) + (!columnVis.totalDiff ? 1 : 0)}
                     className="border border-slate-300 px-2 py-2 text-right text-xs font-bold text-slate-600"
                   >
                     Tổng cộng:
@@ -1107,9 +1119,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                         </td>
                       )}
                       {columnVis.difference && (
-                        <td className="border border-slate-300 px-2 py-2 text-center text-xs font-bold text-red-600">
-                          {footerTotalLech.toLocaleString('vi-VN')}
-                        </td>
+                        <td className="border border-slate-300 px-2 py-2" />
                       )}
                     </>
                   )}
