@@ -193,6 +193,15 @@ export class StocktakeService {
     return this.serialize(await this.findEntity(id));
   }
 
+  async updateStocktake(id: string, dto: { note?: string }) {
+    const stocktake = await this.findEntity(id);
+    if (dto.note !== undefined) {
+      stocktake.note = dto.note;
+    }
+    await this.stocktakeRepo.save(stocktake);
+    return this.serialize(await this.findEntity(id));
+  }
+
   async remove(id: string) {
     const stocktake = await this.findEntity(id);
 

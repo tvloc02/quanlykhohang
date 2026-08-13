@@ -872,7 +872,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                   </>
                 )}
                 {columnVis.note && (
-                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
+                  <th className="w-48 max-w-[200px] border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
                     <div className="flex items-center justify-center gap-1">
                       Ghi chú <ChevronDown className="h-3 w-3 text-slate-400" />
                     </div>
@@ -992,7 +992,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                           </>
                         )}
                         {columnVis.note && (
-                          <td className="border border-slate-200 px-2 py-2 text-center text-xs text-slate-500" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                          <td className="w-48 max-w-[200px] border border-slate-200 px-2 py-2 text-left text-xs text-slate-500 truncate" title={item.note || ''} rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
                             {item.note || ''}
                           </td>
                         )}
@@ -1893,8 +1893,13 @@ function StocktakeDetailModal({
 }) {
   const [products, setProducts] = React.useState<ProductOption[]>([]);
   const [editCounts, setEditCounts] = React.useState<Record<string, string>>({});
+  const [note, setNote] = React.useState(stocktake.note || '');
   const [isEditing, setIsEditing] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+
+  React.useEffect(() => {
+    setNote(stocktake.note || '');
+  }, [stocktake]);
 
   React.useEffect(() => {
     fetch(`${API_BASE}/products`, { headers: authHeaders() })
@@ -1936,6 +1941,13 @@ function StocktakeDetailModal({
   const handleSaveAll = async () => {
     setSubmitting(true);
     try {
+      if (note !== stocktake.note) {
+        await fetch(`${API_BASE}/inventory/stocktakes/${stocktake.id}`, {
+          method: 'PATCH',
+          headers: authHeaders(),
+          body: JSON.stringify({ note }),
+        });
+      }
       for (const d of detailsList) {
         const val = editCounts[d.id];
         if (val !== undefined && val !== '') {
@@ -1953,7 +1965,7 @@ function StocktakeDetailModal({
           }
         }
       }
-      onSuccess('Đã lưu thay đổi số lượng đếm thực tế');
+      onSuccess('Đã lưu thay đổi phiếu kiểm kê');
       setIsEditing(false);
       onRefresh();
     } catch (err) {
@@ -1997,9 +2009,9 @@ function StocktakeDetailModal({
         </div>
 
         {/* Info Header */}
-        <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex-shrink-0 space-y-1.5 text-xs text-slate-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-12">
+        <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex-shrink-0 space-y-2 text-xs text-slate-700">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-8">
               <div>
                 <span className="font-semibold text-slate-500">Ngày:</span>{' '}
                 <span className="font-bold text-slate-800">
@@ -2010,15 +2022,39 @@ function StocktakeDetailModal({
                 <span className="font-semibold text-slate-500">Mã phiếu:</span>{' '}
                 <span className="font-bold text-teal-700">{stocktake.stocktakeNo}</span>
               </div>
+              <div>
+                <span className="font-semibold text-slate-500">Kho kiểm:</span>{' '}
+                <span className="font-bold text-slate-800">{stocktake.locationCode || '—'}</span>
+              </div>
             </div>
             <div>
               <span className="font-semibold text-slate-500">Trạng thái:</span>{' '}
               <StatusBadge status={stocktake.status} />
             </div>
           </div>
-          <div>
-            <span className="font-semibold text-slate-500">Nhân viên:</span>{' '}
-            <span className="font-bold text-slate-800">{stocktake.assignee || stocktake.createdBy || '—'}</span>
+          <div className="flex items-center justify-between flex-wrap gap-4 pt-1.5 border-t border-slate-200/60">
+            <div>
+              <span className="font-semibold text-slate-500">Nhân viên:</span>{' '}
+              <span className="font-bold text-slate-800">{stocktake.assignee || stocktake.createdBy || '—'}</span>
+            </div>
+            {isEditing ? (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-300 rounded px-2.5 py-1 text-xs flex-1 max-w-md ml-auto">
+                <span className="font-bold text-amber-900 flex-shrink-0">Ghi chú phiếu:</span>
+                <input
+                  type="text"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Ghi chú phiếu..."
+                  className="h-6 w-full rounded border border-amber-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-amber-500 font-medium"
+                />
+              </div>
+            ) : (
+              note && (
+                <div className="bg-amber-50 border border-amber-200 rounded px-2.5 py-1 text-amber-800 font-semibold text-xs">
+                  <span className="font-bold text-slate-500">Ghi chú phiếu:</span> {note}
+                </div>
+              )
+            )}
           </div>
         </div>
 
@@ -2066,7 +2102,6 @@ function StocktakeDetailModal({
                 <th className="border border-slate-300 px-3 py-2 text-center bg-yellow-50/40">Số tồn</th>
                 <th className="border border-slate-300 px-3 py-2 text-center bg-teal-50/40">Thực tồn</th>
                 <th className="border border-slate-300 px-3 py-2 text-center bg-red-50/40">Lệch</th>
-                <th className="border border-slate-300 px-3 py-2">Ghi chú</th>
                 {stocktake.status !== 'APPROVED' && stocktake.status !== 'REJECTED' && (
                   <th className="w-10 border border-slate-300 px-1 py-2 text-center text-red-500">Xóa</th>
                 )}
@@ -2075,7 +2110,7 @@ function StocktakeDetailModal({
             <tbody>
               {detailsList.length === 0 ? (
                 <tr>
-                  <td colSpan={stocktake.status !== 'APPROVED' && stocktake.status !== 'REJECTED' ? 9 : 8} className="px-6 py-10 text-center text-xs text-slate-400 italic">
+                  <td colSpan={stocktake.status !== 'APPROVED' && stocktake.status !== 'REJECTED' ? 8 : 7} className="px-6 py-10 text-center text-xs text-slate-400 italic">
                     Không có sản phẩm nào trong phiếu kiểm kê này.
                   </td>
                 </tr>
@@ -2114,7 +2149,6 @@ function StocktakeDetailModal({
                           {diff > 0 ? `+${diff}` : diff}
                         </span>
                       </td>
-                      <td className="border border-slate-300 px-3 py-2 text-slate-500">{d.note || ''}</td>
                       {stocktake.status !== 'APPROVED' && stocktake.status !== 'REJECTED' && (
                         <td className="border border-slate-300 px-1 py-1 text-center">
                           <button
@@ -2158,19 +2192,14 @@ function StocktakeDetailModal({
                       {totalLech > 0 ? `+${totalLech}` : totalLech}
                     </span>
                   </td>
-                  <td colSpan={stocktake.status !== 'APPROVED' && stocktake.status !== 'REJECTED' ? 2 : 1} className="border border-slate-300 px-3 py-2"></td>
+                  {stocktake.status !== 'APPROVED' && stocktake.status !== 'REJECTED' && (
+                    <td className="border border-slate-300 px-3 py-2"></td>
+                  )}
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-
-        {/* Note block */}
-        {stocktake.note && (
-          <div className="px-4 pb-3 flex-shrink-0 text-xs text-slate-600">
-            <span className="font-bold">Ghi chú:</span> {stocktake.note}
-          </div>
-        )}
 
         {/* Footer actions */}
         <div className="flex h-12 items-center justify-start gap-1.5 border-t border-slate-300 bg-slate-200 px-4 flex-shrink-0">
