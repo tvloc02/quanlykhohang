@@ -4,15 +4,35 @@ import { Repository } from 'typeorm';
 import { ProjectTeam } from '../entities/project-team.entity';
 import { CreateProjectTeamDto } from './dto/create-project-team.dto';
 
-const ids = (value?: string[] | string | null) =>
-  Array.from(
-    new Set(
-      (Array.isArray(value) ? value : String(value || '').split(','))
-        .map(String)
-        .map((v) => v.trim())
-        .filter(Boolean)
-    )
-  );
+const ids = (value?: string[] | string | null): string[] => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map(String).map((v) => v.trim()).filter(Boolean)));
+  }
+  const str = String(value).trim();
+  if (!str) return [];
+  if (str.startsWith('[') && str.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(str);
+      if (Array.isArray(parsed)) {
+        return Array.from(new Set(parsed.map(String).map((v) => v.trim()).filter(Boolean)));
+      }
+    } catch {}
+  }
+  return Array.from(new Set(str.split(',').map(String).map((v) => v.trim().replace(/^["']|["']$/g, '')).filter(Boolean)));
+};
+
+const parseJsonField = (field: any) => {
+  if (!field) return null;
+  if (typeof field === 'string') {
+    try {
+      return JSON.parse(field);
+    } catch {
+      return null;
+    }
+  }
+  return field;
+};
 
 const output = (team: ProjectTeam) => {
   const storekeepers = ids(team.storekeeperIds);
@@ -25,8 +45,8 @@ const output = (team: ProjectTeam) => {
     storekeeperIds: storekeepers,
     inventoryCheckerIds: checkers,
     memberIds: mergedMembers,
-    generalPermissions: team.generalPermissions || null,
-    menuPermissions: team.menuPermissions || null,
+    generalPermissions: parseJsonField(team.generalPermissions),
+    menuPermissions: parseJsonField(team.menuPermissions),
   };
 };
 
