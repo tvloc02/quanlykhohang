@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Scale,
+  DollarSign,
   Plus,
   Search,
   Pencil,
@@ -13,28 +13,31 @@ import {
   Filter,
   Maximize2,
   Minimize2,
+  Settings,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  RefreshCw,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'smart-wms-units';
-const API_BASE_URL = 'http://localhost:3000/api';
-
-export type UnitConversion = {
+export interface CurrencyItem {
   id: string;
-  baseUnit?: string;       // Đơn vị gốc
-  convertedUnit: string;  // Tên quy đổi (bắt buộc)
-  quantity: number;        // Số lượng (bắt buộc)
+  code: string;
+  name: string;
+  symbol: string;
+  exchangeRate: number; // Rate against VND
+  isDefault: boolean;
   status: 'active' | 'inactive';
-  description?: string;
-  createdAt: string;
-};
+  note?: string;
+  updatedAt: string;
+}
 
-export const DEFAULT_UNITS: UnitConversion[] = [];
+const STORAGE_KEY = 'smart-wms-currencies';
 
-export function readStoredUnits(): UnitConversion[] {
+export const DEFAULT_CURRENCIES: CurrencyItem[] = [];
+
+export function readStoredCurrencies(): CurrencyItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -47,40 +50,37 @@ export function readStoredUnits(): UnitConversion[] {
   return [];
 }
 
-export function saveStoredUnits(units: UnitConversion[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(units));
+export function saveStoredCurrencies(items: CurrencyItem[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   window.dispatchEvent(new Event('storage'));
 }
 
-export default function UnitsPage() {
-  const [units, setUnits] = useState<UnitConversion[]>(readStoredUnits);
+export default function CurrenciesPage() {
+  const [currencies, setCurrencies] = useState<CurrencyItem[]>(readStoredCurrencies);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  // Search & Filter
+  // Filters & Search
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
-  // Pagination states
+  // Pagination
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Modal states
+  // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
-  const [editingUnit, setEditingUnit] = useState<UnitConversion | null>(null);
-  const [form, setForm] = useState<{
-    baseUnit: string;
-    convertedUnit: string;
-    quantity: number;
-    status: 'active' | 'inactive';
-    description: string;
-  }>({
-    baseUnit: '',
-    convertedUnit: '',
-    quantity: 1,
+  const [form, setForm] = useState<CurrencyItem>({
+    id: '',
+    code: '',
+    name: '',
+    symbol: '$',
+    exchangeRate: 1,
+    isDefault: false,
     status: 'active',
-    description: '',
+    note: '',
+    updatedAt: new Date().toISOString().split('T')[0],
   });
 
   // Toast
@@ -93,186 +93,104 @@ export default function UnitsPage() {
     setTimeout(() => setToastMessage(''), 3500);
   };
 
-  // Fetch API units (with LocalStorage sync)
-  const fetchUnits = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/units`, {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token || ''}`,
-        },
-      }).catch(() => null);
-
-      if (res && res.ok) {
-        const remoteData = await res.json();
-        if (Array.isArray(remoteData) && remoteData.length > 0) {
-          const localUnits = readStoredUnits();
-          const map = new Map<string, UnitConversion>();
-          localUnits.forEach((u) => map.set(u.id, u));
-          remoteData.forEach((u: any) => {
-            const existing = map.get(u.id);
-            map.set(u.id, {
-              id: u.id,
-              baseUnit: u.baseUnit ?? existing?.baseUnit ?? '',
-              convertedUnit: u.convertedUnit || u.name || existing?.convertedUnit || '',
-              quantity: Number(u.quantity || u.ratio || existing?.quantity || 1),
-              status: u.status || existing?.status || 'active',
-              description: u.description || existing?.description || '',
-              createdAt: u.createdAt || existing?.createdAt || new Date().toISOString(),
-            });
-          });
-          const merged = Array.from(map.values());
-          setUnits(merged);
-          saveStoredUnits(merged);
-        }
-      }
-    } catch {
-      // Local fallback active
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchUnits();
-  }, [fetchUnits]);
-
-  // Filtered List
-  const filteredUnits = useMemo(() => {
+  const filteredCurrencies = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return units.filter((u) => {
+    return currencies.filter((c) => {
       const matchesSearch =
         !q ||
-        (u.baseUnit || '').toLowerCase().includes(q) ||
-        u.convertedUnit.toLowerCase().includes(q) ||
-        (u.description || '').toLowerCase().includes(q);
+        c.code.toLowerCase().includes(q) ||
+        c.name.toLowerCase().includes(q) ||
+        (c.note || '').toLowerCase().includes(q);
 
-      const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
+      const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [units, search, statusFilter]);
+  }, [currencies, search, statusFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds([]);
   }, [search, statusFilter]);
 
-  // Pagination Calculations
-  const totalItems = filteredUnits.length;
+  const totalItems = filteredCurrencies.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
-  const paginatedUnits = filteredUnits.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedCurrencies = filteredCurrencies.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Open Modal Create/Edit
-  const openModal = (unitToEdit?: UnitConversion) => {
-    if (unitToEdit) {
-      setEditingUnit(unitToEdit);
-      setModalMode('edit');
-      setForm({
-        baseUnit: unitToEdit.baseUnit || '',
-        convertedUnit: unitToEdit.convertedUnit,
-        quantity: unitToEdit.quantity,
-        status: unitToEdit.status,
-        description: unitToEdit.description || '',
-      });
-    } else {
-      setEditingUnit(null);
-      setModalMode('create');
-      setForm({
-        baseUnit: '',
-        convertedUnit: '',
-        quantity: 1,
-        status: 'active',
-        description: '',
-      });
-    }
+  const handleOpenCreateModal = () => {
+    setForm({
+      id: `curr-${Date.now()}`,
+      code: '',
+      name: '',
+      symbol: '$',
+      exchangeRate: 1,
+      isDefault: false,
+      status: 'active',
+      note: '',
+      updatedAt: new Date().toISOString().split('T')[0],
+    });
+    setModalMode('create');
     setIsModalOpen(true);
   };
 
-  // Save Unit
-  const handleSave = async (e: React.FormEvent) => {
+  const handleOpenEditModal = (item: CurrencyItem) => {
+    setForm({ ...item });
+    setModalMode('edit');
+    setIsModalOpen(true);
+  };
+
+  const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.convertedUnit.trim()) {
-      showToast('Vui lòng nhập Tên quy đổi.', 'error');
+    if (!form.code.trim() || !form.name.trim()) {
+      showToast('Vui lòng nhập Mã ngoại tệ và Tên ngoại tệ!', 'error');
       return;
     }
-    if (form.quantity <= 0) {
-      showToast('Số lượng quy đổi phải lớn hơn 0.', 'error');
+    if (form.exchangeRate <= 0) {
+      showToast('Tỷ giá quy đổi phải lớn hơn 0!', 'error');
       return;
     }
 
-    const payload = {
-      baseUnit: form.baseUnit.trim(),
-      convertedUnit: form.convertedUnit.trim(),
-      quantity: Number(form.quantity),
-      status: form.status,
-      description: form.description.trim(),
-    };
-
-    if (editingUnit) {
-      const updated: UnitConversion = {
-        ...editingUnit,
-        ...payload,
-      };
-
-      setUnits((prev) => {
-        const next = prev.map((u) => (u.id === editingUnit.id ? updated : u));
-        saveStoredUnits(next);
-        return next;
-      });
-
-      showToast(`Đã cập nhật đơn vị quy đổi "${payload.convertedUnit}".`);
+    let updated: CurrencyItem[];
+    if (modalMode === 'edit') {
+      updated = currencies.map((c) => (c.id === form.id ? { ...form, updatedAt: new Date().toISOString().split('T')[0] } : c));
+      showToast(`Đã cập nhật ngoại tệ ${form.code} thành công!`);
     } else {
-      const newUnit: UnitConversion = {
-        id: `unit-${Date.now()}`,
-        ...payload,
-        createdAt: new Date().toISOString(),
-      };
-
-      setUnits((prev) => {
-        const next = [newUnit, ...prev];
-        saveStoredUnits(next);
-        return next;
-      });
-
-      showToast(`Đã thêm mới đơn vị quy đổi "${payload.convertedUnit}".`);
+      updated = [{ ...form, updatedAt: new Date().toISOString().split('T')[0] }, ...currencies];
+      showToast(`Đã thêm mới ngoại tệ ${form.code} thành công!`);
     }
+
+    setCurrencies(updated);
+    saveStoredCurrencies(updated);
     setIsModalOpen(false);
   };
 
-  // Single Delete
-  const handleDelete = (id: string, name: string) => {
-    if (confirm(`Bạn có chắc chắn muốn xóa đơn vị quy đổi "${name}"?`)) {
-      setUnits((prev) => {
-        const next = prev.filter((u) => u.id !== id);
-        saveStoredUnits(next);
-        return next;
-      });
-      setSelectedIds((prev) => prev.filter((item) => item !== id));
-      showToast(`Đã xóa đơn vị quy đổi "${name}".`);
+  const handleDeleteSingle = (id: string, code: string) => {
+    if (confirm(`Bạn có chắc chắn muốn xóa ngoại tệ ${code}?`)) {
+      const updated = currencies.filter((c) => c.id !== id);
+      setCurrencies(updated);
+      saveStoredCurrencies(updated);
+      showToast(`Đã xóa ngoại tệ ${code}!`);
     }
   };
 
-  // Bulk Delete
-  const handleBulkDelete = () => {
+  const handleDeleteSelected = () => {
     if (selectedIds.length === 0) return;
-    if (confirm(`Bạn có chắc chắn muốn xóa ${selectedIds.length} đơn vị quy đổi đã chọn?`)) {
-      setUnits((prev) => {
-        const next = prev.filter((u) => !selectedIds.includes(u.id));
-        saveStoredUnits(next);
-        return next;
-      });
-      showToast(`Đã xóa ${selectedIds.length} đơn vị quy đổi.`);
+    if (confirm(`Bạn có chắc chắn muốn xóa ${selectedIds.length} ngoại tệ đã chọn?`)) {
+      const updated = currencies.filter((c) => !selectedIds.includes(c.id));
+      setCurrencies(updated);
+      saveStoredCurrencies(updated);
       setSelectedIds([]);
+      showToast(`Đã xóa ${selectedIds.length} ngoại tệ!`);
     }
   };
 
   const toggleSelectAll = () => {
-    if (paginatedUnits.length > 0 && paginatedUnits.every((u) => selectedIds.includes(u.id))) {
-      const currentIds = new Set(paginatedUnits.map((u) => u.id));
+    if (paginatedCurrencies.length > 0 && paginatedCurrencies.every((c) => selectedIds.includes(c.id))) {
+      const currentIds = new Set(paginatedCurrencies.map((c) => c.id));
       setSelectedIds((prev) => prev.filter((id) => !currentIds.has(id)));
     } else {
-      const currentIds = paginatedUnits.map((u) => u.id);
+      const currentIds = paginatedCurrencies.map((c) => c.id);
       setSelectedIds((prev) => Array.from(new Set([...prev, ...currentIds])));
     }
   };
@@ -300,8 +218,8 @@ export default function UnitsPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
-              <Scale className="h-5 w-5" />
-              <h1 className="text-xl font-extrabold tracking-tight uppercase">ĐƠN VỊ QUY ĐỔI HÀNG HÓA</h1>
+              <DollarSign className="h-5 w-5" />
+              <h1 className="text-xl font-extrabold tracking-tight uppercase">DANH MỤC NGOẠI TỆ & TỶ GIÁ</h1>
             </div>
           </div>
 
@@ -309,18 +227,18 @@ export default function UnitsPage() {
             {/* Thêm mới */}
             <button
               type="button"
-              onClick={() => openModal()}
+              onClick={handleOpenCreateModal}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 border-2 border-cyan-700 px-5 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:bg-cyan-700 active:scale-95 cursor-pointer"
             >
               <Plus className="h-4.5 w-4.5" />
-              Thêm mới đơn vị quy đổi
+              Thêm mới ngoại tệ
             </button>
 
             {/* Xóa chọn */}
             {selectedIds.length > 0 && (
               <button
                 type="button"
-                onClick={handleBulkDelete}
+                onClick={handleDeleteSelected}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-red-600 bg-white px-5 py-2.5 text-sm font-extrabold text-red-600 shadow-xs transition hover:bg-red-50 active:scale-95 cursor-pointer"
               >
                 <Trash2 className="h-4.5 w-4.5 text-red-600" />
@@ -350,7 +268,7 @@ export default function UnitsPage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm kiếm theo Tên quy đổi, Đơn vị gốc, Mô tả..."
+                placeholder="Tìm kiếm theo mã ngoại tệ (USD, EUR...), tên ngoại tệ, ghi chú..."
                 className="h-12 w-full rounded-xl border-2 border-cyan-600/30 bg-slate-50/50 pl-11 pr-4 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:bg-white focus:ring-4 focus:ring-cyan-500/10"
               />
             </div>
@@ -377,41 +295,42 @@ export default function UnitsPage() {
         {/* High-density Table */}
         <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full border-collapse text-left min-w-[900px]">
+            <table className="w-full border-collapse text-left min-w-[1000px]">
               <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
                 <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
                   <th className="w-12 min-w-[50px] border-r border-slate-200 px-2 py-4 text-center">
                     <input
                       type="checkbox"
-                      checked={paginatedUnits.length > 0 && paginatedUnits.every((u) => selectedIds.includes(u.id))}
+                      checked={paginatedCurrencies.length > 0 && paginatedCurrencies.every((c) => selectedIds.includes(c.id))}
                       onChange={toggleSelectAll}
                       className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                     />
                   </th>
                   <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
-                  <th className="min-w-[140px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">Đơn vị gốc</th>
-                  <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">Tên Quy đổi</th>
-                  <th className="min-w-[140px] border-r border-slate-200 px-4 py-4 text-center">Số lượng quy đổi</th>
+                  <th className="min-w-[120px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">Mã Ngoại tệ</th>
+                  <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">Tên Ngoại tệ</th>
+                  <th className="min-w-[100px] border-r border-slate-200 px-3 py-4 text-center">Ký hiệu</th>
+                  <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Tỷ giá (VND)</th>
                   <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>
-                  <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">Mô tả / Ghi chú</th>
+                  <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">Ghi chú</th>
                   <th className="sticky right-0 top-0 z-30 w-32 min-w-[130px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
-                {paginatedUnits.length === 0 ? (
+                {paginatedCurrencies.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                      Chưa có đơn vị quy đổi nào. Hãy nhấn nút <b>Thêm mới đơn vị quy đổi</b>.
+                    <td colSpan={9} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      Chưa có ngoại tệ nào. Hãy nhấn nút <b>Thêm mới ngoại tệ</b>.
                     </td>
                   </tr>
                 ) : (
-                  paginatedUnits.map((u, index) => {
+                  paginatedCurrencies.map((c, index) => {
                     const globalIndex = (currentPage - 1) * pageSize + index + 1;
-                    const isSelected = selectedIds.includes(u.id);
+                    const isSelected = selectedIds.includes(c.id);
 
                     return (
                       <tr
-                        key={u.id}
+                        key={c.id}
                         className={`group border-b border-slate-200 transition cursor-pointer ${
                           isSelected ? 'bg-cyan-100/60' : 'hover:bg-cyan-50/60'
                         }`}
@@ -421,8 +340,8 @@ export default function UnitsPage() {
                             type="checkbox"
                             checked={isSelected}
                             onChange={(e) => {
-                              if (e.target.checked) setSelectedIds([...selectedIds, u.id]);
-                              else setSelectedIds(selectedIds.filter((id) => id !== u.id));
+                              if (e.target.checked) setSelectedIds([...selectedIds, c.id]);
+                              else setSelectedIds(selectedIds.filter((id) => id !== c.id));
                             }}
                             className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                           />
@@ -430,32 +349,32 @@ export default function UnitsPage() {
                         <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">
                           {globalIndex}
                         </td>
-                        <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-bold text-slate-800 whitespace-nowrap">
-                          {u.baseUnit ? (
-                            <span className="inline-block rounded-xl bg-slate-100 px-3 py-1 text-xs font-black text-slate-700 border border-slate-300">
-                              {u.baseUnit}
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-mono font-extrabold text-cyan-700 whitespace-nowrap">
+                          {c.code}
+                          {c.isDefault && (
+                            <span className="ml-1.5 inline-block rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-800 border border-amber-300">
+                              Mặc định
                             </span>
-                          ) : (
-                            <span className="text-slate-400 italic text-xs">-</span>
                           )}
                         </td>
-                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-cyan-900">{u.convertedUnit}</td>
-                        <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-mono font-black text-slate-900">
-                          {u.quantity.toLocaleString('vi-VN')}
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-slate-900">{c.name}</td>
+                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-700">{c.symbol}</td>
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-right text-sm font-mono font-black text-emerald-600">
+                          1 {c.code} = {c.exchangeRate.toLocaleString('vi-VN')} đ
                         </td>
                         <td className="border-r border-slate-200 px-3 py-3.5 text-center">
                           <span
                             className={`inline-flex rounded-xl px-3 py-1 text-xs font-black border ${
-                              u.status === 'active'
+                              c.status === 'active'
                                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                 : 'bg-slate-100 text-slate-600 border-slate-300'
                             }`}
                           >
-                            {u.status === 'active' ? 'Đang hoạt động' : 'Ngưng hoạt động'}
+                            {c.status === 'active' ? 'Đang hoạt động' : 'Ngưng hoạt động'}
                           </span>
                         </td>
-                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[200px] truncate" title={u.description}>
-                          {u.description || '-'}
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[200px] truncate" title={c.note}>
+                          {c.note || '-'}
                         </td>
 
                         {/* Sticky Action Column */}
@@ -463,20 +382,22 @@ export default function UnitsPage() {
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               type="button"
-                              onClick={() => openModal(u)}
+                              onClick={() => handleOpenEditModal(c)}
                               className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-600 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                              title="Sửa đơn vị"
+                              title="Sửa ngoại tệ"
                             >
                               <Pencil size={18} />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(u.id, u.convertedUnit)}
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 cursor-pointer"
-                              title="Xóa đơn vị"
-                            >
-                              <Trash2 size={18} />
-                            </button>
+                            {!c.isDefault && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSingle(c.id, c.code)}
+                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 cursor-pointer"
+                                title="Xóa ngoại tệ"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -491,7 +412,7 @@ export default function UnitsPage() {
           {totalItems > 0 && (
             <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row gap-4">
               <div className="text-sm font-semibold text-slate-600">
-                Hiển thị <span className="font-extrabold text-slate-900">{startIndex}</span> - <span className="font-extrabold text-slate-900">{endIndex}</span> trên tổng số <span className="font-extrabold text-slate-900">{totalItems}</span> đơn vị
+                Hiển thị <span className="font-extrabold text-slate-900">{startIndex}</span> - <span className="font-extrabold text-slate-900">{endIndex}</span> trên tổng số <span className="font-extrabold text-slate-900">{totalItems}</span> ngoại tệ
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -563,8 +484,8 @@ export default function UnitsPage() {
             <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3.5 py-1.5 text-white font-black text-sm">
-                  <Scale className="h-4.5 w-4.5" />
-                  {modalMode === 'create' ? 'THÊM MỚI ĐƠN VỊ QUY ĐỔI' : 'CẬP NHẬT ĐƠN VỊ QUY ĐỔI'}
+                  <DollarSign className="h-4.5 w-4.5" />
+                  {modalMode === 'create' ? 'THÊM MỚI NGOẠI TỆ' : 'CẬP NHẬT NGOẠI TỆ'}
                 </div>
               </div>
               <button
@@ -576,42 +497,54 @@ export default function UnitsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4 text-xs font-bold text-slate-700">
+            <form onSubmit={handleSaveForm} className="p-6 space-y-4 text-xs font-bold text-slate-700">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-slate-700 font-extrabold">Mã Ngoại tệ <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={form.code}
+                    onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+                    placeholder="VD: USD, EUR..."
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-700 font-extrabold">Ký hiệu tiền tệ</label>
+                  <input
+                    type="text"
+                    value={form.symbol}
+                    onChange={(e) => setForm({ ...form, symbol: e.target.value })}
+                    placeholder="VD: $, €, ¥..."
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1.5">
-                <label className="text-slate-700 font-extrabold">Tên quy đổi <span className="text-red-500">*</span></label>
+                <label className="text-slate-700 font-extrabold">Tên Ngoại tệ <span className="text-red-500">*</span></label>
                 <input
                   type="text"
-                  value={form.convertedUnit}
-                  onChange={(e) => setForm({ ...form, convertedUnit: e.target.value })}
-                  placeholder="VD: Hộp 10 cái, Thùng 24 hộp, Lốc 6 chai..."
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="VD: Đô la Mỹ, Euro..."
                   className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Đơn vị gốc</label>
-                  <input
-                    type="text"
-                    value={form.baseUnit}
-                    onChange={(e) => setForm({ ...form, baseUnit: e.target.value })}
-                    placeholder="VD: Cái, Hộp, Chai..."
-                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Số lượng quy đổi <span className="text-red-500">*</span></label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={form.quantity}
-                    onChange={(e) => setForm({ ...form, quantity: Math.max(1, Number(e.target.value)) })}
-                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                    required
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-slate-700 font-extrabold">Tỷ giá quy đổi (so với 1 VND)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.exchangeRate}
+                  onChange={(e) => setForm({ ...form, exchangeRate: parseFloat(e.target.value) || 0 })}
+                  className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-black text-emerald-700 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                  required
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -627,12 +560,12 @@ export default function UnitsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-slate-700 font-extrabold">Mô tả / Ghi chú</label>
+                <label className="text-slate-700 font-extrabold">Ghi chú</label>
                 <textarea
                   rows={2}
-                  value={form.description || ''}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="Ghi chú thêm thông tin về quy đổi..."
+                  value={form.note || ''}
+                  onChange={(e) => setForm({ ...form, note: e.target.value })}
+                  placeholder="Ghi chú về tỷ giá / mục đích sử dụng..."
                   className="w-full rounded-xl border-2 border-cyan-500 bg-white p-3 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
                 />
               </div>
@@ -643,7 +576,7 @@ export default function UnitsPage() {
                   className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-cyan-700 transition cursor-pointer"
                 >
                   <Save size={16} />
-                  Lưu đơn vị
+                  Lưu ngoại tệ
                 </button>
 
                 <button

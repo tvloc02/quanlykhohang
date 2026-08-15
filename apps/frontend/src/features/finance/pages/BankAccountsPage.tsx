@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Scale,
+  Landmark,
   Plus,
   Search,
   Pencil,
@@ -13,28 +13,36 @@ import {
   Filter,
   Maximize2,
   Minimize2,
+  Wallet,
+  Building2,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  DollarSign,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'smart-wms-units';
-const API_BASE_URL = 'http://localhost:3000/api';
-
-export type UnitConversion = {
+export interface BankAccountItem {
   id: string;
-  baseUnit?: string;       // Đơn vị gốc
-  convertedUnit: string;  // Tên quy đổi (bắt buộc)
-  quantity: number;        // Số lượng (bắt buộc)
+  code: string;
+  name: string;
+  type: 'bank' | 'wallet'; // Ngân hàng hoặc Ví tiền mặt
+  bankName: string; // Tên ngân hàng / tên ví
+  accountNumber: string;
+  accountHolder: string;
+  branch: string;
+  balance: number;
   status: 'active' | 'inactive';
-  description?: string;
-  createdAt: string;
-};
+  isDefault: boolean;
+  note?: string;
+  updatedAt: string;
+}
 
-export const DEFAULT_UNITS: UnitConversion[] = [];
+const STORAGE_KEY = 'smart-wms-bank-accounts';
 
-export function readStoredUnits(): UnitConversion[] {
+export const DEFAULT_BANK_ACCOUNTS: BankAccountItem[] = [];
+
+export function readStoredBankAccounts(): BankAccountItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -47,40 +55,42 @@ export function readStoredUnits(): UnitConversion[] {
   return [];
 }
 
-export function saveStoredUnits(units: UnitConversion[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(units));
+export function saveStoredBankAccounts(items: BankAccountItem[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   window.dispatchEvent(new Event('storage'));
 }
 
-export default function UnitsPage() {
-  const [units, setUnits] = useState<UnitConversion[]>(readStoredUnits);
+export default function BankAccountsPage() {
+  const [accounts, setAccounts] = useState<BankAccountItem[]>(readStoredBankAccounts);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  // Search & Filter
+  // Filters & Search
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'bank' | 'wallet'>('all');
 
-  // Pagination states
+  // Pagination
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Modal states
+  // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
-  const [editingUnit, setEditingUnit] = useState<UnitConversion | null>(null);
-  const [form, setForm] = useState<{
-    baseUnit: string;
-    convertedUnit: string;
-    quantity: number;
-    status: 'active' | 'inactive';
-    description: string;
-  }>({
-    baseUnit: '',
-    convertedUnit: '',
-    quantity: 1,
+  const [form, setForm] = useState<BankAccountItem>({
+    id: '',
+    code: '',
+    name: '',
+    type: 'bank',
+    bankName: 'Vietcombank',
+    accountNumber: '',
+    accountHolder: '',
+    branch: '',
+    balance: 0,
     status: 'active',
-    description: '',
+    isDefault: false,
+    note: '',
+    updatedAt: new Date().toISOString().split('T')[0],
   });
 
   // Toast
@@ -93,186 +103,108 @@ export default function UnitsPage() {
     setTimeout(() => setToastMessage(''), 3500);
   };
 
-  // Fetch API units (with LocalStorage sync)
-  const fetchUnits = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/units`, {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token || ''}`,
-        },
-      }).catch(() => null);
-
-      if (res && res.ok) {
-        const remoteData = await res.json();
-        if (Array.isArray(remoteData) && remoteData.length > 0) {
-          const localUnits = readStoredUnits();
-          const map = new Map<string, UnitConversion>();
-          localUnits.forEach((u) => map.set(u.id, u));
-          remoteData.forEach((u: any) => {
-            const existing = map.get(u.id);
-            map.set(u.id, {
-              id: u.id,
-              baseUnit: u.baseUnit ?? existing?.baseUnit ?? '',
-              convertedUnit: u.convertedUnit || u.name || existing?.convertedUnit || '',
-              quantity: Number(u.quantity || u.ratio || existing?.quantity || 1),
-              status: u.status || existing?.status || 'active',
-              description: u.description || existing?.description || '',
-              createdAt: u.createdAt || existing?.createdAt || new Date().toISOString(),
-            });
-          });
-          const merged = Array.from(map.values());
-          setUnits(merged);
-          saveStoredUnits(merged);
-        }
-      }
-    } catch {
-      // Local fallback active
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchUnits();
-  }, [fetchUnits]);
-
-  // Filtered List
-  const filteredUnits = useMemo(() => {
+  const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return units.filter((u) => {
+    return accounts.filter((acc) => {
       const matchesSearch =
         !q ||
-        (u.baseUnit || '').toLowerCase().includes(q) ||
-        u.convertedUnit.toLowerCase().includes(q) ||
-        (u.description || '').toLowerCase().includes(q);
+        acc.code.toLowerCase().includes(q) ||
+        acc.name.toLowerCase().includes(q) ||
+        acc.accountNumber.toLowerCase().includes(q) ||
+        acc.bankName.toLowerCase().includes(q) ||
+        acc.accountHolder.toLowerCase().includes(q);
 
-      const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesStatus = statusFilter === 'all' || acc.status === statusFilter;
+      const matchesType = typeFilter === 'all' || acc.type === typeFilter;
+
+      return matchesSearch && matchesStatus && matchesType;
     });
-  }, [units, search, statusFilter]);
+  }, [accounts, search, statusFilter, typeFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds([]);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, typeFilter]);
 
-  // Pagination Calculations
-  const totalItems = filteredUnits.length;
+  const totalItems = filteredAccounts.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
-  const paginatedUnits = filteredUnits.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedAccounts = filteredAccounts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Open Modal Create/Edit
-  const openModal = (unitToEdit?: UnitConversion) => {
-    if (unitToEdit) {
-      setEditingUnit(unitToEdit);
-      setModalMode('edit');
-      setForm({
-        baseUnit: unitToEdit.baseUnit || '',
-        convertedUnit: unitToEdit.convertedUnit,
-        quantity: unitToEdit.quantity,
-        status: unitToEdit.status,
-        description: unitToEdit.description || '',
-      });
-    } else {
-      setEditingUnit(null);
-      setModalMode('create');
-      setForm({
-        baseUnit: '',
-        convertedUnit: '',
-        quantity: 1,
-        status: 'active',
-        description: '',
-      });
-    }
+  const handleOpenCreateModal = () => {
+    setForm({
+      id: `ba-${Date.now()}`,
+      code: `TK-${Date.now().toString().slice(-4)}`,
+      name: '',
+      type: 'bank',
+      bankName: 'Vietcombank',
+      accountNumber: '',
+      accountHolder: 'CÔNG TY TNHH SMART WMS',
+      branch: 'Hà Nội',
+      balance: 0,
+      status: 'active',
+      isDefault: false,
+      note: '',
+      updatedAt: new Date().toISOString().split('T')[0],
+    });
+    setModalMode('create');
     setIsModalOpen(true);
   };
 
-  // Save Unit
-  const handleSave = async (e: React.FormEvent) => {
+  const handleOpenEditModal = (item: BankAccountItem) => {
+    setForm({ ...item });
+    setModalMode('edit');
+    setIsModalOpen(true);
+  };
+
+  const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.convertedUnit.trim()) {
-      showToast('Vui lòng nhập Tên quy đổi.', 'error');
-      return;
-    }
-    if (form.quantity <= 0) {
-      showToast('Số lượng quy đổi phải lớn hơn 0.', 'error');
+    if (!form.name.trim() || !form.accountNumber.trim()) {
+      showToast('Vui lòng nhập Tên tài khoản và Số tài khoản!', 'error');
       return;
     }
 
-    const payload = {
-      baseUnit: form.baseUnit.trim(),
-      convertedUnit: form.convertedUnit.trim(),
-      quantity: Number(form.quantity),
-      status: form.status,
-      description: form.description.trim(),
-    };
-
-    if (editingUnit) {
-      const updated: UnitConversion = {
-        ...editingUnit,
-        ...payload,
-      };
-
-      setUnits((prev) => {
-        const next = prev.map((u) => (u.id === editingUnit.id ? updated : u));
-        saveStoredUnits(next);
-        return next;
-      });
-
-      showToast(`Đã cập nhật đơn vị quy đổi "${payload.convertedUnit}".`);
+    let updated: BankAccountItem[];
+    if (modalMode === 'edit') {
+      updated = accounts.map((acc) => (acc.id === form.id ? { ...form, updatedAt: new Date().toISOString().split('T')[0] } : acc));
+      showToast(`Đã cập nhật tài khoản ${form.name} thành công!`);
     } else {
-      const newUnit: UnitConversion = {
-        id: `unit-${Date.now()}`,
-        ...payload,
-        createdAt: new Date().toISOString(),
-      };
-
-      setUnits((prev) => {
-        const next = [newUnit, ...prev];
-        saveStoredUnits(next);
-        return next;
-      });
-
-      showToast(`Đã thêm mới đơn vị quy đổi "${payload.convertedUnit}".`);
+      updated = [{ ...form, updatedAt: new Date().toISOString().split('T')[0] }, ...accounts];
+      showToast(`Đã thêm mới tài khoản ${form.name} thành công!`);
     }
+
+    setAccounts(updated);
+    saveStoredBankAccounts(updated);
     setIsModalOpen(false);
   };
 
-  // Single Delete
-  const handleDelete = (id: string, name: string) => {
-    if (confirm(`Bạn có chắc chắn muốn xóa đơn vị quy đổi "${name}"?`)) {
-      setUnits((prev) => {
-        const next = prev.filter((u) => u.id !== id);
-        saveStoredUnits(next);
-        return next;
-      });
-      setSelectedIds((prev) => prev.filter((item) => item !== id));
-      showToast(`Đã xóa đơn vị quy đổi "${name}".`);
+  const handleDeleteSingle = (id: string, name: string) => {
+    if (confirm(`Bạn có chắc chắn muốn xóa tài khoản ${name}?`)) {
+      const updated = accounts.filter((acc) => acc.id !== id);
+      setAccounts(updated);
+      saveStoredBankAccounts(updated);
+      showToast(`Đã xóa tài khoản ${name}!`);
     }
   };
 
-  // Bulk Delete
-  const handleBulkDelete = () => {
+  const handleDeleteSelected = () => {
     if (selectedIds.length === 0) return;
-    if (confirm(`Bạn có chắc chắn muốn xóa ${selectedIds.length} đơn vị quy đổi đã chọn?`)) {
-      setUnits((prev) => {
-        const next = prev.filter((u) => !selectedIds.includes(u.id));
-        saveStoredUnits(next);
-        return next;
-      });
-      showToast(`Đã xóa ${selectedIds.length} đơn vị quy đổi.`);
+    if (confirm(`Bạn có chắc chắn muốn xóa ${selectedIds.length} tài khoản đã chọn?`)) {
+      const updated = accounts.filter((acc) => !selectedIds.includes(acc.id));
+      setAccounts(updated);
+      saveStoredBankAccounts(updated);
       setSelectedIds([]);
+      showToast(`Đã xóa ${selectedIds.length} tài khoản!`);
     }
   };
 
   const toggleSelectAll = () => {
-    if (paginatedUnits.length > 0 && paginatedUnits.every((u) => selectedIds.includes(u.id))) {
-      const currentIds = new Set(paginatedUnits.map((u) => u.id));
+    if (paginatedAccounts.length > 0 && paginatedAccounts.every((acc) => selectedIds.includes(acc.id))) {
+      const currentIds = new Set(paginatedAccounts.map((acc) => acc.id));
       setSelectedIds((prev) => prev.filter((id) => !currentIds.has(id)));
     } else {
-      const currentIds = paginatedUnits.map((u) => u.id);
+      const currentIds = paginatedAccounts.map((acc) => acc.id);
       setSelectedIds((prev) => Array.from(new Set([...prev, ...currentIds])));
     }
   };
@@ -300,8 +232,8 @@ export default function UnitsPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
-              <Scale className="h-5 w-5" />
-              <h1 className="text-xl font-extrabold tracking-tight uppercase">ĐƠN VỊ QUY ĐỔI HÀNG HÓA</h1>
+              <Landmark className="h-5 w-5" />
+              <h1 className="text-xl font-extrabold tracking-tight uppercase">TÀI KHOẢN NGÂN HÀNG | VÍ TIỀN MẶT</h1>
             </div>
           </div>
 
@@ -309,18 +241,18 @@ export default function UnitsPage() {
             {/* Thêm mới */}
             <button
               type="button"
-              onClick={() => openModal()}
+              onClick={handleOpenCreateModal}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 border-2 border-cyan-700 px-5 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:bg-cyan-700 active:scale-95 cursor-pointer"
             >
               <Plus className="h-4.5 w-4.5" />
-              Thêm mới đơn vị quy đổi
+              Thêm mới tài khoản
             </button>
 
             {/* Xóa chọn */}
             {selectedIds.length > 0 && (
               <button
                 type="button"
-                onClick={handleBulkDelete}
+                onClick={handleDeleteSelected}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-red-600 bg-white px-5 py-2.5 text-sm font-extrabold text-red-600 shadow-xs transition hover:bg-red-50 active:scale-95 cursor-pointer"
               >
                 <Trash2 className="h-4.5 w-4.5 text-red-600" />
@@ -350,15 +282,28 @@ export default function UnitsPage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm kiếm theo Tên quy đổi, Đơn vị gốc, Mô tả..."
+                placeholder="Tìm kiếm theo tên tài khoản, ngân hàng, số TK, chủ tài khoản..."
                 className="h-12 w-full rounded-xl border-2 border-cyan-600/30 bg-slate-50/50 pl-11 pr-4 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:bg-white focus:ring-4 focus:ring-cyan-500/10"
               />
             </div>
 
-            {/* Status Filter */}
-            <div className="flex items-center gap-3">
+            {/* Type & Status Filters */}
+            <div className="flex flex-wrap items-center gap-3">
               <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
                 <Filter className="h-4 w-4 text-cyan-600 shrink-0" />
+                <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Loại:</span>
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as any)}
+                  className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                >
+                  <option value="all">Tất cả loại</option>
+                  <option value="bank">Tài khoản Ngân hàng</option>
+                  <option value="wallet">Ví tiền mặt / Ví ĐT</option>
+                </select>
+              </div>
+
+              <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
                 <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Trạng thái:</span>
                 <select
                   value={statusFilter}
@@ -377,41 +322,43 @@ export default function UnitsPage() {
         {/* High-density Table */}
         <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full border-collapse text-left min-w-[900px]">
+            <table className="w-full border-collapse text-left min-w-[1100px]">
               <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
                 <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
                   <th className="w-12 min-w-[50px] border-r border-slate-200 px-2 py-4 text-center">
                     <input
                       type="checkbox"
-                      checked={paginatedUnits.length > 0 && paginatedUnits.every((u) => selectedIds.includes(u.id))}
+                      checked={paginatedAccounts.length > 0 && paginatedAccounts.every((acc) => selectedIds.includes(acc.id))}
                       onChange={toggleSelectAll}
                       className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                     />
                   </th>
                   <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
-                  <th className="min-w-[140px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">Đơn vị gốc</th>
-                  <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">Tên Quy đổi</th>
-                  <th className="min-w-[140px] border-r border-slate-200 px-4 py-4 text-center">Số lượng quy đổi</th>
-                  <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>
-                  <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">Mô tả / Ghi chú</th>
+                  <th className="min-w-[120px] border-r border-slate-200 px-3 py-4 text-center whitespace-nowrap">Mã TK</th>
+                  <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">Tên Tài khoản / Ví</th>
+                  <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Ngân hàng / Loại</th>
+                  <th className="min-w-[160px] border-r border-slate-200 px-4 py-4 text-center">Số Tài khoản</th>
+                  <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Chủ Tài khoản</th>
+                  <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Số dư hiện tại</th>
+                  <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>
                   <th className="sticky right-0 top-0 z-30 w-32 min-w-[130px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
-                {paginatedUnits.length === 0 ? (
+                {paginatedAccounts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                      Chưa có đơn vị quy đổi nào. Hãy nhấn nút <b>Thêm mới đơn vị quy đổi</b>.
+                    <td colSpan={10} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      Chưa có tài khoản ngân hàng hoặc ví nào. Hãy nhấn nút <b>Thêm mới tài khoản</b>.
                     </td>
                   </tr>
                 ) : (
-                  paginatedUnits.map((u, index) => {
+                  paginatedAccounts.map((acc, index) => {
                     const globalIndex = (currentPage - 1) * pageSize + index + 1;
-                    const isSelected = selectedIds.includes(u.id);
+                    const isSelected = selectedIds.includes(acc.id);
 
                     return (
                       <tr
-                        key={u.id}
+                        key={acc.id}
                         className={`group border-b border-slate-200 transition cursor-pointer ${
                           isSelected ? 'bg-cyan-100/60' : 'hover:bg-cyan-50/60'
                         }`}
@@ -421,8 +368,8 @@ export default function UnitsPage() {
                             type="checkbox"
                             checked={isSelected}
                             onChange={(e) => {
-                              if (e.target.checked) setSelectedIds([...selectedIds, u.id]);
-                              else setSelectedIds(selectedIds.filter((id) => id !== u.id));
+                              if (e.target.checked) setSelectedIds([...selectedIds, acc.id]);
+                              else setSelectedIds(selectedIds.filter((id) => id !== acc.id));
                             }}
                             className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                           />
@@ -430,32 +377,36 @@ export default function UnitsPage() {
                         <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">
                           {globalIndex}
                         </td>
-                        <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-bold text-slate-800 whitespace-nowrap">
-                          {u.baseUnit ? (
-                            <span className="inline-block rounded-xl bg-slate-100 px-3 py-1 text-xs font-black text-slate-700 border border-slate-300">
-                              {u.baseUnit}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 italic text-xs">-</span>
-                          )}
+                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-mono font-extrabold text-cyan-700 whitespace-nowrap">
+                          {acc.code}
                         </td>
-                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-cyan-900">{u.convertedUnit}</td>
-                        <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-mono font-black text-slate-900">
-                          {u.quantity.toLocaleString('vi-VN')}
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-slate-900">
+                          <div className="flex items-center gap-2">
+                            {acc.type === 'bank' ? <Landmark className="h-4 w-4 text-cyan-600 shrink-0" /> : <Wallet className="h-4 w-4 text-amber-600 shrink-0" />}
+                            <span>{acc.name}</span>
+                            {acc.isDefault && (
+                              <span className="rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-800 border border-amber-300">
+                                Mặc định
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-700">{acc.bankName}</td>
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-mono font-bold text-slate-900">{acc.accountNumber}</td>
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-800">{acc.accountHolder}</td>
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-right text-sm font-mono font-black text-emerald-600">
+                          {acc.balance.toLocaleString('vi-VN')} đ
                         </td>
                         <td className="border-r border-slate-200 px-3 py-3.5 text-center">
                           <span
                             className={`inline-flex rounded-xl px-3 py-1 text-xs font-black border ${
-                              u.status === 'active'
+                              acc.status === 'active'
                                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                 : 'bg-slate-100 text-slate-600 border-slate-300'
                             }`}
                           >
-                            {u.status === 'active' ? 'Đang hoạt động' : 'Ngưng hoạt động'}
+                            {acc.status === 'active' ? 'Đang hoạt động' : 'Ngưng hoạt động'}
                           </span>
-                        </td>
-                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[200px] truncate" title={u.description}>
-                          {u.description || '-'}
                         </td>
 
                         {/* Sticky Action Column */}
@@ -463,20 +414,22 @@ export default function UnitsPage() {
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               type="button"
-                              onClick={() => openModal(u)}
+                              onClick={() => handleOpenEditModal(acc)}
                               className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-600 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                              title="Sửa đơn vị"
+                              title="Sửa tài khoản"
                             >
                               <Pencil size={18} />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(u.id, u.convertedUnit)}
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 cursor-pointer"
-                              title="Xóa đơn vị"
-                            >
-                              <Trash2 size={18} />
-                            </button>
+                            {!acc.isDefault && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSingle(acc.id, acc.name)}
+                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 cursor-pointer"
+                                title="Xóa tài khoản"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -491,7 +444,7 @@ export default function UnitsPage() {
           {totalItems > 0 && (
             <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row gap-4">
               <div className="text-sm font-semibold text-slate-600">
-                Hiển thị <span className="font-extrabold text-slate-900">{startIndex}</span> - <span className="font-extrabold text-slate-900">{endIndex}</span> trên tổng số <span className="font-extrabold text-slate-900">{totalItems}</span> đơn vị
+                Hiển thị <span className="font-extrabold text-slate-900">{startIndex}</span> - <span className="font-extrabold text-slate-900">{endIndex}</span> trên tổng số <span className="font-extrabold text-slate-900">{totalItems}</span> tài khoản
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -559,12 +512,12 @@ export default function UnitsPage() {
       {/* POPUP MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in-50">
-          <div className="w-full max-w-lg overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl">
+          <div className="w-full max-w-[640px] overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3.5 py-1.5 text-white font-black text-sm">
-                  <Scale className="h-4.5 w-4.5" />
-                  {modalMode === 'create' ? 'THÊM MỚI ĐƠN VỊ QUY ĐỔI' : 'CẬP NHẬT ĐƠN VỊ QUY ĐỔI'}
+                  <Landmark className="h-4.5 w-4.5" />
+                  {modalMode === 'create' ? 'THÊM MỚI TÀI KHOẢN / VÍ' : 'CẬP NHẬT TÀI KHOẢN / VÍ'}
                 </div>
               </div>
               <button
@@ -576,38 +529,27 @@ export default function UnitsPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="p-6 space-y-4 text-xs font-bold text-slate-700">
-              <div className="space-y-1.5">
-                <label className="text-slate-700 font-extrabold">Tên quy đổi <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={form.convertedUnit}
-                  onChange={(e) => setForm({ ...form, convertedUnit: e.target.value })}
-                  placeholder="VD: Hộp 10 cái, Thùng 24 hộp, Lốc 6 chai..."
-                  className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                  required
-                />
-              </div>
-
+            <form onSubmit={handleSaveForm} className="p-6 space-y-4 text-xs font-bold text-slate-700">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Đơn vị gốc</label>
-                  <input
-                    type="text"
-                    value={form.baseUnit}
-                    onChange={(e) => setForm({ ...form, baseUnit: e.target.value })}
-                    placeholder="VD: Cái, Hộp, Chai..."
-                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                  />
+                  <label className="text-slate-700 font-extrabold">Loại tài khoản <span className="text-red-500">*</span></label>
+                  <select
+                    value={form.type}
+                    onChange={(e) => setForm({ ...form, type: e.target.value as any })}
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
+                  >
+                    <option value="bank">Ngân hàng thương mại</option>
+                    <option value="wallet">Ví tiền mặt / Ví điện tử</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Số lượng quy đổi <span className="text-red-500">*</span></label>
+                  <label className="text-slate-700 font-extrabold">Mã nhận diện tài khoản</label>
                   <input
-                    type="number"
-                    min={1}
-                    value={form.quantity}
-                    onChange={(e) => setForm({ ...form, quantity: Math.max(1, Number(e.target.value)) })}
+                    type="text"
+                    value={form.code}
+                    onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+                    placeholder="VD: TK-VCB-01..."
                     className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
                     required
                   />
@@ -615,24 +557,98 @@ export default function UnitsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-slate-700 font-extrabold">Trạng thái</label>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value as any })}
-                  className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
-                >
-                  <option value="active">Đang hoạt động</option>
-                  <option value="inactive">Ngưng hoạt động</option>
-                </select>
+                <label className="text-slate-700 font-extrabold">Tên Tài khoản / Ví <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="VD: Vietcombank - Chi nhánh Hà Nội..."
+                  className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-slate-700 font-extrabold">Tên Ngân hàng / Tổ chức <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={form.bankName}
+                    onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+                    placeholder="VD: Vietcombank, BIDV, MoMo..."
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-700 font-extrabold">Số Tài khoản / Mã Ví <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={form.accountNumber}
+                    onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
+                    placeholder="VD: 10123456789..."
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-slate-700 font-extrabold">Chủ Tài khoản</label>
+                  <input
+                    type="text"
+                    value={form.accountHolder}
+                    onChange={(e) => setForm({ ...form, accountHolder: e.target.value })}
+                    placeholder="VD: CÔNG TY TNHH SMART WMS..."
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-700 font-extrabold">Chi nhánh / Khu vực</label>
+                  <input
+                    type="text"
+                    value={form.branch}
+                    onChange={(e) => setForm({ ...form, branch: e.target.value })}
+                    placeholder="VD: Chi nhánh Hà Nội..."
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-slate-700 font-extrabold">Số dư ban đầu (đ)</label>
+                  <input
+                    type="number"
+                    value={form.balance}
+                    onChange={(e) => setForm({ ...form, balance: parseFloat(e.target.value) || 0 })}
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-black text-emerald-700 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-700 font-extrabold">Trạng thái</label>
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm({ ...form, status: e.target.value as any })}
+                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
+                  >
+                    <option value="active">Đang hoạt động</option>
+                    <option value="inactive">Ngưng hoạt động</option>
+                  </select>
+                </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-slate-700 font-extrabold">Mô tả / Ghi chú</label>
+                <label className="text-slate-700 font-extrabold">Ghi chú</label>
                 <textarea
                   rows={2}
-                  value={form.description || ''}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="Ghi chú thêm thông tin về quy đổi..."
+                  value={form.note || ''}
+                  onChange={(e) => setForm({ ...form, note: e.target.value })}
+                  placeholder="Ghi chú thêm thông tin về tài khoản..."
                   className="w-full rounded-xl border-2 border-cyan-500 bg-white p-3 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
                 />
               </div>
@@ -643,7 +659,7 @@ export default function UnitsPage() {
                   className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-cyan-700 transition cursor-pointer"
                 >
                   <Save size={16} />
-                  Lưu đơn vị
+                  Lưu tài khoản
                 </button>
 
                 <button
