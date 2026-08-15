@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, IsIn } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsIn, IsArray } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -30,5 +30,6 @@ export class UpdateUserDto {
   address?: string;
 
   @IsOptional()
+  @IsArray()
   groupIds?: string[];
 }

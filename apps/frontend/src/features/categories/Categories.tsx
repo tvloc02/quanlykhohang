@@ -25,6 +25,7 @@ import {
     getStoredCatalogCategories,
     saveStoredCatalogCategories,
 } from '../../shared/utils/catalogCategories';
+import { usePermissions } from '../../shared/hooks/usePermissions';
 
 type CategoryForm = {
     type: CatalogCategoryType;
@@ -149,6 +150,13 @@ function getStatusClass(status: CatalogCategoryStatus) {
 }
 
 export default function CategoryManagement() {
+    const { canPerformAction, isAdmin } = usePermissions();
+    const canCreate = isAdmin || canPerformAction('categories', 'create');
+    const canEdit = isAdmin || canPerformAction('categories', 'edit');
+    const canDelete = isAdmin || canPerformAction('categories', 'delete');
+    const canImport = isAdmin || canPerformAction('categories', 'import');
+    const canExport = isAdmin || canPerformAction('categories', 'export');
+
     const [categories, setCategories] = React.useState<CatalogCategory[]>(() => getStoredCatalogCategories());
     const [search, setSearch] = React.useState('');
     const [statusFilter, setStatusFilter] = React.useState<'all' | CatalogCategoryStatus>('all');
@@ -555,30 +563,36 @@ export default function CategoryManagement() {
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={openImportModal}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50 shadow-sm"
-                    >
-                        <Upload className="h-4 w-4" />
-                        Import
-                    </button>
-                    <button
-                        type="button"
-                        onClick={openExportModal}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50 shadow-sm"
-                    >
-                        <Download className="h-4 w-4" />
-                        Xuất Excel
-                    </button>
-                    <button
-                        type="button"
-                        onClick={openCreateModal}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
-                    >
-                        <Plus className="h-4 w-4" />
-                        Thêm nhóm hàng hóa
-                    </button>
+                    {canImport && (
+                        <button
+                            type="button"
+                            onClick={openImportModal}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50 shadow-sm cursor-pointer"
+                        >
+                            <Upload className="h-4 w-4" />
+                            Import
+                        </button>
+                    )}
+                    {canExport && (
+                        <button
+                            type="button"
+                            onClick={openExportModal}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50 shadow-sm cursor-pointer"
+                        >
+                            <Download className="h-4 w-4" />
+                            Xuất Excel
+                        </button>
+                    )}
+                    {canCreate && (
+                        <button
+                            type="button"
+                            onClick={openCreateModal}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 cursor-pointer"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Thêm nhóm hàng hóa
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -779,38 +793,44 @@ export default function CategoryManagement() {
                                     </td>
                                     <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
                                         <div className="flex items-center justify-center gap-2">
+                                            {canCreate && (
+                                                <button
+                                                    type="button"
+                                                    className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                                                    title="Thêm mới / Chi tiết"
+                                                    onClick={() => openCategoryModal('view', category)}
+                                                >
+                                                    <Plus size={18} strokeWidth={2.5} />
+                                                </button>
+                                            )}
                                             <button
                                                 type="button"
-                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                                                title="Thêm mới / Chi tiết"
-                                                onClick={() => openCategoryModal('view', category)}
-                                            >
-                                                <Plus size={18} strokeWidth={2.5} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                                                 title="Chi tiết nhóm hàng hóa"
                                                 onClick={() => openCategoryModal('view', category)}
                                             >
                                                 <History size={18} strokeWidth={2.5} />
                                             </button>
-                                            <button
-                                                type="button"
-                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                                                title="Sửa nhóm hàng hóa"
-                                                onClick={() => openCategoryModal('edit', category)}
-                                            >
-                                                <Pencil size={18} strokeWidth={2.5} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                                                title="Xóa nhóm hàng hóa"
-                                                onClick={() => openCategoryModal('delete', category)}
-                                            >
-                                                <Trash2 size={18} strokeWidth={2.5} />
-                                            </button>
+                                            {canEdit && (
+                                                <button
+                                                    type="button"
+                                                    className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                                                    title="Sửa nhóm hàng hóa"
+                                                    onClick={() => openCategoryModal('edit', category)}
+                                                >
+                                                    <Pencil size={18} strokeWidth={2.5} />
+                                                </button>
+                                            )}
+                                            {canDelete && (
+                                                <button
+                                                    type="button"
+                                                    className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                                                    title="Xóa nhóm hàng hóa"
+                                                    onClick={() => openCategoryModal('delete', category)}
+                                                >
+                                                    <Trash2 size={18} strokeWidth={2.5} />
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

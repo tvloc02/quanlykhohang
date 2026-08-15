@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Req, UseGuards, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Req, UseGuards, ForbiddenException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -23,8 +23,15 @@ export class UsersController {
     return this.usersService.create(createUserDto, req.user);
   }
 
+  @Get('me')
+  @Roles('admin', 'manager', 'staff', 'customer', 'supplier')
+  getMe(@Req() req: any) {
+    const userId = req.user?.id || req.user?.sub;
+    return this.usersService.findOne(userId);
+  }
+
   @Get(':id')
-  @Roles('admin', 'manager')
+  @Roles('admin', 'manager', 'staff')
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
@@ -32,6 +39,15 @@ export class UsersController {
   @Put(':id')
   @Roles('admin', 'manager', 'customer')
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Req() req: any) {
+    if (req.user.role === 'customer' && req.user.id !== id) {
+      throw new ForbiddenException('Bạn chỉ có thể cập nhật thông tin của chính mình');
+    }
+    return this.usersService.update(id, updateUserDto, req.user);
+  }
+
+  @Patch(':id')
+  @Roles('admin', 'manager', 'customer')
+  patchUpdate(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto, @Req() req: any) {
     if (req.user.role === 'customer' && req.user.id !== id) {
       throw new ForbiddenException('Bạn chỉ có thể cập nhật thông tin của chính mình');
     }
