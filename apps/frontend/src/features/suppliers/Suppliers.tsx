@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
+import { usePermissions } from '../../shared/hooks/usePermissions';
 
 type SupplierStatus = 'active' | 'inactive';
 type PriorityLevel = 'strategic' | 'secondary';
@@ -153,6 +154,11 @@ function normalizeSupplier(supplier: Partial<Supplier>): Supplier {
 }
 
 export default function Suppliers() {
+  const { canPerformAction, isAdmin } = usePermissions();
+  const canCreate = isAdmin || canPerformAction('suppliers', 'create');
+  const canEdit = isAdmin || canPerformAction('suppliers', 'edit');
+  const canDelete = isAdmin || canPerformAction('suppliers', 'delete');
+
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [search, setSearch] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<'all' | SupplierStatus>('all');
@@ -354,14 +360,16 @@ export default function Suppliers() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => openModal('create')}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Tạo nhà cung cấp
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={() => openModal('create')}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 cursor-pointer"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Tạo nhà cung cấp
+          </button>
+        )}
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -472,26 +480,30 @@ export default function Suppliers() {
                           type="button"
                           onClick={() => openModal('view', supplier)}
                           title="Xem chi tiết"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                         >
                           <Eye size={18} strokeWidth={2.5} />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => openModal('edit', supplier)}
-                          title="Sửa nhà cung cấp"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                        >
-                          <Pencil size={18} strokeWidth={2.5} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openModal('delete', supplier)}
-                          title="Xóa nhà cung cấp"
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                        >
-                          <Trash2 size={18} strokeWidth={2.5} />
-                        </button>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => openModal('edit', supplier)}
+                            title="Sửa nhà cung cấp"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          >
+                            <Pencil size={18} strokeWidth={2.5} />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => openModal('delete', supplier)}
+                            title="Xóa nhà cung cấp"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          >
+                            <Trash2 size={18} strokeWidth={2.5} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
