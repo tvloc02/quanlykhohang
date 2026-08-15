@@ -108,11 +108,12 @@ function authHeaders() {
   };
 }
 
-// System Menu Items Definition matching System Menu Hierarchy
+// System Menu Items Definition matching System Menu Hierarchy (14 Main Categories)
 export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
+  // 1. Trang chủ (Nút Vàng Nổi Bật)
   { id: 'pos', label: 'Trang chủ' },
-  { id: 'gpstest', label: 'GPSTEST' },
 
+  // 2. Nhập - Xuất
   { id: 'nhap-xuat', label: 'Nhập - Xuất', isHeader: true },
   { id: 'outbound-orders', label: 'Xuất bán', parentId: 'nhap-xuat' },
   { id: 'outbound-retail', label: 'Xuất bán lẻ', parentId: 'nhap-xuat' },
@@ -129,65 +130,13 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'outbound-disposal', label: 'Xuất hủy', parentId: 'nhap-xuat' },
   { id: 'inbound-assembly', label: 'Tạo bộ/Combo', parentId: 'nhap-xuat' },
 
+  // 3. Thu chi
   { id: 'thu-chi', label: 'Thu chi', isHeader: true },
   { id: 'finance-receipts', label: 'Viết phiếu thu', parentId: 'thu-chi' },
   { id: 'finance-receipt-from-bill', label: 'Thu tiền từ Phiếu xuất', parentId: 'thu-chi' },
   { id: 'finance-payment-vouchers', label: 'Viết phiếu chi', parentId: 'thu-chi' },
 
-  { id: 'bao-cao-phan-tich', label: 'Báo cáo Phân tích', isHeader: true },
-  { id: 'report-bill-profit', label: 'Lợi nhuận theo Hóa đơn', parentId: 'bao-cao-phan-tich' },
-  { id: 'report-category-profit', label: 'Lợi nhuận theo Nhóm hàng', parentId: 'bao-cao-phan-tich' },
-  { id: 'report-customer-profit', label: 'Lợi nhuận theo Khách hàng', parentId: 'bao-cao-phan-tich' },
-
-  { id: 'danh-muc', label: 'Danh mục', isHeader: true },
-  { id: 'products-main', label: 'Hàng hóa', parentId: 'danh-muc' },
-  { id: 'categories', label: 'Nhóm hàng', parentId: 'danh-muc' },
-  { id: 'customers', label: 'Khách hàng', parentId: 'danh-muc' },
-  { id: 'suppliers', label: 'Nhà cung cấp', parentId: 'danh-muc' },
-  { id: 'areas', label: 'Khu vực', parentId: 'danh-muc' },
-  { id: 'warehouses', label: 'Kho hàng', parentId: 'danh-muc' },
-  { id: 'units', label: 'Đơn vị quy đổi', parentId: 'danh-muc' },
-  { id: 'currency', label: 'Ngoại tệ', parentId: 'danh-muc' },
-  { id: 'bank-accounts', label: 'Tài khoản Ngân hàng|Ví TM', parentId: 'danh-muc' },
-  { id: 'receipt-expense-types', label: 'Nội dung thu chi', parentId: 'danh-muc' },
-  { id: 'customer-groups', label: 'Nhóm KH/NCC', parentId: 'danh-muc' },
-  { id: 'price-lists', label: 'Bảng giá', parentId: 'danh-muc' },
-
-  { id: 'he-thong', label: 'Hệ thống', isHeader: true },
-  { id: 'logout', label: 'Đăng xuất', parentId: 'he-thong' },
-  { id: 'change-password', label: 'Đổi mật khẩu', parentId: 'he-thong' },
-  { id: 'personnel', label: 'Người dùng / Nhân viên', parentId: 'he-thong' },
-  { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
-  { id: 'sys-info', label: 'Thông tin sử dụng', parentId: 'he-thong' },
-  { id: 'audit-log', label: 'Lịch sử thao tác', parentId: 'he-thong' },
-  { id: 'deposit', label: 'Nạp tiền', parentId: 'he-thong' },
-  { id: 'print-barcode', label: 'In Barcode + QRCode', parentId: 'he-thong' },
-  { id: 'print-template-edit', label: 'Chỉnh sửa mẫu in', parentId: 'he-thong' },
-  { id: 'print-templates', label: 'Chỉnh mẫu in', parentId: 'he-thong' },
-  { id: 'data-maintenance', label: 'Bảo trì Dữ liệu', parentId: 'he-thong' },
-  { id: 'sys-config', label: 'Cấu hình hệ thống', parentId: 'he-thong' },
-  { id: 'zalo-config', label: 'Cấu hình Zalo OA', parentId: 'he-thong' },
-  { id: 'evat-config', label: 'Cấu hình e-VAT', parentId: 'he-thong' },
-  { id: 'data-transfer', label: 'Kết chuyển dữ liệu', parentId: 'he-thong' },
-  { id: 'data-transfer-view', label: 'Xem dữ liệu đã Kết chuyển', parentId: 'he-thong' },
-
-  { id: 'home', label: 'Trang chủ' },
-
-  { id: 'documents', label: 'Chứng từ', isHeader: true },
-  { id: 'doc-sales-invoice', label: 'Hóa đơn bán hàng', parentId: 'documents' },
-  { id: 'doc-stock-in-note', label: 'Phiếu nhập kho', parentId: 'documents' },
-  { id: 'doc-stock-out-note', label: 'Phiếu xuất kho', parentId: 'documents' },
-  { id: 'doc-transfer-note', label: 'Phiếu điều chuyển', parentId: 'documents' },
-
-  { id: 'inventory', label: 'Tồn kho', isHeader: true },
-  { id: 'inventory-2d', label: 'Sơ đồ 2D & Heatmap', parentId: 'inventory' },
-  { id: 'inventory-smart-slotting', label: 'Gợi ý cất hàng (Smart Slotting)', parentId: 'inventory' },
-  { id: 'inventory-main', label: 'Bảng tồn kho tổng hợp', parentId: 'inventory' },
-
-  { id: 'prod-dist', label: 'Sản xuất & Phân phối', isHeader: true },
-  { id: 'production', label: 'Sản xuất', parentId: 'prod-dist' },
-  { id: 'distribution', label: 'Phân phối', parentId: 'prod-dist' },
-
+  // 4. Báo cáo Tổng hợp
   { id: 'bao-cao-tong-hop', label: 'Báo cáo Tổng hợp', isHeader: true },
   { id: 'report-sales', label: 'Báo cáo Bán hàng', parentId: 'bao-cao-tong-hop' },
   { id: 'report-revenue', label: 'Báo cáo Doanh thu', parentId: 'bao-cao-tong-hop' },
@@ -206,13 +155,74 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'report-below-min-stock', label: 'Hàng tồn dưới định mức', parentId: 'bao-cao-tong-hop' },
   { id: 'report-revenue-huu', label: 'Báo cáo doanh thu - Huu', parentId: 'bao-cao-tong-hop' },
 
+  // 5. Báo cáo Phân tích
+  { id: 'bao-cao-phan-tich', label: 'Báo cáo Phân tích', isHeader: true },
+  { id: 'report-bill-profit', label: 'Lợi nhuận theo Hóa đơn', parentId: 'bao-cao-phan-tich' },
+  { id: 'report-category-profit', label: 'Lợi nhuận theo Nhóm hàng', parentId: 'bao-cao-phan-tich' },
+  { id: 'report-customer-profit', label: 'Lợi nhuận theo Khách hàng', parentId: 'bao-cao-phan-tich' },
+
+  // 6. Sổ sách kế toán
+  { id: 'so-sach-ke-toan', label: 'Sổ sách kế toán', isHeader: true },
+  { id: 'accounting-cashbook', label: 'Sổ quỹ tiền mặt', parentId: 'so-sach-ke-toan' },
+  { id: 'accounting-sales-journal', label: 'Nhật ký bán hàng', parentId: 'so-sach-ke-toan' },
+
+  // 7. Danh mục
+  { id: 'danh-muc', label: 'Danh mục', isHeader: true },
+  { id: 'products-main', label: 'Hàng hóa', parentId: 'danh-muc' },
+  { id: 'categories', label: 'Nhóm hàng', parentId: 'danh-muc' },
+  { id: 'customers', label: 'Khách hàng', parentId: 'danh-muc' },
+  { id: 'suppliers', label: 'Nhà cung cấp', parentId: 'danh-muc' },
+  { id: 'areas', label: 'Khu vực', parentId: 'danh-muc' },
+  { id: 'warehouses', label: 'Kho hàng', parentId: 'danh-muc' },
+  { id: 'units', label: 'Đơn vị quy đổi', parentId: 'danh-muc' },
+  { id: 'currency', label: 'Ngoại tệ', parentId: 'danh-muc' },
+  { id: 'bank-accounts', label: 'Tài khoản Ngân hàng|Ví TM', parentId: 'danh-muc' },
+  { id: 'receipt-expense-types', label: 'Nội dung thu chi', parentId: 'danh-muc' },
+  { id: 'customer-groups', label: 'Nhóm KH/NCC', parentId: 'danh-muc' },
+  { id: 'price-lists', label: 'Bảng giá', parentId: 'danh-muc' },
+
+  // 8. Chăm sóc Khách hàng
+  { id: 'cham-soc-khach-hang', label: 'Chăm sóc Khách hàng', isHeader: true },
+  { id: 'cskh-customers', label: 'Danh sách Khách hàng', parentId: 'cham-soc-khach-hang' },
+  { id: 'cskh-suppliers', label: 'Nhà cung cấp', parentId: 'cham-soc-khach-hang' },
+
+  // 9. Hệ thống
+  { id: 'he-thong', label: 'Hệ thống', isHeader: true },
+  { id: 'logout', label: 'Đăng xuất', parentId: 'he-thong' },
+  { id: 'change-password', label: 'Đổi mật khẩu', parentId: 'he-thong' },
+  { id: 'personnel', label: 'Người dùng / Nhân viên', parentId: 'he-thong' },
+  { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
+  { id: 'sys-info', label: 'Thông tin sử dụng', parentId: 'he-thong' },
+  { id: 'audit-log', label: 'Lịch sử thao tác', parentId: 'he-thong' },
+  { id: 'deposit', label: 'Nạp tiền', parentId: 'he-thong' },
+  { id: 'print-barcode', label: 'In Barcode + QRCode', parentId: 'he-thong' },
+  { id: 'print-template-edit', label: 'Chỉnh sửa mẫu in', parentId: 'he-thong' },
+  { id: 'print-templates', label: 'Chỉnh mẫu in', parentId: 'he-thong' },
+  { id: 'data-maintenance', label: 'Bảo trì Dữ liệu', parentId: 'he-thong' },
+  { id: 'sys-config', label: 'Cấu hình hệ thống', parentId: 'he-thong' },
+  { id: 'zalo-config', label: 'Cấu hình Zalo OA', parentId: 'he-thong' },
+  { id: 'evat-config', label: 'Cấu hình e-VAT', parentId: 'he-thong' },
+  { id: 'data-transfer', label: 'Kết chuyển dữ liệu', parentId: 'he-thong' },
+  { id: 'data-transfer-view', label: 'Xem dữ liệu đã Kết chuyển', parentId: 'he-thong' },
+
+  // 10. Shipper
+  { id: 'shipper', label: 'Shipper', isHeader: true },
+  { id: 'shipper-delivery', label: 'Quản lý Giao hàng', parentId: 'shipper' },
+
+  // 11. VAT Điện tử
   { id: 'vat-dien-tu', label: 'VAT Điện tử', isHeader: true },
   { id: 'vat-management', label: 'Quản lý VAT Điện tử', parentId: 'vat-dien-tu' },
   { id: 'vat-config', label: 'Thiết lập thông tin VAT', parentId: 'vat-dien-tu' },
 
-  { id: 'reports', label: 'Báo cáo' },
-  { id: 'scanner', label: 'Quét mã vạch' },
-  { id: 'erp-status', label: 'Giám sát ERP Sync' },
+  // 12. Ghi đơn Thị trường
+  { id: 'ghi-don-thi-truong', label: 'Ghi đơn Thị trường' },
+
+  // 13. Trợ giúp
+  { id: 'tro-giup', label: 'Trợ giúp', isHeader: true },
+  { id: 'help-support', label: 'Hỗ trợ hệ thống', parentId: 'tro-giup' },
+
+  // 14. Hướng dẫn sử dụng
+  { id: 'huong-dan-su-dung', label: 'Hướng dẫn sử dụng' },
 ];
 
 export function getDefaultGeneralPermissions(): GeneralPermissions {
@@ -424,8 +434,8 @@ export default function PermissionGroupsPage() {
             code: t.code,
             description: t.description || '',
             memberIds: t.memberIds || Array.from(new Set([...(t.storekeeperIds || []), ...(t.inventoryCheckerIds || [])])),
-            generalPermissions: t.generalPermissions || getDefaultGeneralPermissions(),
-            menuPermissions: t.menuPermissions || getDefaultMenuPermissions(true),
+            generalPermissions: t.generalPermissions || null,
+            menuPermissions: t.menuPermissions || null,
           }));
 
           const localGroups = readStoredPermissionGroups();
@@ -437,12 +447,20 @@ export default function PermissionGroupsPage() {
           // Merge API groups
           apiGroups.forEach((g) => {
             const existing = groupMap.get(g.id);
+            const mergedGeneral = (g.generalPermissions && Object.keys(g.generalPermissions).length > 0)
+              ? g.generalPermissions
+              : (existing?.generalPermissions || getDefaultGeneralPermissions());
+            const mergedMenu = (g.menuPermissions && Object.keys(g.menuPermissions).length > 0)
+              ? g.menuPermissions
+              : (existing?.menuPermissions || getDefaultMenuPermissions(true));
+            const mergedMembers = Array.from(new Set([...(g.memberIds || []), ...(existing?.memberIds || [])]));
+
             groupMap.set(g.id, {
               ...existing,
               ...g,
-              generalPermissions: g.generalPermissions || existing?.generalPermissions || getDefaultGeneralPermissions(),
-              menuPermissions: g.menuPermissions || existing?.menuPermissions || getDefaultMenuPermissions(true),
-              memberIds: (g.memberIds && g.memberIds.length > 0) ? g.memberIds : (existing?.memberIds || []),
+              generalPermissions: mergedGeneral,
+              menuPermissions: mergedMenu,
+              memberIds: mergedMembers,
             });
           });
 
@@ -798,6 +816,8 @@ export default function PermissionGroupsPage() {
         body: JSON.stringify(payload),
       }).catch(() => null);
 
+      const targetNameLower = permissionModalGroup.name.trim().toLowerCase();
+
       const updatedGroup: PermissionGroup = {
         ...permissionModalGroup,
         generalPermissions: tempGeneralPermissions,
@@ -805,7 +825,16 @@ export default function PermissionGroupsPage() {
       };
 
       setGroups((prev) => {
-        const next = prev.map((g) => (g.id === permissionModalGroup.id ? updatedGroup : g));
+        const next = prev.map((g) => {
+          if (g.id === permissionModalGroup.id || (g.name && g.name.trim().toLowerCase() === targetNameLower)) {
+            return {
+              ...g,
+              generalPermissions: tempGeneralPermissions,
+              menuPermissions: tempMenuPermissions,
+            };
+          }
+          return g;
+        });
         saveStoredPermissionGroups(next);
         return next;
       });
