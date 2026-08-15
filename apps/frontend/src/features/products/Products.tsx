@@ -29,6 +29,7 @@ import {
 import {
   getActiveItemGroupCategories,
   getStoredCatalogCategories,
+  saveStoredCatalogCategories,
 } from '../../shared/utils/catalogCategories';
 import { getStoredWarehouses } from '../../shared/utils/warehouseAssignments';
 import { readStoredUnits, saveStoredUnits, UnitConversion } from './UnitsPage';
@@ -352,7 +353,17 @@ function getStoredProducts(): Product[] {
 }
 
 function saveStoredProducts(products: Product[]) {
-  localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(products));
+  try {
+    // Strip heavy base64 images before caching to localStorage to prevent QuotaExceededError
+    const lightweightProducts = products.map((p) => ({
+      ...p,
+      images: (p.images || []).map((img) => (img && img.startsWith('data:') ? '' : img)).filter(Boolean),
+    }));
+    localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(lightweightProducts));
+  } catch (e) {
+    // Silently ignore localStorage quota errors
+    console.warn('Không thể lưu cache sản phẩm vào localStorage:', e);
+  }
 }
 
 function normalizeSupplierField(supplier: SupplierField): string {
@@ -375,6 +386,27 @@ function safeUUID(): string {
     }
   }
   return 'id_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+}
+
+async function handleFileUploadToCloudinary(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  const res = await fetch(`${API_BASE_URL}/upload/image`, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+
+  if (res.ok) {
+    const data = await res.json();
+    if (data?.url) return data.url;
+  }
+
+  const errData = await res.json().catch(() => null);
+  throw new Error(errData?.message || 'Không thể tải ảnh lên máy chủ Cloudinary. Vui lòng kiểm tra lại kết nối mạng.');
 }
 
 function normalizeProduct(product: RawProduct): Product {
@@ -412,6 +444,7 @@ export default function Products() {
   const [modalMode, setModalMode] = React.useState<ModalMode>(null);
   const [selectedProduct, setSelectedProduct] = React.useState<Product | null>(null);
   const [form, setForm] = React.useState<ProductForm>(buildEmptyForm());
+  const [uploadingSlot, setUploadingSlot] = React.useState<number | null>(null);
   const [activeTab, setActiveTab] = React.useState<'general' | 'combo' | 'web' | 'conversion'>('general');
   const [catalogCategories, setCatalogCategories] = React.useState(() => getStoredCatalogCategories());
   const [warehouses, setWarehouses] = React.useState(() => getStoredWarehouses());
@@ -490,17 +523,37 @@ export default function Products() {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách hàng hóa');
+      const [prodRes, catRes, whRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(() => null),
+        fetch(`${API_BASE_URL}/categories`, { headers: authHeaders() }).catch(() => null),
+        fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
+      ]);
+
+      if (catRes && catRes.ok) {
+        const catData = await catRes.json();
+        if (Array.isArray(catData) && catData.length > 0) {
+          setCatalogCategories(catData);
+          saveStoredCatalogCategories(catData);
+        }
       }
 
-      const data = (await response.json()) as RawProduct[];
-      const normalizedProducts = data.map(normalizeProduct);
-      setProducts(normalizedProducts);
-      saveStoredProducts(normalizedProducts);
-    } catch (err) {
+      if (whRes && whRes.ok) {
+        const whData = await whRes.json();
+        if (Array.isArray(whData) && whData.length > 0) {
+          setWarehouses(whData);
+        }
+      }
+
+      if (prodRes && prodRes.ok) {
+        const data = (await prodRes.json()) as RawProduct[];
+        const normalizedProducts = data.map(normalizeProduct);
+        setProducts(normalizedProducts);
+        saveStoredProducts(normalizedProducts);
+      } else {
+        setProducts(getStoredProducts());
+      }
+    } catch (err: any) {
+      console.error('Lỗi khi tải dữ liệu hàng hóa từ Database:', err);
       setProducts(getStoredProducts());
     } finally {
       setLoading(false);
@@ -1578,42 +1631,79 @@ export default function Products() {
                             <div className="grid grid-cols-2 gap-2">
                               {/* Main Image */}
                               <div className="col-span-2 relative aspect-square rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 overflow-hidden flex items-center justify-center group shadow-inner">
-                                {form.images[0] ? (
+                                {uploadingSlot === 0 ? (
+                                  <div className="flex flex-col items-center justify-center gap-2 p-3 text-cyan-700 animate-pulse">
+                                    <RefreshCw className="h-6 w-6 animate-spin text-cyan-600" />
+                                    <span className="text-[11px] font-bold text-center">Đang tải lên Cloudinary...</span>
+                                  </div>
+                                ) : form.images[0] ? (
                                   <>
                                     <img src={form.images[0]} alt="Ảnh chính" className="w-full h-full object-cover" />
                                     <span className="absolute top-2 left-2 rounded-md bg-cyan-600 px-2 py-0.5 text-[10px] font-bold text-white shadow">Ảnh chính</span>
                                     {modalMode !== 'view' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== 0) }))}
-                                        className="absolute top-2 right-2 h-6 w-6 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
-                                      >
-                                        ×
-                                      </button>
+                                      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                                        <label className="h-6 px-2 rounded-full bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-bold flex items-center justify-center cursor-pointer shadow">
+                                          Đổi ảnh
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={async (e) => {
+                                              const f = e.target.files?.[0];
+                                              if (!f) return;
+                                              try {
+                                                setUploadingSlot(0);
+                                                const url = await handleFileUploadToCloudinary(f);
+                                                setForm((c) => {
+                                                  const imgs = [...c.images];
+                                                  imgs[0] = url;
+                                                  return { ...c, images: imgs };
+                                                });
+                                                setSuccess('Đã tải ảnh lên Cloudinary thành công!');
+                                              } catch (err: any) {
+                                                setError(err.message || 'Lỗi khi tải ảnh');
+                                              } finally {
+                                                setUploadingSlot(null);
+                                              }
+                                            }}
+                                          />
+                                        </label>
+                                        <button
+                                          type="button"
+                                          onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== 0) }))}
+                                          className="h-6 w-6 rounded-full bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center justify-center shadow"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
                                     )}
                                   </>
                                 ) : modalMode !== 'view' ? (
                                   <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-cyan-50/50 transition">
                                     <Plus className="h-7 w-7 text-slate-400" />
                                     <span className="text-xs font-bold text-slate-600 mt-1">Tải ảnh chính</span>
-                                    <span className="text-[10px] text-slate-400">JPG, PNG, WEBP</span>
+                                    <span className="text-[10px] text-slate-400">Lưu trực tiếp Cloudinary</span>
                                     <input
                                       type="file"
                                       accept="image/*"
                                       className="hidden"
-                                      onChange={(e) => {
+                                      onChange={async (e) => {
                                         const f = e.target.files?.[0];
                                         if (!f) return;
-                                        const reader = new FileReader();
-                                        reader.onload = (ev) => {
-                                          const url = ev.target?.result as string;
+                                        try {
+                                          setUploadingSlot(0);
+                                          const url = await handleFileUploadToCloudinary(f);
                                           setForm((c) => {
                                             const imgs = [...c.images];
                                             imgs[0] = url;
                                             return { ...c, images: imgs };
                                           });
-                                        };
-                                        reader.readAsDataURL(f);
+                                          setSuccess('Đã tải ảnh lên Cloudinary thành công!');
+                                        } catch (err: any) {
+                                          setError(err.message || 'Lỗi khi tải ảnh');
+                                        } finally {
+                                          setUploadingSlot(null);
+                                        }
                                       }}
                                     />
                                   </label>
@@ -1625,40 +1715,51 @@ export default function Products() {
                               {/* Sub Images */}
                               {[1, 2].map((idx) => (
                                 <div key={idx} className="relative aspect-square rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center group">
-                                  {form.images[idx] ? (
+                                  {uploadingSlot === idx ? (
+                                    <div className="flex flex-col items-center justify-center p-2 text-cyan-600">
+                                      <RefreshCw className="h-4 w-4 animate-spin mb-1" />
+                                      <span className="text-[9px] font-bold text-center">Tải lên...</span>
+                                    </div>
+                                  ) : form.images[idx] ? (
                                     <>
                                       <img src={form.images[idx]} alt={`Sub ${idx}`} className="w-full h-full object-cover" />
                                       {modalMode !== 'view' && (
-                                        <button
-                                          type="button"
-                                          onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== idx) }))}
-                                          className="absolute top-1 right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
-                                        >
-                                          ×
-                                        </button>
+                                        <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                                          <button
+                                            type="button"
+                                            onClick={() => setForm((c) => ({ ...c, images: c.images.filter((_, i) => i !== idx) }))}
+                                            className="h-5 w-5 rounded-full bg-red-500 hover:bg-red-600 text-white text-xs font-bold flex items-center justify-center shadow"
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
                                       )}
                                     </>
                                   ) : modalMode !== 'view' ? (
                                     <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer hover:bg-cyan-50/50 transition">
                                       <Plus className="h-5 w-5 text-slate-400" />
+                                      <span className="text-[10px] text-slate-500 font-semibold mt-0.5">Ảnh phụ</span>
                                       <input
                                         type="file"
                                         accept="image/*"
                                         className="hidden"
-                                        onChange={(e) => {
+                                        onChange={async (e) => {
                                           const f = e.target.files?.[0];
                                           if (!f) return;
-                                          const reader = new FileReader();
-                                          reader.onload = (ev) => {
-                                            const url = ev.target?.result as string;
+                                          try {
+                                            setUploadingSlot(idx);
+                                            const url = await handleFileUploadToCloudinary(f);
                                             setForm((c) => {
                                               const imgs = [...c.images];
-                                              while (imgs.length <= idx) imgs.push('');
                                               imgs[idx] = url;
                                               return { ...c, images: imgs };
                                             });
-                                          };
-                                          reader.readAsDataURL(f);
+                                            setSuccess('Đã tải ảnh phụ lên Cloudinary thành công!');
+                                          } catch (err: any) {
+                                            setError(err.message || 'Lỗi khi tải ảnh');
+                                          } finally {
+                                            setUploadingSlot(null);
+                                          }
                                         }}
                                       />
                                     </label>

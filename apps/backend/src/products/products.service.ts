@@ -72,26 +72,33 @@ export class ProductsService {
   async create(dto: CreateProductDto) {
     try {
       // Auto-generate internalSku if empty
-      let sku = dto.internalSku?.trim();
+      let sku = dto.internalSku?.trim() || dto.supplierBarcode?.trim();
       if (!sku) {
         sku = 'HH' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 100).toString().padStart(2, '0');
       }
 
-      // Mã sản phẩm = Mã vạch (cùng một trường duy nhất)
       const product = this.productRepo.create({
         internalSku: sku,
-        supplierBarcode: sku,
-        name: dto.name,
-        unit: dto.unit,
+        supplierBarcode: dto.supplierBarcode?.trim() || sku,
+        name: dto.name.trim(),
+        unit: dto.unit?.trim() || 'Cái',
         minimumStock: dto.minimumStock || 0,
         price: dto.price || 0,
         images: dto.images || [],
-        isVisible: dto.isVisible || false,
+        isVisible: dto.isVisible ?? false,
       });
+
       if (dto.categoryId) {
-        const cat = await this.categoryRepo.findOneBy({ id: dto.categoryId });
+        let cat = await this.categoryRepo.findOneBy({ id: dto.categoryId });
+        if (!cat && dto.category) {
+          cat = await this.categoryRepo.findOne({ where: { name: dto.category.trim() } });
+        }
+        if (cat) product.category = cat;
+      } else if (dto.category) {
+        const cat = await this.categoryRepo.findOne({ where: { name: dto.category.trim() } });
         if (cat) product.category = cat;
       }
+
       return await this.productRepo.save(product);
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
@@ -104,7 +111,6 @@ export class ProductsService {
   async findAll() {
     try {
       const products = await this.productRepo.find({
-        where: { supplier: IsNull() },
         relations: ['category', 'supplier'],
       });
 
@@ -116,7 +122,9 @@ export class ProductsService {
         const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
         return {
           ...product,
-          totalStock: productBalances.reduce((sum, b) => sum + b.available, 0),
+          category: product.category ? { id: product.category.id, name: product.category.name } : null,
+          supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
+          totalStock: productBalances.reduce((sum, b) => sum + (Number(b.available) || 0), 0),
         };
       }).sort((a, b) => Number(b.id) - Number(a.id));
     } catch (e: any) {
@@ -126,7 +134,6 @@ export class ProductsService {
 
   async findAllWithBalances() {
     const products = await this.productRepo.find({
-      where: { supplier: IsNull() },
       relations: ['category', 'supplier'],
     });
 
@@ -143,6 +150,9 @@ export class ProductsService {
         name: product.name,
         unit: product.unit,
         minimumStock: product.minimumStock,
+        price: product.price,
+        images: product.images || [],
+        isVisible: product.isVisible,
         category: product.category ? { id: product.category.id, name: product.category.name } : null,
         supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
         stockBalances: productBalances.map((b) => ({
@@ -152,14 +162,14 @@ export class ProductsService {
           allocated: b.allocated,
           available: b.available,
         })),
-        totalStock: productBalances.reduce((sum, b) => sum + b.available, 0),
+        totalStock: productBalances.reduce((sum, b) => sum + (Number(b.available) || 0), 0),
       };
     });
   }
 
   async findOne(id: string) {
     const p = await this.productRepo.findOne({
-      where: { id, supplier: IsNull() },
+      where: { id },
       relations: ['category', 'supplier'],
     });
     if (!p) throw new NotFoundException('Product not found');
@@ -170,16 +180,25 @@ export class ProductsService {
     try {
       const p = await this.findOne(id);
 
-      if (dto.name) p.name = dto.name;
-      if (dto.unit) p.unit = dto.unit;
+      if (dto.name) p.name = dto.name.trim();
+      if (dto.supplierBarcode) p.supplierBarcode = dto.supplierBarcode.trim();
+      if (dto.unit) p.unit = dto.unit.trim();
       if (dto.minimumStock !== undefined) p.minimumStock = dto.minimumStock;
       if (dto.price !== undefined) p.price = dto.price;
       if (dto.images !== undefined) p.images = dto.images;
       if (dto.isVisible !== undefined) p.isVisible = dto.isVisible;
+
       if (dto.categoryId) {
-        const c = await this.categoryRepo.findOneBy({ id: dto.categoryId });
-        if (c) p.category = c;
+        let cat = await this.categoryRepo.findOneBy({ id: dto.categoryId });
+        if (!cat && dto.category) {
+          cat = await this.categoryRepo.findOne({ where: { name: dto.category.trim() } });
+        }
+        if (cat) p.category = cat;
+      } else if (dto.category) {
+        const cat = await this.categoryRepo.findOne({ where: { name: dto.category.trim() } });
+        if (cat) p.category = cat;
       }
+
       return await this.productRepo.save(p);
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {

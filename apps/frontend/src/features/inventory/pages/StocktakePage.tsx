@@ -1589,7 +1589,9 @@ function CreateStocktakeModal({
             onClose={() => setScannerOpen(false)}
             onProductFound={(product, qty) => {
               // Thêm sản phẩm được quét vào danh sách kiểm kê của RIC
-              const existIdx = items.findIndex(item => item.product.id === product.id);
+              const existIdx = items.findIndex(
+                item => item.product.id === product.id || (product.internalSku && item.product.internalSku === product.internalSku)
+              );
               if (existIdx >= 0) {
                 // Cộng dồn thực tồn
                 handleUpdateCounted(existIdx, items[existIdx].countedQty + qty);
@@ -1601,7 +1603,7 @@ function CreateStocktakeModal({
                   ...prev,
                   {
                     product: { id: product.id, internalSku: product.internalSku, name: product.name, unit: product.unit || 'Cái', systemQty },
-                    countedQty: systemQty,
+                    countedQty: systemQty + qty,
                     note: 'Quét từ Barcode'
                   }
                 ]);

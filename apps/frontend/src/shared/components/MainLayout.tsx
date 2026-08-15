@@ -158,7 +158,7 @@ export default function MainLayout({ children }: LayoutProps) {
 
         {/* Header */}
         <header
-          className="relative bg-white dark:bg-slate-950 border-b-2 border-gray-200 dark:border-slate-800 flex items-center justify-between px-6 z-20 transition-all duration-300 shadow-sm"
+          className="relative bg-white dark:bg-slate-950 border-b-2 border-gray-200 dark:border-slate-800 flex items-center justify-between px-6 z-40 transition-all duration-300 shadow-sm"
           style={{ height: '80px' }}
         >
           {/* Left Section: Toggle & Clock */}
@@ -222,7 +222,7 @@ export default function MainLayout({ children }: LayoutProps) {
               </div>
 
               {notificationDropdownOpen && (
-                <div className="fixed left-3 right-3 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[30rem] bg-white dark:bg-slate-950 rounded-xl shadow-2xl border-2 border-gray-200 dark:border-slate-700 z-40 max-h-[calc(100vh-96px)] sm:max-h-[36rem] overflow-hidden">
+                <div className="fixed left-3 right-3 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[30rem] bg-white dark:bg-slate-950 rounded-xl shadow-2xl border-2 border-gray-200 dark:border-slate-700 z-50 max-h-[calc(100vh-96px)] sm:max-h-[36rem] overflow-hidden">
                   <div className="px-4 py-3 border-b-2 border-gray-200 dark:border-slate-700 bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900">
                     <div className="flex items-center justify-between">
                       <div>
@@ -333,7 +333,7 @@ export default function MainLayout({ children }: LayoutProps) {
               </button>
 
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-2xl py-2 z-40 border-2 border-gray-200 dark:border-slate-700">
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-xl shadow-2xl py-2 z-50 border-2 border-gray-200 dark:border-slate-700">
                   <div className="px-4 pb-2 mb-2 border-b-2 border-gray-200 dark:border-slate-700">
                     <p className="text-sm font-bold text-gray-900 dark:text-slate-100 truncate">{userName}</p>
                     <p className="text-xs text-gray-500 dark:text-slate-400 truncate">{userEmail}</p>

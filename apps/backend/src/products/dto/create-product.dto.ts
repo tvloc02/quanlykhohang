@@ -5,6 +5,10 @@ export class CreateProductDto {
   @IsString()
   internalSku?: string;
 
+  @IsOptional()
+  @IsString()
+  supplierBarcode?: string;
+
   @IsNotEmpty()
   @IsString()
   name: string;
@@ -16,6 +20,10 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
 
   @IsOptional()
   @IsInt()

@@ -582,28 +582,28 @@ function PurchaseOrdersPageContent() {
         }
       }
 
-      // Nếu dòng cuối cùng đang trống (chưa chọn sản phẩm), thì ghi đè lên dòng đó
-      const lastIndex = newItems.length - 1;
-      if (lastIndex >= 0 && !newItems[lastIndex].productId && Number(newItems[lastIndex].expectedQty) === 1) {
-        newItems[lastIndex] = {
-          ...newItems[lastIndex],
-          productId: product.id,
-          expectedQty: qty.toString(),
-          unitPrice: defaultPrice, // CHỈNH SỬA: Đảm bảo cập nhật đơn giá cho dòng ghi đè
-          warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : current.warehouseCode || 'KHO-NVL',
-        };
+      // 1. Ưu tiên tìm xem sản phẩm đã có trong danh sách chưa, nếu có tăng số lượng
+      const existingIndex = newItems.findIndex((d) => d.productId === product.id || (product.internalSku && d.productId === product.internalSku));
+      if (existingIndex >= 0) {
+        const currentQty = Number(newItems[existingIndex].expectedQty) || 0;
+        newItems[existingIndex].expectedQty = (currentQty + qty).toString();
+        // Cập nhật giá luôn nếu có giá mới hoặc chưa có giá
+        if (price !== undefined || product.purchasePrice !== undefined || Number(newItems[existingIndex].unitPrice) === 0) {
+          newItems[existingIndex].unitPrice = defaultPrice;
+        }
       } else {
-        // Tìm xem sản phẩm đã có trong danh sách chưa, nếu có tăng số lượng
-        const existingIndex = newItems.findIndex((d) => d.productId === product.id);
-        if (existingIndex >= 0) {
-          const currentQty = Number(newItems[existingIndex].expectedQty) || 0;
-          newItems[existingIndex].expectedQty = (currentQty + qty).toString();
-          // Cập nhật giá luôn nếu có giá mới hoặc chưa có giá
-          if (price !== undefined || product.purchasePrice !== undefined || Number(newItems[existingIndex].unitPrice) === 0) {
-            newItems[existingIndex].unitPrice = defaultPrice;
-          }
+        // 2. Nếu chưa có, nếu dòng cuối cùng đang trống (chưa chọn sản phẩm), thì ghi đè lên dòng đó
+        const lastIndex = newItems.length - 1;
+        if (lastIndex >= 0 && !newItems[lastIndex].productId) {
+          newItems[lastIndex] = {
+            ...newItems[lastIndex],
+            productId: product.id,
+            expectedQty: qty.toString(),
+            unitPrice: defaultPrice,
+            warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : current.warehouseCode || 'KHO-NVL',
+          };
         } else {
-          // Thêm dòng mới
+          // 3. Thêm dòng mới
           newItems.push({
             rowId: `${Date.now()}-${Math.random()}`,
             productId: product.id,
