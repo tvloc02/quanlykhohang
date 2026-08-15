@@ -17,6 +17,9 @@ import {
   Users,
   CheckSquare,
   Square,
+  Download,
+  RotateCcw,
+  History,
 } from 'lucide-react';
 import { normalizeWarehouseRecord, type WarehouseRecord } from '../../shared/utils/warehouseAssignments';
 
@@ -79,6 +82,17 @@ export type PermissionGroup = {
   memberIds: string[];
   generalPermissions: GeneralPermissions;
   menuPermissions: Record<string, ActionPermission>;
+};
+
+export type UndoLogItem = {
+  id: string;
+  timestamp: string;
+  type: 'EDIT' | 'DELETE';
+  groupName: string;
+  description: string;
+  deletedGroup?: PermissionGroup;
+  previousGroup?: PermissionGroup;
+  updatedGroup?: PermissionGroup;
 };
 
 type GroupFormState = {
@@ -332,6 +346,56 @@ export default function PermissionGroupsPage() {
   // Delete Confirm Modal State
   const [deletingGroupId, setDeletingGroupId] = React.useState<string | null>(null);
 
+  // Undo / History State
+  const [undoHistory, setUndoHistory] = React.useState<UndoLogItem[]>([]);
+  const [isUndoModalOpen, setIsUndoModalOpen] = React.useState(false);
+  const [selectedUndoDeleteIds, setSelectedUndoDeleteIds] = React.useState<string[]>([]);
+  const [undoTabFilter, setUndoTabFilter] = React.useState<'ALL' | 'DELETE' | 'EDIT'>('ALL');
+
+  // Undo Action: Restore Deleted Groups (Batch or Single)
+  const handleRestoreDeletedGroups = (logIdsToRestore: string[]) => {
+    const logsToRestore = undoHistory.filter(
+      (item) => item.type === 'DELETE' && logIdsToRestore.includes(item.id) && item.deletedGroup
+    );
+
+    if (logsToRestore.length === 0) return;
+
+    const restoredGroups = logsToRestore.map((item) => item.deletedGroup!);
+
+    setGroups((prev) => {
+      const existingIds = new Set(prev.map((g) => g.id));
+      const toAdd = restoredGroups.filter((g) => !existingIds.has(g.id));
+      const next = [...prev, ...toAdd];
+      saveStoredPermissionGroups(next);
+      return next;
+    });
+
+    setUndoHistory((prev) => prev.filter((item) => !logIdsToRestore.includes(item.id)));
+    setSelectedUndoDeleteIds((prev) => prev.filter((id) => !logIdsToRestore.includes(id)));
+
+    setSuccess(`Đã hoàn tác khôi phục ${restoredGroups.length} nhóm quyền đã xóa.`);
+  };
+
+  // Undo Action: Revert Edit Group to Previous State
+  const handleRevertEditedGroup = (logId: string) => {
+    const log = undoHistory.find((item) => item.id === logId && item.type === 'EDIT');
+    if (!log || !log.previousGroup) return;
+
+    const prevGroup = log.previousGroup;
+
+    setGroups((prev) => {
+      const exists = prev.some((g) => g.id === prevGroup.id);
+      const next = exists
+        ? prev.map((g) => (g.id === prevGroup.id ? prevGroup : g))
+        : [...prev, prevGroup];
+      saveStoredPermissionGroups(next);
+      return next;
+    });
+
+    setUndoHistory((prev) => prev.filter((item) => item.id !== logId));
+    setSuccess(`Đã hoàn tác dữ liệu nhóm quyền "${prevGroup.name}" về ban đầu.`);
+  };
+
   // Fetch API groups and backend data with Local Storage Merge
   const fetchData = React.useCallback(async () => {
     try {
@@ -492,6 +556,20 @@ export default function PermissionGroupsPage() {
           return next;
         });
 
+        // Record Undo Log for EDIT
+        setUndoHistory((prev) => [
+          {
+            id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            type: 'EDIT',
+            groupName: editingGroup.name,
+            description: `Đã sửa thông tin nhóm quyền "${editingGroup.name}"`,
+            previousGroup: JSON.parse(JSON.stringify(editingGroup)),
+            updatedGroup: JSON.parse(JSON.stringify(updatedGroup)),
+          },
+          ...prev,
+        ]);
+
         setSuccess(`Đã cập nhật nhóm quyền "${payload.name}".`);
       } else {
         const res = await fetch(`${API_BASE_URL}/project-teams`, {
@@ -572,6 +650,20 @@ export default function PermissionGroupsPage() {
         return next;
       });
 
+      // Record Undo Log for EDIT Personnel
+      setUndoHistory((prev) => [
+        {
+          id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          type: 'EDIT',
+          groupName: assignPersonnelGroup.name,
+          description: `Đã sửa gán nhân sự cho nhóm "${assignPersonnelGroup.name}"`,
+          previousGroup: JSON.parse(JSON.stringify(assignPersonnelGroup)),
+          updatedGroup: JSON.parse(JSON.stringify(updatedGroup)),
+        },
+        ...prev,
+      ]);
+
       setSuccess(`Đã gán nhân sự cho nhóm "${assignPersonnelGroup.name}".`);
       setAssignPersonnelGroup(null);
     } catch {
@@ -583,6 +675,8 @@ export default function PermissionGroupsPage() {
 
   // Delete Group via API
   const handleDeleteGroup = async (id: string) => {
+    const targetGroup = groups.find((g) => g.id === id);
+
     try {
       await fetch(`${API_BASE_URL}/project-teams/${id}`, {
         method: 'DELETE',
@@ -594,6 +688,21 @@ export default function PermissionGroupsPage() {
         saveStoredPermissionGroups(next);
         return next;
       });
+
+      if (targetGroup) {
+        // Record Undo Log for DELETE
+        setUndoHistory((prev) => [
+          {
+            id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            type: 'DELETE',
+            groupName: targetGroup.name,
+            description: `Đã xóa nhóm quyền "${targetGroup.name}"`,
+            deletedGroup: JSON.parse(JSON.stringify(targetGroup)),
+          },
+          ...prev,
+        ]);
+      }
 
       setSelectedGroupIds((prev) => prev.filter((item) => item !== id));
       setSuccess('Đã xóa nhóm quyền.');
@@ -610,6 +719,8 @@ export default function PermissionGroupsPage() {
     setSaving(true);
     setError('');
 
+    const targetGroups = groups.filter((g) => selectedGroupIds.includes(g.id));
+
     try {
       await Promise.all(
         selectedGroupIds.map((id) =>
@@ -625,6 +736,17 @@ export default function PermissionGroupsPage() {
         saveStoredPermissionGroups(next);
         return next;
       });
+
+      // Record Undo Logs for Bulk DELETE
+      const newDeleteLogs: UndoLogItem[] = targetGroups.map((g) => ({
+        id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        type: 'DELETE',
+        groupName: g.name,
+        description: `Đã xóa nhóm quyền "${g.name}"`,
+        deletedGroup: JSON.parse(JSON.stringify(g)),
+      }));
+      setUndoHistory((prev) => [...newDeleteLogs, ...prev]);
 
       setSuccess(`Đã xóa ${selectedGroupIds.length} nhóm quyền được chọn.`);
       setSelectedGroupIds([]);
@@ -685,6 +807,20 @@ export default function PermissionGroupsPage() {
         saveStoredPermissionGroups(next);
         return next;
       });
+
+      // Record Undo Log for Matrix Menu EDIT
+      setUndoHistory((prev) => [
+        {
+          id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          type: 'EDIT',
+          groupName: permissionModalGroup.name,
+          description: `Đã sửa quyền Menu cho nhóm "${permissionModalGroup.name}"`,
+          previousGroup: JSON.parse(JSON.stringify(permissionModalGroup)),
+          updatedGroup: JSON.parse(JSON.stringify(updatedGroup)),
+        },
+        ...prev,
+      ]);
 
       setSuccess(`Đã lưu cấu hình phân quyền menu cho "${permissionModalGroup.name}".`);
       closePermissionMatrixModal();
@@ -796,6 +932,46 @@ export default function PermissionGroupsPage() {
     });
   }, [users, assignUserSearch]);
 
+  // Export CSV Helper Function
+  const handleExportCSV = () => {
+    const exportData = selectedGroupIds.length > 0
+      ? groups.filter((g) => selectedGroupIds.includes(g.id))
+      : groups;
+
+    if (exportData.length === 0) {
+      setError('Không có dữ liệu nhóm quyền để xuất file.');
+      return;
+    }
+
+    const headers = ['STT', 'Mã nhóm', 'Tên nhóm quyền', 'Mô tả chức năng', 'Số lượng nhân sự áp dụng', 'Danh sách nhân sự', 'Số lượng Menu có quyền'];
+    const rows = exportData.map((g, idx) => {
+      const memberNames = (g.memberIds || []).map(getUserDisplayName).join('; ');
+      const activeMenuCount = getActiveMenuCount(g);
+      return [
+        idx + 1,
+        `"${g.code || g.id}"`,
+        `"${(g.name || '').replace(/"/g, '""')}"`,
+        `"${(g.description || '').replace(/"/g, '""')}"`,
+        g.memberIds?.length || 0,
+        `"${memberNames.replace(/"/g, '""')}"`,
+        `"${activeMenuCount}/${SYSTEM_MENU_TREE.length}"`,
+      ];
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Nhom_Quyen_WMS_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setSuccess(`Đã xuất file CSV thành công cho ${exportData.length} nhóm quyền.`);
+  };
+
   // Matrix Filtered List
   const filteredMenuTree = React.useMemo(() => {
     const q = matrixSearch.trim().toLowerCase();
@@ -824,14 +1000,52 @@ export default function PermissionGroupsPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* 1. Thêm mới */}
           <button
             type="button"
             onClick={() => openGroupModal()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <PlusCircle className="h-4.5 w-4.5" />
-            Thêm mới Nhóm quyền
+            <PlusCircle className="h-4.5 w-4.5 text-cyan-700" />
+            Thêm mới
+          </button>
+
+          {/* 2. Xóa */}
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedGroupIds.length === 0) {
+                setError('Vui lòng tích chọn ít nhất 1 nhóm quyền trong bảng để xóa.');
+                return;
+              }
+              setIsBulkDeleteModalOpen(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+          >
+            <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+            Xóa {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ''}
+          </button>
+
+          {/* 3. Export */}
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+          >
+            <Download className="h-4.5 w-4.5 text-cyan-700" />
+            Export {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ''}
+          </button>
+
+          {/* 4. Hoàn tác */}
+          <button
+            type="button"
+            onClick={() => setIsUndoModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer relative"
+            title="Mở lịch sử thao tác sửa và xóa để hoàn tác"
+          >
+            <RotateCcw className="h-4.5 w-4.5 text-cyan-700" />
+            Hoàn tác {undoHistory.length > 0 ? `(${undoHistory.length})` : ''}
           </button>
         </div>
       </div>
@@ -840,32 +1054,17 @@ export default function PermissionGroupsPage() {
       {selectedGroupIds.length > 0 && (
         <div className="flex items-center justify-between rounded-xl bg-cyan-50 border-2 border-cyan-500 px-4 py-3 shadow-sm animate-in fade-in">
           <span className="text-sm font-bold text-cyan-900">
-            Đã chọn <b className="text-cyan-700 font-extrabold text-base">{selectedGroupIds.length}</b> nhóm quyền
+            Đã tích chọn <b className="text-cyan-700 font-extrabold text-base">{selectedGroupIds.length}</b> nhóm quyền trong bảng
           </span>
           <button
             type="button"
-            onClick={() => setIsBulkDeleteModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-red-700 transition cursor-pointer"
+            onClick={() => setSelectedGroupIds([])}
+            className="text-xs font-bold text-cyan-700 hover:text-cyan-900 underline cursor-pointer"
           >
-            <Trash2 className="h-4 w-4" />
-            Xóa các nhóm đã chọn ({selectedGroupIds.length})
+            Bỏ chọn tất cả
           </button>
         </div>
       )}
-
-      {/* Filter and Search Bar */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
-        <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm kiếm theo tên nhóm quyền, mô tả..."
-            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-12 pr-4 text-sm font-semibold text-slate-700 outline-none transition focus:ring-4 focus:ring-cyan-500/10"
-          />
-        </div>
-      </div>
 
       {/* High-density Permission Groups Table with Tickbox Header */}
       {filteredGroups.length > 0 ? (
@@ -1694,6 +1893,200 @@ export default function PermissionGroupsPage() {
                   className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-cyan-700 disabled:opacity-50 transition cursor-pointer"
                 >
                   {saving ? 'Đang lưu...' : 'Lưu Phân Quyền Menu'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Undo / History Modal */}
+      {isUndoModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in">
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-cyan-100 bg-gradient-to-r from-cyan-600 to-cyan-700 px-6 py-4 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-white/20 p-2 text-white">
+                    <RotateCcw className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-extrabold">Lịch Sử & Hoàn Tác Thao Tác</h2>
+                    <p className="text-xs text-cyan-100 font-medium">
+                      Hoàn tác các lệnh Sửa và Xóa nhóm quyền đã thực hiện
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsUndoModalOpen(false)}
+                  className="rounded-xl p-1.5 text-cyan-100 hover:bg-white/10 hover:text-white transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Toolbar & Filters */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-6 py-3">
+                {/* Filter tabs */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setUndoTabFilter('ALL')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition cursor-pointer ${
+                      undoTabFilter === 'ALL'
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-300'
+                    }`}
+                  >
+                    Tất cả ({undoHistory.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUndoTabFilter('DELETE')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition cursor-pointer ${
+                      undoTabFilter === 'DELETE'
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-300'
+                    }`}
+                  >
+                    Lệnh Xóa ({undoHistory.filter((i) => i.type === 'DELETE').length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUndoTabFilter('EDIT')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition cursor-pointer ${
+                      undoTabFilter === 'EDIT'
+                        ? 'bg-cyan-600 text-white shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-300'
+                    }`}
+                  >
+                    Lệnh Sửa ({undoHistory.filter((i) => i.type === 'EDIT').length})
+                  </button>
+                </div>
+
+                {/* Batch Delete Restore button */}
+                {selectedUndoDeleteIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRestoreDeletedGroups(selectedUndoDeleteIds)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-4 py-1.5 text-xs font-extrabold text-cyan-700 shadow-xs hover:bg-cyan-50 transition cursor-pointer"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 text-cyan-700" />
+                    Hoàn tác các mục đã chọn ({selectedUndoDeleteIds.length})
+                  </button>
+                )}
+              </div>
+
+              {/* History Items List */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                {undoHistory.filter((item) => undoTabFilter === 'ALL' || item.type === undoTabFilter).length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400">
+                    <History className="h-12 w-12 stroke-[1.5] mb-2 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-600">Chưa có thao tác Sửa hoặc Xóa nào để hoàn tác</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Các thao tác chỉnh sửa hoặc xóa nhóm quyền sẽ ghi vết tại đây để bạn khôi phục lại khi cần.
+                    </p>
+                  </div>
+                ) : (
+                  undoHistory
+                    .filter((item) => undoTabFilter === 'ALL' || item.type === undoTabFilter)
+                    .map((item) => {
+                      const isDeleted = item.type === 'DELETE';
+                      const isChecked = selectedUndoDeleteIds.includes(item.id);
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border-2 p-4 transition ${
+                            isDeleted
+                              ? 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
+                              : 'border-cyan-200 bg-cyan-50/30 hover:bg-cyan-50/60'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Checkbox for batch deleted item restore */}
+                            {isDeleted ? (
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedUndoDeleteIds((prev) => [...prev, item.id]);
+                                  } else {
+                                    setSelectedUndoDeleteIds((prev) => prev.filter((id) => id !== item.id));
+                                  }
+                                }}
+                                className="mt-1 h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                title="Tích chọn để hoàn tác khôi phục nhóm bị xóa này"
+                              />
+                            ) : (
+                              <div className="mt-1 h-4 w-4 rounded border border-slate-300 bg-slate-100 flex items-center justify-center">
+                                <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />
+                              </div>
+                            )}
+
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`rounded-md px-2 py-0.5 text-[11px] font-black uppercase tracking-wider ${
+                                    isDeleted ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                                  }`}
+                                >
+                                  {isDeleted ? 'Lệnh Xóa' : 'Lệnh Sửa'}
+                                </span>
+                                <span className="text-xs font-semibold text-slate-400">{item.timestamp}</span>
+                              </div>
+
+                              <p className="mt-1.5 text-sm font-extrabold text-slate-800">{item.description}</p>
+                              {item.groupName && (
+                                <p className="text-xs font-medium text-slate-500">
+                                  Tên nhóm: <b className="text-slate-700 font-bold">{item.groupName}</b>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Button */}
+                          <div className="flex items-center gap-2 self-end sm:self-center">
+                            {isDeleted ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreDeletedGroups([item.id])}
+                                className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 text-cyan-700" />
+                                Hoàn tác (Khôi phục)
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleRevertEditedGroup(item.id)}
+                                className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 text-cyan-700" />
+                                Hoàn tác như cũ
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
+                <span className="text-xs font-semibold text-slate-500">
+                  * Chỉ hỗ trợ hoàn tác cho các thao tác Sửa và Xóa trong phiên làm việc hiện tại.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsUndoModalOpen(false)}
+                  className="rounded-xl border-2 border-slate-300 bg-white px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer shadow-xs"
+                >
+                  Đóng
                 </button>
               </div>
             </div>
