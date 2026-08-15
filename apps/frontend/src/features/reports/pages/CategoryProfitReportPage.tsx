@@ -354,7 +354,7 @@ export default function CategoryProfitReportPage() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Chi nhánh:</span>
+            <span className="text-slate-600 font-extrabold">Kho:</span>
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
@@ -475,7 +475,7 @@ export default function CategoryProfitReportPage() {
                       <tr className="bg-slate-100/90 font-black text-cyan-900 border-t-2 border-slate-300">
                         <td colSpan={10} className="px-4 py-2.5 font-black uppercase text-xs tracking-wider flex items-center gap-2">
                           <Building2 size={15} className="text-cyan-600" />
-                          ▲ Chi nhánh: {branchName}
+                          ▲ Kho: {branchName}
                         </td>
                       </tr>
 

@@ -30,6 +30,9 @@ export class User extends BaseEntity {
   @Column({ nullable: true })
   location?: string;
 
+  @Column({ type: 'json', nullable: true })
+  groupIds?: string[];
+
   @CreateDateColumn()
   createdAt: Date;
 

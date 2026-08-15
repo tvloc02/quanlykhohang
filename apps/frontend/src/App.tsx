@@ -6,6 +6,7 @@ import Signup from './features/auth/Signup';
 import Dashboard from './features/dashboard/Dashboard';
 import Products from './features/products/Products';
 import Categories from './features/categories/Categories';
+import AreasPage from './features/categories/pages/AreasPage';
 import Suppliers from './features/suppliers/Suppliers';
 import Personnel from './features/personnel/Personnel';
 import ProjectTeamsPage from './features/personnel/ProjectTeamsPage';
@@ -73,6 +74,7 @@ import SalesInvoiceDocPage from './features/documents/pages/SalesInvoiceDocPage'
 import StockInDocPage from './features/documents/pages/StockInDocPage';
 import StockOutDocPage from './features/documents/pages/StockOutDocPage';
 import TransferDocPage from './features/documents/pages/TransferDocPage';
+import { usePermissions } from './shared/hooks/usePermissions';
 
 function getStoredUser() {
   try {
@@ -126,7 +128,7 @@ function CustomerRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
+function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNode; allowedRoles?: string[]; menuId?: string }) {
   const token = localStorage.getItem('token');
   const user = getStoredUser();
   if (!token) {
@@ -138,7 +140,14 @@ function RoleRoute({ children, allowedRoles }: { children: React.ReactNode; allo
   if (user.role === 'customer') {
     return <Navigate to="/customer-portal" replace />;
   }
-  if (!allowedRoles.includes(user.role || '')) {
+  const { isAdmin, canViewMenu } = usePermissions();
+  if (isAdmin) {
+    return <>{children}</>;
+  }
+  if (menuId && !canViewMenu(menuId)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role || '')) {
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
@@ -272,13 +281,23 @@ function App() {
           }
         />
         <Route
+          path="/areas"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff']} menuId="areas">
+              <MainLayout>
+                <AreasPage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
           path="/warehouses"
           element={
-            <ProtectedRoute>
+            <RoleRoute allowedRoles={['admin', 'manager', 'staff']} menuId="warehouses">
               <MainLayout>
                 <WarehouseManagement />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route

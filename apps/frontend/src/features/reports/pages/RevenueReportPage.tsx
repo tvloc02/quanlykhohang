@@ -139,7 +139,7 @@ export default function RevenueReportPage() {
             <thead>
               <tr className="border-b-2 border-slate-200 bg-slate-100 text-slate-800 font-bold uppercase">
                 <th className="py-2.5 px-3 text-center border-r border-slate-200 w-12">TT</th>
-                <th className="py-2.5 px-3 text-left border-r border-slate-200">Nhân viên / Chi nhánh</th>
+                <th className="py-2.5 px-3 text-left border-r border-slate-200">Nhân viên / Kho</th>
                 <th className="py-2.5 px-3 text-right border-r border-slate-200">Doanh thu (1)</th>
                 <th className="py-2.5 px-3 text-right border-r border-slate-200">Tiền hàng trả (2)</th>
                 <th className="py-2.5 px-3 text-right border-r border-slate-200">Doanh thu thực (3 = 1-2)</th>

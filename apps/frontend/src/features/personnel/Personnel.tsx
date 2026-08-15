@@ -790,6 +790,22 @@ export default function Personnel() {
       });
       saveStoredPermissionGroups(updatedGroups);
 
+      // If updating currently logged in user, update localStorage user
+      try {
+        const rawUser = localStorage.getItem('user');
+        if (rawUser) {
+          const loggedInUser = JSON.parse(rawUser);
+          if (loggedInUser.email === form.email || loggedInUser.id === userId) {
+            localStorage.setItem('user', JSON.stringify({
+              ...loggedInUser,
+              groupIds: form.groupIds,
+              role: form.role,
+            }));
+          }
+        }
+      } catch { /* ignore */ }
+      window.dispatchEvent(new Event('permissions-updated'));
+
       setSuccess(isEdit ? 'Đã cập nhật nhân sự.' : 'Đã tạo nhân sự mới.');
       closeModal();
     } catch {

@@ -28,4 +28,7 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @IsOptional()
+  groupIds?: string[];
 }
