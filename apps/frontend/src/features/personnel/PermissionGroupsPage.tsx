@@ -110,7 +110,7 @@ function authHeaders() {
 
 // System Menu Items Definition matching System Menu Hierarchy
 export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
-  { id: 'pos', label: 'POS - Bán lẻ' },
+  { id: 'pos', label: 'Trang chủ' },
   { id: 'gpstest', label: 'GPSTEST' },
 
   { id: 'nhap-xuat', label: 'Nhập - Xuất', isHeader: true },
@@ -119,8 +119,8 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'inbound-stock-in-orders', label: 'Nhập hàng', parentId: 'nhap-xuat' },
   { id: 'inbound-return-requests', label: 'Xuất trả Nhà cung cấp', parentId: 'nhap-xuat' },
   { id: 'inbound-return-customers', label: 'Nhập hàng Khách trả lại', parentId: 'nhap-xuat' },
-  { id: 'delivery-transfer-orders', label: 'Xuất chuyển Chi nhánh', parentId: 'nhap-xuat' },
-  { id: 'delivery-transfer-requests', label: 'Nhập chuyển Chi nhánh', parentId: 'nhap-xuat' },
+  { id: 'delivery-transfer-orders', label: 'Xuất chuyển Kho', parentId: 'nhap-xuat' },
+  { id: 'delivery-transfer-requests', label: 'Nhập chuyển Kho', parentId: 'nhap-xuat' },
   { id: 'inventory-initial-stock', label: 'Nhập hàng tồn đầu kỳ', parentId: 'nhap-xuat' },
   { id: 'inventory-stocktake', label: 'Kiểm kho', parentId: 'nhap-xuat' },
   { id: 'outbound-sales-orders', label: 'Đơn đặt hàng', parentId: 'nhap-xuat' },
@@ -144,7 +144,8 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'categories', label: 'Nhóm hàng', parentId: 'danh-muc' },
   { id: 'customers', label: 'Khách hàng', parentId: 'danh-muc' },
   { id: 'suppliers', label: 'Nhà cung cấp', parentId: 'danh-muc' },
-  { id: 'warehouses', label: 'Khu vực', parentId: 'danh-muc' },
+  { id: 'areas', label: 'Khu vực', parentId: 'danh-muc' },
+  { id: 'warehouses', label: 'Kho hàng', parentId: 'danh-muc' },
   { id: 'units', label: 'Đơn vị quy đổi', parentId: 'danh-muc' },
   { id: 'currency', label: 'Ngoại tệ', parentId: 'danh-muc' },
   { id: 'bank-accounts', label: 'Tài khoản Ngân hàng|Ví TM', parentId: 'danh-muc' },
@@ -158,7 +159,6 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'personnel', label: 'Người dùng / Nhân viên', parentId: 'he-thong' },
   { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
   { id: 'sys-info', label: 'Thông tin sử dụng', parentId: 'he-thong' },
-  { id: 'branches', label: 'Chi nhánh', parentId: 'he-thong' },
   { id: 'audit-log', label: 'Lịch sử thao tác', parentId: 'he-thong' },
   { id: 'deposit', label: 'Nạp tiền', parentId: 'he-thong' },
   { id: 'print-barcode', label: 'In Barcode + QRCode', parentId: 'he-thong' },
@@ -272,7 +272,9 @@ export function readStoredPermissionGroups(): PermissionGroup[] {
 export function saveStoredPermissionGroups(groups: PermissionGroup[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
   window.dispatchEvent(new Event('storage'));
-  window.dispatchEvent(new Event('permissions-updated'));
+  setTimeout(() => {
+    window.dispatchEvent(new Event('permissions-updated'));
+  }, 0);
 }
 
 // Toast notification rendered in Portal at top right to avoid layout distortion

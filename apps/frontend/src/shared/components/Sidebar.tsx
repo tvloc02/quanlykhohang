@@ -65,6 +65,7 @@ import {
   BookMarked,
 } from 'lucide-react';
 import { readStoredPermissionGroups } from '../../features/personnel/PermissionGroupsPage';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -91,11 +92,11 @@ type MenuItem = {
 // Cấu trúc danh mục menu xếp chuẩn theo Ảnh Mẫu:
 // POS - Bán lẻ (Trang chủ), Nhập - Xuất, Thu chi, Báo cáo Tổng hợp, Báo cáo Phân tích, Sổ sách kế toán, Danh mục, CSKH, Hệ thống, Shipper, VAT Điện tử, Ghi đơn Thị trường, Trợ giúp, Hướng dẫn sử dụng
 const menuItems: MenuItem[] = [
-  // 1. POS - Bán lẻ (Nút Vàng Nổi Bật - Trang chủ)
+  // 1. Trang chủ (Nút Vàng Nổi Bật)
   {
     id: 'pos',
-    icon: ShoppingBag,
-    label: 'POS - Bán lẻ',
+    icon: Home,
+    label: 'Trang chủ',
     path: '/dashboard',
     isSpecialButton: true,
     allowedRoles: ['admin', 'manager', 'staff'],
@@ -113,8 +114,8 @@ const menuItems: MenuItem[] = [
       { id: 'inbound-stock-in-orders', icon: TrendingDown, label: 'Nhập hàng', path: '/inbound/stock-in-orders' },
       { id: 'inbound-return-requests', icon: CornerUpRight, label: 'Xuất trả Nhà cung cấp', path: '/inbound/return-requests' },
       { id: 'inbound-return-customers', icon: CornerDownLeft, label: 'Nhập hàng Khách trả lại', path: '/inbound/return-customers' },
-      { id: 'delivery-transfer-orders', icon: Send, label: 'Xuất chuyển Chi nhánh', path: '/delivery/transfer-orders' },
-      { id: 'delivery-transfer-requests', icon: Repeat, label: 'Nhập chuyển Chi nhánh', path: '/delivery/transfer-requests' },
+      { id: 'delivery-transfer-orders', icon: Send, label: 'Xuất chuyển Kho', path: '/delivery/transfer-orders' },
+      { id: 'delivery-transfer-requests', icon: Repeat, label: 'Nhập chuyển Kho', path: '/delivery/transfer-requests' },
       { id: 'inventory-initial-stock', icon: PlusCircle, label: 'Nhập hàng tồn đầu kỳ', path: '/inventory/initial-stock' },
       { id: 'inventory-stocktake', icon: FileCheck, label: 'Kiểm kho', path: '/inventory/stocktake' },
       { id: 'outbound-sales-orders', icon: ShoppingCart, label: 'Đơn đặt hàng', path: '/outbound/sales-orders' },
@@ -200,13 +201,14 @@ const menuItems: MenuItem[] = [
       { id: 'categories', icon: FolderTree, label: 'Nhóm hàng', path: '/categories' },
       { id: 'customers', icon: UserPlus, label: 'Khách hàng', path: '/customers' },
       { id: 'suppliers', icon: Contact, label: 'Nhà cung cấp', path: '/suppliers' },
-      { id: 'warehouses', icon: MapPin, label: 'Khu vực', path: '/warehouses' },
+      { id: 'areas', icon: MapPin, label: 'Khu vực', path: '/areas' },
+      { id: 'warehouses', icon: Store, label: 'Kho hàng', path: '/warehouses' },
       { id: 'units', icon: Scale, label: 'Đơn vị quy đổi', path: '/units' },
       { id: 'currency', icon: DollarSign, label: 'Ngoại tệ', path: '/settings' },
-      { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/settings' },
-      { id: 'receipt-expense-types', icon: Terminal, label: 'Nội dung thu chi', path: '/reports' },
-      { id: 'customer-groups', icon: Users, label: 'Nhóm KH/NCC', path: '/customers' },
-      { id: 'price-lists', icon: Tag, label: 'Bảng giá', path: '/products/main' },
+      { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/bank-accounts' },
+      { id: 'receipt-expense-types', icon: Terminal, label: 'Nội dung thu chi', path: '/finance/expense-types' },
+      { id: 'customer-groups', icon: Users, label: 'Nhóm KH/NCC', path: '/customer-groups' },
+      { id: 'price-lists', icon: Tag, label: 'Bảng giá', path: '/price-lists' },
     ],
   },
   // 8. Chăm sóc Khách hàng
@@ -233,10 +235,9 @@ const menuItems: MenuItem[] = [
       { id: 'change-password', icon: Lock, label: 'Đổi mật khẩu', path: '/profile' },
       { id: 'personnel', icon: User, label: 'Người dùng / Nhân viên', path: '/personnel', allowedRoles: ['admin'] },
       { id: 'permission-groups', icon: ShieldCheck, label: 'Nhóm quyền', path: '/personnel/permission-groups', allowedRoles: ['admin'] },
-      { id: 'sys-info', icon: Info, label: 'Thông tin sử dụng', path: '/settings' },
-      { id: 'branches', icon: Store, label: 'Chi nhánh', path: '/warehouses' },
+      { id: 'sys-info', icon: Info, label: 'Thông tin sử dụng', path: '/system/usage-info' },
       { id: 'audit-log', icon: History, label: 'Lịch sử thao tác', path: '/audit-log', allowedRoles: ['admin'] },
-      { id: 'deposit', icon: Wallet, label: 'Nạp tiền', path: '/settings' },
+      { id: 'deposit', icon: Wallet, label: 'Nạp tiền', path: '/system/usage-info' },
       { id: 'print-barcode', icon: ScanLine, label: 'In Barcode + QRCode', path: '/scanner' },
       { id: 'print-template-edit', icon: FileEdit, label: 'Chỉnh sửa mẫu in', path: '/documents' },
       { id: 'print-templates', icon: Printer, label: 'Chỉnh mẫu in', path: '/documents' },
@@ -319,7 +320,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
   useEffect(() => {
     const handlePermissionsChange = () => {
-      setPermissionTick((prev) => prev + 1);
+      setTimeout(() => setPermissionTick((prev) => prev + 1), 0);
     };
 
     window.addEventListener('storage', handlePermissionsChange);
@@ -331,57 +332,14 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     };
   }, []);
 
-  const currentUser = getStoredUser();
-  const userRole = getStoredRole(currentUser);
-  const userEmailOrId = (currentUser.email || currentUser.id || '').toLowerCase();
-  const userGroupIds: string[] = currentUser.groupIds || (currentUser.groupId ? [currentUser.groupId] : []);
-
-  const permissionGroups = useMemo(() => {
-    return readStoredPermissionGroups();
-  }, [permissionTick]);
-
-  const userActiveGroups = useMemo(() => {
-    let matched = permissionGroups.filter((g) => {
-      const inGroupIds = userGroupIds.includes(g.id);
-      const inMembers = (g.memberIds || []).some(
-        (m) => m.toLowerCase() === userEmailOrId || (currentUser.email && m.toLowerCase() === currentUser.email.toLowerCase())
-      );
-      return inGroupIds || inMembers;
-    });
-
-    if (matched.length === 0) {
-      matched = permissionGroups.filter((g) => {
-        const code = (g.code || '').toUpperCase();
-        const name = g.name.toLowerCase();
-        if (userRole === 'admin' && (code === 'ADMIN_GROUP' || name.includes('quản trị') || name.includes('admin'))) return true;
-        if (userRole === 'manager' && (code === 'MANAGER_GROUP' || name.includes('quản lý'))) return true;
-        if (userRole === 'storekeeper' && (code === 'STOREKEEPER_GROUP' || name.includes('thủ kho'))) return true;
-        if (userRole === 'inventory-checker' && (code === 'CHECKER_GROUP' || name.includes('kiểm kê'))) return true;
-        return false;
-      });
-    }
-
-    return matched;
-  }, [permissionGroups, userGroupIds, userEmailOrId, userRole, currentUser.email]);
+  const { isAdmin, userActiveGroups, canViewMenu } = usePermissions();
 
   const isMenuAllowed = useCallback(
     (item: { id: string; allowedRoles?: string[] }) => {
-      if (userActiveGroups.length > 0) {
-        const hasPermissionConfig = userActiveGroups.some(
-          (g) => g.menuPermissions && g.menuPermissions[item.id] !== undefined
-        );
-        if (hasPermissionConfig) {
-          return userActiveGroups.some(
-            (g) => g.menuPermissions && g.menuPermissions[item.id]?.view === true
-          );
-        }
-      }
-
-      if (userRole === 'admin') return true;
-      if (!item.allowedRoles || item.allowedRoles.length === 0) return true;
-      return item.allowedRoles.includes(userRole);
+      if (isAdmin) return true;
+      return canViewMenu(item.id);
     },
-    [userRole, userActiveGroups]
+    [isAdmin, canViewMenu]
   );
 
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {

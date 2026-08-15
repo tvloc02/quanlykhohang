@@ -373,7 +373,7 @@ export default function CreateTransferOrderPage() {
             <div>
               <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
                 <ArrowRight className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Kho nhập (Chi nhánh nhận)</span>
+                <span>Kho nhập (Kho nhận)</span>
               </label>
               <select
                 value={destinationWarehouseCode}

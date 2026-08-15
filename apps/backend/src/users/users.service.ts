@@ -42,6 +42,7 @@ export class UsersService {
       phone: createUserDto.phone,
       address: createUserDto.address,
       roles: [role],
+      groupIds: createUserDto.groupIds || [],
       status: createUserDto.status || 'active',
     });
     let savedUser: User;
@@ -112,6 +113,10 @@ export class UsersService {
 
     if (updateUserDto.status !== undefined) {
       user.status = updateUserDto.status;
+    }
+
+    if (updateUserDto.groupIds !== undefined) {
+      user.groupIds = updateUserDto.groupIds;
     }
 
     if (updateUserDto.role) {

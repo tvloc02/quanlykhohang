@@ -28,4 +28,7 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @IsOptional()
+  groupIds?: string[];
 }

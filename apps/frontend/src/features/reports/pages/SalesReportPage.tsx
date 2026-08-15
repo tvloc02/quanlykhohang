@@ -242,7 +242,7 @@ export default function SalesReportPage() {
               { id: 'month', label: 'Theo Tháng' },
               { id: 'year', label: 'Theo Năm' },
               { id: 'staff', label: 'Theo Nhân viên' },
-              { id: 'branch', label: 'Theo Chi nhánh' },
+              { id: 'branch', label: 'Theo Kho' },
               { id: 'chart', label: 'Biểu đồ' },
             ].map((opt) => (
               <button
