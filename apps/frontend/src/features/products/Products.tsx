@@ -30,7 +30,7 @@ import {
   getActiveItemGroupCategories,
   getStoredCatalogCategories,
 } from '../../shared/utils/catalogCategories';
-import { getStoredWarehouses } from '../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../shared/utils/warehouseAssignments';
 import { readStoredUnits, saveStoredUnits, UnitConversion } from './UnitsPage';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 
@@ -189,9 +189,25 @@ type RawProduct = {
   managementType?: string;
   supplier?: SupplierField;
   price?: number;
+  importPrice?: number | '';
+  wholesalePrice?: number | '';
+  retailPrice?: number | '';
   stock?: number;
   totalStock?: number;
   isVisible?: boolean;
+  barcode?: string;
+  supplierBarcode?: string;
+  description?: string;
+  taxType?: string;
+  vatRate?: number | '';
+  bonusAmount?: number | '';
+  trackSerial?: boolean;
+  warehouseStocks?: Record<string, number | ''>;
+  warehouseUnitStocks?: Record<string, number | ''>;
+  conversionUnits?: ConversionUnitItem[];
+  webTitle?: string;
+  webDescription?: string;
+  comboItems?: ComboProductItem[];
 };
 
 type Product = {
@@ -205,10 +221,24 @@ type Product = {
   managementType: string;
   supplier: string;
   price: number;
+  importPrice?: number | '';
+  wholesalePrice?: number | '';
+  retailPrice?: number | '';
   stock: number;
-  warehouseStocks?: Record<string, number>;
+  barcode?: string;
+  description?: string;
+  bonusAmount?: number | '';
+  taxType?: string;
+  vatRate?: number | '';
+  trackSerial?: boolean;
+  warehouseStocks?: Record<string, number | ''>;
+  warehouseUnitStocks?: Record<string, number | ''>;
+  conversionUnits?: ConversionUnitItem[];
   images: string[];
   isVisible: boolean;
+  webTitle?: string;
+  webDescription?: string;
+  comboItems?: ComboProductItem[];
 };
 
 type ConversionUnitItem = {
@@ -377,10 +407,15 @@ function safeUUID(): string {
   return 'id_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
 }
 
-function normalizeProduct(product: RawProduct): Product {
+function normalizeProduct(product: RawProduct & Record<string, any>): Product {
   const stockVal = Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0));
+  const rPrice = product.retailPrice !== undefined && product.retailPrice !== '' ? Number(product.retailPrice) : Number(product.price || 0);
+  const iPrice = product.importPrice !== undefined && product.importPrice !== '' ? Number(product.importPrice) : '';
+  const wPrice = product.wholesalePrice !== undefined && product.wholesalePrice !== '' ? Number(product.wholesalePrice) : '';
+
   return {
-    id: product.id || safeUUID(),
+    ...product,
+    id: String(product.id || safeUUID()),
     sku: product.internalSku || product.sku || '',
     name: product.name || '',
     category: normalizeCategory(product.category),
@@ -389,12 +424,59 @@ function normalizeProduct(product: RawProduct): Product {
     location: product.location || '',
     managementType: product.managementType || '',
     supplier: normalizeSupplierField(product.supplier || ''),
-    price: Number(product.price || 0),
+    price: rPrice,
+    importPrice: iPrice,
+    wholesalePrice: wPrice,
+    retailPrice: rPrice,
     stock: stockVal,
-    warehouseStocks: (product as any).warehouseStocks || {},
-    images: (product as any).images || [],
+    barcode: product.barcode || product.supplierBarcode || '',
+    description: product.description || (typeof product.supplier === 'string' ? product.supplier : ''),
+    bonusAmount: product.bonusAmount ?? '',
+    taxType: product.taxType || 'RA',
+    vatRate: product.vatRate ?? 10,
+    trackSerial: !!product.trackSerial,
+    warehouseStocks: product.warehouseStocks || {},
+    warehouseUnitStocks: product.warehouseUnitStocks || {},
+    conversionUnits: product.conversionUnits || [],
+    images: product.images || [],
     isVisible: !!product.isVisible,
+    webTitle: product.webTitle || '',
+    webDescription: product.webDescription || '',
+    comboItems: product.comboItems || [],
   };
+}
+
+function mergeProductsWithStored(remoteProducts: RawProduct[]): Product[] {
+  const storedProducts = getStoredProducts();
+  const storedById = new Map(storedProducts.map((p) => [String(p.id), p]));
+  const storedBySku = new Map(storedProducts.map((p) => [p.sku, p]));
+
+  return remoteProducts.map((raw) => {
+    const norm = normalizeProduct(raw);
+    const stored = storedById.get(String(norm.id)) || storedBySku.get(norm.sku);
+
+    if (stored) {
+      return normalizeProduct({
+        ...stored,
+        ...raw,
+        importPrice: raw.importPrice !== undefined ? raw.importPrice : stored.importPrice,
+        wholesalePrice: raw.wholesalePrice !== undefined ? raw.wholesalePrice : stored.wholesalePrice,
+        retailPrice: raw.retailPrice !== undefined ? raw.retailPrice : (raw.price !== undefined ? raw.price : stored.retailPrice),
+        warehouseStocks: (raw as any).warehouseStocks || stored.warehouseStocks,
+        warehouseUnitStocks: (raw as any).warehouseUnitStocks || stored.warehouseUnitStocks,
+        conversionUnits: (raw as any).conversionUnits || stored.conversionUnits,
+        barcode: (raw as any).barcode || (raw as any).supplierBarcode || stored.barcode,
+        description: (raw as any).description || stored.description,
+        bonusAmount: (raw as any).bonusAmount !== undefined ? (raw as any).bonusAmount : stored.bonusAmount,
+        taxType: (raw as any).taxType || stored.taxType,
+        vatRate: (raw as any).vatRate !== undefined ? (raw as any).vatRate : stored.vatRate,
+        webTitle: (raw as any).webTitle || stored.webTitle,
+        comboItems: (raw as any).comboItems || stored.comboItems,
+      });
+    }
+
+    return norm;
+  });
 }
 
 export default function Products() {
@@ -490,18 +572,38 @@ export default function Products() {
     setError('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.message || 'Không tải được danh sách hàng hóa');
+      const [prodRes, whRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(() => null),
+        fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
+      ]);
+
+      if (prodRes && prodRes.ok) {
+        const data = (await prodRes.json()) as RawProduct[];
+        const mergedProducts = mergeProductsWithStored(data);
+        setProducts(mergedProducts);
+        saveStoredProducts(mergedProducts);
+      } else {
+        setProducts(getStoredProducts());
       }
 
-      const data = (await response.json()) as RawProduct[];
-      const normalizedProducts = data.map(normalizeProduct);
-      setProducts(normalizedProducts);
-      saveStoredProducts(normalizedProducts);
+      let loadedWarehouses: any[] = [];
+      if (whRes && whRes.ok) {
+        const whData = await whRes.json();
+        const rawList = Array.isArray(whData) ? whData : whData.data || [];
+        if (rawList.length > 0) {
+          loadedWarehouses = mergeStoredWarehouses(rawList);
+        }
+      }
+
+      if (loadedWarehouses.length === 0) {
+        loadedWarehouses = getStoredWarehouses();
+      }
+
+      setWarehouses(loadedWarehouses);
+      saveStoredWarehouses(loadedWarehouses);
     } catch (err) {
       setProducts(getStoredProducts());
+      setWarehouses(getStoredWarehouses());
     } finally {
       setLoading(false);
     }
@@ -789,9 +891,25 @@ export default function Products() {
         throw new Error(data?.message || 'Không thể lưu hàng hóa. Vui lòng kiểm tra lại thông tin (có thể trùng mã hàng hóa).');
       }
 
+      const resData = await response.json().catch(() => ({}));
+      const savedProduct = normalizeProduct({
+        ...payload,
+        id: isEdit && selectedProduct ? selectedProduct.id : String(resData.id || safeUUID()),
+      });
+
+      setProducts((prev) => {
+        let updated;
+        if (isEdit && selectedProduct) {
+          updated = prev.map((p) => (String(p.id) === String(savedProduct.id) ? { ...p, ...savedProduct } : p));
+        } else {
+          updated = [savedProduct, ...prev];
+        }
+        saveStoredProducts(updated);
+        return updated;
+      });
+
       setSuccess(isEdit ? 'Đã cập nhật hàng hóa.' : 'Đã thêm hàng hóa mới.');
       closeModal();
-      await loadData();
     } catch (err: any) {
       setError(err.message || 'Có lỗi xảy ra khi kết nối đến máy chủ.');
     } finally {
