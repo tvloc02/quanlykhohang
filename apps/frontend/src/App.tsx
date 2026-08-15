@@ -56,6 +56,7 @@ import Outbound from './features/outbound/Outbound';
 import ApproveOutboundPage from './features/outbound/pages/ApproveOutboundPage';
 import PickingPage from './features/outbound/pages/PickingPage';
 import OutboundShippingNotePage from './features/outbound/pages/OutboundOrderDetailPage';
+import CreateOutboundOrderPage from './features/outbound/pages/CreateOutboundOrderPage';
 import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalPage';
 import ScannerPage from './features/scanner/ScannerPage';
 import SupplierProducts from './features/supplier-products/SupplierProducts';
@@ -543,6 +544,22 @@ function App() {
               <MainLayout>
                 <Outbound />
               </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/orders/create"
+          element={
+            <ProtectedRoute>
+              <CreateOutboundOrderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/outbound/create"
+          element={
+            <ProtectedRoute>
+              <CreateOutboundOrderPage />
             </ProtectedRoute>
           }
         />
