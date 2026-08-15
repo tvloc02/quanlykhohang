@@ -32,6 +32,7 @@ import {
 } from '../../shared/utils/catalogCategories';
 import { getStoredWarehouses } from '../../shared/utils/warehouseAssignments';
 import { readStoredUnits, saveStoredUnits, UnitConversion } from './UnitsPage';
+import { usePermissions } from '../../shared/hooks/usePermissions';
 
 // Internal Toast component
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
@@ -397,6 +398,11 @@ function normalizeProduct(product: RawProduct): Product {
 }
 
 export default function Products() {
+  const { canPerformAction, isAdmin } = usePermissions();
+  const canCreate = isAdmin || canPerformAction('products-main', 'create');
+  const canEdit = isAdmin || canPerformAction('products-main', 'edit');
+  const canDelete = isAdmin || canPerformAction('products-main', 'delete');
+
   const [products, setProducts] = React.useState<Product[]>([]);
   const [search, setSearch] = React.useState('');
   const [loading, setLoading] = React.useState(true);
@@ -851,14 +857,16 @@ export default function Products() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Thêm hàng hóa
-        </button>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 cursor-pointer"
+          >
+            <PlusCircle className="h-4 w-4" />
+            Thêm hàng hóa
+          </button>
+        )}
       </div>
 
       {/* 4 Button tổng hợp */}
@@ -1192,22 +1200,26 @@ export default function Products() {
                           >
                             <History size={18} strokeWidth={2.5} />
                           </button>
-                          <button
-                            type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Sửa hàng hóa"
-                            onClick={() => openProductModal('edit', product)}
-                          >
-                            <Pencil size={18} strokeWidth={2.5} />
-                          </button>
-                          <button
-                            type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Xóa hàng hóa"
-                            onClick={() => openProductModal('delete', product)}
-                          >
-                            <Trash2 size={18} strokeWidth={2.5} />
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                              title="Sửa hàng hóa"
+                              onClick={() => openProductModal('edit', product)}
+                            >
+                              <Pencil size={18} strokeWidth={2.5} />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              type="button"
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                              title="Xóa hàng hóa"
+                              onClick={() => openProductModal('delete', product)}
+                            >
+                              <Trash2 size={18} strokeWidth={2.5} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     )}

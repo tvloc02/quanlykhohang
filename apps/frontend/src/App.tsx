@@ -76,6 +76,7 @@ import SalesInvoiceDocPage from './features/documents/pages/SalesInvoiceDocPage'
 import StockInDocPage from './features/documents/pages/StockInDocPage';
 import StockOutDocPage from './features/documents/pages/StockOutDocPage';
 import TransferDocPage from './features/documents/pages/TransferDocPage';
+import AccessDenied from './shared/components/AccessDenied';
 import { usePermissions } from './shared/hooks/usePermissions';
 
 function getStoredUser() {
@@ -147,10 +148,18 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
     return <>{children}</>;
   }
   if (menuId && !canViewMenu(menuId)) {
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <MainLayout>
+        <AccessDenied />
+      </MainLayout>
+    );
   }
   if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role || '')) {
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <MainLayout>
+        <AccessDenied />
+      </MainLayout>
+    );
   }
   return <>{children}</>;
 }
@@ -203,99 +212,99 @@ function App() {
         <Route
           path="/products/main"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="products-main">
               <MainLayout>
                 <Products />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/products/supplier"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="products-main">
               <MainLayout>
                 <SupplierProducts />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/units"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="units">
               <MainLayout>
                 <UnitsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/products/units"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="units">
               <MainLayout>
                 <UnitsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/currencies"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="currency">
               <MainLayout>
                 <CurrenciesPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/bank-accounts"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="bank-accounts">
               <MainLayout>
                 <BankAccountsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/categories"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="categories">
               <MainLayout>
                 <Categories />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/suppliers"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="suppliers">
               <MainLayout>
                 <Suppliers />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/personnel"
           element={
-            <RoleRoute allowedRoles={['admin']}>
+            <RoleRoute allowedRoles={['admin']} menuId="personnel">
               <MainLayout>
                 <Personnel />
               </MainLayout>
             </RoleRoute>
           }
         />
-        <Route path="/personnel/permission-groups" element={<RoleRoute allowedRoles={['admin']}><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
-        <Route path="/personnel/teams" element={<RoleRoute allowedRoles={['admin']}><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
+        <Route path="/personnel/permission-groups" element={<RoleRoute allowedRoles={['admin']} menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
+        <Route path="/personnel/teams" element={<RoleRoute allowedRoles={['admin']} menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
         <Route
           path="/customers"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+            <RoleRoute menuId="customers">
               <MainLayout>
                 <Customers />
               </MainLayout>
@@ -305,7 +314,7 @@ function App() {
         <Route
           path="/areas"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']} menuId="areas">
+            <RoleRoute menuId="areas">
               <MainLayout>
                 <AreasPage />
               </MainLayout>
@@ -315,7 +324,7 @@ function App() {
         <Route
           path="/warehouses"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']} menuId="warehouses">
+            <RoleRoute menuId="warehouses">
               <MainLayout>
                 <WarehouseManagement />
               </MainLayout>
@@ -325,183 +334,183 @@ function App() {
         <Route
           path="/inbound"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-stock-in-orders">
               <Navigate to="/inbound/orders" replace />
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/orders"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-stock-in-orders">
               <MainLayout>
                 <Inbound featureMode="stock-in" title="DANH SÁCH PHIẾU NHẬP HÀNG KHO" codePrefix="PNK" partnerLabel="Nhà cung cấp" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/purchase-orders"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-purchase-orders">
               <MainLayout>
                 <Inbound featureMode="purchase-order" title="DANH SÁCH ĐƠN ĐẶT HÀNG NHÀ CUNG CẤP" codePrefix="PO" partnerLabel="Nhà cung cấp" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/return-requests"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-return-requests">
               <MainLayout>
                 <Inbound featureMode="return-supplier" title="DANH SÁCH PHIẾU XUẤT TRẢ NHÀ CUNG CẤP" codePrefix="XNCC" partnerLabel="Nhà cung cấp" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/stock-in-orders"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-stock-in-orders">
               <MainLayout>
                 <Inbound featureMode="stock-in" title="DANH SÁCH PHIẾU NHẬP HÀNG KHO" codePrefix="PNK" partnerLabel="Nhà cung cấp" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/stock-in-orders/create"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-stock-in-orders">
               <CreateStockInOrderPage />
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/return-customers"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-return-customers">
               <MainLayout>
                 <Inbound featureMode="return-customer" title="DANH SÁCH PHIẾU NHẬP HÀNG KHÁCH TRẢ LẠI" codePrefix="NHKT" partnerLabel="Khách hàng" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/delivery/transfer-orders"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="delivery-transfer-orders">
               <MainLayout>
                 <Outbound featureMode="transfer-out" title="DANH SÁCH PHIẾU XUẤT CHUYỂN KHO" codePrefix="XCK" partnerLabel="Kho nhận" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/delivery/transfer-requests"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="delivery-transfer-requests">
               <MainLayout>
                 <Inbound featureMode="transfer-in" title="DANH SÁCH PHIẾU NHẬP CHUYỂN KHO" codePrefix="NCK" partnerLabel="Kho xuất" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory/initial-stock"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-initial-stock">
               <MainLayout>
                 <Inbound featureMode="initial-stock" title="DANH SÁCH PHIẾU NHẬP TỒN ĐẦU KỲ" codePrefix="TDK" partnerLabel="Ghi chú kho" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/outbound/retail"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="outbound-retail">
               <MainLayout>
                 <Outbound featureMode="orders" title="DANH SÁCH PHIẾU XUẤT BÁN LẺ" codePrefix="PXK" partnerLabel="Khách hàng" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/outbound/sales-orders"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="outbound-sales-orders">
               <MainLayout>
                 <Outbound featureMode="sales-order" title="DANH SÁCH ĐƠN ĐẶT HÀNG CỦA KHÁCH HÀNG" codePrefix="DDH" partnerLabel="Khách hàng" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/outbound/disposal"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="outbound-disposal">
               <MainLayout>
                 <Outbound featureMode="disposal" title="DANH SÁCH PHIẾU XUẤT HỦY HÀNG HÓA" codePrefix="XH" partnerLabel="Lý do xuất hủy" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/documents/quotes"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="documents-quotes">
               <MainLayout>
                 <Outbound featureMode="quote" title="DANH SÁCH PHIẾU BÁO GIÁ HÀNG HÓA" codePrefix="BG" partnerLabel="Khách hàng" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/assembly"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-assembly">
               <MainLayout>
                 <Inbound featureMode="assembly" title="DANH SÁCH PHIẾU TẠO BỘ / COMBO HÀNG HÓA" codePrefix="COMBO" partnerLabel="Ghi chú Combo" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/production"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-assembly">
               <MainLayout>
                 <ProductionPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/distribution"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-assembly">
               <MainLayout>
                 <DistributionPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/stock-in"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-stock-in-orders">
               <MainLayout>
                 <GoodsReceiptsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inbound/approve"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin', 'manager']} menuId="inbound-stock-in-orders">
               <MainLayout>
                 <ApproveReceiptPage />
               </MainLayout>
@@ -511,17 +520,17 @@ function App() {
         <Route
           path="/inbound/barcode-mappings"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inbound-stock-in-orders">
               <MainLayout>
                 <BarcodeMappingsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/sync-conflicts"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin', 'manager']} menuId="data-maintenance">
               <MainLayout>
                 <SyncConflictsPage />
               </MainLayout>
@@ -531,35 +540,35 @@ function App() {
         <Route
           path="/outbound"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="outbound-orders">
               <Navigate to="/outbound/orders" replace />
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/outbound/orders"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="outbound-orders">
               <MainLayout>
                 <Outbound />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/outbound/task-assign"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="outbound-orders">
               <MainLayout>
                 <TaskAssignPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/outbound/approve"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin', 'manager']} menuId="outbound-orders">
               <MainLayout>
                 <ApproveOutboundPage />
               </MainLayout>
@@ -569,137 +578,137 @@ function App() {
         <Route
           path="/outbound/picking"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="outbound-orders">
               <MainLayout>
                 <PickingPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/outbound/shipping-notes"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="outbound-orders">
               <MainLayout>
                 <OutboundShippingNotePage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/delivery"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="delivery-transfer-orders">
               <MainLayout>
                 <Delivery />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/delivery/transfer-orders"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="delivery-transfer-orders">
               <MainLayout>
                 <Delivery />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/delivery/transfer-requests"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="delivery-transfer-requests">
               <MainLayout>
                 <TransferRequestsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/delivery/create-transfer-order"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="delivery-transfer-orders">
               <MainLayout>
                 <CreateTransferOrderPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <Inventory />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory/visualizer"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <WarehouseVisualizerPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory/smart-slotting"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <SmartSlottingPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory/stocktake"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <StocktakePage viewMode="stocktake" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory/stocktake/requests"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <StocktakePage viewMode="requests" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory/stocktake/create"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <StocktakePage viewMode="create" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory/stocktake/my-tasks"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <StocktakePage viewMode="my-tasks" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/inventory/stocktake/scan"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff', 'inventory_checker']}>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <StocktakeScanPage />
               </MainLayout>
@@ -709,7 +718,7 @@ function App() {
         <Route
           path="/inventory/stocktake/adjustment-approval"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin', 'manager']} menuId="inventory-stocktake">
               <MainLayout>
                 <AdjustmentApprovalPage />
               </MainLayout>
@@ -719,228 +728,228 @@ function App() {
         <Route
           path="/inventory/stocktake/request-new"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <StocktakePage viewMode="request-new" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
 
         <Route
           path="/reports"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-sales">
               <MainLayout>
                 <Reports />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/sales"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-sales">
               <MainLayout>
                 <SalesReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/revenue"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-revenue">
               <MainLayout>
                 <RevenueReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/cashflow"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-cashflow">
               <MainLayout>
                 <CashflowReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/inventory"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-inventory">
               <MainLayout>
                 <InventoryReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/inventory-base-unit"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-inventory-base-unit">
               <MainLayout>
                 <InventoryBaseUnitReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/inventory-summary"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-inventory-summary">
               <MainLayout>
                 <GenericReportPage title="Hàng tồn Tổng hợp" description="Báo cáo tổng hợp số lượng tồn kho toàn hệ thống" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/customer-debt"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-customer-debt">
               <MainLayout>
                 <GenericReportPage title="Công nợ Khách hàng" description="Báo cáo theo dõi công nợ phải thu của khách hàng" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/supplier-debt"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-supplier-debt">
               <MainLayout>
                 <GenericReportPage title="Công nợ Nhà cung cấp" description="Báo cáo theo dõi công nợ phải trả cho nhà cung cấp" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/fund-balance"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-fund-balance">
               <MainLayout>
                 <GenericReportPage title="Tồn quỹ" description="Báo cáo theo dõi số dư tồn quỹ tiền mặt và tài khoản" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/cashbook"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-cashbook">
               <MainLayout>
                 <GenericReportPage title="Sao kê - Sổ quỹ" description="Sao kê sổ quỹ chi tiết thu chi theo từng giao dịch" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/stock-card"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-stock-card">
               <MainLayout>
                 <GenericReportPage title="Thẻ kho" description="Thẻ kho theo dõi biến động xuất nhập tồn của từng sản phẩm" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/sales-detail"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-sales-detail">
               <MainLayout>
                 <GenericReportPage title="Chi tiết hàng bán ra" description="Báo cáo chi tiết từng mặt hàng đã bán trong kỳ" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/sales-by-staff"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-sales-by-staff">
               <MainLayout>
                 <GenericReportPage title="Hàng bán ra theo Nhân viên" description="Thống kê sản phẩm bán ra theo từng nhân viên" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/bill-profit"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-bill-profit">
               <MainLayout>
                 <BillProfitReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/category-profit"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-category-profit">
               <MainLayout>
                 <CategoryProfitReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/customer-profit"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-customer-profit">
               <MainLayout>
                 <CustomerProfitReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/business-summary"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-business-summary">
               <MainLayout>
                 <GenericReportPage title="Tổng hợp Kinh doanh" description="Báo cáo kết quả kinh doanh tổng hợp toàn công ty" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/below-min-stock"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-below-min-stock">
               <MainLayout>
                 <GenericReportPage title="Hàng tồn dưới định mức" description="Cảnh báo các sản phẩm đang có số lượng tồn kho dưới định mức tối thiểu" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports/revenue-huu"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-revenue-huu">
               <MainLayout>
                 <GenericReportPage title="Báo cáo doanh thu - Huu" description="Báo cáo doanh thu phân tích chuyên sâu" />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/reports-summary"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="report-sales">
               <MainLayout>
                 <SalesReportPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/documents"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+            <RoleRoute menuId="print-templates">
               <MainLayout>
                 <DocumentsPage />
               </MainLayout>
@@ -950,7 +959,7 @@ function App() {
         <Route
           path="/documents/sales-invoice"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+            <RoleRoute menuId="print-templates">
               <MainLayout>
                 <SalesInvoiceDocPage />
               </MainLayout>
@@ -960,7 +969,7 @@ function App() {
         <Route
           path="/documents/stock-in-note"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+            <RoleRoute menuId="print-templates">
               <MainLayout>
                 <StockInDocPage />
               </MainLayout>
@@ -970,7 +979,7 @@ function App() {
         <Route
           path="/documents/stock-out-note"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+            <RoleRoute menuId="print-templates">
               <MainLayout>
                 <StockOutDocPage />
               </MainLayout>
@@ -980,7 +989,7 @@ function App() {
         <Route
           path="/documents/transfer-note"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
+            <RoleRoute menuId="print-templates">
               <MainLayout>
                 <TransferDocPage />
               </MainLayout>
@@ -990,57 +999,57 @@ function App() {
         <Route
           path="/vat/management"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="evat-config">
               <MainLayout>
                 <VatManagementPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/vat/config"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="evat-config">
               <MainLayout>
                 <VatConfigPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/finance/receipts"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="finance-receipts">
               <MainLayout>
                 <ReceiptVouchersPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/finance/payment-vouchers"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="finance-payment-vouchers">
               <MainLayout>
                 <PaymentVouchersPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/finance/receipt-from-bill"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="finance-receipt-from-bill">
               <MainLayout>
                 <ReceiptFromBillPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route
           path="/erp-status"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']}>
+            <RoleRoute allowedRoles={['admin', 'manager']} menuId="sys-info">
               <MainLayout>
                 <ErpSyncStatusPage />
               </MainLayout>
@@ -1050,7 +1059,7 @@ function App() {
         <Route
           path="/audit-log"
           element={
-            <RoleRoute allowedRoles={['admin']}>
+            <RoleRoute allowedRoles={['admin']} menuId="audit-log">
               <MainLayout>
                 <AuditLog />
               </MainLayout>
@@ -1070,7 +1079,7 @@ function App() {
         <Route
           path="/settings/*"
           element={
-            <RoleRoute allowedRoles={['admin']}>
+            <RoleRoute allowedRoles={['admin']} menuId="sys-config">
               <MainLayout>
                 <Settings />
               </MainLayout>
@@ -1085,11 +1094,11 @@ function App() {
         <Route
           path="/scanner"
           element={
-            <ProtectedRoute>
+            <RoleRoute menuId="print-barcode">
               <MainLayout>
                 <ScannerPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleRoute>
           }
         />
         <Route path="/stocktake" element={<Navigate to="/inventory/stocktake" replace />} />

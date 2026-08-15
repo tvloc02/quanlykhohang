@@ -19,6 +19,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
+import { usePermissions } from '../../shared/hooks/usePermissions';
 
 type Role = {
   id: string;
@@ -225,6 +226,13 @@ function calculateCustomerAccountStatus(user: CustomerUser, profile?: CustomerPr
 }
 
 export default function CustomersManagement() {
+  const { canPerformAction, isAdmin } = usePermissions();
+  const canCreate = isAdmin || canPerformAction('customers', 'create');
+  const canEdit = isAdmin || canPerformAction('customers', 'edit');
+  const canDelete = isAdmin || canPerformAction('customers', 'delete');
+  const canExport = isAdmin || canPerformAction('customers', 'export');
+  const canImport = isAdmin || canPerformAction('customers', 'import');
+
   const [users, setUsers] = React.useState<CustomerUser[]>([]);
   const [search, setSearch] = React.useState('');
   const [statFilter, setStatFilter] = React.useState<'ALL' | 'NEW' | 'LOCKED' | 'INACTIVE'>('ALL');
@@ -723,30 +731,36 @@ export default function CustomersManagement() {
         </div>
 
         <div className="flex flex-wrap gap-2.5">
-          <button
-            type="button"
-            onClick={downloadCustomerImportTemplate}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
-          >
-            <UserPlus className="h-4 w-4" />
-            Tải mẫu
-          </button>
-          <button
-            type="button"
-            onClick={handleExportClick}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
-          >
-            <Download className="h-4 w-4" />
-            Export
-          </button>
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Thêm mới
-          </button>
+          {canImport && (
+            <button
+              type="button"
+              onClick={downloadCustomerImportTemplate}
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+            >
+              <UserPlus className="h-4 w-4" />
+              Tải mẫu
+            </button>
+          )}
+          {canExport && (
+            <button
+              type="button"
+              onClick={handleExportClick}
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </button>
+          )}
+          {canCreate && (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 cursor-pointer"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Thêm mới
+            </button>
+          )}
         </div>
       </div>
 
@@ -965,47 +979,53 @@ export default function CustomersManagement() {
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
                             title="Xem chi tiết"
                             onClick={() => openUserModal('view', user)}
                           >
                             <Eye size={18} strokeWidth={2.5} />
                           </button>
 
-                          <button
-                            type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
-                            title="Sửa thông tin"
-                            onClick={() => openUserModal('edit', user)}
-                          >
-                            <Pencil size={18} strokeWidth={2.5} />
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                              title="Sửa thông tin"
+                              onClick={() => openUserModal('edit', user)}
+                            >
+                              <Pencil size={18} strokeWidth={2.5} />
+                            </button>
+                          )}
 
-                          <button
-                            type="button"
-                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 ${
-                              profile.isLocked
-                                ? 'border-amber-500 text-amber-600 hover:bg-amber-50'
-                                : 'border-cyan-500 text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700'
-                            } bg-white shadow-sm transition`}
-                            title={profile.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
-                            onClick={() => openLockModal(user)}
-                          >
-                            {profile.isLocked ? (
-                              <Unlock size={18} strokeWidth={2.5} />
-                            ) : (
-                              <Lock size={18} strokeWidth={2.5} />
-                            )}
-                          </button>
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 ${
+                                profile.isLocked
+                                  ? 'border-amber-500 text-amber-600 hover:bg-amber-50'
+                                  : 'border-cyan-500 text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700'
+                              } bg-white shadow-sm transition cursor-pointer`}
+                              title={profile.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
+                              onClick={() => openLockModal(user)}
+                            >
+                              {profile.isLocked ? (
+                                <Unlock size={18} strokeWidth={2.5} />
+                              ) : (
+                                <Lock size={18} strokeWidth={2.5} />
+                              )}
+                            </button>
+                          )}
 
-                          <button
-                            type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700"
-                            title="Xóa khách hàng"
-                            onClick={() => openUserModal('delete', user)}
-                          >
-                            <Trash2 size={18} strokeWidth={2.5} />
-                          </button>
+                          {canDelete && (
+                            <button
+                              type="button"
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                              title="Xóa khách hàng"
+                              onClick={() => openUserModal('delete', user)}
+                            >
+                              <Trash2 size={18} strokeWidth={2.5} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
