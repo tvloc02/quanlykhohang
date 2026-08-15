@@ -32,6 +32,9 @@ import {
   RefreshCw,
   ChevronDown,
   Camera,
+  Maximize2,
+  Minimize2,
+  Copy,
 } from 'lucide-react';
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 
@@ -142,6 +145,19 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
   const [toast, setToast] = React.useState({ message: '', type: 'success' as 'success' | 'error' });
+  const [isFullScreen, setIsFullScreen] = React.useState(false);
+
+  const toggleBrowserFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullScreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      setIsFullScreen(false);
+    }
+  };
 
   // Pagination
   const [pageSize, setPageSize] = React.useState(20);
@@ -496,703 +512,643 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   const baseColCount = 3 + visibleMainCount + visibleDetailCount;
 
   return (
-    <div className="space-y-0">
+    <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
-      {/* ═══ Breadcrumb ═══ */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <Home className="h-4 w-4 text-cyan-600" />
-          <Link to="/dashboard" className="text-cyan-600 hover:underline font-medium">Home</Link>
-          <span className="text-slate-400">›</span>
-          <span className="text-slate-700 font-semibold">Kiểm kê</span>
-        </div>
-      </div>
+      <div className="space-y-6 animate-in fade-in duration-200">
+        {/* Top Header Section matching Inbound/Outbound */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
+              <ClipboardList className="h-5 w-5" />
+              <h1 className="text-xl font-extrabold tracking-tight">{pageTitle.toUpperCase()}</h1>
+            </div>
+          </div>
 
-      {/* ═══ Page Title ═══ */}
-      <div className="mb-4">
-        <h1 className="text-xl font-black text-slate-800 uppercase tracking-wide">DANH SÁCH PHIẾU KIỂM KÊ</h1>
-        <p className="text-sm text-slate-500 mt-1">{pageSubtitle}</p>
-      </div>
+          {/* Action Buttons Top Right aligned in Cyan style */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* 1. Thêm mới */}
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Plus className="h-4.5 w-4.5 text-cyan-700" />
+              Thêm mới
+            </button>
 
-      {/* ═══ Toolbar ═══ */}
-      <div className="flex flex-wrap items-center gap-2 mb-3 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
-        {/* Action Buttons - RIC style colored */}
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-          style={{ background: '#4CAF50' }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Thêm
-        </button>
-        <button
-          onClick={handleBulkDelete}
-          className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-          style={{ background: '#FF9800' }}
-        >
-          <X className="h-3.5 w-3.5" />
-          Xóa
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-          style={{ background: '#2196F3' }}
-        >
-          <Printer className="h-3.5 w-3.5" />
-          Print
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-          style={{ background: '#388E3C' }}
-        >
-          <Printer className="h-3.5 w-3.5" />
-          Print Chi tiết
-        </button>
-        <button
-          onClick={() => {
-            // Export basic CSV/Excel
-            const header = ['STT', 'Mã', 'NV', 'Ngày', 'Tổng lệch', 'Ghi chú', 'Trạng thái'];
-            const rows = displayedStocktakes.map((s, i) => [
-              i + 1,
-              s.stocktakeNo,
-              s.assignee || s.createdBy || '',
-              s.plannedDate ? new Date(s.plannedDate).toLocaleDateString('vi-VN') : '',
-              s.details ? s.details.reduce((sum, d) => sum + d.difference, 0) : 0,
-              s.note || '',
-              STATUS_MAP[s.status]?.label || s.status,
-            ]);
-            const csv = [header, ...rows].map(r => r.join(',')).join('\n');
-            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `kiem_ke_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-            URL.revokeObjectURL(url);
-          }}
-          className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-          style={{ background: '#4CAF50' }}
-        >
-          <FileSpreadsheet className="h-3.5 w-3.5" />
-          Excel
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-          style={{ background: '#FF5722' }}
-        >
-          <FileDown className="h-3.5 w-3.5" />
-          PDF
-        </button>
-
-        {/* Separator */}
-        <div className="w-px h-7 bg-slate-300 mx-1" />
-
-        {/* Date range - RIC style */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-semibold text-slate-600">Từ ngày:</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
-            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-          />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-semibold text-slate-600">Đến ngày:</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
-            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-          />
-        </div>
-
-        {/* Separator */}
-        <div className="w-px h-7 bg-slate-300 mx-1" />
-
-        {/* Hiện chi tiết checkbox */}
-        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={isDetailActive}
-            onChange={(e) => {
-              const val = e.target.checked;
-              setShowDetail(val);
-              setColumnVis((prev) => ({
-                ...prev,
-                productSku: val,
-                productName: val,
-                systemQty: val,
-                countedQty: val,
-                difference: val,
-              }));
-            }}
-            className="h-3.5 w-3.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
-          />
-          <span className="text-xs font-semibold text-slate-600">Hiện chi tiết</span>
-        </label>
-
-        {/* Search button */}
-        <button
-          onClick={() => loadData()}
-          className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-          style={{ background: '#FF9800' }}
-        >
-          <Search className="h-3.5 w-3.5" />
-          Tìm kiếm
-        </button>
-
-        {/* Settings gear - Hiện/Ẩn cột */}
-        <button
-          onClick={() => setShowColumnSettings(true)}
-          className="inline-flex items-center justify-center h-8 w-8 rounded-md shadow-sm text-white transition hover:opacity-90"
-          style={{ background: '#00BCD4' }}
-          title="Hiện/Ẩn cột"
-        >
-          <Settings className="h-4 w-4" />
-        </button>
-
-        {/* AI button for managers */}
-        {isManager && (
-          <button
-            onClick={async () => {
-              try {
-                const res = await fetch('http://localhost:3000/api/inventory/smart-stocktake/generate-recommended', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-                  },
-                  body: JSON.stringify({ createdBy: 'Smart AI Risk Engine' }),
-                });
-                if (!res.ok) {
-                  const err = await res.json().catch(() => null);
-                  throw new Error(err?.message || 'Không có sản phẩm nguy cơ cao nào');
-                }
-                const created = await res.json();
-                setToast({ message: `Đã tự động khởi tạo phiên kiểm kê thông minh ${created.stocktakeNo} pre-filled danh sách rủi ro cao!`, type: 'success' });
-                await loadData();
-              } catch (err: any) {
-                setToast({ message: err.message || 'Lỗi', type: 'error' });
-              }
-            }}
-            className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:opacity-90"
-            style={{ background: '#7C3AED' }}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            AI Kiểm kê
-          </button>
-        )}
-      </div>
-
-      {/* ═══ Modal Hiện/Ẩn cột (Sample page style) ═══ */}
-      {showColumnSettings && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
-          <div className="w-[360px] rounded-lg border border-slate-300 bg-white shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-150">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 px-4 py-2.5">
-              <h3 className="text-sm font-bold text-slate-800">Hiện/Ẩn cột</h3>
+            {/* 2. AI Kiểm kê */}
+            {isManager && (
               <button
-                onClick={() => setShowColumnSettings(false)}
-                className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition"
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch('http://localhost:3000/api/inventory/smart-stocktake/generate-recommended', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+                      },
+                      body: JSON.stringify({ createdBy: 'Smart AI Risk Engine' }),
+                    });
+                    if (!res.ok) {
+                      const err = await res.json().catch(() => null);
+                      throw new Error(err?.message || 'Không có sản phẩm nguy cơ cao nào');
+                    }
+                    const created = await res.json();
+                    setToast({ message: `Đã tự động khởi tạo phiên kiểm kê thông minh ${created.stocktakeNo} pre-filled danh sách rủi ro cao!`, type: 'success' });
+                    await loadData();
+                  } catch (err: any) {
+                    setToast({ message: err.message || 'Lỗi', type: 'error' });
+                  }
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-purple-700 bg-purple-50 px-5 py-2.5 text-sm font-extrabold text-purple-700 shadow-xs transition hover:bg-purple-100 active:scale-95 cursor-pointer"
               >
-                <X size={16} />
+                <ShieldCheck className="h-4.5 w-4.5 text-purple-700" />
+                AI Kiểm kê
               </button>
+            )}
+
+            {/* 3. Xóa */}
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+              Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+            </button>
+
+            {/* 4. In báo cáo */}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Printer className="h-4.5 w-4.5 text-cyan-700" />
+              In báo cáo
+            </button>
+
+            {/* 5. Export Excel */}
+            <button
+              type="button"
+              onClick={() => {
+                const header = ['STT', 'Mã', 'NV', 'Kho', 'Ngày', 'Tổng lệch', 'Ghi chú', 'Trạng thái'];
+                const rows = displayedStocktakes.map((s, i) => [
+                  i + 1,
+                  s.stocktakeNo,
+                  s.assignee || s.createdBy || '',
+                  s.locationCode || '',
+                  s.plannedDate ? new Date(s.plannedDate).toLocaleDateString('vi-VN') : '',
+                  s.details ? s.details.reduce((sum, d) => sum + d.difference, 0) : 0,
+                  s.note || '',
+                  STATUS_MAP[s.status]?.label || s.status,
+                ]);
+                const csv = [header, ...rows].map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+                const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `kiem_ke_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+              Export Excel
+            </button>
+
+            {/* 6. Settings */}
+            <button
+              type="button"
+              onClick={() => setShowColumnSettings(true)}
+              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 font-extrabold text-sm shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Cấu hình hiển thị cột"
+            >
+              <Settings className="h-4.5 w-4.5 text-cyan-700" />
+              <span>Hiển thị</span>
+            </button>
+
+            {/* 7. Toàn màn hình */}
+            <button
+              type="button"
+              onClick={toggleBrowserFullscreen}
+              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-slate-300 bg-white text-slate-700 shadow-xs transition hover:bg-slate-100 active:scale-95 cursor-pointer"
+              title="Toàn màn hình"
+            >
+              {isFullScreen ? <Minimize2 className="h-4.5 w-4.5" /> : <Maximize2 className="h-4.5 w-4.5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Filter & Search Panel */}
+        <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            {/* Search input - Matching height (h-12) */}
+            <div className="relative flex-1 min-w-[320px]">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-12 w-full rounded-xl border-2 border-cyan-600/40 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
+                placeholder="Tìm theo mã kiểm kê, kho, người tạo, trạng thái..."
+              />
             </div>
 
-            {/* Table of Columns (ALL 11 fields) */}
-            <div className="max-h-[380px] overflow-y-auto p-2">
-              <table className="w-full text-xs border-collapse border border-slate-300">
-                <thead>
-                  <tr style={{ background: '#e0f2fe' }}>
-                    <th className="w-12 border border-slate-300 px-2 py-1.5 text-center font-bold text-slate-700">TT</th>
-                    <th className="border border-slate-300 px-3 py-1.5 text-left font-bold text-slate-700">Tên cột</th>
-                    <th className="w-24 border border-slate-300 px-2 py-1.5 text-center font-bold text-slate-700">
-                      <div className="flex items-center justify-center gap-1">
-                        <span>Ẩn/Hiện</span>
-                        <input
-                          type="checkbox"
-                          checked={COLUMN_LIST.every((col) => columnVis[col.key])}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            const next = { ...columnVis };
-                            COLUMN_LIST.forEach((col) => { next[col.key] = val; });
-                            setColumnVis(next);
-                          }}
-                          className="h-3.5 w-3.5 rounded border-slate-400 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                        />
-                      </div>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {COLUMN_LIST.map((col, idx) => (
-                    <tr key={col.key} className="border-b border-slate-200 hover:bg-slate-50 transition">
-                      <td className="border border-slate-200 px-2 py-1.5 text-center text-slate-600">{idx + 1}</td>
-                      <td className="border border-slate-200 px-3 py-1.5 text-slate-700 font-medium">{col.label}</td>
-                      <td className="border border-slate-200 px-2 py-1.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={columnVis[col.key] ?? true}
-                          onChange={(e) => {
-                            setColumnVis((prev) => ({ ...prev, [col.key]: e.target.checked }));
-                          }}
-                          className="h-3.5 w-3.5 rounded border-slate-400 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {/* Date Filters Container & Show detail toggle */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Date Filter Box (h-12) */}
+              <div className="inline-flex h-12 items-center gap-3 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4.5 w-4.5 text-cyan-600 shrink-0" />
+                  <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Thời gian:</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-600">Từ</span>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
+                    className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-600">Đến</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
+                    className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                  />
+                </div>
+              </div>
 
-            {/* Modal Footer */}
-            <div className="flex justify-end border-t border-slate-200 bg-slate-50 px-4 py-2">
-              <button
-                onClick={() => setShowColumnSettings(false)}
-                className="rounded-md bg-cyan-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-cyan-700 transition"
-              >
-                Đóng
-              </button>
+              {/* Detail toggle box (h-12) */}
+              <div className="inline-flex h-12 items-center gap-2.5 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
+                <input
+                  type="checkbox"
+                  id="showDetailCheck"
+                  checked={isDetailActive}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setShowDetail(val);
+                    setColumnVis((prev) => ({
+                      ...prev,
+                      productSku: val,
+                      productName: val,
+                      systemQty: val,
+                      countedQty: val,
+                      difference: val,
+                    }));
+                  }}
+                  className="h-4.5 w-4.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                />
+                <label htmlFor="showDetailCheck" className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide cursor-pointer select-none">
+                  Hiện chi tiết
+                </label>
+              </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* ═══ Drag & Drop hint (RIC-style) ═══ */}
-      <div className="text-xs text-slate-400 italic mb-1 px-1">
-        Drag a column header and drop it here to group by that column
-      </div>
+        {/* Modal Hiện/Ẩn cột */}
+        {showColumnSettings && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+            <div className="w-[360px] rounded-2xl border-2 border-cyan-500/40 bg-white shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-150">
+              <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-600 px-4 py-3 text-white">
+                <h3 className="text-sm font-extrabold uppercase tracking-wide">Cấu hình hiển thị cột</h3>
+                <button
+                  onClick={() => setShowColumnSettings(false)}
+                  className="rounded-lg p-1 text-white hover:bg-white/20 transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
 
-      {/* ═══ Search bar (inline, below toolbar) ═══ */}
-      <div className="flex items-center gap-2 mb-2">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-9 w-full rounded-md border border-slate-300 bg-white pl-9 pr-4 text-xs font-medium outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
-            placeholder="Tìm theo mã kiểm kê, kho, người tạo, trạng thái..."
-          />
-        </div>
-      </div>
-
-      {/* ═══ Data Table ═══ */}
-      <div className="overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] border-collapse text-xs">
-            {/* Table Header */}
-            <thead>
-              <tr style={{ background: 'linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%)' }}>
-                <th className="w-10 border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                  No.
-                </th>
-                <th className="w-10 border border-slate-300 px-2 py-2.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={paginated.length > 0 && selectedIds.size === paginated.length}
-                    onChange={toggleSelectAll}
-                    className="h-3.5 w-3.5 rounded border-slate-400 text-cyan-600 focus:ring-cyan-500"
-                  />
-                </th>
-                {columnVis.nv && (
-                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                    <div className="flex items-center justify-center gap-1">
-                      NV <Filter className="h-3 w-3 text-slate-400" />
-                    </div>
-                  </th>
-                )}
-                {columnVis.code && (
-                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                    <div className="flex items-center justify-center gap-1">
-                      Mã <Filter className="h-3 w-3 text-slate-400" />
-                    </div>
-                  </th>
-                )}
-                {columnVis.location && (
-                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                    <div className="flex items-center justify-center gap-1">
-                      Kho <Filter className="h-3 w-3 text-slate-400" />
-                    </div>
-                  </th>
-                )}
-                {columnVis.date && (
-                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                    <div className="flex items-center justify-center gap-1">
-                      Ngày <Filter className="h-3 w-3 text-slate-400" />
-                    </div>
-                  </th>
-                )}
-                {columnVis.totalDiff && (
-                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                    <div className="flex items-center justify-center gap-1">
-                      Tổng lệch <Filter className="h-3 w-3 text-slate-400" />
-                    </div>
-                  </th>
-                )}
-                {columnVis.status && (
-                  <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                    <div className="flex items-center justify-center gap-1">
-                      Trạng thái <Filter className="h-3 w-3 text-slate-400" />
-                    </div>
-                  </th>
-                )}
-                {isDetailActive && (
-                  <>
-                    {columnVis.productSku && (
-                      <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
+              <div className="max-h-[380px] overflow-y-auto p-3">
+                <table className="w-full text-xs border-collapse border border-slate-200">
+                  <thead>
+                    <tr className="bg-cyan-50 font-extrabold text-slate-700">
+                      <th className="w-12 border border-slate-200 px-2 py-2 text-center">TT</th>
+                      <th className="border border-slate-200 px-3 py-2 text-left">Tên cột</th>
+                      <th className="w-24 border border-slate-200 px-2 py-2 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          Mã hàng <Filter className="h-3 w-3 text-slate-400" />
-                        </div>
-                      </th>
-                    )}
-                    {columnVis.productName && (
-                      <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                        <div className="flex items-center justify-center gap-1">
-                          Tên hàng <Filter className="h-3 w-3 text-slate-400" />
-                        </div>
-                      </th>
-                    )}
-                    {columnVis.systemQty && (
-                      <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                        <div className="flex items-center justify-center gap-1">
-                          Tồn <Filter className="h-3 w-3 text-slate-400" />
-                        </div>
-                      </th>
-                    )}
-                    {columnVis.countedQty && (
-                      <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                        <div className="flex items-center justify-center gap-1">
-                          Thực tồn <Filter className="h-3 w-3 text-slate-400" />
-                        </div>
-                      </th>
-                    )}
-                    {columnVis.difference && (
-                      <th className="border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                        <div className="flex items-center justify-center gap-1">
-                          Lệch <Filter className="h-3 w-3 text-slate-400" />
-                        </div>
-                      </th>
-                    )}
-                  </>
-                )}
-                {columnVis.note && (
-                  <th className="w-48 max-w-[200px] border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                    <div className="flex items-center justify-center gap-1">
-                      Ghi chú <Filter className="h-3 w-3 text-slate-400" />
-                    </div>
-                  </th>
-                )}
-                <th className="w-24 border border-slate-300 px-2 py-2.5 text-center font-bold text-slate-700">
-                  Thao tác
-                </th>
-              </tr>
-            </thead>
-
-            {/* Table Body */}
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={baseColCount} className="px-6 py-10 text-center text-sm text-slate-500">
-                    <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="h-4 w-4 animate-spin text-cyan-500" />
-                      Đang tải dữ liệu kiểm kê...
-                    </div>
-                  </td>
-                </tr>
-              ) : paginated.length === 0 ? (
-                <tr>
-                  <td colSpan={baseColCount} className="px-6 py-10 text-center text-sm text-slate-400">
-                    No items to display
-                  </td>
-                </tr>
-              ) : (
-                paginated.map((item, index) => {
-                  const itemDate = item.plannedDate ? new Date(item.plannedDate).toLocaleDateString('vi-VN')
-                    : item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '';
-                  const totalDiff = item.details ? item.details.reduce((s, d) => s + d.difference, 0) : 0;
-                  const hasDetails = item.details && item.details.length > 0;
-                  const detailRows = isDetailActive && hasDetails ? item.details : [];
-                  const firstDetail = hasDetails ? item.details[0] : null;
-                  const extraDetails = detailRows.length > 1 ? detailRows.slice(1) : [];
-                  const detailNotes = item.details ? item.details.map(d => d.note).filter(Boolean).join('; ') : '';
-                  const displayNote = item.note ? (detailNotes ? `${item.note} (${detailNotes})` : item.note) : detailNotes;
-
-                  return (
-                    <React.Fragment key={item.id}>
-                      {/* Main row */}
-                      <tr className={`border-b border-slate-200 transition hover:bg-cyan-50/40 ${selectedIds.has(item.id) ? 'bg-cyan-50/60' : ''}`}>
-                        <td className="border border-slate-200 px-2 py-2 text-center text-xs text-slate-600" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                          {startIndex + index}
-                        </td>
-                        <td className="border border-slate-200 px-2 py-2 text-center" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                          <span>Hiện</span>
                           <input
                             type="checkbox"
-                            checked={selectedIds.has(item.id)}
-                            onChange={() => toggleSelect(item.id)}
-                            className="h-3.5 w-3.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                            checked={COLUMN_LIST.every((col) => columnVis[col.key])}
+                            onChange={(e) => {
+                              const val = e.target.checked;
+                              const next = { ...columnVis };
+                              COLUMN_LIST.forEach((col) => { next[col.key] = val; });
+                              setColumnVis(next);
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                          />
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {COLUMN_LIST.map((col, idx) => (
+                      <tr key={col.key} className="hover:bg-cyan-50/50 transition">
+                        <td className="border border-slate-200 px-2 py-2 text-center text-slate-600 font-bold">{idx + 1}</td>
+                        <td className="border border-slate-200 px-3 py-2 text-slate-700 font-bold">{col.label}</td>
+                        <td className="border border-slate-200 px-2 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={columnVis[col.key] ?? true}
+                            onChange={(e) => {
+                              setColumnVis((prev) => ({ ...prev, [col.key]: e.target.checked }));
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
                           />
                         </td>
-                        {columnVis.nv && (
-                          <td className="border border-slate-200 px-2 py-2 text-center text-xs text-slate-600" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            {item.assignee || item.createdBy || '—'}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end border-t-2 border-slate-200 bg-slate-50 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setShowColumnSettings(false)}
+                  className="rounded-xl border-2 border-cyan-700 bg-cyan-600 px-5 py-2 text-xs font-black text-white shadow-xs hover:bg-cyan-700 transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Data Table */}
+        <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full min-w-[1450px] border-collapse text-left">
+              {/* Table Header */}
+              <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
+                <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
+                  <th className="w-12 min-w-[50px] border-r border-slate-200 px-2 py-4 text-center">
+                    <input
+                      type="checkbox"
+                      checked={paginated.length > 0 && selectedIds.size === paginated.length}
+                      onChange={toggleSelectAll}
+                      className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    />
+                  </th>
+                  <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
+                  {columnVis.code && <th className="min-w-[210px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">Mã kiểm kê</th>}
+                  {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Nhân viên</th>}
+                  {columnVis.location && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Kho</th>}
+                  {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">Ngày kiểm</th>}
+                  {columnVis.totalDiff && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">Tổng lệch</th>}
+                  {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>}
+                  {isDetailActive && (
+                    <>
+                      {columnVis.productSku && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">Mã hàng</th>}
+                      {columnVis.productName && <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">Tên hàng</th>}
+                      {columnVis.systemQty && <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">Tồn hệ thống</th>}
+                      {columnVis.countedQty && <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">Thực tồn</th>}
+                      {columnVis.difference && <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">Chênh lệch</th>}
+                    </>
+                  )}
+                  {columnVis.note && <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">Ghi chú</th>}
+                  <th className="sticky right-0 top-0 z-30 w-36 min-w-[140px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
+                </tr>
+              </thead>
+
+              {/* Table Body */}
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {loading ? (
+                  <tr>
+                    <td colSpan={baseColCount} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      <div className="flex items-center justify-center gap-2">
+                        <RefreshCw className="h-5 w-5 animate-spin text-cyan-600" />
+                        Đang tải dữ liệu kiểm kê...
+                      </div>
+                    </td>
+                  </tr>
+                ) : paginated.length === 0 ? (
+                  <tr>
+                    <td colSpan={baseColCount} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      Không tìm thấy phiếu kiểm kê nào
+                    </td>
+                  </tr>
+                ) : (
+                  paginated.map((item, index) => {
+                    const itemDate = item.plannedDate ? new Date(item.plannedDate).toLocaleDateString('vi-VN')
+                      : item.createdAt ? new Date(item.createdAt).toLocaleDateString('vi-VN') : '';
+                    const totalDiff = item.details ? item.details.reduce((s, d) => s + d.difference, 0) : 0;
+                    const hasDetails = item.details && item.details.length > 0;
+                    const detailRows = isDetailActive && hasDetails ? item.details : [];
+                    const firstDetail = hasDetails ? item.details[0] : null;
+                    const extraDetails = detailRows.length > 1 ? detailRows.slice(1) : [];
+                    const detailNotes = item.details ? item.details.map(d => d.note).filter(Boolean).join('; ') : '';
+                    const displayNote = item.note ? (detailNotes ? `${item.note} (${detailNotes})` : item.note) : detailNotes;
+                    const isSelected = selectedIds.has(item.id);
+
+                    return (
+                      <React.Fragment key={item.id}>
+                        {/* Main row */}
+                        <tr className={`group transition cursor-pointer border-b border-slate-200 ${isSelected ? 'bg-cyan-100/60' : 'hover:bg-cyan-50/60'}`}>
+                          <td className="border-r border-slate-200 px-2 py-3.5 text-center" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1} onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelect(item.id)}
+                              className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                            />
                           </td>
-                        )}
-                        {columnVis.code && (
-                          <td className="border border-slate-200 px-2 py-2 text-center text-xs font-bold text-cyan-700" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            <button
-                              onClick={() => handleViewDetail(item.id)}
-                              className="hover:underline hover:text-cyan-800 transition"
-                            >
-                              {item.stocktakeNo}
-                            </button>
+                          <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                            {startIndex + index}
                           </td>
-                        )}
-                        {columnVis.location && (
-                          <td className="border border-slate-200 px-2 py-2 text-center text-xs font-semibold text-slate-700" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            {item.locationCode || '—'}
+                          {columnVis.code && (
+                            <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-cyan-700 whitespace-nowrap" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewDetail(item.id);
+                                }}
+                                className="text-cyan-700 hover:text-cyan-900 hover:underline font-extrabold text-left cursor-pointer whitespace-nowrap"
+                              >
+                                {item.stocktakeNo}
+                              </button>
+                            </td>
+                          )}
+                          {columnVis.nv && (
+                            <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                              {item.assignee || item.createdBy || '—'}
+                            </td>
+                          )}
+                          {columnVis.location && (
+                            <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                              {item.locationCode || '—'}
+                            </td>
+                          )}
+                          {columnVis.date && (
+                            <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                              {itemDate}
+                            </td>
+                          )}
+                          {columnVis.totalDiff && (
+                            <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-black" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                              <span className={totalDiff !== 0 ? 'text-red-600' : 'text-slate-500'}>
+                                {totalDiff !== 0 ? totalDiff.toFixed(1) : '0.0'}
+                              </span>
+                            </td>
+                          )}
+                          {columnVis.status && (
+                            <td className="border-r border-slate-200 px-3 py-3.5 text-center" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                              <StatusBadge status={item.status} />
+                            </td>
+                          )}
+                          {isDetailActive && (
+                            <>
+                              {columnVis.productSku && (
+                                <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-cyan-700">
+                                  {firstDetail?.product?.internalSku || (hasDetails ? 'SKU-N/A' : '—')}
+                                </td>
+                              )}
+                              {columnVis.productName && (
+                                <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-slate-800">
+                                  {firstDetail?.product?.name || (hasDetails ? 'Sản phẩm kiểm kê' : '—')}
+                                </td>
+                              )}
+                              {columnVis.systemQty && (
+                                <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
+                                  {firstDetail ? firstDetail.systemQty.toLocaleString('vi-VN') : '—'}
+                                </td>
+                              )}
+                              {columnVis.countedQty && (
+                                <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
+                                  {firstDetail?.countedQty != null ? firstDetail.countedQty.toLocaleString('vi-VN') : '—'}
+                                </td>
+                              )}
+                              {columnVis.difference && (
+                                <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-black">
+                                  {firstDetail?.countedQty != null ? (
+                                    <span className={firstDetail.difference !== 0 ? 'text-red-600' : 'text-slate-500'}>
+                                      {firstDetail.difference}
+                                    </span>
+                                  ) : '—'}
+                                </td>
+                              )}
+                            </>
+                          )}
+                          {columnVis.note && (
+                            <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[200px] truncate" title={displayNote} rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                              {displayNote || '—'}
+                            </td>
+                          )}
+                          <td className="sticky right-0 z-10 w-36 min-w-[140px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewDetail(item.id);
+                                }}
+                                title="Xem chi tiết"
+                                className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                              >
+                                <Eye size={16} strokeWidth={2.5} />
+                              </button>
+                              {(item.status === 'COUNTING_DONE' || item.status === 'COUNTING' || item.status === 'DRAFT') && isManager && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleApprove(item.id);
+                                    }}
+                                    title="Duyệt kiểm kê"
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-emerald-500 bg-white text-emerald-600 shadow-sm transition hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer"
+                                  >
+                                    <Check size={16} strokeWidth={2.5} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleReject(item.id);
+                                    }}
+                                    title="Từ chối kiểm kê"
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 hover:text-red-700 cursor-pointer"
+                                  >
+                                    <Ban size={16} strokeWidth={2.5} />
+                                  </button>
+                                </>
+                              )}
+                              {item.status === 'REQUESTED' && hasAcceptPermission && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAcceptRequest(item.id);
+                                  }}
+                                  title="Tiếp nhận yêu cầu"
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-purple-500 bg-white text-purple-600 shadow-sm transition hover:bg-purple-50 hover:text-purple-700 cursor-pointer"
+                                >
+                                  <Check size={16} strokeWidth={2.5} />
+                                </button>
+                              )}
+                            </div>
                           </td>
-                        )}
-                        {columnVis.date && (
-                          <td className="border border-slate-200 px-2 py-2 text-center text-xs text-slate-600" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            {itemDate}
-                          </td>
-                        )}
-                        {columnVis.totalDiff && (
-                          <td className="border border-slate-200 px-2 py-2 text-center text-xs font-bold" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            <span className={totalDiff !== 0 ? 'text-red-600' : 'text-slate-400'}>
-                              {totalDiff !== 0 ? totalDiff.toFixed(1) : '0.0'}
-                            </span>
-                          </td>
-                        )}
-                        {columnVis.status && (
-                          <td className="border border-slate-200 px-2 py-2 text-center" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            <StatusBadge status={item.status} />
-                          </td>
-                        )}
-                        {isDetailActive && (
-                          <>
+                        </tr>
+
+                        {/* Extra detail rows */}
+                        {isDetailActive && extraDetails.map((detail, dIdx) => (
+                          <tr key={`${item.id}-d-${dIdx}`} className="border-b border-slate-200 hover:bg-cyan-50/50 transition">
                             {columnVis.productSku && (
-                              <td className="border border-slate-200 px-2 py-2 text-center text-xs text-slate-600">
-                                {firstDetail?.product?.internalSku || (hasDetails ? 'SKU-N/A' : '—')}
+                              <td className="border-r border-slate-200 px-3 py-2.5 text-center text-sm font-bold text-cyan-700">
+                                {detail.product?.internalSku || ''}
                               </td>
                             )}
                             {columnVis.productName && (
-                              <td className="border border-slate-200 px-2 py-2 text-left text-xs text-slate-600">
-                                {firstDetail?.product?.name || (hasDetails ? 'Sản phẩm kiểm kê' : '—')}
+                              <td className="border-r border-slate-200 px-4 py-2.5 text-sm font-extrabold text-slate-800">
+                                {detail.product?.name || ''}
                               </td>
                             )}
                             {columnVis.systemQty && (
-                              <td className="border border-slate-200 px-2 py-2 text-center text-xs font-semibold text-slate-700">
-                                {firstDetail ? firstDetail.systemQty.toLocaleString('vi-VN') : '—'}
+                              <td className="border-r border-slate-200 px-3 py-2.5 text-center text-sm font-bold text-slate-800">
+                                {detail.systemQty.toLocaleString('vi-VN')}
                               </td>
                             )}
                             {columnVis.countedQty && (
-                              <td className="border border-slate-200 px-2 py-2 text-center text-xs font-semibold text-slate-700">
-                                {firstDetail?.countedQty != null ? firstDetail.countedQty.toLocaleString('vi-VN') : '—'}
+                              <td className="border-r border-slate-200 px-3 py-2.5 text-center text-sm font-bold text-slate-800">
+                                {detail.countedQty != null ? detail.countedQty.toLocaleString('vi-VN') : ''}
                               </td>
                             )}
                             {columnVis.difference && (
-                              <td className="border border-slate-200 px-2 py-2 text-center text-xs font-bold">
-                                {firstDetail?.countedQty != null ? (
-                                  <span className={firstDetail.difference !== 0 ? 'text-red-600' : 'text-slate-500'}>
-                                    {firstDetail.difference}
+                              <td className="border-r border-slate-200 px-3 py-2.5 text-center text-sm font-black">
+                                {detail.countedQty != null ? (
+                                  <span className={detail.difference !== 0 ? 'text-red-600' : 'text-slate-500'}>
+                                    {detail.difference}
                                   </span>
-                                ) : '—'}
+                                ) : ''}
                               </td>
                             )}
-                          </>
-                        )}
-                        {columnVis.note && (
-                          <td className="w-48 max-w-[200px] border border-slate-200 px-2 py-2 text-left text-xs text-slate-500 truncate" title={displayNote} rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                            {displayNote || ''}
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+
+              {/* Footer Totals */}
+              {!loading && paginated.length > 0 && (
+                <tfoot>
+                  <tr className="bg-slate-100 border-t-2 border-slate-300 font-extrabold text-slate-800 text-sm">
+                    <td
+                      colSpan={2 + (columnVis.code ? 1 : 0) + (columnVis.nv ? 1 : 0) + (columnVis.location ? 1 : 0) + (columnVis.date ? 1 : 0) + (!columnVis.totalDiff ? 1 : 0)}
+                      className="border-r border-slate-300 px-4 py-3.5 text-right font-black text-slate-800"
+                    >
+                      Tổng cộng:
+                    </td>
+                    {columnVis.totalDiff && (
+                      <td className="border-r border-slate-300 px-3 py-3.5 text-center font-black text-red-600">
+                        {footerTotalTongLech !== 0 ? footerTotalTongLech.toFixed(1) : '0.0'}
+                      </td>
+                    )}
+                    {columnVis.status && <td className="border-r border-slate-300 px-3 py-3.5" />}
+                    {isDetailActive && (
+                      <>
+                        {columnVis.productSku && <td className="border-r border-slate-300 px-3 py-3.5" />}
+                        {columnVis.productName && <td className="border-r border-slate-300 px-4 py-3.5" />}
+                        {columnVis.systemQty && (
+                          <td className="border-r border-slate-300 px-3 py-3.5 text-center font-black text-slate-900">
+                            {footerTotalTon.toLocaleString('vi-VN')}
                           </td>
                         )}
-                        <td className="border border-slate-200 px-2 py-2 text-center" rowSpan={isDetailActive && extraDetails.length > 0 ? extraDetails.length + 1 : 1}>
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={() => handleViewDetail(item.id)}
-                              className="rounded p-1 text-slate-500 transition hover:bg-cyan-50 hover:text-cyan-600"
-                              title="Xem chi tiết"
-                            >
-                              <Eye size={14} />
-                            </button>
-                            {(item.status === 'COUNTING_DONE' || item.status === 'COUNTING' || item.status === 'DRAFT') && isManager && (
-                              <>
-                                <button
-                                  onClick={() => handleApprove(item.id)}
-                                  className="rounded p-1 text-emerald-500 transition hover:bg-emerald-50 hover:text-emerald-700"
-                                  title="Duyệt kiểm kê"
-                                >
-                                  <Check size={14} />
-                                </button>
-                                <button
-                                  onClick={() => handleReject(item.id)}
-                                  className="rounded p-1 text-red-400 transition hover:bg-red-50 hover:text-red-600"
-                                  title="Từ chối kiểm kê"
-                                >
-                                  <Ban size={14} />
-                                </button>
-                              </>
-                            )}
-                            {item.status === 'REQUESTED' && hasAcceptPermission && (
-                              <button
-                                onClick={() => handleAcceptRequest(item.id)}
-                                className="rounded p-1 text-violet-600 transition hover:bg-violet-50 hover:text-violet-700"
-                                title="Tiếp nhận yêu cầu"
-                              >
-                                <Check size={14} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-
-                      {/* Extra detail rows (if detail mode is active) */}
-                      {isDetailActive && extraDetails.map((detail, dIdx) => (
-                        <tr key={`${item.id}-d-${dIdx}`} className="border-b border-slate-100 hover:bg-sky-50/60">
-                          {columnVis.productSku && (
-                            <td className="border border-slate-200 px-2 py-1.5 text-center text-xs text-slate-600">
-                              {detail.product?.internalSku || ''}
-                            </td>
-                          )}
-                          {columnVis.productName && (
-                            <td className="border border-slate-200 px-2 py-1.5 text-left text-xs text-slate-600">
-                              {detail.product?.name || ''}
-                            </td>
-                          )}
-                          {columnVis.systemQty && (
-                            <td className="border border-slate-200 px-2 py-1.5 text-center text-xs font-semibold text-slate-700">
-                              {detail.systemQty.toLocaleString('vi-VN')}
-                            </td>
-                          )}
-                          {columnVis.countedQty && (
-                            <td className="border border-slate-200 px-2 py-1.5 text-center text-xs font-semibold text-slate-700">
-                              {detail.countedQty != null ? detail.countedQty.toLocaleString('vi-VN') : ''}
-                            </td>
-                          )}
-                          {columnVis.difference && (
-                            <td className="border border-slate-200 px-2 py-1.5 text-center text-xs font-bold">
-                              {detail.countedQty != null ? (
-                                <span className={detail.difference !== 0 ? 'text-red-600' : 'text-slate-500'}>
-                                  {detail.difference}
-                                </span>
-                              ) : ''}
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  );
-                })
+                        {columnVis.countedQty && (
+                          <td className="border-r border-slate-300 px-3 py-3.5 text-center font-black text-slate-900">
+                            {footerTotalThucTon.toLocaleString('vi-VN')}
+                          </td>
+                        )}
+                        {columnVis.difference && (
+                          <td className="border-r border-slate-300 px-3 py-3.5 text-center font-black text-red-600">
+                            {footerTotalLech.toLocaleString('vi-VN')}
+                          </td>
+                        )}
+                      </>
+                    )}
+                    {columnVis.note && <td className="border-r border-slate-300 px-4 py-3.5" />}
+                    <td className="sticky right-0 z-10 bg-slate-100 border-l border-slate-300 px-3 py-3.5" />
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-
-            {/* ═══ Footer Totals ═══ */}
-            {!loading && paginated.length > 0 && (
-              <tfoot>
-                <tr className="bg-slate-100 border-t-2 border-slate-300">
-                  <td
-                    colSpan={2 + (columnVis.nv ? 1 : 0) + (columnVis.code ? 1 : 0) + (columnVis.location ? 1 : 0) + (columnVis.date ? 1 : 0) + (!columnVis.totalDiff ? 1 : 0)}
-                    className="border border-slate-300 px-2 py-2 text-right text-xs font-bold text-slate-600"
-                  >
-                    Tổng cộng:
-                  </td>
-                  {columnVis.totalDiff && (
-                    <td className="border border-slate-300 px-2 py-2 text-center text-xs font-bold text-red-600">
-                      {footerTotalTongLech !== 0 ? footerTotalTongLech.toFixed(1) : '0.0'}
-                    </td>
-                  )}
-                  {columnVis.status && <td className="border border-slate-300 px-2 py-2" />}
-                  {isDetailActive && (
-                    <>
-                      {columnVis.productSku && <td className="border border-slate-300 px-2 py-2" />}
-                      {columnVis.productName && <td className="border border-slate-300 px-2 py-2" />}
-                      {columnVis.systemQty && (
-                        <td className="border border-slate-300 px-2 py-2 text-center text-xs font-bold text-slate-700">
-                          {footerTotalTon.toLocaleString('vi-VN')}
-                        </td>
-                      )}
-                      {columnVis.countedQty && (
-                        <td className="border border-slate-300 px-2 py-2 text-center text-xs font-bold text-slate-700">
-                          {footerTotalThucTon.toLocaleString('vi-VN')}
-                        </td>
-                      )}
-                      {columnVis.difference && (
-                        <td className="border border-slate-300 px-2 py-2" />
-                      )}
-                    </>
-                  )}
-                  {columnVis.note && <td className="border border-slate-300 px-2 py-2" />}
-                  <td className="border border-slate-300 px-2 py-2" />
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-
-        {/* ═══ Pagination (RIC style) ═══ */}
-        <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-              className="flex h-7 w-7 items-center justify-center rounded border border-slate-300 bg-white text-slate-500 text-xs hover:bg-slate-100 disabled:opacity-40 transition"
-            >
-              <ChevronsLeft size={14} />
-            </button>
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="flex h-7 w-7 items-center justify-center rounded border border-slate-300 bg-white text-slate-500 text-xs hover:bg-slate-100 disabled:opacity-40 transition"
-            >
-              <ChevronLeft size={14} />
-            </button>
-
-            {/* Current page badge (RIC green/orange circle) */}
-            <button
-              className="flex h-7 min-w-7 items-center justify-center rounded-full text-xs font-bold text-white px-2"
-              style={{ background: '#4CAF50' }}
-            >
-              {totalItems}
-            </button>
-
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="flex h-7 w-7 items-center justify-center rounded border border-slate-300 bg-white text-slate-500 text-xs hover:bg-slate-100 disabled:opacity-40 transition"
-            >
-              <ChevronRight size={14} />
-            </button>
-            <button
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
-              className="flex h-7 w-7 items-center justify-center rounded border border-slate-300 bg-white text-slate-500 text-xs hover:bg-slate-100 disabled:opacity-40 transition"
-            >
-              <ChevronsRight size={14} />
-            </button>
+            </table>
           </div>
 
-          <div className="flex items-center gap-3">
-            {totalItems === 0 ? (
-              <span className="text-xs text-slate-400 italic">No items to display</span>
-            ) : (
-              <span className="text-xs text-slate-500">
-                Trang {currentPage}/{totalPages} — Hiển thị {startIndex}–{endIndex} / {totalItems}
+          {/* Pagination Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t-2 border-slate-200 bg-slate-50/90 px-4 py-3.5 text-sm font-bold text-slate-700">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-extrabold text-slate-700">Hiển thị:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="h-9 rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer shadow-xs"
+                >
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={500}>500</option>
+                </select>
+                <span className="text-sm font-bold text-slate-600">dòng/trang</span>
+              </div>
+              <div className="border-l-2 border-slate-300 pl-3 text-sm font-semibold text-slate-600">
+                Hiển thị <span className="font-extrabold text-slate-900">{totalItems > 0 ? startIndex : 0}</span> -{' '}
+                <span className="font-extrabold text-slate-900">{endIndex}</span> trên tổng <span className="font-black text-cyan-800">{totalItems}</span> phiếu kiểm kê
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm font-bold">
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(1)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:hover:text-slate-700 transition cursor-pointer shadow-2xs"
+                title="Trang đầu"
+              >
+                <ChevronsLeft size={18} strokeWidth={2.5} />
+              </button>
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:hover:text-slate-700 transition cursor-pointer shadow-2xs"
+                title="Trang trước"
+              >
+                <ChevronLeft size={18} strokeWidth={2.5} />
+              </button>
+              <span className="px-2 text-sm font-extrabold text-slate-800">
+                Trang <span className="text-cyan-700 font-black">{currentPage}</span> / {totalPages}
               </span>
-            )}
-            <select
-              value={pageSize}
-              onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-              className="h-7 rounded border border-slate-300 bg-white px-1.5 text-xs outline-none focus:border-cyan-500"
-            >
-              <option value={5}>5</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:hover:text-slate-700 transition cursor-pointer shadow-2xs"
+                title="Trang tiếp"
+              >
+                <ChevronRight size={18} strokeWidth={2.5} />
+              </button>
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:hover:text-slate-700 transition cursor-pointer shadow-2xs"
+                title="Trang cuối"
+              >
+                <ChevronsRight size={18} strokeWidth={2.5} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
