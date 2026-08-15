@@ -49,6 +49,7 @@ export interface ScannedProduct {
   supplier: { id: string; name: string } | null;
   isExternal?: boolean;
   purchasePrice?: number;
+  salePrice?: number;
   stockBalances: Array<{
     id: string;
     locationCode: string;
