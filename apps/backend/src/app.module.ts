@@ -26,6 +26,7 @@ import { DeliveryModule } from './delivery/delivery.module';
 import { DocumentsModule } from './documents/documents.module';
 import { SmartInventoryModule } from './inventory/smart-inventory/smart-inventory.module';
 import { ProjectTeamsModule } from './project-teams/project-teams.module';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { ProjectTeamsModule } from './project-teams/project-teams.module';
     DeliveryModule,
     DocumentsModule,
     ProjectTeamsModule,
+    UploadModule,
   ],
   controllers: [],
   providers: [

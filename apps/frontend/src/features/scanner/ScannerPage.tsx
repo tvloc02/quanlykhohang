@@ -95,15 +95,21 @@ export default function ScannerPage() {
   const handleProductFound = useCallback(
     (product: ScannedProduct, qty: number) => {
       setScannedItems((prev) => {
-        const existing = prev.findIndex((item) => item.product.id === product.id);
+        const existing = prev.findIndex(
+          (item) =>
+            item.product.id === product.id ||
+            (product.internalSku && item.product.internalSku === product.internalSku)
+        );
         if (existing >= 0) {
           const updated = [...prev];
-          updated[existing] = { ...updated[existing], qty: updated[existing].qty + qty };
+          const nextQty = updated[existing].qty + qty;
+          updated[existing] = { ...updated[existing], qty: nextQty };
+          showToast('success', `Đã tăng số lượng "${product.name}": ${nextQty}`);
           return updated;
         }
+        showToast('success', `Đã thêm "${product.name}" — Số lượng: ${qty}`);
         return [{ product, qty, timestamp: new Date() }, ...prev];
       });
-      showToast('success', `Đã thêm ${product.name} — Số lượng: ${qty}`);
     },
     [showToast]
   );

@@ -7,11 +7,19 @@ export class UpdateProductDto {
 
   @IsOptional()
   @IsString()
+  supplierBarcode?: string;
+
+  @IsOptional()
+  @IsString()
   unit?: string;
 
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
 
   @IsOptional()
   @IsInt()

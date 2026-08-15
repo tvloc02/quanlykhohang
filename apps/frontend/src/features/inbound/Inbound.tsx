@@ -714,35 +714,59 @@ export default function Inbound({
       return;
     }
 
+    const barcodeVal = scanned.internalSku || scanned.supplierBarcode || '';
+    const price = scanned.purchasePrice || 50000;
+    let finalQty = 1;
+
     updateActiveTab((tab) => {
       const details = [...tab.details];
-      const emptyIdx = details.findIndex((r) => !r.productId && !r.productName);
-      const price = scanned.purchasePrice || 50000;
-      const newRow: FormDetailRow = {
-        rowId: `row-${Date.now()}-${Math.random()}`,
-        productId: scanned.id,
-        productSku: scanned.internalSku || '',
-        productName: scanned.name || '',
-        unit: scanned.unit || 'Cái',
-        qty: 1,
-        price,
-        discountPercent: 0,
-        discountAmount: 0,
-        vatPercent: 0,
-        vatAmount: 0,
-        totalAmount: price,
-        note: 'Quét Barcode',
-      };
+      const existingIdx = details.findIndex(
+        (r) =>
+          (r.productId && r.productId === scanned.id) ||
+          (r.productSku && barcodeVal && r.productSku.toLowerCase() === barcodeVal.toLowerCase()) ||
+          (r.productName && scanned.name && r.productName.toLowerCase() === scanned.name.toLowerCase())
+      );
 
-      if (emptyIdx !== -1) {
-        details[emptyIdx] = newRow;
+      if (existingIdx !== -1) {
+        const row = details[existingIdx];
+        const newQty = (Number(row.qty) || 0) + 1;
+        finalQty = newQty;
+        const linePrice = Number(row.price) || price;
+        const discPct = Number(row.discountPercent) || 0;
+        const lineTotal = newQty * linePrice * (1 - discPct / 100);
+        details[existingIdx] = {
+          ...row,
+          qty: newQty,
+          totalAmount: Math.max(0, lineTotal),
+        };
       } else {
-        details.push(newRow);
+        const emptyIdx = details.findIndex((r) => !r.productId && !r.productName);
+        const newRow: FormDetailRow = {
+          rowId: `row-${Date.now()}-${Math.random()}`,
+          productId: scanned.id,
+          productSku: barcodeVal,
+          productName: scanned.name || '',
+          unit: scanned.unit || 'Cái',
+          qty: 1,
+          price,
+          discountPercent: 0,
+          discountAmount: 0,
+          vatPercent: 0,
+          vatAmount: 0,
+          totalAmount: price,
+          note: 'Quét Barcode',
+        };
+
+        if (emptyIdx !== -1) {
+          details[emptyIdx] = newRow;
+        } else {
+          details.push(newRow);
+        }
       }
       return { ...tab, details };
     });
     setShowScannerModal(false);
-    setToast({ message: `Đã thêm sản phẩm: ${scanned.name}`, type: 'success' });
+    setToast({ message: `Đã quét: ${scanned.name} (Số lượng: ${finalQty})`, type: 'success' });
   };
 
   const handleCreateSupplier = (e: React.FormEvent) => {
