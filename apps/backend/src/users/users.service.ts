@@ -8,6 +8,25 @@ import { User } from '../entities/user.entity';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import * as bcrypt from 'bcryptjs';
 
+const normalizeUser = (user: any) => {
+  if (!user) return user;
+  let groupIds = user.groupIds;
+  if (typeof groupIds === 'string') {
+    try {
+      groupIds = JSON.parse(groupIds);
+    } catch {
+      groupIds = groupIds.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+  }
+  if (!Array.isArray(groupIds)) {
+    groupIds = groupIds ? [groupIds] : [];
+  }
+  return {
+    ...user,
+    groupIds: groupIds.map(String).map((s: string) => s.trim()).filter(Boolean),
+  };
+};
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -17,7 +36,8 @@ export class UsersService {
   ) {}
 
   async findAll(): Promise<User[]> {
-    return this.repo.find({ relations: ['roles'] });
+    const users = await this.repo.find({ relations: ['roles'] });
+    return users.map(normalizeUser);
   }
 
   async create(createUserDto: CreateUserDto, actor?: { id?: string; email?: string }): Promise<User> {
@@ -62,11 +82,12 @@ export class UsersService {
       resourceId: savedUser.id,
       metadata: { email: savedUser.email, role: role.name },
     });
-    return savedUser;
+    return normalizeUser(savedUser);
   }
 
   async findOne(id: string): Promise<User | null> {
-    return this.repo.findOne({ where: { id }, relations: ['roles'] });
+    const user = await this.repo.findOne({ where: { id }, relations: ['roles'] });
+    return user ? normalizeUser(user) : null;
   }
 
   async findByEmail(email: string): Promise<(User & { role?: string }) | null> {
@@ -74,7 +95,7 @@ export class UsersService {
     if (!user) return null;
 
     return {
-      ...user,
+      ...normalizeUser(user),
       role: user.roles?.[0]?.name,
     };
   }

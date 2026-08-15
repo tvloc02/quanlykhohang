@@ -728,16 +728,18 @@ export default function Personnel() {
         });
       }
 
+      const effectiveUserId = updatedUser.id || userId;
+
       // Save profile metadata
       const nextProfiles = {
         ...profiles,
-        [userId]: {
+        [effectiveUserId]: {
           gender: form.gender,
           phone: form.phone,
           status: form.status,
-          isLocked: profiles[userId]?.isLocked || false,
-          lockReason: profiles[userId]?.lockReason || '',
-          lockedAt: profiles[userId]?.lockedAt || '',
+          isLocked: profiles[effectiveUserId]?.isLocked || false,
+          lockReason: profiles[effectiveUserId]?.lockReason || '',
+          lockedAt: profiles[effectiveUserId]?.lockedAt || '',
         },
       };
       setProfiles(nextProfiles);
@@ -752,13 +754,13 @@ export default function Personnel() {
 
         if (shouldBeIn) {
           if (form.role === 'inventory-checker') {
-            checkers.add(userId);
+            checkers.add(effectiveUserId);
           } else {
-            storekeepers.add(userId);
+            storekeepers.add(effectiveUserId);
           }
         } else {
-          storekeepers.delete(userId);
-          checkers.delete(userId);
+          storekeepers.delete(effectiveUserId);
+          checkers.delete(effectiveUserId);
         }
 
         const nextStorekeeperIds = Array.from(storekeepers);
@@ -777,33 +779,70 @@ export default function Personnel() {
       setWarehouses(updatedWarehouses);
       saveStoredWarehouses(updatedWarehouses);
 
-      // Sync permission groups members
+      // Sync permission groups members across matching IDs and group names
       const groups = readStoredPermissionGroups();
+      const allSelectedGroupNames = new Set(
+        groups.filter((g) => form.groupIds.includes(g.id)).map((g) => g.name.trim().toLowerCase())
+      );
+
+      const expandedGroupIds = Array.from(
+        new Set([
+          ...form.groupIds,
+          ...groups
+            .filter((g) => g.name && allSelectedGroupNames.has(g.name.trim().toLowerCase()))
+            .map((g) => g.id),
+        ])
+      );
+
       const updatedGroups = groups.map((g) => {
-        const isAssigned = form.groupIds.includes(g.id);
+        const isAssigned =
+          expandedGroupIds.includes(g.id) ||
+          (g.name && allSelectedGroupNames.has(g.name.trim().toLowerCase()));
         const currentMembers = g.memberIds || [];
-        const filtered = currentMembers.filter((m) => m !== userId && m !== form.email);
+        const filtered = currentMembers.filter(
+          (m) => m !== effectiveUserId && m !== form.email && m !== userId
+        );
         return {
           ...g,
-          memberIds: isAssigned ? [...filtered, userId] : filtered,
+          memberIds: isAssigned ? [...filtered, effectiveUserId, form.email] : filtered,
         };
       });
       saveStoredPermissionGroups(updatedGroups);
+
+      // Sync updated memberIds to backend project-teams
+      await Promise.all(
+        updatedGroups.map((g) =>
+          fetch(`${API_BASE_URL}/project-teams/${g.id}`, {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ memberIds: g.memberIds }),
+          }).catch(() => null)
+        )
+      );
 
       // If updating currently logged in user, update localStorage user
       try {
         const rawUser = localStorage.getItem('user');
         if (rawUser) {
           const loggedInUser = JSON.parse(rawUser);
-          if (loggedInUser.email === form.email || loggedInUser.id === userId) {
-            localStorage.setItem('user', JSON.stringify({
-              ...loggedInUser,
-              groupIds: form.groupIds,
-              role: form.role,
-            }));
+          if (
+            loggedInUser.email === form.email ||
+            loggedInUser.id === effectiveUserId ||
+            loggedInUser.id === userId
+          ) {
+            localStorage.setItem(
+              'user',
+              JSON.stringify({
+                ...loggedInUser,
+                groupIds: expandedGroupIds,
+                role: form.role,
+              })
+            );
           }
         }
       } catch { /* ignore */ }
+
+      window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new Event('permissions-updated'));
 
       setSuccess(isEdit ? 'Đã cập nhật nhân sự.' : 'Đã tạo nhân sự mới.');

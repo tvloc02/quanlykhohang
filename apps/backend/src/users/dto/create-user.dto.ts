@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, IsArray } from 'class-validator';
 
 export class CreateUserDto {
   @IsEmail()
@@ -30,5 +30,6 @@ export class CreateUserDto {
   address?: string;
 
   @IsOptional()
+  @IsArray()
   groupIds?: string[];
 }

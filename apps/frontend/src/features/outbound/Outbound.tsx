@@ -39,6 +39,16 @@ import {
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import CreateOutboundOrderPage from './pages/CreateOutboundOrderPage';
+import { usePermissions } from '../../shared/hooks/usePermissions';
+
+const getOutboundMenuId = (mode?: string) => {
+  if (mode === 'sales-order') return 'outbound-sales-orders';
+  if (mode === 'disposal') return 'outbound-disposal';
+  if (mode === 'quote') return 'documents-quotes';
+  if (mode === 'transfer-out') return 'delivery-transfer-orders';
+  if (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/retail')) return 'outbound-retail';
+  return 'outbound-orders';
+};
 
 // ─── TOAST ─────────────────────────────────────────────────────
 
@@ -399,7 +409,15 @@ export default function Outbound({
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
 
-  // ── Column Visibility Configuration ───────────────────────────
+  const { canPerformAction, isAdmin } = usePermissions();
+  const currentMenuId = getOutboundMenuId(featureMode);
+
+  const canCreate = isAdmin || canPerformAction(currentMenuId, 'create');
+  const canEdit = isAdmin || canPerformAction(currentMenuId, 'edit');
+  const canDelete = isAdmin || canPerformAction(currentMenuId, 'delete');
+  const canPrint = isAdmin || canPerformAction(currentMenuId, 'print');
+  const canExport = isAdmin || canPerformAction(currentMenuId, 'export');
+  const canChangeStatus = isAdmin || canPerformAction(currentMenuId, 'status');
   const DEFAULT_COLUMN_VIS = {
     branch: true,
     nv: true,
@@ -1113,59 +1131,69 @@ export default function Outbound({
             {/* Action Buttons Top Right aligned in Cyan style */}
             <div className="flex flex-wrap items-center gap-3">
               {/* 1. Thêm mới */}
-              <button
-                type="button"
-                onClick={() => {
-                  const newTab = createNewOutboundTab(1, currentUserName);
-                  setTabs([newTab]);
-                  setActiveTabId(newTab.tabId);
-                  handleOpenFormModal('create');
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              >
-                <Plus className="h-4.5 w-4.5 text-cyan-700" />
-                Thêm mới
-              </button>
+              {canCreate && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newTab = createNewOutboundTab(1, currentUserName);
+                    setTabs([newTab]);
+                    setActiveTabId(newTab.tabId);
+                    handleOpenFormModal('create');
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                >
+                  <Plus className="h-4.5 w-4.5 text-cyan-700" />
+                  Thêm mới
+                </button>
+              )}
 
               {/* 2. Copy */}
-              <button
-                type="button"
-                onClick={handleCopySelected}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              >
-                <Copy className="h-4.5 w-4.5 text-cyan-700" />
-                Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
-              </button>
+              {canCreate && (
+                <button
+                  type="button"
+                  onClick={handleCopySelected}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                >
+                  <Copy className="h-4.5 w-4.5 text-cyan-700" />
+                  Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+                </button>
+              )}
 
               {/* 3. Xóa */}
-              <button
-                type="button"
-                onClick={handleDeleteSelected}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              >
-                <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
-                Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
-              </button>
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                >
+                  <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+                  Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+                </button>
+              )}
 
               {/* 4. In báo cáo */}
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              >
-                <Printer className="h-4.5 w-4.5 text-cyan-700" />
-                In báo cáo
-              </button>
+              {canPrint && (
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                >
+                  <Printer className="h-4.5 w-4.5 text-cyan-700" />
+                  In báo cáo
+                </button>
+              )}
 
               {/* 5. Export Excel */}
-              <button
-                type="button"
-                onClick={handleExportCSV}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              >
-                <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
-                Export Excel
-              </button>
+              {canExport && (
+                <button
+                  type="button"
+                  onClick={handleExportCSV}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                >
+                  <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+                  Export Excel
+                </button>
+              )}
 
               {/* 6. Settings */}
               {/* 6. Settings */}
@@ -1355,14 +1383,16 @@ export default function Outbound({
                             )}
                             <td className="sticky right-0 z-10 w-36 min-w-[140px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200">
                               <div className="flex items-center justify-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleEditOrder(ord)}
-                                  title="Sửa phiếu xuất"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                                >
-                                  <Pencil size={16} strokeWidth={2.5} />
-                                </button>
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditOrder(ord)}
+                                    title="Sửa phiếu xuất"
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                                  >
+                                    <Pencil size={16} strokeWidth={2.5} />
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -1374,17 +1404,19 @@ export default function Outbound({
                                 >
                                   <Eye size={16} strokeWidth={2.5} />
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedOrder(ord);
-                                    setShowPrintModal(true);
-                                  }}
-                                  title="In phiếu xuất"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                                >
-                                  <Printer size={16} strokeWidth={2.5} />
-                                </button>
+                                {canPrint && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedOrder(ord);
+                                      setShowPrintModal(true);
+                                    }}
+                                    title="In phiếu xuất"
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                                  >
+                                    <Printer size={16} strokeWidth={2.5} />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1500,8 +1532,7 @@ export default function Outbound({
       ) : (
         <CreateOutboundOrderPage standalone={false} onBack={handleCloseFormModal} />
       )}
-
-      {/* ─── MODAL ADD CUSTOMER ─────────────────────────────────────── */}
+        {/* ─── MODAL ADD CUSTOMER ─────────────────────────────────────── */}
       {showAddCustomerModal && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
