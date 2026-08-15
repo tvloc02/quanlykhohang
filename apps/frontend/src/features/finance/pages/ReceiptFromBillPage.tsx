@@ -10,11 +10,18 @@ import {
   CheckCircle,
   XCircle,
   Receipt,
-  DollarSign,
-  Calendar,
   Check,
+  Maximize2,
+  Minimize2,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Filter,
 } from 'lucide-react';
 import { readStoredReceiptVouchers, saveStoredReceiptVouchers, ReceiptVoucher } from './ReceiptVouchersPage';
+import * as XLSX from 'xlsx';
 
 export interface ExportBillInvoice {
   id: string;
@@ -42,6 +49,22 @@ function authHeaders() {
 export default function ReceiptFromBillPage() {
   const [bills, setBills] = useState<ExportBillInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Column visibility state
+  const [columnVis, setColumnVis] = useState({
+    branch: true,
+    staffName: true,
+    code: true,
+    date: true,
+    customerName: true,
+    totalAmount: true,
+    paidAmount: true,
+    status: true,
+  });
+  const [showColumnModal, setShowColumnModal] = useState(false);
+
+  // Filter states
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
@@ -51,7 +74,7 @@ export default function ReceiptFromBillPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  // Pagination states matching Personnel.tsx
+  // Pagination states
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -112,7 +135,7 @@ export default function ReceiptFromBillPage() {
                 branch: 'Kho Tổng',
                 staffName: item.createdBy?.fullName || 'N/A',
                 code: orderNo,
-                date: item.dueDate ? new Date(item.dueDate).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN'),
+                date: item.dueDate ? new Date(item.dueDate).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'),
                 customerName: item.customer || 'Khách hàng lẻ',
                 address: '-',
                 phone: '-',
@@ -186,6 +209,25 @@ export default function ReceiptFromBillPage() {
     showToast(`Đã thu thành công ${form.amount.toLocaleString('vi-VN')} đ cho phiếu ${activeBill.code}!`);
   };
 
+  const handleExportExcel = () => {
+    const dataToExport = filteredBills.map((b, i) => ({
+      STT: i + 1,
+      'Chi nhánh': b.branch,
+      'NV tạo': b.staffName,
+      'Mã phiếu xuất': b.code,
+      'Ngày lập': b.date,
+      'Tên khách hàng': b.customerName,
+      'Tổng tiền (VND)': b.totalAmount,
+      'Thực thu (VND)': b.paidAmount,
+      'Trạng thái': b.status,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Thu_Tien_Phieu_Xuat');
+    XLSX.writeFile(wb, `Thu_Tien_Phieu_Xuat_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
   const filteredBills = useMemo(() => {
     return bills.filter((b) => {
       const matchesSearch =
@@ -208,20 +250,16 @@ export default function ReceiptFromBillPage() {
     setCurrentPage(1);
   }, [searchQuery, statusFilter]);
 
-  // Pagination calculations matching Personnel.tsx
+  // Pagination calculations
   const totalItems = filteredBills.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
   const paginatedBills = filteredBills.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  const totalBillAmount = filteredBills.reduce((sum, b) => sum + b.totalAmount, 0);
-  const totalPaidAmount = filteredBills.reduce((sum, b) => sum + b.paidAmount, 0);
-  const uncollectedCount = bills.filter((b) => b.status !== 'Đã thu').length;
-
   return (
-    <div className="space-y-6 pb-12 text-slate-800">
-      {/* TOAST NOTIFICATION MATCHING PERSONNEL.TSX */}
+    <div className={`space-y-6 text-slate-800 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+      {/* TOAST NOTIFICATION */}
       {toastMessage &&
         createPortal(
           <div
@@ -237,263 +275,343 @@ export default function ReceiptFromBillPage() {
           document.body
         )}
 
-      {/* HEADER MATCHING PERSONNEL.TSX PILL BADGE DESIGN */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
-            <Receipt className="h-5 w-5" />
-            <h1 className="text-xl font-extrabold tracking-tight uppercase">Thu tiền từ phiếu xuất bán</h1>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2.5">
-          <button
-            type="button"
-            onClick={() => showToast('Tính năng nhập từ Excel sẵn sàng!')}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-amber-600 active:scale-95 cursor-pointer"
-          >
-            <FileSpreadsheet className="h-4.5 w-4.5" />
-            Thu tiền từ Excel
-          </button>
-        </div>
-      </div>
-
-      {/* 3 STAT OVERVIEW CARDS MATCHING PERSONNEL.TSX */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG TIỀN PHIẾU XUẤT</p>
-            <p className="text-lg font-black text-cyan-700">{totalBillAmount.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-cyan-100 p-2 text-cyan-700">
-            <DollarSign size={22} />
-          </div>
-        </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">ĐÃ THU THỰC TẾ</p>
-            <p className="text-lg font-black text-emerald-600">{totalPaidAmount.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-emerald-100 p-2 text-emerald-700">
-            <CheckCircle size={22} />
-          </div>
-        </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">PHIẾU CHƯA THU ĐỦ</p>
-            <p className="text-lg font-black text-amber-600">{uncollectedCount} Phiếu</p>
-          </div>
-          <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
-            <Calendar size={22} />
-          </div>
-        </div>
-      </div>
-
-      {/* FILTER & SEARCH BAR MATCHING PERSONNEL.TSX */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
-        {/* Search Input */}
-        <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm kiếm theo mã phiếu xuất, tên khách hàng, SĐT..."
-            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-12 pr-4 text-sm font-semibold text-slate-700 outline-none transition focus:ring-4 focus:ring-cyan-500/10"
-          />
-        </div>
-
-        {/* Date & Status Filters */}
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-11 rounded-xl border-2 border-cyan-500 bg-white px-3 text-sm font-bold text-slate-700 outline-none cursor-pointer"
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="UNPAID">Chưa thu đủ</option>
-            <option value="PAID">Đã thu xong</option>
-          </select>
-
-          <button
-            onClick={() => window.print()}
-            className="inline-flex h-11 items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
-          >
-            <Printer className="h-4 w-4" /> Print
-          </button>
-        </div>
-      </div>
-
-      {/* PERSONNEL HIGH-DENSITY TABLE MATCHING PERSONNEL.TSX */}
-      <div className="overflow-hidden rounded-xl border-2 border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left">
-            <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
-              <tr className="border-b-2 border-slate-200">
-                <th className="border-r border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 w-14 whitespace-nowrap">
-                  STT
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
-                  Chi nhánh
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[140px] whitespace-nowrap">
-                  NV tạo
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
-                  Mã phiếu xuất
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 w-36 whitespace-nowrap">
-                  Ngày lập
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[180px] whitespace-nowrap">
-                  Tên Khách hàng
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[160px] whitespace-nowrap">
-                  Tổng tiền (VND)
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[160px] whitespace-nowrap">
-                  Thực thu (VND)
-                </th>
-                <th className="sticky right-0 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)] w-40 whitespace-nowrap">
-                  THAO TÁC
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500 font-semibold">
-                    Đang tải danh sách phiếu xuất bán hàng...
-                  </td>
-                </tr>
-              ) : paginatedBills.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-500 font-semibold">
-                    Không tìm thấy phiếu xuất nào phù hợp.
-                  </td>
-                </tr>
-              ) : (
-                paginatedBills.map((b, index) => {
-                  const globalIndex = (currentPage - 1) * pageSize + index + 1;
-                  const isFullyPaid = b.status === 'Đã thu' || b.paidAmount >= b.totalAmount;
-
-                  return (
-                    <tr
-                      key={b.id}
-                      className="group border-b border-slate-200 transition hover:bg-cyan-50/50"
-                    >
-                      <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-600">
-                        {globalIndex}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-semibold text-slate-700">
-                        {b.branch}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-bold text-slate-800">
-                        {b.staffName}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-mono font-bold text-cyan-700">
-                        {b.code}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-medium text-slate-600">
-                        {b.date}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-bold text-slate-900">
-                        {b.customerName}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-right text-sm font-mono font-bold text-slate-900">
-                        {b.totalAmount.toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-right text-sm font-mono font-black text-emerald-600">
-                        {b.paidAmount.toLocaleString('vi-VN')} đ
-                      </td>
-                      {/* ACTION BUTTON COLUMN MATCHING PERSONNEL.TSX */}
-                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
-                        {isFullyPaid ? (
-                          <span className="inline-flex items-center gap-1 rounded-xl bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-800 border border-emerald-300">
-                            <Check size={14} />
-                            Đã thu đủ
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenCollectModal(b)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 px-3.5 py-1.5 text-xs font-black text-white shadow-sm transition active:scale-95 cursor-pointer"
-                          >
-                            <ArrowRight size={14} />
-                            Thu tiền
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* PAGINATION FOOTER ATTACHED MATCHING PERSONNEL.TSX */}
-        {totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
-            <div className="text-sm font-semibold text-slate-600">
-              Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
+      <div className="space-y-6 animate-in fade-in duration-200">
+        {/* Top Header Section matching Inbound/Outbound */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
+              <Receipt className="h-5 w-5" />
+              <h1 className="text-xl font-extrabold tracking-tight uppercase">THU TIỀN TỪ PHIẾU XUẤT BÁN HÀNG</h1>
             </div>
-            <div className="mt-4 flex items-center gap-2 sm:mt-0">
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="h-9 rounded-xl border-2 border-cyan-500 bg-white px-2 text-sm font-bold text-slate-700 outline-none"
-              >
-                <option value={10}>10 dòng / trang</option>
-                <option value={20}>20 dòng / trang</option>
-                <option value={50}>50 dòng / trang</option>
-                <option value={100}>100 dòng / trang</option>
-              </select>
+          </div>
 
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 1. Thu tiền từ Excel */}
+            <button
+              type="button"
+              onClick={() => showToast('Tính năng nhập từ Excel sẵn sàng!')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+              Thu tiền từ Excel
+            </button>
+
+            {/* 2. In báo cáo */}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Printer className="h-4.5 w-4.5 text-cyan-700" />
+              In báo cáo
+            </button>
+
+            {/* 3. Export Excel */}
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+              Export Excel
+            </button>
+
+            {/* 4. Hiển thị */}
+            <button
+              type="button"
+              onClick={() => setShowColumnModal(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Settings className="h-4.5 w-4.5 text-cyan-700" />
+              Hiển thị
+            </button>
+
+            {/* 5. Toàn màn hình */}
+            <button
+              type="button"
+              onClick={() => setIsFullScreen(!isFullScreen)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title={isFullScreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
+            >
+              {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
+            </button>
+          </div>
+        </div>
+
+        {/* High-density Filter & Search Bar */}
+        <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            {/* Search Input h-12 */}
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm kiếm theo mã phiếu xuất, tên khách hàng, SĐT..."
+                className="h-12 w-full rounded-xl border-2 border-cyan-600/30 bg-slate-50/50 pl-11 pr-4 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:bg-white focus:ring-4 focus:ring-cyan-500/10"
+              />
+            </div>
+
+            {/* Filters Container (h-12) */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Date Box */}
+              <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
+                <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Từ ngày:</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                />
+                <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide ml-1">Đến:</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                />
+              </div>
+
+              {/* Status Filter */}
+              <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
+                <Filter className="h-4 w-4 text-cyan-600 shrink-0" />
+                <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Trạng thái:</span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                 >
-                  «
-                </button>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ‹
-                </button>
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-600 text-sm font-bold text-white">
-                  {currentPage}
-                </button>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ›
-                </button>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  »
-                </button>
+                  <option value="ALL">Tất cả trạng thái</option>
+                  <option value="UNPAID">Chưa thu đủ</option>
+                  <option value="PAID">Đã thu xong</option>
+                </select>
               </div>
             </div>
           </div>
-        )}
+        </div>
+
+        {/* High-density Table */}
+        <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full border-collapse text-left min-w-[1350px]">
+              <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
+                <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
+                  <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
+                  {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 px-4 py-4 text-center">Chi nhánh</th>}
+                  {columnVis.staffName && <th className="min-w-[150px] border-r border-slate-200 px-4 py-4 text-center">NV tạo</th>}
+                  {columnVis.code && <th className="min-w-[210px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">Mã phiếu xuất</th>}
+                  {columnVis.date && <th className="min-w-[140px] border-r border-slate-200 px-4 py-4 text-center">Ngày lập</th>}
+                  {columnVis.customerName && <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">Tên Khách hàng</th>}
+                  {columnVis.totalAmount && <th className="min-w-[160px] border-r border-slate-200 px-4 py-4 text-center">Tổng tiền (VND)</th>}
+                  {columnVis.paidAmount && <th className="min-w-[160px] border-r border-slate-200 px-4 py-4 text-center">Thực thu (VND)</th>}
+                  {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>}
+                  <th className="sticky right-0 top-0 z-30 w-40 min-w-[160px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {loading ? (
+                  <tr>
+                    <td colSpan={10} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      Đang tải danh sách phiếu xuất bán hàng...
+                    </td>
+                  </tr>
+                ) : paginatedBills.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      Không tìm thấy phiếu xuất nào phù hợp.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedBills.map((b, index) => {
+                    const globalIndex = (currentPage - 1) * pageSize + index + 1;
+                    const isFullyPaid = b.status === 'Đã thu' || b.paidAmount >= b.totalAmount;
+
+                    return (
+                      <tr
+                        key={b.id}
+                        className="group border-b border-slate-200 transition hover:bg-cyan-50/60"
+                      >
+                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">
+                          {globalIndex}
+                        </td>
+                        {columnVis.branch && <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-semibold text-slate-700">{b.branch}</td>}
+                        {columnVis.staffName && <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-bold text-slate-800">{b.staffName}</td>}
+                        {columnVis.code && (
+                          <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-mono font-extrabold text-cyan-700 whitespace-nowrap text-center">
+                            {b.code}
+                          </td>
+                        )}
+                        {columnVis.date && <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-medium text-slate-600">{b.date}</td>}
+                        {columnVis.customerName && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-900">{b.customerName}</td>}
+                        {columnVis.totalAmount && (
+                          <td className="border-r border-slate-200 px-4 py-3.5 text-right text-sm font-mono font-bold text-slate-900">
+                            {b.totalAmount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.paidAmount && (
+                          <td className="border-r border-slate-200 px-4 py-3.5 text-right text-sm font-mono font-black text-emerald-600">
+                            {b.paidAmount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.status && (
+                          <td className="border-r border-slate-200 px-3 py-3.5 text-center">
+                            <span className={`inline-flex items-center gap-1 rounded-xl px-3 py-1 text-xs font-black border ${
+                              isFullyPaid
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
+                            }`}>
+                              {isFullyPaid ? <Check size={13} /> : null}
+                              {b.status}
+                            </span>
+                          </td>
+                        )}
+
+                        {/* Sticky Action Column */}
+                        <td className="sticky right-0 top-0 z-10 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.05)] group-hover:bg-cyan-50">
+                          {isFullyPaid ? (
+                            <span className="inline-flex items-center gap-1 rounded-xl bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 border border-emerald-200">
+                              <Check size={14} />
+                              Đã hoàn tất
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCollectModal(b)}
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 px-3.5 py-1.5 text-xs font-black text-white shadow-sm transition active:scale-95 cursor-pointer"
+                            >
+                              <ArrowRight size={14} />
+                              Thu tiền
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Standardized Pagination Bar */}
+          {totalItems > 0 && (
+            <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row gap-4">
+              <div className="text-sm font-semibold text-slate-600">
+                Hiển thị <span className="font-extrabold text-slate-900">{startIndex}</span> - <span className="font-extrabold text-slate-900">{endIndex}</span> trên tổng số <span className="font-extrabold text-slate-900">{totalItems}</span> phiếu xuất
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-700">Hiển thị:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="h-10 rounded-xl border-2 border-cyan-600/30 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-pointer"
+                  >
+                    <option value={20}>20 / trang</option>
+                    <option value={50}>50 / trang</option>
+                    <option value={100}>100 / trang</option>
+                    <option value={500}>500 / trang</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                    title="Trang đầu"
+                  >
+                    <ChevronsLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                    title="Trang trước"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+
+                  <span className="flex h-10 items-center justify-center rounded-xl bg-cyan-600 px-4 text-sm font-black text-white shadow-xs">
+                    {currentPage} / {totalPages}
+                  </span>
+
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                    title="Trang sau"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                    title="Trang cuối"
+                  >
+                    <ChevronsRight className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* POPUP MODAL MATCHING PERSONNEL.TSX DESIGN */}
+      {/* COLUMN VISIBILITY MODAL */}
+      {showColumnModal && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in-50">
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-cyan-700" />
+                <h3 className="text-base font-extrabold text-slate-800 uppercase">Cấu hình hiển thị cột</h3>
+              </div>
+              <button onClick={() => setShowColumnModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 transition cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              {[
+                { key: 'branch', label: 'Chi nhánh' },
+                { key: 'staffName', label: 'NV tạo' },
+                { key: 'code', label: 'Mã phiếu xuất' },
+                { key: 'date', label: 'Ngày lập' },
+                { key: 'customerName', label: 'Tên Khách hàng' },
+                { key: 'totalAmount', label: 'Tổng tiền (VND)' },
+                { key: 'paidAmount', label: 'Thực thu (VND)' },
+                { key: 'status', label: 'Trạng thái' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-3 p-2 rounded-xl hover:bg-cyan-50/50 cursor-pointer font-bold text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={(columnVis as any)[key]}
+                    onChange={(e) => setColumnVis({ ...columnVis, [key]: e.target.checked })}
+                    className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t-2 border-slate-200 bg-slate-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setShowColumnModal(false)}
+                className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-extrabold text-white hover:bg-cyan-700 shadow-md transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP COLLECT PAYMENT MODAL */}
       {activeBill && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in-50">
           <div className="w-full max-w-2xl overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl space-y-0">

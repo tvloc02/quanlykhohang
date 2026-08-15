@@ -13,8 +13,15 @@ import {
   CreditCard,
   Eye,
   Pencil,
-  DollarSign,
-  Calendar,
+  Copy,
+  Maximize2,
+  Minimize2,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Filter,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -63,6 +70,21 @@ export function saveStoredPaymentVouchers(items: PaymentVoucher[]) {
 export default function PaymentVouchersPage() {
   const [vouchers, setVouchers] = useState<PaymentVoucher[]>(readStoredPaymentVouchers);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Column visibility state
+  const [columnVis, setColumnVis] = useState({
+    code: true,
+    date: true,
+    type: true,
+    targetName: true,
+    amount: true,
+    paymentMethod: true,
+    wallet: true,
+    staffName: true,
+    note: true,
+  });
+  const [showColumnModal, setShowColumnModal] = useState(false);
 
   // Real Options from System
   const [suppliers, setSuppliers] = useState<{ id: string; name: string; phone?: string; address?: string }[]>([]);
@@ -78,7 +100,7 @@ export default function PaymentVouchersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('ALL');
 
-  // Pagination states matching Personnel.tsx
+  // Pagination states
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -91,13 +113,13 @@ export default function PaymentVouchersPage() {
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
 
   // Current logged in user
-  const currentUser = (() => {
+  const currentUser = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem('user') || '{}');
     } catch {
       return {};
     }
-  })();
+  }, []);
   const defaultStaffName = currentUser.fullName || currentUser.email || 'Admin';
 
   // Form State
@@ -234,6 +256,29 @@ export default function PaymentVouchersPage() {
     }
   };
 
+  const handleCopySelected = () => {
+    if (selectedIds.length === 0) {
+      showToast('Vui lòng chọn ít nhất một phiếu chi để copy!', 'error');
+      return;
+    }
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const selectedItems = vouchers.filter((v) => selectedIds.includes(v.id));
+    
+    const newItems: PaymentVoucher[] = selectedItems.map((item, idx) => ({
+      ...item,
+      id: `pc-${Date.now()}-${idx}`,
+      code: `PC-${dateStr}-${String(vouchers.length + idx + 1).padStart(3, '0')}`,
+      date: new Date().toISOString().split('T')[0],
+      note: item.note ? `${item.note} (Bản sao)` : '(Bản sao)',
+    }));
+
+    const updated = [...newItems, ...vouchers];
+    setVouchers(updated);
+    saveStoredPaymentVouchers(updated);
+    showToast(`Đã nhân bản ${newItems.length} phiếu chi thành công!`);
+  };
+
   const handleExportExcel = () => {
     const dataToExport = filteredVouchers.map((v, i) => ({
       STT: i + 1,
@@ -243,6 +288,7 @@ export default function PaymentVouchersPage() {
       'Đối tượng': v.targetName,
       'Số tiền (VND)': v.amount,
       'Hình thức': v.paymentMethod,
+      'Tài khoản/Ví': v.wallet,
       'Nhân viên': v.staffName,
       'Ghi chú': v.note,
     }));
@@ -274,22 +320,26 @@ export default function PaymentVouchersPage() {
     setCurrentPage(1);
   }, [searchQuery, fromDate, toDate, paymentMethodFilter]);
 
-  // Pagination calculations matching Personnel.tsx
+  // Pagination calculations
   const totalItems = filteredVouchers.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
   const paginatedVouchers = filteredVouchers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  const totalAmount = filteredVouchers.reduce((sum, v) => sum + v.amount, 0);
-  const todayDateStr = new Date().toISOString().split('T')[0];
-  const todayAmount = filteredVouchers
-    .filter((v) => v.date === todayDateStr)
-    .reduce((sum, v) => sum + v.amount, 0);
+  const toggleSelectAll = () => {
+    if (paginatedVouchers.length > 0 && paginatedVouchers.every((v) => selectedIds.includes(v.id))) {
+      const currentIds = new Set(paginatedVouchers.map((v) => v.id));
+      setSelectedIds((prev) => prev.filter((id) => !currentIds.has(id)));
+    } else {
+      const currentIds = paginatedVouchers.map((v) => v.id);
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...currentIds])));
+    }
+  };
 
   return (
-    <div className="space-y-6 pb-12 text-slate-800">
-      {/* TOAST NOTIFICATION MATCHING PERSONNEL.TSX */}
+    <div className={`space-y-6 text-slate-800 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+      {/* TOAST NOTIFICATION */}
       {toastMessage &&
         createPortal(
           <div
@@ -305,350 +355,404 @@ export default function PaymentVouchersPage() {
           document.body
         )}
 
-      {/* HEADER MATCHING PERSONNEL.TSX PILL BADGE DESIGN */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
-            <CreditCard className="h-5 w-5" />
-            <h1 className="text-xl font-extrabold tracking-tight uppercase">Viết phiếu chi tiền</h1>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2.5">
-          <button
-            type="button"
-            onClick={handleOpenCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 active:scale-95 cursor-pointer"
-          >
-            <Plus className="h-4.5 w-4.5" />
-            Tạo phiếu chi mới
-          </button>
-        </div>
-      </div>
-
-      {/* 3 STAT OVERVIEW CARDS MATCHING PERSONNEL.TSX */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG SỐ PHIẾU CHI</p>
-            <p className="text-lg font-black text-cyan-700">{filteredVouchers.length} Phiếu</p>
-          </div>
-          <div className="rounded-xl bg-cyan-100 p-2 text-cyan-700">
-            <CreditCard size={22} />
-          </div>
-        </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG CHI (TOÀN BỘ)</p>
-            <p className="text-lg font-black text-red-600">{totalAmount.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-red-100 p-2 text-red-700">
-            <DollarSign size={22} />
-          </div>
-        </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">CHI TIỀN HÔM NAY</p>
-            <p className="text-lg font-black text-cyan-700">{todayAmount.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-cyan-100 p-2 text-cyan-700">
-            <Calendar size={22} />
-          </div>
-        </div>
-      </div>
-
-      {/* FILTER & SEARCH BAR MATCHING PERSONNEL.TSX */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
-        {/* Search Input */}
-        <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm kiếm theo mã phiếu chi, đối tượng nhận, nội dung chi..."
-            className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-12 pr-4 text-sm font-semibold text-slate-700 outline-none transition focus:ring-4 focus:ring-cyan-500/10"
-          />
-        </div>
-
-        {/* Date & Payment Method Filters */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">
-            <span>Từ:</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="bg-transparent text-xs font-semibold outline-none text-slate-800"
-            />
+      <div className="space-y-6 animate-in fade-in duration-200">
+        {/* Top Header Section matching Inbound/Outbound */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
+              <CreditCard className="h-5 w-5" />
+              <h1 className="text-xl font-extrabold tracking-tight uppercase">QUẢN LÝ PHIẾU CHI TIỀN</h1>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">
-            <span>Đến:</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="bg-transparent text-xs font-semibold outline-none text-slate-800"
-            />
-          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 1. Thêm mới */}
+            <button
+              type="button"
+              onClick={handleOpenCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Plus className="h-4.5 w-4.5 text-cyan-700" />
+              Thêm mới
+            </button>
 
-          {/* Action Export Buttons */}
-          <button
-            onClick={handleExportExcel}
-            className="inline-flex h-11 items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
-          >
-            <FileSpreadsheet className="h-4 w-4" /> Excel
-          </button>
+            {/* 2. Copy */}
+            <button
+              type="button"
+              onClick={handleCopySelected}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Copy className="h-4.5 w-4.5 text-cyan-700" />
+              Copy {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
+            </button>
 
-          <button
-            onClick={() => window.print()}
-            className="inline-flex h-11 items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
-          >
-            <Printer className="h-4 w-4" /> Print
-          </button>
-        </div>
-      </div>
-
-      {/* BULK ACTION TOOLBAR WHEN ITEMS SELECTED */}
-      {selectedIds.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-cyan-500 bg-cyan-50 p-3.5 shadow-md animate-in slide-in-from-top-2">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-600 text-xs font-black text-white">
-              {selectedIds.length}
-            </span>
-            <span className="text-sm font-extrabold text-cyan-950">
-              Phiếu chi đã được chọn
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
+            {/* 3. Xóa */}
             <button
               type="button"
               onClick={handleDeleteSelected}
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-red-500 bg-white px-3.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 transition cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             >
-              <Trash2 className="h-4 w-4" /> Xóa đã chọn ({selectedIds.length})
+              <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+              Xóa {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
             </button>
 
+            {/* 4. In báo cáo */}
             <button
               type="button"
-              onClick={() => setSelectedIds([])}
-              className="rounded-lg p-1 text-slate-500 hover:bg-slate-200 transition cursor-pointer ml-2"
-              title="Bỏ chọn tất cả"
+              onClick={() => window.print()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             >
-              <X className="h-4 w-4" />
+              <Printer className="h-4.5 w-4.5 text-cyan-700" />
+              In báo cáo
             </button>
+
+            {/* 5. Export Excel */}
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+              Export Excel
+            </button>
+
+            {/* 6. Hiển thị */}
+            <button
+              type="button"
+              onClick={() => setShowColumnModal(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Settings className="h-4.5 w-4.5 text-cyan-700" />
+              Hiển thị
+            </button>
+
+            {/* 7. Toàn màn hình */}
+            <button
+              type="button"
+              onClick={() => setIsFullScreen(!isFullScreen)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title={isFullScreen ? 'Thoát toàn màn hình' : 'Toàn màn hình'}
+            >
+              {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
+            </button>
+          </div>
+        </div>
+
+        {/* High-density Filter & Search Bar */}
+        <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            {/* Search Input h-12 */}
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm kiếm theo mã phiếu chi, đối tượng nhận, nội dung chi..."
+                className="h-12 w-full rounded-xl border-2 border-cyan-600/30 bg-slate-50/50 pl-11 pr-4 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:bg-white focus:ring-4 focus:ring-cyan-500/10"
+              />
+            </div>
+
+            {/* Date Range & Payment Filter Container (h-12) */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Date Box */}
+              <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
+                <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Từ ngày:</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                />
+                <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide ml-1">Đến:</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                />
+              </div>
+
+              {/* Payment Method Filter */}
+              <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
+                <Filter className="h-4 w-4 text-cyan-600 shrink-0" />
+                <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Hình thức:</span>
+                <select
+                  value={paymentMethodFilter}
+                  onChange={(e) => setPaymentMethodFilter(e.target.value)}
+                  className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                >
+                  <option value="ALL">Tất cả</option>
+                  <option value="Tiền mặt">Tiền mặt</option>
+                  <option value="Chuyển khoản">Chuyển khoản</option>
+                  <option value="COD">COD</option>
+                  <option value="ATM">ATM</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* High-density Table */}
+        <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full border-collapse text-left min-w-[1450px]">
+              <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
+                <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
+                  <th className="w-12 min-w-[50px] border-r border-slate-200 px-2 py-4 text-center">
+                    <input
+                      type="checkbox"
+                      checked={paginatedVouchers.length > 0 && paginatedVouchers.every((v) => selectedIds.includes(v.id))}
+                      onChange={toggleSelectAll}
+                      className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    />
+                  </th>
+                  <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
+                  {columnVis.code && <th className="min-w-[210px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">Mã phiếu</th>}
+                  {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">Ngày lập</th>}
+                  {columnVis.type && <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Nội dung chi</th>}
+                  {columnVis.targetName && <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">Đối tượng nhận</th>}
+                  {columnVis.amount && <th className="min-w-[160px] border-r border-slate-200 px-4 py-4 text-center">Số tiền (VND)</th>}
+                  {columnVis.paymentMethod && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">Hình thức</th>}
+                  {columnVis.wallet && <th className="min-w-[160px] border-r border-slate-200 px-3 py-4 text-center">Tài khoản/Ví</th>}
+                  {columnVis.staffName && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Nhân viên</th>}
+                  {columnVis.note && <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Ghi chú</th>}
+                  <th className="sticky right-0 top-0 z-30 w-36 min-w-[140px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 bg-white">
+                {paginatedVouchers.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      Chưa có phiếu chi tiền nào. Hãy bấm <b>Thêm mới</b> để tạo bản ghi.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedVouchers.map((v, index) => {
+                    const globalIndex = (currentPage - 1) * pageSize + index + 1;
+                    const isSelected = selectedIds.includes(v.id);
+
+                    return (
+                      <tr
+                        key={v.id}
+                        className={`group border-b border-slate-200 transition cursor-pointer ${
+                          isSelected ? 'bg-cyan-100/60' : 'hover:bg-cyan-50/60'
+                        }`}
+                      >
+                        <td className="border-r border-slate-200 px-2 py-3.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedIds([...selectedIds, v.id]);
+                              else setSelectedIds(selectedIds.filter((id) => id !== v.id));
+                            }}
+                            className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                          />
+                        </td>
+                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">
+                          {globalIndex}
+                        </td>
+                        {columnVis.code && (
+                          <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-cyan-700 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditModal(v, 'view');
+                              }}
+                              className="text-cyan-700 hover:text-cyan-900 hover:underline font-extrabold text-left cursor-pointer whitespace-nowrap"
+                              title="Xem chi tiết phiếu chi"
+                            >
+                              {v.code}
+                            </button>
+                          </td>
+                        )}
+                        {columnVis.date && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{v.date}</td>}
+                        {columnVis.type && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-800">{v.type}</td>}
+                        {columnVis.targetName && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-slate-800">{v.targetName}</td>}
+                        {columnVis.amount && (
+                          <td className="border-r border-slate-200 px-4 py-3.5 text-right text-sm font-mono font-black text-red-600">
+                            {v.amount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.paymentMethod && (
+                          <td className="border-r border-slate-200 px-3 py-3.5 text-center">
+                            <span className="inline-flex rounded-lg bg-cyan-50 border border-cyan-200 px-2.5 py-1 text-xs font-extrabold text-cyan-800">
+                              {v.paymentMethod}
+                            </span>
+                          </td>
+                        )}
+                        {columnVis.wallet && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-700">{v.wallet}</td>}
+                        {columnVis.staffName && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{v.staffName}</td>}
+                        {columnVis.note && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[200px] truncate" title={v.note}>{v.note || '-'}</td>}
+
+                        {/* Sticky Action Column */}
+                        <td className="sticky right-0 top-0 z-10 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.05)] group-hover:bg-cyan-50">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditModal(v, 'view');
+                              }}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-600 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                              title="Xem chi tiết"
+                            >
+                              <Eye size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditModal(v, 'edit');
+                              }}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-600 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                              title="Sửa phiếu chi"
+                            >
+                              <Pencil size={18} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSingle(v.id, v.code);
+                              }}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 cursor-pointer"
+                              title="Xóa phiếu chi"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Standardized Pagination Bar */}
+          {totalItems > 0 && (
+            <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-slate-50/80 px-6 py-4 sm:flex-row gap-4">
+              <div className="text-sm font-semibold text-slate-600">
+                Hiển thị <span className="font-extrabold text-slate-900">{startIndex}</span> - <span className="font-extrabold text-slate-900">{endIndex}</span> trên tổng số <span className="font-extrabold text-slate-900">{totalItems}</span> phiếu chi
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-700">Hiển thị:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="h-10 rounded-xl border-2 border-cyan-600/30 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-pointer"
+                  >
+                    <option value={20}>20 / trang</option>
+                    <option value={50}>50 / trang</option>
+                    <option value={100}>100 / trang</option>
+                    <option value={500}>500 / trang</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                    title="Trang đầu"
+                  >
+                    <ChevronsLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                    title="Trang trước"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+
+                  <span className="flex h-10 items-center justify-center rounded-xl bg-cyan-600 px-4 text-sm font-black text-white shadow-xs">
+                    {currentPage} / {totalPages}
+                  </span>
+
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                    title="Trang sau"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-200 bg-white text-slate-600 transition hover:bg-cyan-50 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white cursor-pointer"
+                    title="Trang cuối"
+                  >
+                    <ChevronsRight className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* COLUMN VISIBILITY MODAL */}
+      {showColumnModal && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in-50">
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-cyan-700" />
+                <h3 className="text-base font-extrabold text-slate-800 uppercase">Cấu hình hiển thị cột</h3>
+              </div>
+              <button onClick={() => setShowColumnModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 transition cursor-pointer">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              {[
+                { key: 'code', label: 'Mã phiếu' },
+                { key: 'date', label: 'Ngày lập' },
+                { key: 'type', label: 'Nội dung chi' },
+                { key: 'targetName', label: 'Đối tượng nhận' },
+                { key: 'amount', label: 'Số tiền (VND)' },
+                { key: 'paymentMethod', label: 'Hình thức thanh toán' },
+                { key: 'wallet', label: 'Tài khoản / Ví' },
+                { key: 'staffName', label: 'Nhân viên lập' },
+                { key: 'note', label: 'Ghi chú' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-3 p-2 rounded-xl hover:bg-cyan-50/50 cursor-pointer font-bold text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={(columnVis as any)[key]}
+                    onChange={(e) => setColumnVis({ ...columnVis, [key]: e.target.checked })}
+                    className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t-2 border-slate-200 bg-slate-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setShowColumnModal(false)}
+                className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-extrabold text-white hover:bg-cyan-700 shadow-md transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* PERSONNEL HIGH-DENSITY TABLE MATCHING PERSONNEL.TSX */}
-      <div className="overflow-hidden rounded-xl border-2 border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left">
-            <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
-              <tr className="border-b-2 border-slate-200">
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 w-12 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={paginatedVouchers.length > 0 && paginatedVouchers.every((v) => selectedIds.includes(v.id))}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        const currentIds = paginatedVouchers.map((v) => v.id);
-                        setSelectedIds((prev) => Array.from(new Set([...prev, ...currentIds])));
-                      } else {
-                        const currentIds = new Set(paginatedVouchers.map((v) => v.id));
-                        setSelectedIds((prev) => prev.filter((id) => !currentIds.has(id)));
-                      }
-                    }}
-                    className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                  />
-                </th>
-                <th className="border-r border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 w-14 whitespace-nowrap">
-                  STT
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
-                  Mã phiếu
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 w-32 whitespace-nowrap">
-                  Ngày lập
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[180px] whitespace-nowrap">
-                  Nội dung chi
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[180px] whitespace-nowrap">
-                  Đối tượng nhận
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[160px] whitespace-nowrap">
-                  Số tiền (VND)
-                </th>
-                <th className="border-r border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 w-32 whitespace-nowrap">
-                  Hình thức
-                </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-sm font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
-                  Nhân viên
-                </th>
-                <th className="sticky right-0 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)] w-36 whitespace-nowrap">
-                  THAO TÁC
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white">
-              {paginatedVouchers.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-500 font-semibold">
-                    Chưa có phiếu chi tiền nào. Hãy bấm <b>Tạo phiếu chi mới</b> để thêm bản ghi.
-                  </td>
-                </tr>
-              ) : (
-                paginatedVouchers.map((v, index) => {
-                  const globalIndex = (currentPage - 1) * pageSize + index + 1;
-                  const isSelected = selectedIds.includes(v.id);
-
-                  return (
-                    <tr
-                      key={v.id}
-                      className={`group border-b border-slate-200 transition hover:bg-cyan-50/50 ${
-                        isSelected ? 'bg-cyan-50/70' : ''
-                      }`}
-                    >
-                      <td className="border-r border-slate-200 px-3 py-3.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedIds([...selectedIds, v.id]);
-                            else setSelectedIds(selectedIds.filter((id) => id !== v.id));
-                          }}
-                          className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                        />
-                      </td>
-                      <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-600">
-                        {globalIndex}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-mono font-bold text-cyan-700">
-                        {v.code}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-medium text-slate-700">
-                        {v.date}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-bold text-slate-900">
-                        {v.type}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-bold text-slate-800">
-                        {v.targetName}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-right text-sm font-mono font-black text-red-600">
-                        {v.amount.toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="border-r border-slate-200 px-3 py-3.5 text-center">
-                        <span className="inline-flex rounded-lg bg-slate-100 border border-slate-200 px-2.5 py-1 text-xs font-extrabold text-slate-700">
-                          {v.paymentMethod}
-                        </span>
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-bold text-slate-700">
-                        {v.staffName}
-                      </td>
-                      {/* ACTION BUTTONS COLUMN MATCHING PERSONNEL.TSX */}
-                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(v, 'view')}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                            title="Xem chi tiết"
-                          >
-                            <Eye size={18} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(v, 'edit')}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                            title="Sửa phiếu chi"
-                          >
-                            <Pencil size={18} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSingle(v.id, v.code)}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 cursor-pointer"
-                            title="Xóa phiếu chi"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* PAGINATION FOOTER ATTACHED MATCHING PERSONNEL.TSX */}
-        {totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
-            <div className="text-sm font-semibold text-slate-600">
-              Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
-            </div>
-            <div className="mt-4 flex items-center gap-2 sm:mt-0">
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="h-9 rounded-xl border-2 border-cyan-500 bg-white px-2 text-sm font-bold text-slate-700 outline-none"
-              >
-                <option value={10}>10 dòng / trang</option>
-                <option value={20}>20 dòng / trang</option>
-                <option value={50}>50 dòng / trang</option>
-                <option value={100}>100 dòng / trang</option>
-              </select>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  «
-                </button>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ‹
-                </button>
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-600 text-sm font-bold text-white">
-                  {currentPage}
-                </button>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ›
-                </button>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  »
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* POPUP MODAL MATCHING PERSONNEL.TSX DESIGN */}
+      {/* POPUP FORM MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in-50">
           <div className="w-full max-w-2xl overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl space-y-0">
