@@ -1,9 +1,9 @@
 import { IsNotEmpty, IsOptional, IsString, IsInt, IsBoolean } from 'class-validator';
 
 export class CreateProductDto {
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  internalSku: string;
+  internalSku?: string;
 
   @IsNotEmpty()
   @IsString()
