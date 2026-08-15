@@ -71,8 +71,16 @@ export class ProductsService {
 
   async create(dto: CreateProductDto) {
     try {
+      // Auto-generate internalSku if empty
+      let sku = dto.internalSku?.trim();
+      if (!sku) {
+        sku = 'HH' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 100).toString().padStart(2, '0');
+      }
+
+      // Mã sản phẩm = Mã vạch (cùng một trường duy nhất)
       const product = this.productRepo.create({
-        internalSku: dto.internalSku,
+        internalSku: sku,
+        supplierBarcode: sku,
         name: dto.name,
         unit: dto.unit,
         minimumStock: dto.minimumStock || 0,
@@ -87,7 +95,7 @@ export class ProductsService {
       return await this.productRepo.save(product);
     } catch (error: any) {
       if (error.code === 'ER_DUP_ENTRY') {
-        throw new BadRequestException(`Mã hàng hóa "${dto.internalSku}" đã tồn tại trong hệ thống (có thể thuộc Hàng hóa NCC). Vui lòng chọn mã khác.`);
+        throw new BadRequestException(`Mã sản phẩm "${dto.internalSku}" đã tồn tại trong hệ thống. Vui lòng chọn mã khác.`);
       }
       throw new BadRequestException(error.sqlMessage || error.message || 'Lỗi khi tạo hàng hóa');
     }

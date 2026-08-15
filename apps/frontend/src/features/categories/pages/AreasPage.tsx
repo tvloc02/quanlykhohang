@@ -29,23 +29,12 @@ function readAreas(): AreaItem[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {
     // ignore
   }
-  // Default seed matching RIC.VN screenshot exactly if empty
-  const defaultAreas: AreaItem[] = [
-    { id: '1', code: '', name: 'HÀ NỘI1', status: 'active', createdAt: '2026-01-01' },
-    { id: '2', code: '024', name: 'HÀ NỘI1', status: 'inactive', createdAt: '2026-01-02' },
-    { id: '3', code: 'KV_1', name: 'HAI DUONG', status: 'inactive', createdAt: '2026-01-03' },
-    { id: '4', code: '08', name: 'HCM', status: 'active', createdAt: '2026-01-04' },
-    { id: '5', code: '0202', name: 'KV MIỀN BẮC', status: 'active', createdAt: '2026-01-05' },
-    { id: '6', code: 'KV1', name: 'KV1', status: 'active', createdAt: '2026-01-06' },
-    { id: '7', code: 'Mặc định', name: 'Mặc định', status: 'active', createdAt: '2026-01-07' },
-  ];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultAreas));
-  return defaultAreas;
+  return [];
 }
 
 function saveAreas(areas: AreaItem[]) {

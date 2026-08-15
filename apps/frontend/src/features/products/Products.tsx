@@ -748,8 +748,8 @@ export default function Products() {
       const payload = {
         internalSku: finalSku,
         sku: finalSku,
-        supplierBarcode: form.barcode.trim(),
-        barcode: form.barcode.trim(),
+        supplierBarcode: finalSku,
+        barcode: finalSku,
         name: form.name.trim(),
         categoryId: foundCategory ? foundCategory.id : undefined,
         category: form.category.trim(),
@@ -1672,8 +1672,8 @@ export default function Products() {
 
                           {/* Right Column: Form Inputs Grid (9 cols) */}
                           <div className="lg:col-span-9 space-y-4">
-                            {/* Row 1: Nhóm, Mã vạch, Mã */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* Row 1: Nhóm, Mã sản phẩm (Mã vạch) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               {/* Nhóm hàng hóa (Category) */}
                               <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
@@ -1688,30 +1688,17 @@ export default function Products() {
                                 />
                               </div>
 
-                              {/* Mã vạch */}
-                              <div>
-                                <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Mã vạch</label>
-                                <input
-                                  type="text"
-                                  value={form.barcode}
-                                  onChange={(e) => setForm((c) => ({ ...c, barcode: e.target.value }))}
-                                  readOnly={modalMode === 'view'}
-                                  placeholder="Nhập hoặc quét mã vạch..."
-                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
-                                />
-                              </div>
-
-                              {/* Mã hàng hóa */}
+                              {/* Mã sản phẩm (= Mã vạch) */}
                               <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
-                                  Mã hàng hóa
+                                  Mã sản phẩm <span className="text-[10px] font-medium text-slate-400 normal-case">(Mã vạch — Tự tạo nếu để trống)</span>
                                 </label>
                                 <input
                                   type="text"
                                   value={form.sku}
-                                  onChange={(e) => setForm((c) => ({ ...c, sku: e.target.value }))}
+                                  onChange={(e) => setForm((c) => ({ ...c, sku: e.target.value, barcode: e.target.value }))}
                                   readOnly={modalMode === 'view'}
-                                  placeholder="Mã tự động tạo nếu để trống"
+                                  placeholder="Nhập mã hoặc để trống để tạo tự động"
                                   className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold uppercase text-cyan-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
                                 />
                               </div>
