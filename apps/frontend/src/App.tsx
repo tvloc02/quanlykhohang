@@ -60,6 +60,8 @@ import CustomerPortalPage from './features/customer-portal/pages/CustomerPortalP
 import ScannerPage from './features/scanner/ScannerPage';
 import SupplierProducts from './features/supplier-products/SupplierProducts';
 import UnitsPage from './features/products/UnitsPage';
+import CurrenciesPage from './features/products/CurrenciesPage';
+import BankAccountsPage from './features/finance/pages/BankAccountsPage';
 
 import Shop from './features/shop/Shop';
 import CartCheckoutPage from './features/shop/pages/CartCheckoutPage';
@@ -234,6 +236,26 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <UnitsPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/currencies"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <CurrenciesPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/bank-accounts"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <BankAccountsPage />
               </MainLayout>
             </ProtectedRoute>
           }
