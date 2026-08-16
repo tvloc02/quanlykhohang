@@ -48,6 +48,7 @@ import AssemblyPage from './features/inbound/pages/AssemblyPage';
 import ProductionPage from './features/inbound/pages/ProductionPage';
 import DistributionPage from './features/inbound/pages/DistributionPage';
 import StocktakePage from './features/inventory/pages/StocktakePage';
+import CreateStocktakeOrderPage from './features/inventory/pages/CreateStocktakeOrderPage';
 import StocktakeScanPage from './features/inventory/pages/StocktakeScanPage';
 import AdjustmentApprovalPage from './features/inventory/pages/AdjustmentApprovalPage';
 import WarehouseVisualizerPage from './features/inventory/pages/WarehouseVisualizerPage';
@@ -709,12 +710,13 @@ function App() {
             </RoleRoute>
           }
         />
+
         <Route
           path="/inventory/stocktake/create"
           element={
             <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
-                <StocktakePage viewMode="create" />
+                <CreateStocktakeOrderPage standalone={false} />
               </MainLayout>
             </RoleRoute>
           }

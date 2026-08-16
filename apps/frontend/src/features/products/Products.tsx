@@ -143,11 +143,10 @@ function SearchableSelect({
                       setIsOpen(false);
                       setSearchTerm('');
                     }}
-                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
-                      isSelected
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${isSelected
                         ? 'bg-cyan-600 text-white shadow-xs'
                         : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
-                    }`}
+                      }`}
                   >
                     <span className="truncate">{opt.label}</span>
                     {isSelected && <Check className="h-3.5 w-3.5 flex-shrink-0" />}
@@ -193,6 +192,19 @@ type RawProduct = {
   stock?: number;
   totalStock?: number;
   isVisible?: boolean;
+  barcode?: string;
+  supplierBarcode?: string;
+  description?: string;
+  taxType?: string;
+  vatRate?: number | '';
+  bonusAmount?: number | '';
+  trackSerial?: boolean;
+  warehouseStocks?: Record<string, number | ''>;
+  warehouseUnitStocks?: Record<string, number | ''>;
+  conversionUnits?: ConversionUnitItem[];
+  webTitle?: string;
+  webDescription?: string;
+  comboItems?: ComboProductItem[];
 };
 
 type Product = {
@@ -207,7 +219,15 @@ type Product = {
   supplier: string;
   price: number;
   stock: number;
-  warehouseStocks?: Record<string, number>;
+  barcode?: string;
+  description?: string;
+  bonusAmount?: number | '';
+  taxType?: string;
+  vatRate?: number | '';
+  trackSerial?: boolean;
+  warehouseStocks?: Record<string, number | ''>;
+  warehouseUnitStocks?: Record<string, number | ''>;
+  conversionUnits?: ConversionUnitItem[];
   images: string[];
   isVisible: boolean;
 };
@@ -244,18 +264,18 @@ type ProductForm = {
   bonusAmount: number | '';
   taxType: string;
   vatRate: number | '';
-  
+
   hasConversionUnits: boolean;
   conversionUnits: ConversionUnitItem[];
   warehouseUnitStocks: Record<string, number | ''>;
   stock: number | '';
   warehouseStocks: Record<string, number | ''>;
-  
+
   images: string[];
   isVisible: boolean;
   webTitle: string;
   webDescription: string;
-  
+
   comboItems: ComboProductItem[];
 
   defaultWarehouse: string;
@@ -423,10 +443,54 @@ function normalizeProduct(product: RawProduct): Product {
     supplier: normalizeSupplierField(product.supplier || ''),
     price: Number(product.price || 0),
     stock: stockVal,
-    warehouseStocks: (product as any).warehouseStocks || {},
-    images: (product as any).images || [],
+    barcode: product.barcode || product.supplierBarcode || '',
+    description: product.description || (typeof product.supplier === 'string' ? product.supplier : ''),
+    bonusAmount: product.bonusAmount ?? '',
+    taxType: product.taxType || 'RA',
+    vatRate: product.vatRate ?? 10,
+    trackSerial: !!product.trackSerial,
+    warehouseStocks: product.warehouseStocks || {},
+    warehouseUnitStocks: product.warehouseUnitStocks || {},
+    conversionUnits: product.conversionUnits || [],
+    images: product.images || [],
     isVisible: !!product.isVisible,
+    webTitle: product.webTitle || '',
+    webDescription: product.webDescription || '',
+    comboItems: product.comboItems || [],
   };
+}
+
+function mergeProductsWithStored(remoteProducts: RawProduct[]): Product[] {
+  const storedProducts = getStoredProducts();
+  const storedById = new Map(storedProducts.map((p) => [String(p.id), p]));
+  const storedBySku = new Map(storedProducts.map((p) => [p.sku, p]));
+
+  return remoteProducts.map((raw) => {
+    const norm = normalizeProduct(raw);
+    const stored = storedById.get(String(norm.id)) || storedBySku.get(norm.sku);
+
+    if (stored) {
+      return normalizeProduct({
+        ...stored,
+        ...raw,
+        importPrice: raw.importPrice !== undefined ? raw.importPrice : stored.importPrice,
+        wholesalePrice: raw.wholesalePrice !== undefined ? raw.wholesalePrice : stored.wholesalePrice,
+        retailPrice: raw.retailPrice !== undefined ? raw.retailPrice : (raw.price !== undefined ? raw.price : stored.retailPrice),
+        warehouseStocks: (raw as any).warehouseStocks || stored.warehouseStocks,
+        warehouseUnitStocks: (raw as any).warehouseUnitStocks || stored.warehouseUnitStocks,
+        conversionUnits: (raw as any).conversionUnits || stored.conversionUnits,
+        barcode: (raw as any).barcode || (raw as any).supplierBarcode || stored.barcode,
+        description: (raw as any).description || stored.description,
+        bonusAmount: (raw as any).bonusAmount !== undefined ? (raw as any).bonusAmount : stored.bonusAmount,
+        taxType: (raw as any).taxType || stored.taxType,
+        vatRate: (raw as any).vatRate !== undefined ? (raw as any).vatRate : stored.vatRate,
+        webTitle: (raw as any).webTitle || stored.webTitle,
+        comboItems: (raw as any).comboItems || stored.comboItems,
+      });
+    }
+
+    return norm;
+  });
 }
 
 export default function Products() {
@@ -448,6 +512,34 @@ export default function Products() {
   const [activeTab, setActiveTab] = React.useState<'general' | 'combo' | 'web' | 'conversion'>('general');
   const [catalogCategories, setCatalogCategories] = React.useState(() => getStoredCatalogCategories());
   const [warehouses, setWarehouses] = React.useState(() => getStoredWarehouses());
+
+  // Stock-In History Modal State
+  const [historyModalOpen, setHistoryModalOpen] = React.useState(false);
+  const [historyProduct, setHistoryProduct] = React.useState<Product | null>(null);
+  const [historyLogs, setHistoryLogs] = React.useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
+
+  const openHistoryModal = async (product: Product) => {
+    setHistoryProduct(product);
+    setHistoryModalOpen(true);
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/products/${product.id}/stock-in-history`, {
+        headers: authHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryLogs(Array.isArray(data) ? data : []);
+      } else {
+        setHistoryLogs([]);
+      }
+    } catch (err) {
+      console.error('Lỗi khi lấy lịch sử nhập kho:', err);
+      setHistoryLogs([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   // Column Configuration state
   const [columnsConfig, setColumnsConfig] = React.useState<ColumnConfig[]>([
@@ -471,9 +563,6 @@ export default function Products() {
   const [filterMinPrice, setFilterMinPrice] = React.useState<string>('');
   const [filterMaxPrice, setFilterMaxPrice] = React.useState<string>('');
 
-  // History modal state
-  const [historyModalOpen, setHistoryModalOpen] = React.useState(false);
-  const [historyProduct, setHistoryProduct] = React.useState<Product | null>(null);
 
   // Quick Add Unit Modal state
   const [showQuickAddUnitModal, setShowQuickAddUnitModal] = React.useState(false);
@@ -508,10 +597,6 @@ export default function Products() {
   const [pageSize, setPageSize] = React.useState(20);
   const [currentPage, setCurrentPage] = React.useState(1);
 
-  const openHistoryModal = (product: Product) => {
-    setHistoryProduct(product);
-    setHistoryModalOpen(true);
-  };
 
   const isColVisible = (key: ColumnKey) => {
     const col = columnsConfig.find((c) => c.key === key);
@@ -703,15 +788,74 @@ export default function Products() {
     setActiveTab('general');
 
     const existingStocks: Record<string, number | ''> = {};
-    warehouses.forEach((wh) => {
-      const key = wh.name || wh.code || wh.id;
-      if (key) {
-        if (product.warehouseStocks && product.warehouseStocks[key] !== undefined) {
-          existingStocks[key] = product.warehouseStocks[key];
+    const stockBalances: Array<{ locationCode: string; totalPhysical?: number; available?: number }> =
+      (product as any).stockBalances || [];
+
+    const unmatchedStockTotal = stockBalances.reduce((sum, b) => {
+      const lc = String(b.locationCode || '').trim().toLowerCase();
+      const isMatched = warehouses.some(
+        (w: any) =>
+          lc === String(w.code || '').trim().toLowerCase() ||
+          lc === String(w.name || '').trim().toLowerCase() ||
+          lc === String(w.id || '').trim().toLowerCase()
+      );
+      if (!isMatched) {
+        return sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0));
+      }
+      return sum;
+    }, 0);
+
+    warehouses.forEach((wh, idx) => {
+      const keys = [wh.name, wh.code, wh.id].filter(Boolean) as string[];
+      if (keys.length === 0) return;
+
+      let stockForThisWh: number | '' = 0;
+
+      // 1. Check direct matched balance in stockBalances
+      const matchedBal = stockBalances.find((b) => {
+        const lc = String(b.locationCode || '').trim().toLowerCase();
+        return (
+          lc === String(wh.code || '').trim().toLowerCase() ||
+          lc === String(wh.name || '').trim().toLowerCase() ||
+          lc === String(wh.id || '').trim().toLowerCase()
+        );
+      });
+
+      if (matchedBal) {
+        stockForThisWh = matchedBal.totalPhysical !== undefined ? matchedBal.totalPhysical : (matchedBal.available || 0);
+      } else {
+        // 2. Check direct warehouseStocks on product object if set
+        let directVal: number | '' | undefined = undefined;
+        for (const k of keys) {
+          if (product.warehouseStocks && product.warehouseStocks[k] !== undefined && product.warehouseStocks[k] !== '') {
+            directVal = product.warehouseStocks[k];
+            break;
+          }
+        }
+        if (directVal !== undefined) {
+          stockForThisWh = directVal;
         } else {
-          existingStocks[key] = product.stock || 0;
+          // 3. Fallback: attribute unmatched/legacy stock to default warehouse or first warehouse
+          const isDefaultWh =
+            (product.defaultWarehouse &&
+              (wh.name === product.defaultWarehouse || wh.code === product.defaultWarehouse)) ||
+            ((wh as any).isDefault && !product.defaultWarehouse) ||
+            (idx === 0 && !product.defaultWarehouse && !warehouses.some((w: any) => w.isDefault));
+
+          if (isDefaultWh) {
+            if (unmatchedStockTotal > 0) {
+              stockForThisWh = unmatchedStockTotal;
+            } else if (stockBalances.length === 0 && (product.stock || 0) > 0) {
+              stockForThisWh = product.stock || 0;
+            }
+          }
         }
       }
+
+      // Assign to all keys (name, code, id) so lookup by wh.name or wh.code always works
+      keys.forEach((k) => {
+        existingStocks[k] = stockForThisWh;
+      });
     });
 
     const existingConversionUnits = (product as any).conversionUnits || [];
@@ -751,7 +895,7 @@ export default function Products() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    
+
     // Auto generate SKU if empty!
     let finalSku = form.sku.trim().toUpperCase();
     if (!finalSku) {
@@ -781,7 +925,7 @@ export default function Products() {
     try {
       const isEdit = modalMode === 'edit';
       const url = isEdit && selectedProduct ? `${API_BASE_URL}/products/${selectedProduct.id}` : `${API_BASE_URL}/products`;
-      
+
       const foundCategory = categoryOptions.find(c => c.name === form.category);
       let calculatedTotalStock = 0;
       warehouses.forEach((wh) => {
@@ -964,11 +1108,10 @@ export default function Products() {
             <button
               type="button"
               onClick={() => setShowAdvancedSearch((prev) => !prev)}
-              className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition ${
-                showAdvancedSearch
+              className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition ${showAdvancedSearch
                   ? 'border-cyan-600 bg-cyan-50 text-cyan-700'
                   : 'border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50'
-              }`}
+                }`}
             >
               <SlidersHorizontal className="h-4 w-4" />
               Tìm kiếm nâng cao
@@ -1011,11 +1154,10 @@ export default function Products() {
                 <button
                   type="button"
                   onClick={() => setSelectedCategoryFilter('ALL')}
-                  className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${
-                    selectedCategoryFilter === 'ALL'
+                  className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${selectedCategoryFilter === 'ALL'
                       ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
                       : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
-                  }`}
+                    }`}
                 >
                   Tất cả danh mục
                 </button>
@@ -1024,11 +1166,10 @@ export default function Products() {
                     key={cat.id || cat.name}
                     type="button"
                     onClick={() => setSelectedCategoryFilter(cat.name)}
-                    className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${
-                      selectedCategoryFilter === cat.name
+                    className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${selectedCategoryFilter === cat.name
                         ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
                         : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
-                    }`}
+                      }`}
                   >
                     {cat.name}
                   </button>
@@ -1050,11 +1191,10 @@ export default function Products() {
                     key={item.key}
                     type="button"
                     onClick={() => setSelectedStockFilter(item.key)}
-                    className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${
-                      selectedStockFilter === item.key
+                    className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${selectedStockFilter === item.key
                         ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
                         : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
-                    }`}
+                      }`}
                   >
                     {item.label}
                   </button>
@@ -1393,9 +1533,8 @@ export default function Products() {
                 {columnsConfig.map((col) => (
                   <label
                     key={col.key}
-                    className={`flex items-center gap-3 rounded-xl border-2 p-3 cursor-pointer transition ${
-                      col.visible ? 'border-cyan-500 bg-cyan-50/30 text-slate-900 font-bold' : 'border-slate-200 bg-white text-slate-500'
-                    }`}
+                    className={`flex items-center gap-3 rounded-xl border-2 p-3 cursor-pointer transition ${col.visible ? 'border-cyan-500 bg-cyan-50/30 text-slate-900 font-bold' : 'border-slate-200 bg-white text-slate-500'
+                      }`}
                   >
                     <input
                       type="checkbox"
@@ -1558,11 +1697,10 @@ export default function Products() {
                   <button
                     type="button"
                     onClick={() => setActiveTab('general')}
-                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
-                      activeTab === 'general'
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'general'
                         ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
                         : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
-                    }`}
+                      }`}
                   >
                     <Package className="h-4 w-4 text-cyan-600" />
                     <span>Thông tin chung</span>
@@ -1571,11 +1709,10 @@ export default function Products() {
                   <button
                     type="button"
                     onClick={() => setActiveTab('combo')}
-                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
-                      activeTab === 'combo'
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'combo'
                         ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
                         : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
-                    }`}
+                      }`}
                   >
                     <Boxes className="h-4 w-4 text-cyan-600" />
                     <span>Bộ sản phẩm / Combo</span>
@@ -1584,11 +1721,10 @@ export default function Products() {
                   <button
                     type="button"
                     onClick={() => setActiveTab('web')}
-                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
-                      activeTab === 'web'
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'web'
                         ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
                         : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
-                    }`}
+                      }`}
                   >
                     <Globe className="h-4 w-4 text-cyan-600" />
                     <span>Thông tin đăng web</span>
@@ -1597,11 +1733,10 @@ export default function Products() {
                   <button
                     type="button"
                     onClick={() => setActiveTab('conversion')}
-                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
-                      activeTab === 'conversion'
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'conversion'
                         ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
                         : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
-                    }`}
+                      }`}
                   >
                     <RefreshCw className="h-4 w-4 text-cyan-600" />
                     <span>Đơn vị quy đổi</span>
@@ -2131,26 +2266,26 @@ export default function Products() {
                                     },
                                     ...(form.hasConversionUnits
                                       ? form.conversionUnits.map((u) => {
-                                          const uStockKey = `${whKey}_${u.id}_stock`;
-                                          const altStockKey = `${whKey}_${u.id}`;
-                                          return {
-                                            id: u.id,
-                                            unitName: u.unitName || 'Quy đổi',
-                                            rate: Number(u.conversionRate) || 1,
-                                            isBase: false,
-                                            stockKey: uStockKey,
-                                            importKey: `${whKey}_${u.id}_importPrice`,
-                                            wholesaleKey: `${whKey}_${u.id}_wholesalePrice`,
-                                            retailKey: `${whKey}_${u.id}_retailPrice`,
-                                            stockVal: form.warehouseUnitStocks[uStockKey] ?? form.warehouseUnitStocks[altStockKey] ?? '',
-                                            importVal: form.warehouseUnitStocks[`${whKey}_${u.id}_importPrice`] ?? '',
-                                            wholesaleVal: form.warehouseUnitStocks[`${whKey}_${u.id}_wholesalePrice`] ?? '',
-                                            retailVal: form.warehouseUnitStocks[`${whKey}_${u.id}_retailPrice`] ?? '',
-                                            defaultImport: u.importPrice,
-                                            defaultWholesale: u.wholesalePrice,
-                                            defaultRetail: u.retailPrice || u.price,
-                                          };
-                                        })
+                                        const uStockKey = `${whKey}_${u.id}_stock`;
+                                        const altStockKey = `${whKey}_${u.id}`;
+                                        return {
+                                          id: u.id,
+                                          unitName: u.unitName || 'Quy đổi',
+                                          rate: Number(u.conversionRate) || 1,
+                                          isBase: false,
+                                          stockKey: uStockKey,
+                                          importKey: `${whKey}_${u.id}_importPrice`,
+                                          wholesaleKey: `${whKey}_${u.id}_wholesalePrice`,
+                                          retailKey: `${whKey}_${u.id}_retailPrice`,
+                                          stockVal: form.warehouseUnitStocks[uStockKey] ?? form.warehouseUnitStocks[altStockKey] ?? '',
+                                          importVal: form.warehouseUnitStocks[`${whKey}_${u.id}_importPrice`] ?? '',
+                                          wholesaleVal: form.warehouseUnitStocks[`${whKey}_${u.id}_wholesalePrice`] ?? '',
+                                          retailVal: form.warehouseUnitStocks[`${whKey}_${u.id}_retailPrice`] ?? '',
+                                          defaultImport: u.importPrice,
+                                          defaultWholesale: u.wholesalePrice,
+                                          defaultRetail: u.retailPrice || u.price,
+                                        };
+                                      })
                                       : []),
                                   ];
 
@@ -2260,11 +2395,10 @@ export default function Products() {
                                           }}
                                           readOnly={modalMode === 'view'}
                                           placeholder="0"
-                                          className={`w-full h-8 px-2 text-center rounded border font-bold text-xs outline-none transition read-only:bg-slate-50 ${
-                                            uItem.isBase
+                                          className={`w-full h-8 px-2 text-center rounded border font-bold text-xs outline-none transition read-only:bg-slate-50 ${uItem.isBase
                                               ? 'border-slate-300 text-slate-800 focus:border-cyan-500'
                                               : 'border-emerald-300 bg-emerald-50/40 text-emerald-900 focus:border-emerald-500'
-                                          }`}
+                                            }`}
                                         />
                                       </td>
 
@@ -2653,8 +2787,8 @@ export default function Products() {
                     {modalMode === 'create'
                       ? 'Tạo mới hàng hóa vào hệ thống'
                       : modalMode === 'edit'
-                      ? `Cập nhật thông tin: ${selectedProduct?.name}`
-                      : 'Đang xem thông tin hàng hóa'}
+                        ? `Cập nhật thông tin: ${selectedProduct?.name}`
+                        : 'Đang xem thông tin hàng hóa'}
                   </div>
 
                   <div className="flex items-center gap-3">
@@ -2745,6 +2879,165 @@ export default function Products() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* STOCK-IN HISTORY MODAL */}
+      {historyModalOpen && historyProduct && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in-50">
+          <div className="w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b-2 border-cyan-500 bg-cyan-700 px-6 py-4 text-white">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-cyan-200">
+                  <History className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold tracking-tight">
+                    LỊCH SỬ NHẬP KHO - {historyProduct.name}
+                  </h3>
+                  <p className="text-xs text-cyan-100 font-medium">
+                    Mã SKU: <span className="font-bold text-white">{historyProduct.sku}</span> | Tồn kho hiện tại: <span className="font-bold text-yellow-300">{historyProduct.stock} {historyProduct.unit}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryModalOpen(false);
+                  setHistoryProduct(null);
+                }}
+                className="rounded-xl p-1.5 text-white/80 hover:bg-white/20 hover:text-white transition cursor-pointer"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              {/* Metric Badges */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 p-3 flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-600 text-white font-bold">
+                    {historyLogs.length}
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold text-cyan-800 uppercase">Tổng số lần nhập</div>
+                    <div className="text-sm font-extrabold text-slate-800">{historyLogs.length} đợt nhập</div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white font-bold">
+                    <Package className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold text-emerald-800 uppercase">Tổng số lượng đã nhập</div>
+                    <div className="text-sm font-extrabold text-slate-800">
+                      {historyLogs.reduce((s, log) => s + (Number(log.quantity) || 0), 0).toLocaleString('vi-VN')} {historyProduct.unit}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-bold">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold text-blue-800 uppercase">Giá nhập gần nhất</div>
+                    <div className="text-sm font-extrabold text-slate-800 font-mono">
+                      {historyLogs.length > 0
+                        ? Number(historyLogs[0].unitPrice || 0).toLocaleString('vi-VN') + ' ₫'
+                        : 'Chưa có'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* History Table */}
+              {loadingHistory ? (
+                <div className="py-12 text-center text-sm font-bold text-slate-500">
+                  Đang tải lịch sử nhập kho từ CSDL...
+                </div>
+              ) : historyLogs.length === 0 ? (
+                <div className="rounded-xl border-2 border-dashed border-slate-200 py-12 text-center text-sm font-medium text-slate-500">
+                  Sản phẩm chưa có lịch sử nhập kho nào được lưu vết trong hệ thống.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-100 text-slate-800 font-extrabold border-b border-slate-200 uppercase text-[11px]">
+                      <tr>
+                        <th className="p-3 w-10 text-center border-r border-slate-200">STT</th>
+                        <th className="p-3 w-36 text-center border-r border-slate-200">Thời gian nhập</th>
+                        <th className="p-3 w-32 text-center border-r border-slate-200">Mã phiếu</th>
+                        <th className="p-3 min-w-[160px] border-r border-slate-200">Nhà cung cấp</th>
+                        <th className="p-3 w-28 text-center border-r border-slate-200">Kho nhập</th>
+                        <th className="p-3 w-24 text-right border-r border-slate-200">Số lượng</th>
+                        <th className="p-3 w-28 text-right border-r border-slate-200">Đơn giá (₫)</th>
+                        <th className="p-3 w-32 text-right border-r border-slate-200">Thành tiền (₫)</th>
+                        <th className="p-3 w-28 text-center">Trạng thái</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {historyLogs.map((log, idx) => (
+                        <tr key={log.id || idx} className="hover:bg-cyan-50/50 transition">
+                          <td className="p-3 text-center font-bold text-slate-500 border-r border-slate-200">
+                            {idx + 1}
+                          </td>
+                          <td className="p-3 text-center font-medium text-slate-700 border-r border-slate-200">
+                            {new Date(log.createdAt).toLocaleString('vi-VN')}
+                          </td>
+                          <td className="p-3 text-center font-bold text-cyan-800 border-r border-slate-200">
+                            {log.orderCode || 'PNK-ORD'}
+                          </td>
+                          <td className="p-3 font-semibold text-slate-800 border-r border-slate-200">
+                            {log.supplierName || 'Nhà cung cấp chính'}
+                          </td>
+                          <td className="p-3 text-center font-medium text-slate-700 border-r border-slate-200">
+                            <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+                              {log.warehouseName || log.warehouseCode || 'SPX001'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-extrabold text-emerald-700 border-r border-slate-200">
+                            +{Number(log.quantity || 0).toLocaleString('vi-VN')} {historyProduct.unit}
+                          </td>
+                          <td className="p-3 text-right font-semibold text-slate-700 font-mono border-r border-slate-200">
+                            {Number(log.unitPrice || 0).toLocaleString('vi-VN')} ₫
+                          </td>
+                          <td className="p-3 text-right font-extrabold text-cyan-900 font-mono border-r border-slate-200">
+                            {Number(log.totalAmount || 0).toLocaleString('vi-VN')} ₫
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-800">
+                              {log.status || 'Đã nhập kho'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-3">
+              <div className="text-xs text-slate-500 font-medium">
+                Dữ liệu lịch sử được truy xuất và lưu trữ trực tiếp từ CSDL hệ thống
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryModalOpen(false);
+                  setHistoryProduct(null);
+                }}
+                className="rounded-xl border-2 border-slate-300 bg-white px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Đóng cửa sổ
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -9,6 +9,7 @@ import { Product } from '../entities/product.entity';
 import { Supplier } from '../entities/supplier.entity';
 import { SupplierProduct } from '../entities/supplier-product.entity';
 import { StockBalance } from '../inventory/entities/stock-balance.entity';
+import { StockInHistory } from '../entities/stock-in-history.entity';
 import { StockInOrdersModule } from './stock-in-orders/stock-in-orders.module';
 import { StockInReceiptsModule } from './stock-in-receipts/stock-in-receipts.module';
 import { ReturnRequestsModule } from './return-requests/return-requests.module';
@@ -19,7 +20,17 @@ import { BarcodeMappingController } from './barcode-mapping/barcode-mapping.cont
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([InboundReceipt, InboundDetail, StockInReceiptDetail, Product, Supplier, SupplierProduct, StockBalance, BarcodeMapping]),
+    TypeOrmModule.forFeature([
+      InboundReceipt,
+      InboundDetail,
+      StockInReceiptDetail,
+      Product,
+      Supplier,
+      SupplierProduct,
+      StockBalance,
+      StockInHistory,
+      BarcodeMapping,
+    ]),
     StockInOrdersModule,
     StockInReceiptsModule,
     ReturnRequestsModule,
@@ -29,4 +40,4 @@ import { BarcodeMappingController } from './barcode-mapping/barcode-mapping.cont
   controllers: [InboundController, BarcodeMappingController],
   exports: [InboundService, BarcodeMappingService],
 })
-export class InboundModule { }
+export class InboundModule {}

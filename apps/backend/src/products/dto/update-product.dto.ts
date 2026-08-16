@@ -29,6 +29,12 @@ export class UpdateProductDto {
   price?: number;
 
   @IsOptional()
+  importPrice?: number;
+
+  @IsOptional()
+  wholesalePrice?: number;
+
+  @IsOptional()
   images?: string[];
 
   @IsOptional()

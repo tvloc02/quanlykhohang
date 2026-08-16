@@ -32,6 +32,7 @@ export interface ProductOption {
   internalSku: string;
   name: string;
   unit?: string;
+  importPrice?: number;
   purchasePrice?: number;
   salePrice?: number;
   price?: number;
@@ -117,7 +118,7 @@ function generateOrderCode() {
   return `PNK${dateStr}-${randomSuffix}`;
 }
 
-function makeEmptyRow(index: number, defaultWhCode = 'KHO-NVL'): FormDetailRow {
+function makeEmptyRow(index: number, defaultWhCode = 'KH006'): FormDetailRow {
   return {
     rowId: `row-${Date.now()}-${index}-${Math.random()}`,
     productId: '',
@@ -136,7 +137,7 @@ function makeEmptyRow(index: number, defaultWhCode = 'KHO-NVL'): FormDetailRow {
   };
 }
 
-function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultWhCode = 'KHO-NVL'): FormDetailRow[] {
+function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultWhCode = 'KH006'): FormDetailRow[] {
   return Array.from({ length: count }, (_, i) => makeEmptyRow(i, defaultWhCode));
 }
 
@@ -148,7 +149,7 @@ function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'): 
     tabId: `tab-${Date.now()}-${tabIndex}`,
     title: `# ${tabIndex}`,
     orderNo: generateOrderCode(),
-    warehouseCode: 'KHO-NVL',
+    warehouseCode: 'KH006',
     employeeName: currentUserName || 'Quản lý kho',
     supplierName: '',
     supplierPhone: '',
@@ -163,7 +164,7 @@ function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'): 
     paymentAccount: '',
     amountPaid: 0,
     status: 'READY',
-    details: makeInitialRows(DEFAULT_ROWS_COUNT, 'KHO-NVL'),
+    details: makeInitialRows(DEFAULT_ROWS_COUNT, 'KH006'),
   };
 }
 
@@ -212,7 +213,7 @@ export default function CreateStockInOrderPage({
           return parsed;
         }
       }
-    } catch {}
+    } catch { }
     return [createNewInboundTab(1, currentUserName)];
   });
 
@@ -222,7 +223,7 @@ export default function CreateStockInOrderPage({
       if (savedActiveId && tabs.some((t) => t.tabId === savedActiveId)) {
         return savedActiveId;
       }
-    } catch {}
+    } catch { }
     return tabs && tabs[0] ? tabs[0].tabId : '';
   });
 
@@ -308,7 +309,17 @@ export default function CreateStockInOrderPage({
         if (prodRes && prodRes.ok) {
           const prodData = await prodRes.json();
           const list = Array.isArray(prodData) ? prodData : prodData.data || [];
-          setProducts(list);
+          const normalized = list.map((p: any) => ({
+            id: String(p.id),
+            internalSku: p.internalSku || p.sku || '',
+            name: p.name || '',
+            unit: p.unit || 'Cái',
+            importPrice: Number(p.importPrice || 0),
+            purchasePrice: Number(p.importPrice || p.purchasePrice || p.price || 0),
+            salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
+            price: Number(p.importPrice || p.purchasePrice || p.price || 0),
+          }));
+          setProducts(normalized);
         }
 
         if (userRes && userRes.ok) {
@@ -321,6 +332,25 @@ export default function CreateStockInOrderPage({
           const whData = await whRes.json();
           const list = Array.isArray(whData) ? whData : whData.data || [];
           setWarehouses(list);
+          if (list.length > 0) {
+            const firstWhCode = list[0].code;
+            setTabs((prevTabs) =>
+              prevTabs.map((t) => {
+                const isInvalid = !list.some((w: any) => w.code === t.warehouseCode);
+                if (isInvalid || t.warehouseCode === 'KHO-NVL') {
+                  return {
+                    ...t,
+                    warehouseCode: firstWhCode,
+                    details: t.details.map((d) => ({
+                      ...d,
+                      warehouseCode: d.warehouseCode === 'KHO-NVL' || isInvalid ? firstWhCode : d.warehouseCode,
+                    })),
+                  };
+                }
+                return t;
+              })
+            );
+          }
         }
       } catch (err) {
         console.error('Error loading master data:', err);
@@ -368,7 +398,7 @@ export default function CreateStockInOrderPage({
             newRow.productSku = p.internalSku;
             newRow.productName = p.name;
             newRow.unit = p.unit || 'Cái';
-            newRow.price = p.purchasePrice || p.salePrice || p.price || 0;
+            newRow.price = p.importPrice || p.purchasePrice || p.price || 0;
             if (newRow.qty === 0) newRow.qty = 1;
           }
         }
@@ -667,20 +697,18 @@ export default function CreateStockInOrderPage({
 
   const contentMarkup = (
     <div
-      className={`animate-[fadeIn_0.2s_ease-out] ${
-        isFullscreen
+      className={`animate-[fadeIn_0.2s_ease-out] ${isFullscreen
           ? 'fixed inset-0 z-[9999] bg-slate-100 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
           : 'space-y-3 pb-20'
-      }`}
+        }`}
     >
       {/* Toast Alert */}
       {toast && (
         <div
-          className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${
-            toast.type === 'error'
+          className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${toast.type === 'error'
               ? 'bg-red-50 text-red-600 border-red-200'
               : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-          }`}
+            }`}
         >
           {toast.type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
           <p className="text-sm font-bold">{toast.message}</p>
@@ -813,11 +841,10 @@ export default function CreateStockInOrderPage({
             <div
               key={tab.tabId}
               onClick={() => setActiveTabId(tab.tabId)}
-              className={`group inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer border shadow-xs select-none ${
-                isActive
+              className={`group inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer border shadow-xs select-none ${isActive
                   ? 'bg-cyan-600 text-white border-cyan-600 shadow-md ring-2 ring-cyan-200'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-cyan-50 hover:border-cyan-300 hover:text-cyan-800'
-              }`}
+                }`}
             >
               <FileText className={`h-3.5 w-3.5 ${isActive ? 'text-cyan-100' : 'text-cyan-600'}`} />
               <span className="max-w-[150px] truncate">
@@ -825,9 +852,8 @@ export default function CreateStockInOrderPage({
               </span>
               {validItemsCount > 0 && (
                 <span
-                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
-                    isActive ? 'bg-white text-cyan-800' : 'bg-cyan-100 text-cyan-800'
-                  }`}
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${isActive ? 'bg-white text-cyan-800' : 'bg-cyan-100 text-cyan-800'
+                    }`}
                 >
                   {validItemsCount} SP
                 </span>
@@ -836,11 +862,10 @@ export default function CreateStockInOrderPage({
                 <button
                   type="button"
                   onClick={(e) => handleCloseTab(tab.tabId, e)}
-                  className={`rounded p-0.5 transition ${
-                    isActive
+                  className={`rounded p-0.5 transition ${isActive
                       ? 'hover:bg-cyan-700 text-cyan-200 hover:text-white'
                       : 'hover:bg-slate-200 text-slate-400 hover:text-red-500'
-                  }`}
+                    }`}
                   title="Đóng phiếu này"
                 >
                   <X size={13} />
