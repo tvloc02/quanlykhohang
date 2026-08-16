@@ -100,19 +100,12 @@ export default function BillProfitReportPage() {
             const orderDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
             const custName = order.customer || 'Khách hàng lẻ';
 
-            const details = Array.isArray(order.details) && order.details.length > 0 ? order.details : [
-              {
-                productCode: 'APK3280',
-                productName: 'Ampe kìm HIOKI AC 3280-10F',
-                requiredQty: order.items || 1,
-                unitPrice: 1000000,
-              }
-            ];
+            const details = Array.isArray(order.details) ? order.details : [];
 
             details.forEach((d: any) => {
-              const pCode = d.productCode || d.code || 'SP-001';
-              const pName = d.productName || d.name || 'Sản phẩm kinh doanh';
-              const exportQty = Number(d.requiredQty || d.quantity || 1);
+              const pCode = d.productCode || d.productSku || d.product?.internalSku || '';
+              const pName = d.productName || d.product?.name || 'Sản phẩm kinh doanh';
+              const exportQty = Number(d.requiredQty || d.pickedQty || d.qty || 0);
               const exportPrice = Number(d.unitPrice || d.price || 1000000);
               const revenue = exportQty * exportPrice;
 

@@ -162,20 +162,21 @@ export default function InventoryReportPage() {
                 </tr>
               ) : data.length > 0 ? (
                 data.map((group) => {
-                  const grpInit = group.items.reduce((s, i) => s + (i.initialStock || 0), 0);
-                  const grpIn = group.items.reduce((s, i) => s + (i.importQty || 0), 0);
-                  const grpOut = group.items.reduce((s, i) => s + (i.exportQty || 0), 0);
-                  const grpFinal = group.items.reduce((s, i) => s + (i.finalStock || 0), 0);
-                  const grpValue = group.items.reduce((s, i) => s + (i.totalValue || 0), 0);
+                  const groupItems = Array.isArray(group?.items) ? group.items : [];
+                  const grpInit = groupItems.reduce((s, i) => s + (i.initialStock || 0), 0);
+                  const grpIn = groupItems.reduce((s, i) => s + (i.importQty || 0), 0);
+                  const grpOut = groupItems.reduce((s, i) => s + (i.exportQty || 0), 0);
+                  const grpFinal = groupItems.reduce((s, i) => s + (i.finalStock || 0), 0);
+                  const grpValue = groupItems.reduce((s, i) => s + (i.totalValue || 0), 0);
 
                   return (
-                    <React.Fragment key={group.groupName}>
+                    <React.Fragment key={group.groupName || 'group'}>
                       {showGroups && (
                         <tr className="bg-slate-100 font-black text-slate-900 border-t border-slate-300">
-                          <td colSpan={11} className="py-2 px-3 text-left">{group.groupName}</td>
+                          <td colSpan={11} className="py-2 px-3 text-left">{group.groupName || 'Nhóm hàng'}</td>
                         </tr>
                       )}
-                      {group.items.map((row, idx) => (
+                      {groupItems.map((row, idx) => (
                         <tr key={row.id || idx} className="hover:bg-blue-50/40 transition-colors">
                           <td className="py-2 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">{idx + 1}</td>
                           <td className="py-2 px-3 text-left border-r border-slate-200 font-mono font-bold text-slate-800">{row.sku}</td>

@@ -114,18 +114,16 @@ export default function CategoryProfitReportPage() {
 
           outbounds.forEach((order: any) => {
             const branch = order.warehouseName || order.branch || 'Kho Tổng';
-            const details = Array.isArray(order.details) && order.details.length > 0 ? order.details : [
-              { productCode: 'APK3280', productName: 'Ampe kìm HIOKI AC 3280-10F', requiredQty: order.items || 1, unitPrice: 1000000 }
-            ];
+            const details = Array.isArray(order.details) ? order.details : [];
 
             details.forEach((d: any) => {
-              const pCode = d.productCode || d.code || 'SP-001';
-              const pName = d.productName || d.name || 'Hàng hóa';
-              const qty = Number(d.requiredQty || d.quantity || 1);
-              const price = Number(d.unitPrice || d.price || 1000000);
+              const pCode = d.productCode || d.productSku || d.product?.internalSku || '';
+              const pName = d.productName || d.product?.name || 'Sản phẩm';
+              const qty = Number(d.requiredQty || d.pickedQty || d.qty || 0);
+              const price = Number(d.unitPrice || d.price || 0);
 
               const matchedProd = productsMap.get(pCode);
-              const catName = matchedProd ? matchedProd.category : 'Thiết bị điện tử';
+              const catName = matchedProd ? matchedProd.category : 'Nhóm chung';
               const cost = matchedProd ? matchedProd.importPrice : price * 0.7;
 
               const rev = qty * price;
