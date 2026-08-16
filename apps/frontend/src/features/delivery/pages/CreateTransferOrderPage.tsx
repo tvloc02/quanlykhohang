@@ -607,8 +607,8 @@ export default function CreateTransferOrderPage({
             <label className="mb-1 block text-xs font-bold text-slate-700">Ngày xuất / điều chuyển</label>
             <input
               type="datetime-local"
-              value={orderDate}
-              onChange={(e) => setOrderDate(e.target.value)}
+              value={activeTab?.orderDate || ''}
+              onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
               className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-semibold outline-none transition focus:border-cyan-500"
             />
           </div>
@@ -618,8 +618,8 @@ export default function CreateTransferOrderPage({
             <label className="mb-1 block text-xs font-bold text-slate-700">Mã phiếu / Lệnh điều chuyển</label>
             <input
               type="text"
-              value={transferCode}
-              onChange={(e) => setTransferCode(e.target.value)}
+              value={activeTab?.transferNo || ''}
+              onChange={(e) => updateActiveTab((t) => ({ ...t, transferNo: e.target.value }))}
               placeholder="Tạo tự động"
               className="h-9 w-full rounded-lg border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-cyan-700 outline-none focus:border-cyan-500"
             />
@@ -632,7 +632,7 @@ export default function CreateTransferOrderPage({
               <span>Kho xuất hàng (Kho nguồn)</span>
             </label>
             <select
-              value={sourceWarehouseCode}
+              value={activeTab?.sourceWarehouseCode || ''}
               onChange={(e) => handleSourceWarehouseChange(e.target.value)}
               className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer"
             >
@@ -659,8 +659,8 @@ export default function CreateTransferOrderPage({
               <span>Kho nhập (Kho nhận)</span>
             </label>
             <select
-              value={destinationWarehouseCode}
-              onChange={(e) => setDestinationWarehouseCode(e.target.value)}
+              value={activeTab?.destinationWarehouseCode || ''}
+              onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
               className="h-9 w-full rounded-lg border-2 border-emerald-500 bg-emerald-50/50 px-3 text-xs font-bold text-emerald-900 outline-none transition focus:border-emerald-600 cursor-pointer"
             >
               {warehouses.length > 0 ? (
@@ -686,8 +686,8 @@ export default function CreateTransferOrderPage({
               <span>Nhân viên điều chuyển</span>
             </label>
             <select
-              value={assignedStaffEmail}
-              onChange={(e) => setAssignedStaffEmail(e.target.value)}
+              value={activeTab?.assignedStaffEmail || ''}
+              onChange={(e) => updateActiveTab((t) => ({ ...t, assignedStaffEmail: e.target.value }))}
               className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500 cursor-pointer"
             >
               <option value={currentUser?.email || ''}>{currentUser?.fullName || currentUser?.email || 'Nhân viên phụ trách'}</option>
@@ -709,7 +709,7 @@ export default function CreateTransferOrderPage({
           <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between">
             <div className="flex items-center gap-2 text-cyan-700 font-bold text-xs">
               <Truck className="h-4 w-4 text-cyan-600" />
-              <span>THÔNG TIN HÀNG HÓA XUẤT CHUYỂN ({items.length} DÒNG - TỔNG SL: {totalQty})</span>
+              <span>THÔNG TIN HÀNG HÓA XUẤT CHUYỂN ({(activeTab?.details || []).length} DÒNG - TỔNG SL: {totalQty})</span>
             </div>
             <button
               type="button"
@@ -918,7 +918,6 @@ export default function CreateTransferOrderPage({
             </table>
           </div>
         </div>
-      </div>
 
       {/* ── RIGHT COLUMN (3/12 width): SUMMARY CARD & ACTIONS ── */}
       <div className="lg:col-span-3 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm space-y-3 flex flex-col justify-between h-full">

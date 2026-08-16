@@ -758,10 +758,11 @@ export default function Products() {
         stockForThisWh = matchedBal.totalPhysical !== undefined ? matchedBal.totalPhysical : (matchedBal.available || 0);
       } else {
         // 2. Check direct warehouseStocks on product object if set
-        let directVal: number | '' | undefined = undefined;
+        let directVal: number | undefined = undefined;
         for (const k of keys) {
-          if (product.warehouseStocks && product.warehouseStocks[k] !== undefined && product.warehouseStocks[k] !== '') {
-            directVal = product.warehouseStocks[k];
+          const stk = product.warehouseStocks ? (product.warehouseStocks as any)[k] : undefined;
+          if (stk !== undefined && stk !== null && stk !== '') {
+            directVal = Number(stk);
             break;
           }
         }
