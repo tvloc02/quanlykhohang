@@ -172,7 +172,6 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'categories', label: 'Nhóm hàng', parentId: 'danh-muc' },
   { id: 'customers', label: 'Khách hàng', parentId: 'danh-muc' },
   { id: 'suppliers', label: 'Nhà cung cấp', parentId: 'danh-muc' },
-  { id: 'areas', label: 'Khu vực', parentId: 'danh-muc' },
   { id: 'warehouses', label: 'Kho hàng', parentId: 'danh-muc' },
   { id: 'units', label: 'Đơn vị quy đổi', parentId: 'danh-muc' },
   { id: 'currency', label: 'Ngoại tệ', parentId: 'danh-muc' },

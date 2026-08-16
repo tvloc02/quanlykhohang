@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Eye, Maximize2, Move3d, RotateCw, Layers, ShieldCheck, DoorClosed, Plus, ZoomIn, ZoomOut } from 'lucide-react';
+import { Move3d, RotateCw, Layers, ZoomIn, ZoomOut } from 'lucide-react';
 import type { SubWarehouse } from '../../../shared/utils/warehouseAssignments';
 
 interface Warehouse3DViewerProps {
@@ -7,7 +7,7 @@ interface Warehouse3DViewerProps {
   allSubWarehouses?: SubWarehouse[];
 }
 
-export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] }: Warehouse3DViewerProps) {
+export default function Warehouse3DViewer({ subWarehouse }: Warehouse3DViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [rotationX, setRotationX] = useState(30); // degrees
   const [rotationY, setRotationY] = useState(-40); // degrees
@@ -17,12 +17,12 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [autoRotate, setAutoRotate] = useState(false);
 
-  // Sub-warehouse dimensions
-  const W = Math.max(subWarehouse.width || 15, 5); // meters
-  const L = Math.max(subWarehouse.length || 20, 5); // meters
-  const H = Math.max(subWarehouse.height || 8, 3); // meters
-  const racksCount = subWarehouse.racksCount || 6;
-  const shelvesPerRack = subWarehouse.shelvesPerRack || 4;
+  // Sub-warehouse dimensions in real-time (Support 0 values)
+  const W = Math.max(subWarehouse?.width ?? 0, 1); // meters (Width)
+  const L = Math.max(subWarehouse?.length ?? 0, 1); // meters (Length)
+  const H = Math.max(subWarehouse?.height ?? 0, 1);  // meters (Height)
+  const racksCount = Math.max(subWarehouse?.racksCount ?? 0, 0);
+  const shelvesPerRack = Math.max(subWarehouse?.shelvesPerRack ?? 0, 0);
 
   // Auto rotation loop
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
     setIsDragging(false);
   };
 
-  // Render 3D Sub-warehouse Canvas
+  // Render 3D Canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -66,10 +66,11 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
 
     // Center of canvas
     const cx = width / 2;
-    const cy = height / 2 + 20;
+    const cy = height / 2 + 25;
 
-    // Scale factor based on zoom and canvas size
-    const baseScale = (Math.min(width, height) / (Math.max(W, L, H) * 2.2)) * zoom;
+    // Dynamic scale factor based on zoom and real 3D bounding box
+    const maxDim = Math.max(W, L, H, 5);
+    const baseScale = (Math.min(width, height) / (maxDim * 2.2)) * zoom;
 
     const radX = (rotationX * Math.PI) / 180;
     const radY = (rotationY * Math.PI) / 180;
@@ -95,10 +96,11 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
       };
     };
 
-    // Draw Floor Grid
-    ctx.strokeStyle = '#e2e8f0';
+    // 1. Draw Floor Slab & Grid
+    ctx.strokeStyle = '#cbd5e1';
     ctx.lineWidth = 1;
-    const step = 2;
+    const step = Math.max(1, Math.floor(Math.min(W, L) / 10));
+
     for (let x = 0; x <= W; x += step) {
       const p1 = project(x, 0, 0);
       const p2 = project(x, 0, L);
@@ -116,13 +118,13 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
       ctx.stroke();
     }
 
-    // Floor Slab Fill
+    // Floor Slab Outer Line
     const f0 = project(0, 0, 0);
     const f1 = project(W, 0, 0);
     const f2 = project(W, 0, L);
     const f3 = project(0, 0, L);
 
-    ctx.fillStyle = 'rgba(6, 182, 212, 0.12)';
+    ctx.fillStyle = 'rgba(6, 182, 212, 0.08)';
     ctx.beginPath();
     ctx.moveTo(f0.x, f0.y);
     ctx.lineTo(f1.x, f1.y);
@@ -131,128 +133,114 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = '#0891b2';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    // Draw 3D Sub-warehouse Wall Pillars
-    const corners = [
-      project(0, 0, 0),
-      project(W, 0, 0),
-      project(W, 0, L),
-      project(0, 0, L),
-      project(0, H, 0),
-      project(W, H, 0),
-      project(W, H, L),
-      project(0, H, L),
-    ];
+    // 2. Draw Continuous Longitudinal Rack Rows (Only if racksCount > 0)
+    if (racksCount > 0) {
+      const rowSpacing = W / (racksCount + 1);
+      const rackWidthX = Math.min(1.2, rowSpacing * 0.7); // Rộng 1.2m
+      const rackLengthZ = Math.max(L - 2, 0.5); // Dài kéo gần suốt kho
+      const zStart = 1.0;
+      const zEnd = zStart + rackLengthZ;
+      const shelfH = shelvesPerRack > 0 ? H / (shelvesPerRack + 1) : H;
 
-    if (!wireframe) {
-      // Back wall
-      ctx.fillStyle = 'rgba(241, 245, 249, 0.7)';
-      ctx.beginPath();
-      ctx.moveTo(corners[3].x, corners[3].y);
-      ctx.lineTo(corners[2].x, corners[2].y);
-      ctx.lineTo(corners[6].x, corners[6].y);
-      ctx.lineTo(corners[7].x, corners[7].y);
-      ctx.closePath();
-      ctx.fill();
+      // Number of structural bay posts along length Z
+      const bayCountZ = Math.max(1, Math.floor(rackLengthZ / 2.5));
+      const bayStepZ = rackLengthZ / bayCountZ;
 
-      // Left wall
-      ctx.fillStyle = 'rgba(226, 232, 240, 0.6)';
-      ctx.beginPath();
-      ctx.moveTo(corners[0].x, corners[0].y);
-      ctx.lineTo(corners[3].x, corners[3].y);
-      ctx.lineTo(corners[7].x, corners[7].y);
-      ctx.lineTo(corners[4].x, corners[4].y);
-      ctx.closePath();
-      ctx.fill();
-    }
+      const palletColors = ['#0284c7', '#059669', '#d97706', '#dc2626', '#4f46e5', '#0891b2'];
 
-    // Draw Racks (Kệ hàng 3D) inside the Sub-warehouse
-    const rowCount = Math.min(racksCount, 12);
-    const rowSpacing = L / (rowCount + 1);
-    const rackDepth = 1.2;
-    const shelfHeight = H / (shelvesPerRack + 1);
+      for (let r = 1; r <= racksCount; r++) {
+        const xCenter = r * rowSpacing;
+        const xLeft = xCenter - rackWidthX / 2;
+        const xRight = xCenter + rackWidthX / 2;
 
-    const palletColors = ['#0284c7', '#059669', '#d97706', '#dc2626', '#4f46e5', '#0891b2'];
+        // Draw Vertical Frame Posts (Khung sắt đứng)
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
 
-    for (let r = 1; r <= rowCount; r++) {
-      const zPos = r * rowSpacing;
+        for (let b = 0; b <= bayCountZ; b++) {
+          const zb = zStart + b * bayStepZ;
+          const postL_bot = project(xLeft, 0, zb);
+          const postL_top = project(xLeft, H * 0.85, zb);
+          const postR_bot = project(xRight, 0, zb);
+          const postR_top = project(xRight, H * 0.85, zb);
 
-      // Draw Rack Beams (Left & Right Sections)
-      for (let side = 0; side < 2; side++) {
-        const xStart = side === 0 ? 1.5 : W * 0.5 + 1;
-        const rackWidth = W * 0.4 - 1.5;
-
-        // Draw 4 vertical posts for each rack
-        const posts = [
-          project(xStart, 0, zPos),
-          project(xStart + rackWidth, 0, zPos),
-          project(xStart + rackWidth, 0, zPos + rackDepth),
-          project(xStart, 0, zPos + rackDepth),
-          project(xStart, H * 0.85, zPos),
-          project(xStart + rackWidth, H * 0.85, zPos),
-          project(xStart + rackWidth, H * 0.85, zPos + rackDepth),
-          project(xStart, H * 0.85, zPos + rackDepth),
-        ];
-
-        // Draw Rack Frame Posts
-        ctx.strokeStyle = '#475569';
-        ctx.lineWidth = 1.5;
-
-        // 4 Vertical Pillars
-        [0, 1, 2, 3].forEach((i) => {
+          // Left Vertical Column
           ctx.beginPath();
-          ctx.moveTo(posts[i].x, posts[i].y);
-          ctx.lineTo(posts[i + 4].x, posts[i + 4].y);
+          ctx.moveTo(postL_bot.x, postL_bot.y);
+          ctx.lineTo(postL_top.x, postL_top.y);
           ctx.stroke();
-        });
 
-        // Horizontal Shelves
+          // Right Vertical Column
+          ctx.beginPath();
+          ctx.moveTo(postR_bot.x, postR_bot.y);
+          ctx.lineTo(postR_top.x, postR_top.y);
+          ctx.stroke();
+        }
+
+        // Draw Horizontal Beams & Cargo Bins (Only if shelvesPerRack > 0)
         for (let s = 1; s <= shelvesPerRack; s++) {
-          const sy = s * shelfHeight;
-          const sLevel = [
-            project(xStart, sy, zPos),
-            project(xStart + rackWidth, sy, zPos),
-            project(xStart + rackWidth, sy, zPos + rackDepth),
-            project(xStart, sy, zPos + rackDepth),
-          ];
+          const sy = s * shelfH;
 
-          // Draw Shelf Beam Line
-          ctx.strokeStyle = '#0284c7';
-          ctx.lineWidth = 2;
+          // Long Beam Lines (Front & Back edge along Z-axis)
+          const bLeftStart = project(xLeft, sy, zStart);
+          const bLeftEnd = project(xLeft, sy, zEnd);
+          const bRightStart = project(xRight, sy, zStart);
+          const bRightEnd = project(xRight, sy, zEnd);
+
+          ctx.strokeStyle = '#ea580c'; // Industrial Orange Beam
+          ctx.lineWidth = 2.5;
+
+          // Left Beam
           ctx.beginPath();
-          ctx.moveTo(sLevel[0].x, sLevel[0].y);
-          ctx.lineTo(sLevel[1].x, sLevel[1].y);
-          ctx.lineTo(sLevel[2].x, sLevel[2].y);
-          ctx.lineTo(sLevel[3].x, sLevel[3].y);
-          ctx.closePath();
+          ctx.moveTo(bLeftStart.x, bLeftStart.y);
+          ctx.lineTo(bLeftEnd.x, bLeftEnd.y);
           ctx.stroke();
 
-          // Draw 3D Pallet Cargo Boxes on shelves
-          if (!wireframe) {
-            const boxes = Math.min(3, Math.floor(rackWidth / 1.5));
-            const boxW = rackWidth / boxes - 0.2;
+          // Right Beam
+          ctx.beginPath();
+          ctx.moveTo(bRightStart.x, bRightStart.y);
+          ctx.lineTo(bRightEnd.x, bRightEnd.y);
+          ctx.stroke();
 
-            for (let b = 0; b < boxes; b++) {
-              const bx = xStart + 0.1 + b * (boxW + 0.2);
+          // Cross ties
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 1.5;
+          for (let b = 0; b <= bayCountZ; b++) {
+            const zb = zStart + b * bayStepZ;
+            const pL = project(xLeft, sy, zb);
+            const pR = project(xRight, sy, zb);
+            ctx.beginPath();
+            ctx.moveTo(pL.x, pL.y);
+            ctx.lineTo(pR.x, pR.y);
+            ctx.stroke();
+          }
+
+          // Draw 3D Pallet Containers / Cargo Boxes
+          if (!wireframe) {
+            for (let b = 0; b < bayCountZ; b++) {
+              const zb1 = zStart + b * bayStepZ + 0.2;
+              const zb2 = zStart + (b + 1) * bayStepZ - 0.2;
+
               const bColor = palletColors[(r + s + b) % palletColors.length];
 
               const boxP = [
-                project(bx, sy, zPos),
-                project(bx + boxW, sy, zPos),
-                project(bx + boxW, sy, zPos + rackDepth * 0.8),
-                project(bx, sy, zPos + rackDepth * 0.8),
-                project(bx, sy + shelfHeight * 0.7, zPos),
-                project(bx + boxW, sy + shelfHeight * 0.7, zPos),
-                project(bx + boxW, sy + shelfHeight * 0.7, zPos + rackDepth * 0.8),
-                project(bx, sy + shelfHeight * 0.7, zPos + rackDepth * 0.8),
+                project(xLeft + 0.1, sy, zb1),
+                project(xRight - 0.1, sy, zb1),
+                project(xRight - 0.1, sy, zb2),
+                project(xLeft + 0.1, sy, zb2),
+                project(xLeft + 0.1, sy + shelfH * 0.65, zb1),
+                project(xRight - 0.1, sy + shelfH * 0.65, zb1),
+                project(xRight - 0.1, sy + shelfH * 0.65, zb2),
+                project(xLeft + 0.1, sy + shelfH * 0.65, zb2),
               ];
 
               ctx.fillStyle = bColor;
               ctx.globalAlpha = 0.85;
 
-              // Top Box Face
+              // Top Face
               ctx.beginPath();
               ctx.moveTo(boxP[4].x, boxP[4].y);
               ctx.lineTo(boxP[5].x, boxP[5].y);
@@ -261,7 +249,7 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
               ctx.closePath();
               ctx.fill();
 
-              // Front Box Face
+              // Front/Side Face
               ctx.beginPath();
               ctx.moveTo(boxP[0].x, boxP[0].y);
               ctx.lineTo(boxP[1].x, boxP[1].y);
@@ -277,86 +265,31 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
       }
     }
 
-    // Outer Room Wireframe Edges
-    ctx.strokeStyle = '#0891b2';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([4, 4]);
+    // 3. Render Real-time Dimension Labels
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 12px Inter, sans-serif';
 
-    const edges = [
-      [0, 4],
-      [1, 5],
-      [2, 6],
-      [3, 7],
-      [4, 5],
-      [5, 6],
-      [6, 7],
-      [7, 4],
-    ];
-    edges.forEach(([a, b]) => {
-      ctx.beginPath();
-      ctx.moveTo(corners[a].x, corners[a].y);
-      ctx.lineTo(corners[b].x, corners[b].y);
-      ctx.stroke();
-    });
-    ctx.setLineDash([]);
+    const dLength = project(-1.2, 0, L / 2);
+    ctx.fillText(`Dài Phân Khu: ${L}m`, dLength.x, dLength.y);
 
-    // Entrance door indicator for the Sub-warehouse
-    const d1 = project(W * 0.4, 0, L);
-    const d2 = project(W * 0.6, 0, L);
-    const d3 = project(W * 0.6, H * 0.5, L);
-    const d4 = project(W * 0.4, H * 0.5, L);
+    const dWidth = project(W / 2, 0, -1.2);
+    ctx.fillText(`Rộng Phân Khu: ${W}m`, dWidth.x, dWidth.y);
 
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
-    ctx.beginPath();
-    ctx.moveTo(d1.x, d1.y);
-    ctx.lineTo(d2.x, d2.y);
-    ctx.lineTo(d3.x, d3.y);
-    ctx.lineTo(d4.x, d4.y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    const dCenter = project(W * 0.5, H * 0.25, L);
-    ctx.fillStyle = '#047857';
-    ctx.font = 'bold 11px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('CỬA PHÂN KHU', dCenter.x, dCenter.y);
-
-    // Dimension labels
-    const dLength = project(-1.5, 0, L / 2);
-    ctx.fillStyle = '#334155';
-    ctx.font = 'bold 11px Inter, sans-serif';
-    ctx.fillText(`Chiều dài: ${L}m`, dLength.x, dLength.y);
-
-    const dWidth = project(W / 2, 0, -1.5);
-    ctx.fillText(`Chiều rộng: ${W}m`, dWidth.x, dWidth.y);
-
-    const dHeight = project(W + 1.5, H / 2, 0);
-    ctx.fillText(`Chiều cao: ${H}m`, dHeight.x, dHeight.y);
+    const dHeight = project(W + 1.2, H / 2, 0);
+    ctx.fillText(`Cao Phân Khu: ${H}m`, dHeight.x, dHeight.y);
   }, [rotationX, rotationY, zoom, wireframe, W, L, H, racksCount, shelvesPerRack, subWarehouse]);
 
   return (
-    <div className="rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-lg space-y-4 font-sans">
+    <div className="rounded-2xl border-2 border-cyan-500 bg-white dark:bg-slate-900 p-5 shadow-lg space-y-4 font-sans">
       {/* 3D Header Toolbar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <Move3d className="h-4 w-4 text-cyan-600" />
-            Mô Phỏng 3D Phân Khu: <span className="font-bold text-cyan-700">{subWarehouse.code}</span> - {subWarehouse.name}
-            <span
-              className={`ml-2 inline-flex rounded-lg px-2 py-0.5 text-[11px] font-bold ${
-                subWarehouse.status === 'inactive'
-                  ? 'border border-rose-200 bg-rose-50 text-rose-700'
-                  : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
-              }`}
-            >
-              {subWarehouse.status === 'inactive' ? 'Không hoạt động' : 'Đang hoạt động'}
-            </span>
+            Mô Phỏng 3D Dãy Kệ Dọc: <span className="font-black text-cyan-600">{subWarehouse?.code || 'ZONE'}</span> - {subWarehouse?.name}
           </h3>
           <p className="mt-1 text-xs font-semibold text-slate-500">
-            Kích thước: <strong className="text-slate-900">{L}m</strong> Dài × <strong className="text-slate-900">{W}m</strong> Rộng × <strong className="text-slate-900">{H}m</strong> Cao | Sức chứa: <strong className="text-cyan-700">{racksCount} Kệ</strong> × <strong className="text-cyan-700">{shelvesPerRack} Tầng</strong> | Kệ tường: <strong className="text-indigo-700">{subWarehouse.wallRacksCount || 2} Kệ</strong> | Hàng kệ: <strong className="text-indigo-700">{subWarehouse.rackRowsCount || 2} Hàng</strong>
+            Kích thước: <strong className="text-slate-900 dark:text-white">{L}m Dài</strong> × <strong className="text-slate-900 dark:text-white">{W}m Rộng</strong> × <strong className="text-slate-900 dark:text-white">{H}m Cao</strong> | Sức chứa: <strong className="text-cyan-600">{racksCount} Dãy Dọc</strong> × <strong className="text-cyan-600">{shelvesPerRack} Tầng Hàng</strong>
           </p>
         </div>
 
@@ -366,7 +299,7 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
             type="button"
             onClick={() => setAutoRotate(!autoRotate)}
             className={`inline-flex items-center gap-1.5 rounded-xl border-2 px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
-              autoRotate ? 'border-cyan-500 bg-cyan-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              autoRotate ? 'border-cyan-500 bg-cyan-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200'
             }`}
           >
             <RotateCw className={`h-3.5 w-3.5 ${autoRotate ? 'animate-spin' : ''}`} />
@@ -377,7 +310,7 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
             type="button"
             onClick={() => setWireframe(!wireframe)}
             className={`inline-flex items-center gap-1.5 rounded-xl border-2 px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
-              wireframe ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              wireframe ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200'
             }`}
           >
             <Layers className="h-3.5 w-3.5" />
@@ -385,20 +318,20 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
           </button>
 
           {/* Zoom controls */}
-          <div className="inline-flex items-center gap-1 rounded-xl border-2 border-slate-200 bg-slate-50 px-2 py-1">
+          <div className="inline-flex items-center gap-1 rounded-xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-1">
             <button
               type="button"
               onClick={() => setZoom((z) => Math.max(0.6, z - 0.2))}
-              className="p-1 font-black text-slate-700 hover:text-cyan-600 cursor-pointer"
+              className="p-1 font-black text-slate-700 dark:text-slate-200 hover:text-cyan-600 cursor-pointer"
               title="Thu nhỏ"
             >
               <ZoomOut className="h-4 w-4" />
             </button>
-            <span className="text-xs font-bold text-slate-800 px-1">{Math.round(zoom * 100)}%</span>
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 px-1">{Math.round(zoom * 100)}%</span>
             <button
               type="button"
               onClick={() => setZoom((z) => Math.min(3.0, z + 0.2))}
-              className="p-1 font-black text-slate-700 hover:text-cyan-600 cursor-pointer"
+              className="p-1 font-black text-slate-700 dark:text-slate-200 hover:text-cyan-600 cursor-pointer"
               title="Phóng to"
             >
               <ZoomIn className="h-4 w-4" />
@@ -409,33 +342,13 @@ export default function Warehouse3DViewer({ subWarehouse, allSubWarehouses = [] 
 
       {/* 3D Canvas Box */}
       <div
-        className="relative h-[380px] w-full overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-50 cursor-grab active:cursor-grabbing flex items-center justify-center shadow-inner"
+        className="relative h-[420px] w-full overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 cursor-grab active:cursor-grabbing flex items-center justify-center shadow-inner"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <canvas ref={canvasRef} width={800} height={380} className="w-full h-full object-contain" />
-      </div>
-
-      {/* Structure Specs Summary Badge */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-medium text-slate-700">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-          <span className="block text-[11px] font-black text-slate-400 uppercase">Tường Kho</span>
-          <strong className="text-slate-900">{subWarehouse.structure?.wallType || 'Tường gạch / Tôn cách nhiệt'}</strong>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-          <span className="block text-[11px] font-black text-slate-400 uppercase">Trần Kho</span>
-          <strong className="text-slate-900">{subWarehouse.structure?.ceilingType || 'Trần tôn PU cách nhiệt'}</strong>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-          <span className="block text-[11px] font-black text-slate-400 uppercase">Sàn Kho</span>
-          <strong className="text-slate-900">{subWarehouse.structure?.floorType || 'Sàn bê tông phủ Epoxy'}</strong>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-          <span className="block text-[11px] font-black text-slate-400 uppercase">Góc Kho</span>
-          <strong className="text-slate-900">{subWarehouse.structure?.cornerInfo || 'Góc bo tròn inox'}</strong>
-        </div>
+        <canvas ref={canvasRef} width={850} height={420} className="w-full h-full object-contain" />
       </div>
     </div>
   );

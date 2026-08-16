@@ -35,6 +35,9 @@ export class Warehouse {
   @Column({ type: 'text', nullable: true })
   staffIds: string;
 
+  @Column({ type: 'text', nullable: true })
+  subWarehouses: string;
+
   @CreateDateColumn({ type: 'datetime' })
   createdAt: Date;
 
@@ -45,6 +48,11 @@ export class Warehouse {
   normalizeAssignmentIds() {
     (this as any).managerIds = this.parseIds(this.managerIds);
     (this as any).staffIds = this.parseIds(this.staffIds);
+    try {
+      (this as any).subWarehouses = typeof this.subWarehouses === 'string' && this.subWarehouses.trim() ? JSON.parse(this.subWarehouses) : [];
+    } catch {
+      (this as any).subWarehouses = [];
+    }
   }
 
   @BeforeInsert()
@@ -52,6 +60,9 @@ export class Warehouse {
   sanitizeAssignmentIds() {
     this.managerIds = this.serializeIds(this.managerIds);
     this.staffIds = this.serializeIds(this.staffIds);
+    if (typeof (this as any).subWarehouses === 'object') {
+      this.subWarehouses = JSON.stringify((this as any).subWarehouses || []);
+    }
   }
 
   private parseIds(value?: string[] | string | null): string[] {

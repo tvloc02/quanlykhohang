@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   Eye,
@@ -159,6 +160,7 @@ function buildWarehouseForm(warehouse: WarehouseRecord, teams = getStoredProject
 }
 
 export default function WarehouseManagement() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<PersonnelUser[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRecord[]>(() => getStoredWarehouses());
   const [projectTeams, setProjectTeams] = useState<any[]>(() => getStoredProjectTeams());
@@ -472,13 +474,7 @@ export default function WarehouseManagement() {
   };
 
   const openCreateModal = () => {
-    setError('');
-    setSuccess('');
-    setSelectedWarehouse(null);
-    const newForm = buildEmptyForm();
-    setForm(newForm);
-    setActiveTabId('main');
-    setModalMode('create');
+    navigate('/warehouses/create');
   };
 
   const openWarehouseModal = (mode: Exclude<ModalMode, 'create' | null>, warehouse: WarehouseRecord) => {
@@ -1128,7 +1124,7 @@ export default function WarehouseManagement() {
                             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                             aria-label="Sửa kho"
                             title="Chỉnh sửa"
-                            onClick={() => openWarehouseModal('edit', w)}
+                            onClick={() => navigate(`/warehouses/${w.id}/edit`)}
                           >
                             <Pencil className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                           </button>
