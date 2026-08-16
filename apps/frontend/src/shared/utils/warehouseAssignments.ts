@@ -1,15 +1,54 @@
+export type CustomBinConfig = {
+  binCode: string;
+  length: number;  // cm
+  width: number;   // cm
+  height: number;  // cm
+  maxWeight: number; // kg
+};
+
+export type RackConfig = {
+  id: string;
+  rackCode: string; // VD: R01
+  name: string;     // VD: Dãy Kệ Dọc Continuous Row A1
+  length: number;   // Dài dãy kệ chạy dọc suốt kho (mét)
+  width: number;    // Rộng dãy kệ (mét)
+  height: number;   // Cao dãy kệ (mét)
+  maxRackLoad: number; // Tải trọng tối đa cả dãy kệ (kg)
+  baysCount: number;   // Số Khoang Kệ (Bay) nối tiếp dọc theo chiều dài dãy
+  horizontalPartitions: number; // Số vách ngăn ngang (Shelves / Levels)
+  verticalPartitions: number;   // Số vách ngăn dọc (Bins per shelf level in each Bay)
+  columnsCount: number; // Số cột/khoang (Bay/Column)
+  shelvesCount: number; // Số tầng hàng ngang (Level/Shelf)
+  binsPerShelf: number; // Số ô/ngăn trong mỗi tầng
+  defaultBinLength: number; // cm
+  defaultBinWidth: number;  // cm
+  defaultBinHeight: number; // cm
+  defaultBinMaxWeight: number; // kg
+  customBins?: Record<string, CustomBinConfig>; // Chi tiết ô tùy chỉnh
+};
+
 export type SubWarehouse = {
   id: string;
   code: string;
   name: string;
   status?: 'active' | 'inactive'; // Trạng thái phân khu
+  zoneType?: 'COLD' | 'AMBIENT' | 'THERMAL'; // Kho lạnh / Kho thường / Kho nhiệt
+  tempMin?: number; // °C
+  tempMax?: number; // °C
+  humidityTarget?: number; // %
   length: number; // mét
   width: number;  // mét
   height: number; // mét
   racksCount: number; // số kệ
   shelvesPerRack: number; // số tầng mỗi kệ
+  binsPerShelf?: number; // số ô/ngăn trên mỗi tầng
+  maxWeightPerBin?: number; // Tải trọng tối đa kg / ô
+  cellLength?: number; // cm
+  cellWidth?: number;  // cm
+  cellHeight?: number; // cm
   wallRacksCount?: number; // kệ trên tường
   rackRowsCount?: number; // số hàng kệ
+  racks?: RackConfig[]; // Cấu hình chi tiết từng Dãy Kệ
   structure?: {
     wallType?: string;    // Tường
     ceilingType?: string; // Trần

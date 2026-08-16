@@ -12,6 +12,7 @@ import Personnel from './features/personnel/Personnel';
 import ProjectTeamsPage from './features/personnel/ProjectTeamsPage';
 import PermissionGroupsPage from './features/personnel/PermissionGroupsPage';
 import WarehouseManagement from './features/warehouses/WarehouseManagement';
+import CreateWarehousePage from './features/warehouses/pages/CreateWarehousePage';
 import Delivery from './features/delivery/Delivery';
 import TransferRequestsPage from './features/delivery/pages/TransferRequestsPage';
 import CreateTransferOrderPage from './features/delivery/pages/CreateTransferOrderPage';
@@ -331,6 +332,22 @@ function App() {
               <MainLayout>
                 <WarehouseManagement />
               </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/warehouses/create"
+          element={
+            <RoleRoute menuId="warehouses">
+              <CreateWarehousePage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/warehouses/:id/edit"
+          element={
+            <RoleRoute menuId="warehouses">
+              <CreateWarehousePage />
             </RoleRoute>
           }
         />
