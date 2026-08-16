@@ -138,8 +138,8 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
       <div className="flex w-full max-w-4xl max-h-[94vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl my-auto">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div>
-            <h2 className="text-xl font-black text-slate-900">Tạo yêu cầu điều chuyển</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">Thiết lập yêu cầu điều chuyển hàng hóa giữa các kho</p>
+            <h2 className="text-xl font-black text-slate-900">Tạo yêu cầu nhập kho nội bộ</h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">Thiết lập yêu cầu nhập kho nội bộ giữa các kho</p>
           </div>
           <button
             onClick={onClose}
@@ -152,7 +152,7 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <CustomSelect
-              label="Kho nguồn"
+              label="Kho cần chuyển (Kho nguồn)"
               required
               value={sourceWarehouse}
               onChange={(val) => setSourceWarehouse(val)}
@@ -162,11 +162,11 @@ export default function CreateTransferRequestModal({ onClose, onSuccess, setToas
                 .map(w => ({ value: w.code, label: `${w.name} (${w.code})` }))}
             />
             <CustomSelect
-              label="Kho đích"
+              label="Kho nhận (Kho nhập)"
               required
               value={destinationWarehouse}
               onChange={(val) => setDestinationWarehouse(val)}
-              placeholder="-- Chọn kho đích --"
+              placeholder="-- Chọn kho nhận --"
               options={warehouses
                 .filter(w => w.code !== sourceWarehouse)
                 .map(w => ({ value: w.code, label: `${w.name} (${w.code})` }))}

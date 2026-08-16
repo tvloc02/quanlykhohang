@@ -31,7 +31,7 @@ import {
   getStoredCatalogCategories,
   saveStoredCatalogCategories,
 } from '../../shared/utils/catalogCategories';
-import { getStoredWarehouses } from '../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../shared/utils/warehouseAssignments';
 import { readStoredUnits, saveStoredUnits, UnitConversion } from './UnitsPage';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 
@@ -144,8 +144,8 @@ function SearchableSelect({
                       setSearchTerm('');
                     }}
                     className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${isSelected
-                        ? 'bg-cyan-600 text-white shadow-xs'
-                        : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
+                      ? 'bg-cyan-600 text-white shadow-xs'
+                      : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
                       }`}
                   >
                     <span className="truncate">{opt.label}</span>
@@ -189,22 +189,12 @@ type RawProduct = {
   managementType?: string;
   supplier?: SupplierField;
   price?: number;
+  importPrice?: number | '';
+  wholesalePrice?: number | '';
+  retailPrice?: number | '';
   stock?: number;
   totalStock?: number;
   isVisible?: boolean;
-  barcode?: string;
-  supplierBarcode?: string;
-  description?: string;
-  taxType?: string;
-  vatRate?: number | '';
-  bonusAmount?: number | '';
-  trackSerial?: boolean;
-  warehouseStocks?: Record<string, number | ''>;
-  warehouseUnitStocks?: Record<string, number | ''>;
-  conversionUnits?: ConversionUnitItem[];
-  webTitle?: string;
-  webDescription?: string;
-  comboItems?: ComboProductItem[];
 };
 
 type Product = {
@@ -218,18 +208,16 @@ type Product = {
   managementType: string;
   supplier: string;
   price: number;
+  importPrice?: number | '';
+  wholesalePrice?: number | '';
+  retailPrice?: number | '';
   stock: number;
-  barcode?: string;
-  description?: string;
-  bonusAmount?: number | '';
-  taxType?: string;
-  vatRate?: number | '';
-  trackSerial?: boolean;
-  warehouseStocks?: Record<string, number | ''>;
-  warehouseUnitStocks?: Record<string, number | ''>;
-  conversionUnits?: ConversionUnitItem[];
+  warehouseStocks?: Record<string, number>;
   images: string[];
   isVisible: boolean;
+  webTitle?: string;
+  webDescription?: string;
+  comboItems?: ComboProductItem[];
 };
 
 type ConversionUnitItem = {
@@ -429,10 +417,15 @@ async function handleFileUploadToCloudinary(file: File): Promise<string> {
   throw new Error(errData?.message || 'Không thể tải ảnh lên máy chủ Cloudinary. Vui lòng kiểm tra lại kết nối mạng.');
 }
 
-function normalizeProduct(product: RawProduct): Product {
+function normalizeProduct(product: RawProduct & Record<string, any>): Product {
   const stockVal = Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0));
+  const rPrice = product.retailPrice !== undefined && product.retailPrice !== '' ? Number(product.retailPrice) : Number(product.price || 0);
+  const iPrice = product.importPrice !== undefined && product.importPrice !== '' ? Number(product.importPrice) : '';
+  const wPrice = product.wholesalePrice !== undefined && product.wholesalePrice !== '' ? Number(product.wholesalePrice) : '';
+
   return {
-    id: product.id || safeUUID(),
+    ...product,
+    id: String(product.id || safeUUID()),
     sku: product.internalSku || product.sku || '',
     name: product.name || '',
     category: normalizeCategory(product.category),
@@ -441,56 +434,15 @@ function normalizeProduct(product: RawProduct): Product {
     location: product.location || '',
     managementType: product.managementType || '',
     supplier: normalizeSupplierField(product.supplier || ''),
-    price: Number(product.price || 0),
+    price: rPrice,
+    importPrice: iPrice,
+    wholesalePrice: wPrice,
+    retailPrice: rPrice,
     stock: stockVal,
-    barcode: product.barcode || product.supplierBarcode || '',
-    description: product.description || (typeof product.supplier === 'string' ? product.supplier : ''),
-    bonusAmount: product.bonusAmount ?? '',
-    taxType: product.taxType || 'RA',
-    vatRate: product.vatRate ?? 10,
-    trackSerial: !!product.trackSerial,
-    warehouseStocks: product.warehouseStocks || {},
-    warehouseUnitStocks: product.warehouseUnitStocks || {},
-    conversionUnits: product.conversionUnits || [],
-    images: product.images || [],
+    warehouseStocks: (product as any).warehouseStocks || {},
+    images: (product as any).images || [],
     isVisible: !!product.isVisible,
-    webTitle: product.webTitle || '',
-    webDescription: product.webDescription || '',
-    comboItems: product.comboItems || [],
   };
-}
-
-function mergeProductsWithStored(remoteProducts: RawProduct[]): Product[] {
-  const storedProducts = getStoredProducts();
-  const storedById = new Map(storedProducts.map((p) => [String(p.id), p]));
-  const storedBySku = new Map(storedProducts.map((p) => [p.sku, p]));
-
-  return remoteProducts.map((raw) => {
-    const norm = normalizeProduct(raw);
-    const stored = storedById.get(String(norm.id)) || storedBySku.get(norm.sku);
-
-    if (stored) {
-      return normalizeProduct({
-        ...stored,
-        ...raw,
-        importPrice: raw.importPrice !== undefined ? raw.importPrice : stored.importPrice,
-        wholesalePrice: raw.wholesalePrice !== undefined ? raw.wholesalePrice : stored.wholesalePrice,
-        retailPrice: raw.retailPrice !== undefined ? raw.retailPrice : (raw.price !== undefined ? raw.price : stored.retailPrice),
-        warehouseStocks: (raw as any).warehouseStocks || stored.warehouseStocks,
-        warehouseUnitStocks: (raw as any).warehouseUnitStocks || stored.warehouseUnitStocks,
-        conversionUnits: (raw as any).conversionUnits || stored.conversionUnits,
-        barcode: (raw as any).barcode || (raw as any).supplierBarcode || stored.barcode,
-        description: (raw as any).description || stored.description,
-        bonusAmount: (raw as any).bonusAmount !== undefined ? (raw as any).bonusAmount : stored.bonusAmount,
-        taxType: (raw as any).taxType || stored.taxType,
-        vatRate: (raw as any).vatRate !== undefined ? (raw as any).vatRate : stored.vatRate,
-        webTitle: (raw as any).webTitle || stored.webTitle,
-        comboItems: (raw as any).comboItems || stored.comboItems,
-      });
-    }
-
-    return norm;
-  });
 }
 
 export default function Products() {
@@ -608,38 +560,19 @@ export default function Products() {
     setError('');
 
     try {
-      const [prodRes, catRes, whRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(() => null),
-        fetch(`${API_BASE_URL}/categories`, { headers: authHeaders() }).catch(() => null),
-        fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
-      ]);
-
-      if (catRes && catRes.ok) {
-        const catData = await catRes.json();
-        if (Array.isArray(catData) && catData.length > 0) {
-          setCatalogCategories(catData);
-          saveStoredCatalogCategories(catData);
-        }
+      const response = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || 'Không tải được danh sách hàng hóa');
       }
 
-      if (whRes && whRes.ok) {
-        const whData = await whRes.json();
-        if (Array.isArray(whData) && whData.length > 0) {
-          setWarehouses(whData);
-        }
-      }
-
-      if (prodRes && prodRes.ok) {
-        const data = (await prodRes.json()) as RawProduct[];
-        const normalizedProducts = data.map(normalizeProduct);
-        setProducts(normalizedProducts);
-        saveStoredProducts(normalizedProducts);
-      } else {
-        setProducts(getStoredProducts());
-      }
-    } catch (err: any) {
-      console.error('Lỗi khi tải dữ liệu hàng hóa từ Database:', err);
+      const data = (await response.json()) as RawProduct[];
+      const normalizedProducts = data.map(normalizeProduct);
+      setProducts(normalizedProducts);
+      saveStoredProducts(normalizedProducts);
+    } catch (err) {
       setProducts(getStoredProducts());
+      setWarehouses(getStoredWarehouses());
     } finally {
       setLoading(false);
     }
@@ -986,9 +919,25 @@ export default function Products() {
         throw new Error(data?.message || 'Không thể lưu hàng hóa. Vui lòng kiểm tra lại thông tin (có thể trùng mã hàng hóa).');
       }
 
+      const resData = await response.json().catch(() => ({}));
+      const savedProduct = normalizeProduct({
+        ...payload,
+        id: isEdit && selectedProduct ? selectedProduct.id : String(resData.id || safeUUID()),
+      });
+
+      setProducts((prev) => {
+        let updated;
+        if (isEdit && selectedProduct) {
+          updated = prev.map((p) => (String(p.id) === String(savedProduct.id) ? { ...p, ...savedProduct } : p));
+        } else {
+          updated = [savedProduct, ...prev];
+        }
+        saveStoredProducts(updated);
+        return updated;
+      });
+
       setSuccess(isEdit ? 'Đã cập nhật hàng hóa.' : 'Đã thêm hàng hóa mới.');
       closeModal();
-      await loadData();
     } catch (err: any) {
       setError(err.message || 'Có lỗi xảy ra khi kết nối đến máy chủ.');
     } finally {
@@ -1109,8 +1058,8 @@ export default function Products() {
               type="button"
               onClick={() => setShowAdvancedSearch((prev) => !prev)}
               className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition ${showAdvancedSearch
-                  ? 'border-cyan-600 bg-cyan-50 text-cyan-700'
-                  : 'border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50'
+                ? 'border-cyan-600 bg-cyan-50 text-cyan-700'
+                : 'border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50'
                 }`}
             >
               <SlidersHorizontal className="h-4 w-4" />
@@ -1155,8 +1104,8 @@ export default function Products() {
                   type="button"
                   onClick={() => setSelectedCategoryFilter('ALL')}
                   className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${selectedCategoryFilter === 'ALL'
-                      ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
-                      : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
+                    ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
+                    : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
                     }`}
                 >
                   Tất cả danh mục
@@ -1167,8 +1116,8 @@ export default function Products() {
                     type="button"
                     onClick={() => setSelectedCategoryFilter(cat.name)}
                     className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${selectedCategoryFilter === cat.name
-                        ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
-                        : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
+                      ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
                       }`}
                   >
                     {cat.name}
@@ -1192,8 +1141,8 @@ export default function Products() {
                     type="button"
                     onClick={() => setSelectedStockFilter(item.key)}
                     className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition border ${selectedStockFilter === item.key
-                        ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
-                        : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
+                      ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/50'
                       }`}
                   >
                     {item.label}
@@ -1698,8 +1647,8 @@ export default function Products() {
                     type="button"
                     onClick={() => setActiveTab('general')}
                     className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'general'
-                        ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
-                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                      ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
                       }`}
                   >
                     <Package className="h-4 w-4 text-cyan-600" />
@@ -1710,8 +1659,8 @@ export default function Products() {
                     type="button"
                     onClick={() => setActiveTab('combo')}
                     className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'combo'
-                        ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
-                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                      ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
                       }`}
                   >
                     <Boxes className="h-4 w-4 text-cyan-600" />
@@ -1722,8 +1671,8 @@ export default function Products() {
                     type="button"
                     onClick={() => setActiveTab('web')}
                     className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'web'
-                        ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
-                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                      ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
                       }`}
                   >
                     <Globe className="h-4 w-4 text-cyan-600" />
@@ -1734,8 +1683,8 @@ export default function Products() {
                     type="button"
                     onClick={() => setActiveTab('conversion')}
                     className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'conversion'
-                        ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
-                        : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                      ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
                       }`}
                   >
                     <RefreshCw className="h-4 w-4 text-cyan-600" />
@@ -2396,8 +2345,8 @@ export default function Products() {
                                           readOnly={modalMode === 'view'}
                                           placeholder="0"
                                           className={`w-full h-8 px-2 text-center rounded border font-bold text-xs outline-none transition read-only:bg-slate-50 ${uItem.isBase
-                                              ? 'border-slate-300 text-slate-800 focus:border-cyan-500'
-                                              : 'border-emerald-300 bg-emerald-50/40 text-emerald-900 focus:border-emerald-500'
+                                            ? 'border-slate-300 text-slate-800 focus:border-cyan-500'
+                                            : 'border-emerald-300 bg-emerald-50/40 text-emerald-900 focus:border-emerald-500'
                                             }`}
                                         />
                                       </td>

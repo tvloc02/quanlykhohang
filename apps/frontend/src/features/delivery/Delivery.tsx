@@ -83,7 +83,7 @@ export default function Delivery() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Truck className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Điều Chuyển Kho</h1>
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Xuất Kho Nội Bộ</h1>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
