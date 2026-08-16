@@ -698,16 +698,16 @@ export default function CreateStockInOrderPage({
   const contentMarkup = (
     <div
       className={`animate-[fadeIn_0.2s_ease-out] ${isFullscreen
-          ? 'fixed inset-0 z-[9999] bg-slate-100 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
-          : 'space-y-3 pb-20'
+        ? 'fixed inset-0 z-[9999] bg-slate-100 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
+        : 'space-y-3 pb-20'
         }`}
     >
       {/* Toast Alert */}
       {toast && (
         <div
           className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${toast.type === 'error'
-              ? 'bg-red-50 text-red-600 border-red-200'
-              : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+            ? 'bg-red-50 text-red-600 border-red-200'
+            : 'bg-emerald-50 text-emerald-600 border-emerald-200'
             }`}
         >
           {toast.type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
@@ -842,8 +842,8 @@ export default function CreateStockInOrderPage({
               key={tab.tabId}
               onClick={() => setActiveTabId(tab.tabId)}
               className={`group inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer border shadow-xs select-none ${isActive
-                  ? 'bg-cyan-600 text-white border-cyan-600 shadow-md ring-2 ring-cyan-200'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-cyan-50 hover:border-cyan-300 hover:text-cyan-800'
+                ? 'bg-cyan-600 text-white border-cyan-600 shadow-md ring-2 ring-cyan-200'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-cyan-50 hover:border-cyan-300 hover:text-cyan-800'
                 }`}
             >
               <FileText className={`h-3.5 w-3.5 ${isActive ? 'text-cyan-100' : 'text-cyan-600'}`} />
@@ -863,8 +863,8 @@ export default function CreateStockInOrderPage({
                   type="button"
                   onClick={(e) => handleCloseTab(tab.tabId, e)}
                   className={`rounded p-0.5 transition ${isActive
-                      ? 'hover:bg-cyan-700 text-cyan-200 hover:text-white'
-                      : 'hover:bg-slate-200 text-slate-400 hover:text-red-500'
+                    ? 'hover:bg-cyan-700 text-cyan-200 hover:text-white'
+                    : 'hover:bg-slate-200 text-slate-400 hover:text-red-500'
                     }`}
                   title="Đóng phiếu này"
                 >

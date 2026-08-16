@@ -560,16 +560,16 @@ export default function CreateTransferOrderPage({
   const contentMarkup = (
     <div
       className={`animate-[fadeIn_0.2s_ease-out] ${isFullscreen
-          ? 'fixed inset-0 z-[9999] bg-slate-100 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
-          : 'space-y-3 pb-20'
+        ? 'fixed inset-0 z-[9999] bg-slate-100 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
+        : 'space-y-3 pb-20'
         }`}
     >
       {/* Toast Alert */}
       {toast && (
         <div
           className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${toast.type === 'error'
-              ? 'bg-red-50 text-red-600 border-red-200'
-              : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+            ? 'bg-red-50 text-red-600 border-red-200'
+            : 'bg-emerald-50 text-emerald-600 border-emerald-200'
             }`}
         >
           {toast.type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
@@ -701,331 +701,311 @@ export default function CreateTransferOrderPage({
         </div>
       </div>
 
-      {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
-      <div className={`flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullscreen ? 'flex-1 h-full' : ''}`}>
-        {/* Table Header Controls */}
-        <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs">
-            <Truck className="h-4 w-4 text-cyan-600" />
-            <span>THÔNG TIN HÀNG HÓA XUẤT CHUYỂN ({items.length} DÒNG - TỔNG SL: {totalQty})</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowScannerModal(true)}
-              className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
-            >
-              <ScanLine className="h-3.5 w-3.5 text-cyan-600" />
-              <span>Quét Barcode</span>
-            </button>
-
+      {/* 2-Column Main Section: Left Table (9 Cols) + Right Summary Panel (3 Cols) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+        {/* LEFT COLUMN: Product Table */}
+        <div className="lg:col-span-9 flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden">
+          {/* Table Header Strip */}
+          <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-cyan-700 font-bold text-xs">
+              <Truck className="h-4 w-4 text-cyan-600" />
+              <span>THÔNG TIN HÀNG HÓA XUẤT CHUYỂN ({items.length} DÒNG - TỔNG SL: {totalQty})</span>
+            </div>
             <button
               type="button"
               onClick={handleAddBlankRow}
-              className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3.5 py-1 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3 py-1 text-xs font-bold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>Thêm dòng mới</span>
             </button>
+          </div>
 
-            <button
-              type="button"
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-500 bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800 hover:bg-cyan-100 transition cursor-pointer shadow-xs"
-              title={isFullscreen ? 'Thu nhỏ cửa sổ' : 'Phóng to toàn màn hình'}
-            >
-              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5 text-cyan-700" /> : <Maximize2 className="h-3.5 w-3.5 text-cyan-700" />}
-              <span>{isFullscreen ? 'Thu nhỏ' : 'Phóng to'}</span>
-            </button>
+          {/* Grid Product Table */}
+          <div className={`overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 ${isFullscreen ? '' : 'max-h-[calc(100vh-340px)]'}`}>
+            <table className="w-full text-left border-collapse text-xs min-w-[950px]">
+              <thead className="bg-slate-100 text-slate-800 font-extrabold border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
+                <tr>
+                  <th className="p-2 w-10 text-center border-r border-slate-200 bg-slate-100">STT</th>
+                  <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">MÃ SKU</th>
+                  <th className="p-2 min-w-[200px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
+                  <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
+                  <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">KHO XUẤT</th>
+                  <th className="p-2 w-20 text-center border-r border-slate-200 bg-slate-100">SL XUẤT</th>
+                  <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">ĐƠN GIÁ (đ)</th>
+                  <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">THÀNH TIỀN</th>
+                  <th className="p-2 min-w-[120px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
+                  <th className="p-2 w-20 text-center bg-slate-100">TT</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {activeTab?.details.map((row, idx) => {
+                  const isEven = idx % 2 === 1;
+                  return (
+                    <tr
+                      key={row.rowId}
+                      className={`${isEven ? 'bg-[#eafaf1]' : 'bg-white'} hover:bg-cyan-50/50 transition-colors`}
+                    >
+                      {/* STT */}
+                      <td className="p-1.5 text-center font-bold text-slate-500 border-r border-slate-200">
+                        {idx + 1}.
+                      </td>
+
+                      {/* MÃ SKU */}
+                      <td className="p-1 text-center font-bold text-cyan-800 border-r border-slate-200 bg-slate-50/50">
+                        <input
+                          type="text"
+                          readOnly
+                          value={row.productSku || ''}
+                          placeholder="Mã SKU"
+                          className="w-full h-8 px-1 text-center bg-transparent font-bold text-cyan-800 outline-none text-xs"
+                        />
+                      </td>
+
+                      {/* TÊN HÀNG HÓA - Searchable Interactive Inline Dropdown */}
+                      <td className="p-1 border-r border-slate-200 relative product-table-dropdown">
+                        <input
+                          type="text"
+                          value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateRow(row.rowId, { productName: val });
+                            setActiveProductDropdownRowId(row.rowId);
+                          }}
+                          onFocus={() => setActiveProductDropdownRowId(row.rowId)}
+                          onClick={() => setActiveProductDropdownRowId(row.rowId)}
+                          placeholder="Chọn hoặc nhập hàng..."
+                          className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500 text-xs cursor-text"
+                        />
+
+                        {/* Interactive Table Dropdown for this row */}
+                        {activeProductDropdownRowId === row.rowId && (
+                          <div className="absolute left-0 top-full z-[100] mt-1 w-[420px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
+                            <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
+                              <span className="w-1/3 uppercase">Mã SKU</span>
+                              <span className="w-1/3 uppercase">Tên Hàng Hóa</span>
+                              <span className="w-1/3 text-right uppercase">Giá tham chiếu</span>
+                            </div>
+                            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                              {getFilteredProductsForRow(row.productName).length === 0 ? (
+                                <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy sản phẩm phù hợp</div>
+                              ) : (
+                                getFilteredProductsForRow(row.productName).map((p) => (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => {
+                                      updateRow(row.rowId, {
+                                        productId: p.id,
+                                        productSku: p.internalSku,
+                                        productName: p.name,
+                                        unit: p.unit || 'Cái',
+                                        price: p.purchasePrice || p.salePrice || 0,
+                                        qty: row.qty > 0 ? row.qty : 1,
+                                      });
+                                      setActiveProductDropdownRowId(null);
+                                    }}
+                                    className="flex items-center px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs transition"
+                                  >
+                                    <span className="w-1/3 font-bold text-cyan-800">{p.internalSku || 'SKU---'}</span>
+                                    <span className="w-1/3 font-semibold text-slate-800 truncate pr-1">{p.name}</span>
+                                    <span className="w-1/3 text-right text-slate-600 font-medium">
+                                      {formatMoney(p.purchasePrice || p.salePrice || 0)}
+                                    </span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* ĐVT */}
+                      <td className="p-1 text-center border-r border-slate-200">
+                        <input
+                          type="text"
+                          value={row.unit}
+                          onChange={(e) => updateRow(row.rowId, { unit: e.target.value })}
+                          className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500"
+                        />
+                      </td>
+
+                      {/* KHO XUẤT */}
+                      <td className="p-1 border-r border-slate-200">
+                        <select
+                          value={row.sourceWarehouseCode || activeTab.sourceWarehouseCode}
+                          onChange={(e) => updateRow(row.rowId, { sourceWarehouseCode: e.target.value })}
+                          className="w-full h-8 px-1 rounded border border-slate-300 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500"
+                        >
+                          {warehouses.length > 0 ? (
+                            warehouses.map((wh) => (
+                              <option key={wh.id || wh.code} value={wh.code}>
+                                {wh.code}
+                              </option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="KHO-TONG">KHO-TONG</option>
+                              <option value="KH001">KH001</option>
+                              <option value="KHO-NVL">KHO-NVL</option>
+                            </>
+                          )}
+                        </select>
+                      </td>
+
+                      {/* SỐ LƯỢNG XUẤT */}
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="number"
+                          min="0"
+                          value={row.qty || ''}
+                          onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
+                          className="w-full h-8 px-2 text-right rounded border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:border-cyan-500"
+                        />
+                      </td>
+
+                      {/* ĐƠN GIÁ (đ) */}
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="number"
+                          min="0"
+                          value={row.price || ''}
+                          onChange={(e) => updateRow(row.rowId, { price: Number(e.target.value) })}
+                          className="w-full h-8 px-2 text-right rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500"
+                        />
+                      </td>
+
+                      {/* THÀNH TIỀN */}
+                      <td className="p-1.5 text-right font-black text-cyan-700 border-r border-slate-200">
+                        {formatMoney(row.totalAmount)}
+                      </td>
+
+                      {/* GHI CHÚ */}
+                      <td className="p-1 border-r border-slate-200">
+                        <input
+                          type="text"
+                          value={row.note}
+                          onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
+                          placeholder="Ghi chú dòng..."
+                          className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-normal text-slate-700 outline-none focus:border-cyan-500"
+                        />
+                      </td>
+
+                      {/* TT (Actions) */}
+                      <td className="p-1 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateRow(idx)}
+                            className="p-1 text-cyan-600 hover:text-cyan-800 hover:bg-cyan-50 rounded transition cursor-pointer"
+                            title="Nhân đôi dòng"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRow(row.rowId)}
+                            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
+                            title="Xóa dòng"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* ── RIGHT COLUMN (3/12 width): SUMMARY CARD & ACTIONS ── */}
+      <div className="lg:col-span-3 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm space-y-3 flex flex-col justify-between h-full">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-2 text-cyan-800 font-extrabold text-xs">
+            <Package className="h-4 w-4 text-cyan-600" />
+            <span>THÔNG TIN ĐIỀU CHUYỂN NỘI BỘ</span>
+          </div>
+
+          {/* Notice Badge */}
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-2.5 text-[11px] text-blue-800 font-semibold leading-relaxed">
+            ℹ Nghiệp vụ Chuyển Kho Nội Bộ giữa các kho trong cùng doanh nghiệp — Không phát sinh doanh thu hay thuế VAT.
+          </div>
+
+          {/* Quick Warehouse Overview */}
+          <div className="rounded-xl border-2 border-cyan-100 bg-cyan-50/60 p-2.5 space-y-2 text-xs">
+            <div className="flex items-center justify-between font-bold text-slate-700">
+              <span>Kho xuất (Kho nguồn):</span>
+              <span className="text-cyan-800 font-black">{activeTab?.sourceWarehouseCode}</span>
+            </div>
+            <div className="flex items-center justify-between font-bold text-slate-700">
+              <span>Kho nhập (Kho đích):</span>
+              <span className="text-emerald-800 font-black">{activeTab?.destinationWarehouseCode}</span>
+            </div>
+          </div>
+
+          {/* Ghi chú điều chuyển */}
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-700">Lý do / Ghi chú điều chuyển nội bộ</label>
+            <textarea
+              rows={3}
+              value={activeTab?.generalNote || ''}
+              onChange={(e) => updateActiveTab((t) => ({ ...t, generalNote: e.target.value }))}
+              placeholder="Nhập lý do điều chuyển nội bộ (VD: Điều chuyển cân bằng tồn kho)..."
+              className="w-full p-2.5 rounded-lg border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs"
+            />
+          </div>
+
+          {/* Highlight Total Card */}
+          <div className="bg-gradient-to-br from-cyan-50 to-emerald-50 border-2 border-cyan-200 rounded-xl p-3 space-y-2 text-xs">
+            <div className="flex items-center justify-between text-slate-600 font-semibold">
+              <span>Số mặt hàng xuất:</span>
+              <span className="font-bold text-slate-900">{activeValidItems.length}</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 font-semibold">
+              <span>Tổng số lượng xuất:</span>
+              <span className="font-bold text-slate-900">{totalQty}</span>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-cyan-200">
+              <span className="font-black text-slate-900 text-xs uppercase">TỔNG GIÁ TRỊ HÀNG:</span>
+              <span className="font-black text-cyan-700 text-base">{formatMoney(grandTotal)}</span>
+            </div>
           </div>
         </div>
 
-        {/* Grid Product Table */}
-        <div className={`overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 ${isFullscreen ? '' : 'max-h-[calc(100vh-340px)]'}`}>
-          <table className="w-full text-left border-collapse text-xs min-w-[950px]">
-            <thead className="bg-slate-100 text-slate-800 font-extrabold border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
-              <tr>
-                <th className="p-2 w-10 text-center border-r border-slate-200 bg-slate-100">STT</th>
-                <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">MÃ SKU</th>
-                <th className="p-2 min-w-[200px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
-                <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
-                <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">KHO XUẤT</th>
-                <th className="p-2 w-20 text-center border-r border-slate-200 bg-slate-100">SL XUẤT</th>
-                <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">ĐƠN GIÁ (đ)</th>
-                <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">THÀNH TIỀN</th>
-                <th className="p-2 min-w-[120px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
-                <th className="p-2 w-20 text-center bg-slate-100">TT</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {activeTab?.details.map((row, idx) => {
-                const isEven = idx % 2 === 1;
-                return (
-                  <tr
-                    key={row.rowId}
-                    className={`${isEven ? 'bg-[#eafaf1]' : 'bg-white'} hover:bg-cyan-50/50 transition-colors`}
-                  >
-                    {/* STT */}
-                    <td className="p-1.5 text-center font-bold text-slate-500 border-r border-slate-200">
-                      {idx + 1}.
-                    </td>
+        {/* Action Buttons Cleanly Integrated at bottom of right column */}
+        <div className="pt-3 border-t-2 border-slate-100 space-y-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => handleSaveTransfer('APPROVED')}
+            className="w-full py-2.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            <span>{activeTab?.id ? 'Lưu & Duyệt thay đổi' : 'Lưu & Duyệt'}</span>
+          </button>
 
-                    {/* MÃ SKU */}
-                    <td className="p-1 text-center font-bold text-cyan-800 border-r border-slate-200 bg-slate-50/50">
-                      <input
-                        type="text"
-                        readOnly
-                        value={row.productSku || ''}
-                        placeholder="Mã SKU"
-                        className="w-full h-8 px-1 text-center bg-transparent font-bold text-cyan-800 outline-none text-xs"
-                      />
-                    </td>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => handleSaveTransfer('DRAFT')}
+            className="w-full py-2.5 px-4 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 text-cyan-700 font-extrabold shadow-sm transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
+          >
+            <Save className="h-4 w-4" />
+            <span>Lưu Nháp</span>
+          </button>
 
-                    {/* TÊN HÀNG HÓA - Searchable Interactive Inline Dropdown */}
-                    <td className="p-1 border-r border-slate-200 relative product-table-dropdown">
-                      <input
-                        type="text"
-                        value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          updateRow(row.rowId, { productName: val });
-                          setActiveProductDropdownRowId(row.rowId);
-                        }}
-                        onFocus={() => setActiveProductDropdownRowId(row.rowId)}
-                        onClick={() => setActiveProductDropdownRowId(row.rowId)}
-                        placeholder="Chọn hoặc nhập hàng..."
-                        className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500 text-xs cursor-text"
-                      />
-
-                      {/* Interactive Table Dropdown for this row */}
-                      {activeProductDropdownRowId === row.rowId && (
-                        <div className="absolute left-0 top-full z-[100] mt-1 w-[420px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
-                          <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
-                            <span className="w-1/3 uppercase">Mã SKU</span>
-                            <span className="w-1/3 uppercase">Tên Hàng Hóa</span>
-                            <span className="w-1/3 text-right uppercase">Giá tham chiếu</span>
-                          </div>
-                          <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                            {getFilteredProductsForRow(row.productName).length === 0 ? (
-                              <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy sản phẩm phù hợp</div>
-                            ) : (
-                              getFilteredProductsForRow(row.productName).map((p) => (
-                                <div
-                                  key={p.id}
-                                  onClick={() => {
-                                    updateRow(row.rowId, {
-                                      productId: p.id,
-                                      productSku: p.internalSku,
-                                      productName: p.name,
-                                      unit: p.unit || 'Cái',
-                                      price: p.purchasePrice || p.salePrice || 0,
-                                      qty: row.qty > 0 ? row.qty : 1,
-                                    });
-                                    setActiveProductDropdownRowId(null);
-                                  }}
-                                  className="flex items-center px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs transition"
-                                >
-                                  <span className="w-1/3 font-bold text-cyan-800">{p.internalSku || 'SKU---'}</span>
-                                  <span className="w-1/3 font-semibold text-slate-800 truncate pr-1">{p.name}</span>
-                                  <span className="w-1/3 text-right text-slate-600 font-medium">
-                                    {formatMoney(p.purchasePrice || p.salePrice || 0)}
-                                  </span>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </td>
-
-                    {/* ĐVT */}
-                    <td className="p-1 text-center border-r border-slate-200">
-                      <input
-                        type="text"
-                        value={row.unit}
-                        onChange={(e) => updateRow(row.rowId, { unit: e.target.value })}
-                        className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500"
-                      />
-                    </td>
-
-                    {/* KHO XUẤT */}
-                    <td className="p-1 border-r border-slate-200">
-                      <select
-                        value={row.sourceWarehouseCode || activeTab.sourceWarehouseCode}
-                        onChange={(e) => updateRow(row.rowId, { sourceWarehouseCode: e.target.value })}
-                        className="w-full h-8 px-1 rounded border border-slate-300 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500"
-                      >
-                        {warehouses.length > 0 ? (
-                          warehouses.map((wh) => (
-                            <option key={wh.id || wh.code} value={wh.code}>
-                              {wh.code}
-                            </option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="KHO-TONG">KHO-TONG</option>
-                            <option value="KH001">KH001</option>
-                            <option value="KHO-NVL">KHO-NVL</option>
-                          </>
-                        )}
-                      </select>
-                    </td>
-
-                    {/* SỐ LƯỢNG XUẤT */}
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="number"
-                        min="0"
-                        value={row.qty || ''}
-                        onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
-                        className="w-full h-8 px-2 text-right rounded border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:border-cyan-500"
-                      />
-                    </td>
-
-                    {/* ĐƠN GIÁ (đ) */}
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="number"
-                        min="0"
-                        value={row.price || ''}
-                        onChange={(e) => updateRow(row.rowId, { price: Number(e.target.value) })}
-                        className="w-full h-8 px-2 text-right rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500"
-                      />
-                    </td>
-
-                    {/* THÀNH TIỀN */}
-                    <td className="p-1.5 text-right font-black text-cyan-700 border-r border-slate-200">
-                      {formatMoney(row.totalAmount)}
-                    </td>
-
-                    {/* GHI CHÚ */}
-                    <td className="p-1 border-r border-slate-200">
-                      <input
-                        type="text"
-                        value={row.note}
-                        onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
-                        placeholder="Ghi chú dòng..."
-                        className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-normal text-slate-700 outline-none focus:border-cyan-500"
-                      />
-                    </td>
-
-                    {/* TT (Actions) */}
-                    <td className="p-1 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleDuplicateRow(idx)}
-                          className="p-1 text-cyan-600 hover:text-cyan-800 hover:bg-cyan-50 rounded transition cursor-pointer"
-                          title="Nhân đôi dòng"
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRow(row.rowId)}
-                          className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition cursor-pointer"
-                          title="Xóa dòng"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <button
+            type="button"
+            onClick={handleBackNavigation}
+            className="w-full py-2 px-4 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
+          >
+            Quay lại danh sách
+          </button>
         </div>
       </div>
-    </div>
-
-        {/* ── RIGHT COLUMN (3/12 width): SUMMARY CARD & ACTIONS ── */ }
-  <div className="lg:col-span-3 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm space-y-3 flex flex-col justify-between h-full">
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-2 text-cyan-800 font-extrabold text-xs">
-        <Package className="h-4 w-4 text-cyan-600" />
-        <span>THÔNG TIN ĐIỀU CHUYỂN NỘI BỘ</span>
-      </div>
-
-      {/* Notice Badge */}
-      <div className="rounded-lg bg-blue-50 border border-blue-200 p-2.5 text-[11px] text-blue-800 font-semibold leading-relaxed">
-        ℹ Nghiệp vụ Chuyển Kho Nội Bộ giữa các kho trong cùng doanh nghiệp — Không phát sinh doanh thu hay thuế VAT.
-      </div>
-
-      {/* Quick Warehouse Overview */}
-      <div className="rounded-xl border-2 border-cyan-100 bg-cyan-50/60 p-2.5 space-y-2 text-xs">
-        <div className="flex items-center justify-between font-bold text-slate-700">
-          <span>Kho xuất (Kho nguồn):</span>
-          <span className="text-cyan-800 font-black">{activeTab?.sourceWarehouseCode}</span>
-        </div>
-        <div className="flex items-center justify-between font-bold text-slate-700">
-          <span>Kho nhập (Kho đích):</span>
-          <span className="text-emerald-800 font-black">{activeTab?.destinationWarehouseCode}</span>
-        </div>
-      </div>
-
-      {/* Ghi chú điều chuyển */}
-      <div>
-        <label className="mb-1 block text-xs font-bold text-slate-700">Lý do / Ghi chú điều chuyển nội bộ</label>
-        <textarea
-          rows={3}
-          value={activeTab?.generalNote || ''}
-          onChange={(e) => updateActiveTab((t) => ({ ...t, generalNote: e.target.value }))}
-          placeholder="Nhập lý do điều chuyển nội bộ (VD: Điều chuyển cân bằng tồn kho)..."
-          className="w-full p-2.5 rounded-lg border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs"
-        />
-      </div>
-
-      {/* Highlight Total Card */}
-      <div className="bg-gradient-to-br from-cyan-50 to-emerald-50 border-2 border-cyan-200 rounded-xl p-3 space-y-2 text-xs">
-        <div className="flex items-center justify-between text-slate-600 font-semibold">
-          <span>Số mặt hàng xuất:</span>
-          <span className="font-bold text-slate-900">{activeValidItems.length}</span>
-        </div>
-        <div className="flex items-center justify-between text-slate-600 font-semibold">
-          <span>Tổng số lượng xuất:</span>
-          <span className="font-bold text-slate-900">{totalQty}</span>
-        </div>
-        <div className="flex items-center justify-between pt-2 border-t border-cyan-200">
-          <span className="font-black text-slate-900 text-xs uppercase">TỔNG GIÁ TRỊ HÀNG:</span>
-          <span className="font-black text-cyan-700 text-base">{formatMoney(grandTotal)}</span>
-        </div>
-      </div>
-    </div>
-
-    {/* Action Buttons Cleanly Integrated at bottom of right column */}
-    <div className="pt-3 border-t-2 border-slate-100 space-y-2">
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => handleSaveTransfer('APPROVED')}
-        className="w-full py-2.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
-      >
-        <Save className="h-4 w-4" />
-        <span>{activeTab?.id ? 'Lưu & Duyệt thay đổi' : 'Lưu & Duyệt'}</span>
-      </button>
-
-      <button
-        type="button"
-        disabled={saving}
-        onClick={() => handleSaveTransfer('DRAFT')}
-        className="w-full py-2.5 px-4 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 text-cyan-700 font-extrabold shadow-sm transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
-      >
-        <Save className="h-4 w-4" />
-        <span>Lưu Nháp</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={handleBackNavigation}
-        className="w-full py-2 px-4 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
-      >
-        Quay lại danh sách
-      </button>
-    </div>
-  </div>
-      </div >
+    </div >
     </div >
   );
 

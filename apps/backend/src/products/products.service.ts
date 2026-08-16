@@ -17,8 +17,6 @@ export class ProductsService {
     @InjectRepository(Category) private categoryRepo: Repository<Category>,
     @InjectRepository(Supplier) private supplierRepo: Repository<Supplier>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
-    @InjectRepository(StockInHistory) private stockInHistoryRepo: Repository<StockInHistory>,
-    @InjectRepository(InboundDetail) private inboundDetailRepo: Repository<InboundDetail>,
   ) { }
 
   /**
@@ -136,7 +134,14 @@ export class ProductsService {
 
         return {
           ...product,
-          totalStock: productBalances.reduce((sum, b) => sum + b.available, 0),
+          totalStock,
+          stockBalances: productBalances.map((b) => ({
+            id: b.id,
+            locationCode: b.locationCode,
+            totalPhysical: Number(b.totalPhysical || 0),
+            allocated: Number(b.allocated || 0),
+            available: Number(b.available || 0),
+          })),
         };
       }).sort((a, b) => Number(b.id) - Number(a.id));
     } catch (e: any) {
@@ -162,6 +167,9 @@ export class ProductsService {
         name: product.name,
         unit: product.unit,
         minimumStock: product.minimumStock,
+        price: product.price,
+        importPrice: product.importPrice || 0,
+        wholesalePrice: product.wholesalePrice || 0,
         category: product.category ? { id: product.category.id, name: product.category.name } : null,
         supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
         stockBalances: productBalances.map((b) => ({
