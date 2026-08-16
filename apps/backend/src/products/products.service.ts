@@ -5,6 +5,8 @@ import { Product } from '../entities/product.entity';
 import { Category } from '../entities/category.entity';
 import { Supplier } from '../entities/supplier.entity';
 import { StockBalance } from '../inventory/entities/stock-balance.entity';
+import { StockInHistory } from '../entities/stock-in-history.entity';
+import { InboundDetail } from '../inbound/entities/inbound-detail.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
@@ -15,6 +17,8 @@ export class ProductsService {
     @InjectRepository(Category) private categoryRepo: Repository<Category>,
     @InjectRepository(Supplier) private supplierRepo: Repository<Supplier>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
+    @InjectRepository(StockInHistory) private stockInHistoryRepo: Repository<StockInHistory>,
+    @InjectRepository(InboundDetail) private inboundDetailRepo: Repository<InboundDetail>,
   ) {}
 
   /**
@@ -56,6 +60,9 @@ export class ProductsService {
       name: product.name,
       unit: product.unit,
       minimumStock: product.minimumStock,
+      price: product.price,
+      importPrice: product.importPrice || 0,
+      wholesalePrice: product.wholesalePrice || 0,
       category: product.category ? { id: product.category.id, name: product.category.name } : null,
       supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
       stockBalances: balances.map((b) => ({
@@ -77,6 +84,8 @@ export class ProductsService {
         unit: dto.unit,
         minimumStock: dto.minimumStock || 0,
         price: dto.price || 0,
+        importPrice: dto.importPrice || 0,
+        wholesalePrice: dto.wholesalePrice || 0,
         images: dto.images || [],
         isVisible: dto.isVisible || false,
       });
@@ -106,9 +115,21 @@ export class ProductsService {
 
       return products.map((product) => {
         const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
+        const totalStock = productBalances.reduce(
+          (sum, b) => sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0)),
+          0
+        );
+
         return {
           ...product,
-          totalStock: productBalances.reduce((sum, b) => sum + b.available, 0),
+          totalStock,
+          stockBalances: productBalances.map((b) => ({
+            id: b.id,
+            locationCode: b.locationCode,
+            totalPhysical: Number(b.totalPhysical || 0),
+            allocated: Number(b.allocated || 0),
+            available: Number(b.available || 0),
+          })),
         };
       }).sort((a, b) => Number(b.id) - Number(a.id));
     } catch (e: any) {
@@ -135,6 +156,9 @@ export class ProductsService {
         name: product.name,
         unit: product.unit,
         minimumStock: product.minimumStock,
+        price: product.price,
+        importPrice: product.importPrice || 0,
+        wholesalePrice: product.wholesalePrice || 0,
         category: product.category ? { id: product.category.id, name: product.category.name } : null,
         supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
         stockBalances: productBalances.map((b) => ({
@@ -166,6 +190,8 @@ export class ProductsService {
       if (dto.unit) p.unit = dto.unit;
       if (dto.minimumStock !== undefined) p.minimumStock = dto.minimumStock;
       if (dto.price !== undefined) p.price = dto.price;
+      if (dto.importPrice !== undefined) p.importPrice = dto.importPrice;
+      if (dto.wholesalePrice !== undefined) p.wholesalePrice = dto.wholesalePrice;
       if (dto.images !== undefined) p.images = dto.images;
       if (dto.isVisible !== undefined) p.isVisible = dto.isVisible;
       if (dto.categoryId) {
@@ -199,7 +225,106 @@ export class ProductsService {
       if (err.code === 'ER_ROW_IS_REFERENCED_2') {
         throw new BadRequestException('Hàng hóa đang có giao dịch liên quan (chưa xóa hết), không thể xóa');
       }
-      throw err;
+      throw new BadRequestException(err.sqlMessage || err.message || 'Lỗi hệ thống khi xóa hàng hóa');
     }
+  }
+
+  /**
+   * Lấy lịch sử nhập kho chi tiết của sản phẩm (bao gồm thời gian, nhà cung cấp, kho hàng, số lượng, đơn giá)
+   */
+  async getStockInHistory(productId: string) {
+    // 1. Query dedicated stock_in_history table
+    const explicitHistory = await this.stockInHistoryRepo.find({
+      where: { productId },
+      order: { createdAt: 'DESC' },
+    });
+
+    // 2. Query inbound_details joined with inbound_receipts for comprehensive history
+    const inboundDetails = await this.inboundDetailRepo.find({
+      where: { product: { id: productId } as any },
+      relations: ['inboundReceipt', 'inboundReceipt.supplier', 'product'],
+      order: { id: 'DESC' },
+    });
+
+    const combined: Array<{
+      id: string;
+      orderCode: string;
+      createdAt: Date | string;
+      supplierName: string;
+      warehouseCode: string;
+      warehouseName: string;
+      quantity: number;
+      unitPrice: number;
+      totalAmount: number;
+      createdBy: string;
+      note: string;
+      status: string;
+    }> = [];
+
+    const seenKeys = new Set<string>();
+
+    for (const h of explicitHistory) {
+      const key = `${h.orderCode}_${h.createdAt?.toString()}`;
+      seenKeys.add(key);
+      const whCode = h.warehouseCode && h.warehouseCode !== 'KHO-NVL' ? h.warehouseCode : 'KH006';
+      const whName = h.warehouseName && h.warehouseName !== 'Kho KHO-NVL' && h.warehouseName !== 'KHO-NVL'
+        ? h.warehouseName
+        : (whCode === 'KH006' ? 'Kho Thanh Trì' : `Kho ${whCode}`);
+
+      combined.push({
+        id: h.id,
+        orderCode: h.orderCode || 'PNK-SYSTEM',
+        createdAt: h.createdAt || new Date(),
+        supplierName: h.supplierName || h.supplier?.name || 'Nhà cung cấp chính',
+        warehouseCode: whCode,
+        warehouseName: whName,
+        quantity: Number(h.quantity || 0),
+        unitPrice: Number(h.unitPrice || 0),
+        totalAmount: Number(h.totalAmount || (Number(h.quantity || 0) * Number(h.unitPrice || 0))),
+        createdBy: h.createdBy || 'Quản lý kho',
+        note: h.note || 'Nhập kho hàng hóa',
+        status: 'Đã hoàn thành',
+      });
+    }
+
+    for (const d of inboundDetails) {
+      const orderCode = d.inboundReceipt?.poNumber || 'PNK-ORDER';
+      const createdAt = d.inboundReceipt?.orderDate || new Date();
+      const key = `${orderCode}_${createdAt.toString()}`;
+
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        const qty = Number(d.receivedQty || d.expectedQty || 0);
+        const unitPrice = Number(d.unitPrice || 0);
+        const totalAmount = Number(d.totalLineAmount || (qty * unitPrice));
+        const statusMap: Record<string, string> = {
+          'RECEIVED': 'Đã hoàn thành',
+          'COMPLETED': 'Đã hoàn thành',
+          'APPROVED': 'Đã duyệt',
+          'DRAFT': 'Đơn nháp',
+        };
+        const rawWh = d.warehouseCode || (d.inboundReceipt as any)?.warehouseCode;
+        const whCode = rawWh && rawWh !== 'KHO-NVL' ? rawWh : 'KH006';
+        const whName = whCode === 'KH006' ? 'Kho Thanh Trì' : `Kho ${whCode}`;
+
+        combined.push({
+          id: d.id,
+          orderCode,
+          createdAt,
+          supplierName: d.inboundReceipt?.supplierName || d.inboundReceipt?.supplier?.name || 'Nhà cung cấp',
+          warehouseCode: whCode,
+          warehouseName: whName,
+          quantity: qty,
+          unitPrice,
+          totalAmount,
+          createdBy: d.inboundReceipt?.creatorName || d.inboundReceipt?.approverName || 'Quản lý kho',
+          note: d.inboundReceipt?.description || 'Phiếu nhập kho hàng hóa',
+          status: statusMap[d.inboundReceipt?.status || ''] || 'Đã hoàn thành',
+        });
+      }
+    }
+
+    // Sort by date descending
+    return combined.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 }

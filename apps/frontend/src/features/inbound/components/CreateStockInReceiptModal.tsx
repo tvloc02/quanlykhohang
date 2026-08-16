@@ -181,11 +181,12 @@ export function CreateStockInReceiptModal({
             setDescription(data.description || '');
             setStatus(data.status || 'DRAFT');
             
+            const firstWhCode = warehouses[0]?.code || 'KH006';
             const mappedItems = (data.details || []).map((d: any) => ({
               id: d.id,
               productId: d.product?.id,
               product: d.product,
-              warehouseCode: d.warehouseCode || 'KHO-NVL',
+              warehouseCode: (d.warehouseCode && d.warehouseCode !== 'KHO-NVL') ? d.warehouseCode : firstWhCode,
               expectedQty: String(d.orderedQty || 0),
               receivedQty: String(d.receivedQty || 0),
               inventoryQty: String(d.quantity || 0),
@@ -204,6 +205,7 @@ export function CreateStockInReceiptModal({
 
           if (data) {
             setSourceData(data);
+            const firstWhCode = warehouses[0]?.code || 'KH006';
             const mappedItems = (data.details || []).map((d: any) => {
               const expected = d.expectedQty !== undefined && d.expectedQty !== null ? d.expectedQty : (d.orderedQty || 0);
               const received = d.receivedQty !== undefined && d.receivedQty !== null && Number(d.receivedQty) > 0 
@@ -213,11 +215,12 @@ export function CreateStockInReceiptModal({
                 ? d.quantity 
                 : received;
 
+              const whCode = d.warehouseCode || data.warehouseCode;
               return {
                 id: d.id,
                 productId: d.product?.id,
                 product: d.product,
-                warehouseCode: d.warehouseCode || data.warehouseCode || 'KHO-NVL',
+                warehouseCode: (whCode && whCode !== 'KHO-NVL') ? whCode : firstWhCode,
                 expectedQty: String(expected),
                 receivedQty: String(received),
                 inventoryQty: String(inventory),
@@ -240,15 +243,17 @@ export function CreateStockInReceiptModal({
     e.preventDefault();
     setSaving(true);
     try {
+      const firstWhCode = warehouses[0]?.code || 'KH006';
       const payloadItems = items.map((item: any) => ({
         productId: item.productId,
-        warehouseCode: item.warehouseCode,
+        warehouseCode: (item.warehouseCode && item.warehouseCode !== 'KHO-NVL') ? item.warehouseCode : firstWhCode,
         orderedQty: Number(item.expectedQty) || 0,
         receivedQty: Number(item.receivedQty) || 0,
         quantity: item.inventoryQty !== undefined ? Number(item.inventoryQty) : (Number(item.receivedQty) || 0),
         unitPrice: Number(item.unitPrice) || 0,
       }));
 
+      const primaryWhCode = items[0]?.warehouseCode || sourceData?.warehouseCode;
       const body = {
         receiptCode: receiptCode.trim() || undefined,
         status,
@@ -258,7 +263,7 @@ export function CreateStockInReceiptModal({
         receiptDate: new Date(receiptDate).toISOString(),
         description,
         items: payloadItems,
-        warehouseCode: items[0]?.warehouseCode || sourceData?.warehouseCode || 'KHO-NVL',
+        warehouseCode: (primaryWhCode && primaryWhCode !== 'KHO-NVL') ? primaryWhCode : firstWhCode,
       };
 
       let endpoint = '';

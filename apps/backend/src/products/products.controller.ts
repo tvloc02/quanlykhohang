@@ -22,6 +22,11 @@ export class ProductsController {
     return this.service.findAllWithBalances();
   }
 
+  @Get(':id/stock-in-history')
+  async getStockInHistory(@Param('id') id: string) {
+    return this.service.getStockInHistory(id);
+  }
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.service.findOne(id);

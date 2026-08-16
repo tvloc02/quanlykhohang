@@ -30,6 +30,7 @@ export interface ProductOption {
   internalSku: string;
   name: string;
   unit?: string;
+  importPrice?: number;
   purchasePrice?: number;
   salePrice?: number;
   price?: number;
@@ -115,7 +116,7 @@ function generateOrderCode() {
   return `PNK${dateStr}-${randomSuffix}`;
 }
 
-function makeEmptyRow(index: number, defaultWhCode = 'KHO-NVL'): FormDetailRow {
+function makeEmptyRow(index: number, defaultWhCode = 'KH006'): FormDetailRow {
   return {
     rowId: `row-${Date.now()}-${index}-${Math.random()}`,
     productId: '',
@@ -134,7 +135,7 @@ function makeEmptyRow(index: number, defaultWhCode = 'KHO-NVL'): FormDetailRow {
   };
 }
 
-function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultWhCode = 'KHO-NVL'): FormDetailRow[] {
+function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultWhCode = 'KH006'): FormDetailRow[] {
   return Array.from({ length: count }, (_, i) => makeEmptyRow(i, defaultWhCode));
 }
 
@@ -146,7 +147,7 @@ function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'): 
     tabId: `tab-${Date.now()}-${tabIndex}`,
     title: `# ${tabIndex}`,
     orderNo: generateOrderCode(),
-    warehouseCode: 'KHO-NVL',
+    warehouseCode: 'KH006',
     employeeName: currentUserName || 'Quản lý kho',
     supplierName: '',
     supplierPhone: '',
@@ -161,7 +162,7 @@ function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'): 
     paymentAccount: '',
     amountPaid: 0,
     status: 'READY',
-    details: makeInitialRows(DEFAULT_ROWS_COUNT, 'KHO-NVL'),
+    details: makeInitialRows(DEFAULT_ROWS_COUNT, 'KH006'),
   };
 }
 
@@ -284,7 +285,17 @@ export default function CreateStockInOrderPage({
         if (prodRes && prodRes.ok) {
           const prodData = await prodRes.json();
           const list = Array.isArray(prodData) ? prodData : prodData.data || [];
-          setProducts(list);
+          const normalized = list.map((p: any) => ({
+            id: String(p.id),
+            internalSku: p.internalSku || p.sku || '',
+            name: p.name || '',
+            unit: p.unit || 'Cái',
+            importPrice: Number(p.importPrice || 0),
+            purchasePrice: Number(p.importPrice || p.purchasePrice || p.price || 0),
+            salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
+            price: Number(p.importPrice || p.purchasePrice || p.price || 0),
+          }));
+          setProducts(normalized);
         }
 
         if (userRes && userRes.ok) {
@@ -297,6 +308,25 @@ export default function CreateStockInOrderPage({
           const whData = await whRes.json();
           const list = Array.isArray(whData) ? whData : whData.data || [];
           setWarehouses(list);
+          if (list.length > 0) {
+            const firstWhCode = list[0].code;
+            setTabs((prevTabs) =>
+              prevTabs.map((t) => {
+                const isInvalid = !list.some((w: any) => w.code === t.warehouseCode);
+                if (isInvalid || t.warehouseCode === 'KHO-NVL') {
+                  return {
+                    ...t,
+                    warehouseCode: firstWhCode,
+                    details: t.details.map((d) => ({
+                      ...d,
+                      warehouseCode: d.warehouseCode === 'KHO-NVL' || isInvalid ? firstWhCode : d.warehouseCode,
+                    })),
+                  };
+                }
+                return t;
+              })
+            );
+          }
         }
       } catch (err) {
         console.error('Error loading master data:', err);
@@ -344,7 +374,7 @@ export default function CreateStockInOrderPage({
             newRow.productSku = p.internalSku;
             newRow.productName = p.name;
             newRow.unit = p.unit || 'Cái';
-            newRow.price = p.purchasePrice || p.salePrice || p.price || 0;
+            newRow.price = p.importPrice || p.purchasePrice || p.price || 0;
             if (newRow.qty === 0) newRow.qty = 1;
           }
         }
@@ -974,7 +1004,7 @@ export default function CreateStockInOrderPage({
                             <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
                               <span className="w-1/3 uppercase">Mã hàng</span>
                               <span className="w-1/2 uppercase">Tên hàng hóa</span>
-                              <span className="w-1/4 text-right uppercase">Giá mua</span>
+                              <span className="w-1/4 text-right uppercase">Giá nhập</span>
                             </div>
                             <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
                               {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
@@ -989,7 +1019,7 @@ export default function CreateStockInOrderPage({
                                         productSku: p.internalSku,
                                         productName: p.name,
                                         unit: p.unit || 'Cái',
-                                        price: p.purchasePrice || p.salePrice || p.price || 0,
+                                        price: p.importPrice || p.purchasePrice || p.price || 0,
                                         qty: row.qty === 0 ? 1 : row.qty,
                                       });
                                       setActiveProductDropdownRowId(null);
@@ -998,8 +1028,8 @@ export default function CreateStockInOrderPage({
                                   >
                                     <span className="w-1/3 font-bold text-cyan-800">{p.internalSku}</span>
                                     <span className="w-1/2 font-medium text-slate-800 truncate pr-1">{p.name}</span>
-                                    <span className="w-1/4 text-right font-semibold text-slate-700">
-                                      {Number(p.purchasePrice || p.salePrice || 0).toLocaleString('vi-VN')}
+                                    <span className="w-1/4 text-right font-semibold text-cyan-700 font-mono">
+                                      {Number(p.importPrice || p.purchasePrice || p.price || 0).toLocaleString('vi-VN')} ₫
                                     </span>
                                   </div>
                                 ))
