@@ -825,7 +825,7 @@ function App() {
           element={
             <RoleRoute menuId="report-inventory-summary">
               <MainLayout>
-                <GenericReportPage title="Hàng tồn Tổng hợp" description="Báo cáo tổng hợp số lượng tồn kho toàn hệ thống" />
+                <GenericReportPage reportType="inventory-summary-report" title="Hàng tồn Tổng hợp" description="Báo cáo tổng hợp số lượng tồn kho toàn hệ thống" />
               </MainLayout>
             </RoleRoute>
           }
@@ -835,7 +835,7 @@ function App() {
           element={
             <RoleRoute menuId="report-customer-debt">
               <MainLayout>
-                <GenericReportPage title="Công nợ Khách hàng" description="Báo cáo theo dõi công nợ phải thu của khách hàng" />
+                <GenericReportPage reportType="customer-debt" title="Công nợ Khách hàng" description="Báo cáo theo dõi công nợ phải thu của khách hàng" />
               </MainLayout>
             </RoleRoute>
           }
@@ -845,7 +845,7 @@ function App() {
           element={
             <RoleRoute menuId="report-supplier-debt">
               <MainLayout>
-                <GenericReportPage title="Công nợ Nhà cung cấp" description="Báo cáo theo dõi công nợ phải trả cho nhà cung cấp" />
+                <GenericReportPage reportType="supplier-debt" title="Công nợ Nhà cung cấp" description="Báo cáo theo dõi công nợ phải trả cho nhà cung cấp" />
               </MainLayout>
             </RoleRoute>
           }
@@ -855,7 +855,7 @@ function App() {
           element={
             <RoleRoute menuId="report-fund-balance">
               <MainLayout>
-                <GenericReportPage title="Tồn quỹ" description="Báo cáo theo dõi số dư tồn quỹ tiền mặt và tài khoản" />
+                <GenericReportPage reportType="fund-balance" title="Tồn quỹ" description="Báo cáo theo dõi số dư tồn quỹ tiền mặt và tài khoản" />
               </MainLayout>
             </RoleRoute>
           }
@@ -865,7 +865,7 @@ function App() {
           element={
             <RoleRoute menuId="report-cashbook">
               <MainLayout>
-                <GenericReportPage title="Sao kê - Sổ quỹ" description="Sao kê sổ quỹ chi tiết thu chi theo từng giao dịch" />
+                <GenericReportPage reportType="cashbook" title="Sao kê - Sổ quỹ" description="Sao kê sổ quỹ chi tiết thu chi theo từng giao dịch" />
               </MainLayout>
             </RoleRoute>
           }
@@ -875,7 +875,7 @@ function App() {
           element={
             <RoleRoute menuId="report-stock-card">
               <MainLayout>
-                <GenericReportPage title="Thẻ kho" description="Thẻ kho theo dõi biến động xuất nhập tồn của từng sản phẩm" />
+                <GenericReportPage reportType="stock-card" title="Thẻ kho" description="Thẻ kho theo dõi biến động xuất nhập tồn của từng sản phẩm" />
               </MainLayout>
             </RoleRoute>
           }
@@ -885,7 +885,7 @@ function App() {
           element={
             <RoleRoute menuId="report-sales-detail">
               <MainLayout>
-                <GenericReportPage title="Chi tiết hàng bán ra" description="Báo cáo chi tiết từng mặt hàng đã bán trong kỳ" />
+                <GenericReportPage reportType="sales-detail" title="Chi tiết hàng bán ra" description="Báo cáo chi tiết từng mặt hàng đã bán trong kỳ" />
               </MainLayout>
             </RoleRoute>
           }
@@ -895,7 +895,7 @@ function App() {
           element={
             <RoleRoute menuId="report-sales-by-staff">
               <MainLayout>
-                <GenericReportPage title="Hàng bán ra theo Nhân viên" description="Thống kê sản phẩm bán ra theo từng nhân viên" />
+                <GenericReportPage reportType="sales-by-staff" title="Hàng bán ra theo Nhân viên" description="Thống kê sản phẩm bán ra theo từng nhân viên" />
               </MainLayout>
             </RoleRoute>
           }

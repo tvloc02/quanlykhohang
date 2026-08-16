@@ -72,4 +72,16 @@ export const reportsApi = {
     if (!response.ok) throw new Error('Không tải được dữ liệu Báo cáo tồn kho');
     return await response.json();
   },
+
+  getGenericReport: async (endpoint: string, startDate?: string, endDate?: string) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+
+    const response = await fetch(`${API_BASE_URL}/reports/${endpoint}?${params.toString()}`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) throw new Error(`Không tải được dữ liệu báo cáo ${endpoint}`);
+    return await response.json();
+  },
 };

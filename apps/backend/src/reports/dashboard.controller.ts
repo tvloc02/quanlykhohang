@@ -63,4 +63,39 @@ export class DashboardController {
   getInventorySummaryReport(@Query() query: ReportFilterDto & { categoryId?: string; groupBy?: string }) {
     return this.dashboardService.getInventorySummaryReport(query.startDate, query.endDate, query.categoryId, query.groupBy);
   }
+
+  @Get('customer-debt')
+  getCustomerDebtReport(@Query() query: ReportFilterDto) {
+    return this.dashboardService.getCustomerDebtReport(query.startDate, query.endDate);
+  }
+
+  @Get('supplier-debt')
+  getSupplierDebtReport(@Query() query: ReportFilterDto) {
+    return this.dashboardService.getSupplierDebtReport(query.startDate, query.endDate);
+  }
+
+  @Get('fund-balance')
+  getFundBalanceReport(@Query() query: ReportFilterDto) {
+    return this.dashboardService.getFundBalanceReport(query.startDate, query.endDate);
+  }
+
+  @Get('cashbook')
+  getCashbookReport(@Query() query: ReportFilterDto) {
+    return this.dashboardService.getCashbookReport(query.startDate, query.endDate);
+  }
+
+  @Get('stock-card')
+  getStockCardReport(@Query() query: ReportFilterDto) {
+    return this.dashboardService.getStockCardReport(query.startDate, query.endDate);
+  }
+
+  @Get('sales-detail')
+  getSalesDetailReport(@Query() query: ReportFilterDto) {
+    return this.dashboardService.getSalesDetailReport(query.startDate, query.endDate);
+  }
+
+  @Get('sales-by-staff')
+  getSalesByStaffReport(@Query() query: ReportFilterDto) {
+    return this.dashboardService.getSalesByStaffReport(query.startDate, query.endDate);
+  }
 }

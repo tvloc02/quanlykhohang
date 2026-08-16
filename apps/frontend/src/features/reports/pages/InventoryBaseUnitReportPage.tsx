@@ -147,12 +147,14 @@ export default function InventoryBaseUnitReportPage() {
                   </td>
                 </tr>
               ) : data.length > 0 ? (
-                data.map((group) => (
-                  <React.Fragment key={group.groupName}>
-                    <tr className="bg-slate-100 font-black text-slate-900 border-t border-slate-300">
-                      <td colSpan={11} className="py-2 px-3 text-left">{group.groupName}</td>
-                    </tr>
-                    {group.items.map((row, idx) => (
+                data.map((group) => {
+                  const groupItems = Array.isArray(group?.items) ? group.items : [];
+                  return (
+                    <React.Fragment key={group.groupName || 'group'}>
+                      <tr className="bg-slate-100 font-black text-slate-900 border-t border-slate-300">
+                        <td colSpan={11} className="py-2 px-3 text-left">{group.groupName || 'Nhóm hàng'}</td>
+                      </tr>
+                      {groupItems.map((row, idx) => (
                       <tr key={row.id || idx} className="hover:bg-indigo-50/40 transition-colors">
                         <td className="py-2 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">{idx + 1}</td>
                         <td className="py-2 px-3 text-left border-r border-slate-200 font-mono font-bold text-slate-800">{row.sku}</td>
@@ -170,8 +172,9 @@ export default function InventoryBaseUnitReportPage() {
                       </tr>
                     ))}
                   </React.Fragment>
-                ))
-              ) : (
+                );
+              })
+            ) : (
                 <tr>
                   <td colSpan={11} className="py-8 text-center text-slate-400 font-bold">
                     Chưa có sản phẩm tồn kho theo đơn vị gốc
