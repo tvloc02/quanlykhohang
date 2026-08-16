@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -256,9 +256,12 @@ function formatDateDisplay(dateVal?: string | Date | null): string {
 const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return '';
+  if (!codeOrName) return warehouseList[0]?.name || '-';
   const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
   if (found) return found.name;
+  if ((codeOrName === 'SPX001' || codeOrName === '4445' || !codeOrName) && warehouseList.length > 0) {
+    return warehouseList[0].name;
+  }
   return codeOrName;
 }
 
@@ -300,7 +303,7 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'):
     tabId: `tab-${Date.now()}-${tabIndex}`,
     title: `# ${tabIndex}`,
     orderNo: '',
-    branchCode: 'SPX001',
+    branchCode: 'KHO-NVL',
     employeeName: currentUserName || 'Quản lý kho',
     customer: 'Khách hàng bán lẻ',
     customerPhone: '',
@@ -332,6 +335,7 @@ export default function Outbound({
   codePrefix = 'PXK',
   partnerLabel = 'Khách hàng',
 }: OutboundProps) {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<OutboundOrder[]>(DEFAULT_FALLBACK_ORDERS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -540,8 +544,8 @@ export default function Outbound({
             customerId: item.customerId || item.customer?.id,
             customerPhone: item.customerPhone || item.customer?.phone || '',
             customerAddress: item.customerAddress || item.customer?.address || '',
-            branchCode: item.branchCode || item.warehouseCode || '4445',
-            employeeName: item.employeeName || item.creatorName || currentUserName,
+            branchCode: (!item.branchCode || item.branchCode === '4445' || item.branchCode === 'SPX001') ? (item.warehouseCode && item.warehouseCode !== '4445' ? item.warehouseCode : 'KHO-NVL') : item.branchCode,
+            employeeName: (!item.employeeName || item.employeeName === 'HUUDQtest') ? (item.creatorName && item.creatorName !== 'HUUDQtest' ? item.creatorName : currentUserName) : item.employeeName,
             orderDate: item.orderDate || item.createdAt || new Date().toISOString(),
             expectedDate: item.expectedDate || '',
             status: item.status || 'Đã giao hàng',
@@ -1148,7 +1152,7 @@ export default function Outbound({
             <div className="flex items-center gap-3">
               <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
                 <Package className="h-5 w-5" />
-                <h1 className="text-xl font-extrabold tracking-tight">Xuất bán hàng</h1>
+                <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
               </div>
             </div>
 
@@ -1159,6 +1163,10 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={() => {
+                    if (featureMode === 'transfer-out') {
+                      navigate('/delivery/create-transfer-order');
+                      return;
+                    }
                     const newTab = createNewOutboundTab(1, currentUserName);
                     setTabs([newTab]);
                     setActiveTabId(newTab.tabId);

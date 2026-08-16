@@ -524,6 +524,8 @@ export default function CreateOutboundOrderPage({
     const payload = {
       orderNo: activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : undefined,
       orderType: 'orders',
+      branchCode: activeTab.branchCode || 'KHO-NVL',
+      employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
       customerId: activeTab.customerId,
       customerName: activeTab.customer?.trim() || '888 - Khách lẻ',
       customerPhone: activeTab.customerPhone?.trim() || undefined,

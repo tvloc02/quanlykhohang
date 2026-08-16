@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Filter, Truck, CheckCircle, Clock, AlertCircle, ArrowRight, FileText } from 'lucide-react';
+import { Plus, Search, Filter, Truck, CheckCircle, Clock, AlertCircle, ArrowRight, FileText, Pencil } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import TransferOrderModal from './components/TransferOrderModal';
 import InternalShippingNoteModal from './components/InternalShippingNoteModal';
@@ -83,7 +83,7 @@ export default function Delivery() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Truck className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Điều Chuyển Kho</h1>
+            <h1 className="text-lg font-extrabold tracking-tight text-white uppercase">DANH SÁCH PHIẾU XUẤT CHUYỂN KHO NỘI BỘ</h1>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -185,11 +185,19 @@ export default function Delivery() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
+                          onClick={() => navigate('/delivery/create-transfer-order', { state: { editOrderData: order } })}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          title="Chỉnh sửa phiếu điều chuyển"
+                        >
+                          <Pencil className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
                             setSelectedOrder(order);
                             setShowShippingModal(true);
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-emerald-500 bg-white text-emerald-600 shadow-sm transition hover:bg-emerald-50"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-emerald-500 bg-white text-emerald-600 shadow-sm transition hover:bg-emerald-50 cursor-pointer"
                           title="In / Xem phiếu điều chuyển"
                         >
                           <FileText className="h-4 w-4 text-emerald-600" strokeWidth={2.2} />

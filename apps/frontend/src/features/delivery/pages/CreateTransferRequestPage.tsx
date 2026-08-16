@@ -10,8 +10,6 @@ import {
   CheckCircle2,
   XCircle,
   Package,
-  Truck,
-  Send,
   ArrowRight,
   Warehouse as WarehouseIcon,
   User,
@@ -19,8 +17,8 @@ import {
   ScanLine,
   Maximize2,
   Minimize2,
+  Repeat,
 } from 'lucide-react';
-import { deliveryApi, type TransferOrder } from '../api/deliveryApi';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import MainLayout from '../../../shared/components/MainLayout';
 
@@ -48,31 +46,31 @@ export interface UserOption {
   email: string;
 }
 
-export interface TransferRowItem {
+export interface TransferRequestRowItem {
   rowId: string;
   productId: string;
   productSku: string;
   productName: string;
   unit: string;
-  sourceWarehouseCode: string;
+  destinationWarehouseCode: string;
   qty: number;
   price: number;
   totalAmount: number;
   note: string;
 }
 
-export interface TransferTab {
+export interface TransferRequestTab {
   tabId: string;
   title: string;
   id?: string;
-  transferNo: string;
+  requestNo: string;
   sourceWarehouseCode: string;
   destinationWarehouseCode: string;
   assignedStaffEmail: string;
   orderDate: string;
   generalNote: string;
   status: string;
-  details: TransferRowItem[];
+  details: TransferRequestRowItem[];
 }
 
 const DEFAULT_ROWS_COUNT = 50;
@@ -97,21 +95,21 @@ function formatMoney(amount: number) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
 }
 
-function generateTransferCode() {
+function generateRequestCode() {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  return `PXCN-${dateStr}-${randomSuffix}`;
+  return `PNCN-${dateStr}-${randomSuffix}`;
 }
 
-function makeEmptyRow(index: number, defaultSourceWh = 'KHO-TONG'): TransferRowItem {
+function makeEmptyRow(index: number, defaultDestWh = 'KHO-CN-HCM'): TransferRequestRowItem {
   return {
     rowId: `row-${Date.now()}-${index}-${Math.random()}`,
     productId: '',
     productSku: '',
     productName: '',
     unit: 'Cái',
-    sourceWarehouseCode: defaultSourceWh,
+    destinationWarehouseCode: defaultDestWh,
     qty: 0,
     price: 0,
     totalAmount: 0,
@@ -119,16 +117,16 @@ function makeEmptyRow(index: number, defaultSourceWh = 'KHO-TONG'): TransferRowI
   };
 }
 
-function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultSourceWh = 'KHO-TONG'): TransferRowItem[] {
-  return Array.from({ length: count }, (_, i) => makeEmptyRow(i, defaultSourceWh));
+function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultDestWh = 'KHO-CN-HCM'): TransferRequestRowItem[] {
+  return Array.from({ length: count }, (_, i) => makeEmptyRow(i, defaultDestWh));
 }
 
-function createNewTransferTab(
+function createNewTransferRequestTab(
   tabIndex = 1,
   defaultStaffEmail = '',
   defaultSource = 'KHO-TONG',
   defaultDest = 'KHO-CN-HCM'
-): TransferTab {
+): TransferRequestTab {
   const d = new Date();
   const dateFormatted = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d
     .getDate()
@@ -138,31 +136,33 @@ function createNewTransferTab(
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
     title: `# ${tabIndex}`,
-    transferNo: generateTransferCode(),
+    requestNo: generateRequestCode(),
     sourceWarehouseCode: defaultSource,
     destinationWarehouseCode: defaultDest,
     assignedStaffEmail: defaultStaffEmail,
     orderDate: dateFormatted,
     generalNote: '',
-    status: 'DRAFT',
-    details: makeInitialRows(DEFAULT_ROWS_COUNT, defaultSource),
+    status: 'PENDING',
+    details: makeInitialRows(DEFAULT_ROWS_COUNT, defaultDest),
   };
 }
 
-export interface CreateTransferOrderPageProps {
+export interface CreateTransferRequestPageProps {
   onBack?: () => void;
   standalone?: boolean;
-  editOrderData?: TransferOrder | null;
+  editRequestData?: any;
+  onSuccess?: () => void;
 }
 
-export default function CreateTransferOrderPage({
+export default function CreateTransferRequestPage({
   onBack,
   standalone = true,
-  editOrderData,
-}: CreateTransferOrderPageProps) {
+  editRequestData,
+  onSuccess,
+}: CreateTransferRequestPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const targetEditData = editOrderData || (location.state as any)?.editOrderData;
+  const targetEditData = editRequestData || (location.state as any)?.editRequestData;
   const currentUser = getStoredUser();
   const currentStaffEmail = currentUser?.email || '';
 
@@ -181,15 +181,15 @@ export default function CreateTransferOrderPage({
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Synchronous Multi-Tab state with Session Storage restoration
-  const [tabs, setTabs] = useState<TransferTab[]>(() => {
+  const [tabs, setTabs] = useState<TransferRequestTab[]>(() => {
     if (targetEditData) {
-      const editDetails: TransferRowItem[] = (targetEditData.items || []).map((it: any, idx: number) => ({
+      const editDetails: TransferRequestRowItem[] = (targetEditData.items || []).map((it: any, idx: number) => ({
         rowId: `edit-row-${it.id || idx}`,
         productId: it.id || '',
         productSku: it.productCode || '',
         productName: it.productName || '',
         unit: it.unit || 'Cái',
-        sourceWarehouseCode: targetEditData.sourceWarehouse || 'KHO-TONG',
+        destinationWarehouseCode: targetEditData.destinationWarehouse || 'KHO-CN-HCM',
         qty: Number(it.quantity || 0),
         price: Number(it.price || 0),
         totalAmount: Number(it.quantity || 0) * Number(it.price || 0),
@@ -198,29 +198,29 @@ export default function CreateTransferOrderPage({
 
       // Fill up to DEFAULT_ROWS_COUNT rows
       const padCount = Math.max(0, DEFAULT_ROWS_COUNT - editDetails.length);
-      const paddedRows = [...editDetails, ...makeInitialRows(padCount, targetEditData.sourceWarehouse || 'KHO-TONG')];
+      const paddedRows = [...editDetails, ...makeInitialRows(padCount, targetEditData.destinationWarehouse || 'KHO-CN-HCM')];
 
       return [
         {
           tabId: `edit-tab-${targetEditData.id}`,
-          title: targetEditData.transferNo || 'Sửa phiếu',
+          title: targetEditData.requestNumber || targetEditData.requestNo || 'Sửa phiếu',
           id: targetEditData.id,
-          transferNo: targetEditData.transferNo || generateTransferCode(),
+          requestNo: targetEditData.requestNumber || targetEditData.requestNo || generateRequestCode(),
           sourceWarehouseCode: targetEditData.sourceWarehouse || 'KHO-TONG',
           destinationWarehouseCode: targetEditData.destinationWarehouse || 'KHO-CN-HCM',
           assignedStaffEmail: targetEditData.createdBy || currentStaffEmail,
-          orderDate: targetEditData.scheduledDate
-            ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 16)
+          orderDate: targetEditData.createdDate || targetEditData.scheduledDate
+            ? new Date(targetEditData.createdDate || targetEditData.scheduledDate).toISOString().slice(0, 16)
             : new Date().toISOString().slice(0, 16),
-          generalNote: targetEditData.note || '',
-          status: targetEditData.status || 'DRAFT',
+          generalNote: targetEditData.description || targetEditData.note || '',
+          status: targetEditData.status || 'PENDING',
           details: paddedRows,
         },
       ];
     }
 
     try {
-      const savedDraft = sessionStorage.getItem('transfer_tabs_draft');
+      const savedDraft = sessionStorage.getItem('transfer_request_tabs_draft');
       if (savedDraft) {
         const parsed = JSON.parse(savedDraft);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -228,12 +228,12 @@ export default function CreateTransferOrderPage({
         }
       }
     } catch {}
-    return [createNewTransferTab(1, currentStaffEmail)];
+    return [createNewTransferRequestTab(1, currentStaffEmail)];
   });
 
   const [activeTabId, setActiveTabId] = useState<string>(() => {
     try {
-      const savedActiveId = sessionStorage.getItem('transfer_active_tab_id');
+      const savedActiveId = sessionStorage.getItem('transfer_request_active_tab_id');
       if (savedActiveId && tabs.some((t) => t.tabId === savedActiveId)) {
         return savedActiveId;
       }
@@ -247,10 +247,10 @@ export default function CreateTransferOrderPage({
 
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;
-    const newTab = createNewTransferTab(newTabIndex, currentStaffEmail);
+    const newTab = createNewTransferRequestTab(newTabIndex, currentStaffEmail);
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.tabId);
-    setToast({ message: `Đã mở tab tạo phiếu chuyển kho mới (#${newTabIndex})`, type: 'success' });
+    setToast({ message: `Đã mở tab tạo phiếu nhập chuyển kho mới (#${newTabIndex})`, type: 'success' });
   }, [tabs.length, currentStaffEmail]);
 
   const handleCloseTab = useCallback(
@@ -269,13 +269,13 @@ export default function CreateTransferOrderPage({
     [tabs, activeTabId]
   );
 
-  // Sync draft tabs to sessionStorage (when not in edit mode)
+  // Sync draft tabs to sessionStorage (when not editing)
   useEffect(() => {
-    if (!editOrderData && tabs && tabs.length > 0) {
-      sessionStorage.setItem('transfer_tabs_draft', JSON.stringify(tabs));
-      sessionStorage.setItem('transfer_active_tab_id', activeTabId);
+    if (!targetEditData && tabs && tabs.length > 0) {
+      sessionStorage.setItem('transfer_request_tabs_draft', JSON.stringify(tabs));
+      sessionStorage.setItem('transfer_request_active_tab_id', activeTabId);
     }
-  }, [tabs, activeTabId, editOrderData]);
+  }, [tabs, activeTabId, targetEditData]);
 
   // Toast auto-hide
   useEffect(() => {
@@ -284,7 +284,7 @@ export default function CreateTransferOrderPage({
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // Click outside listener for product table dropdown
+  // Click outside listener for product dropdown
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as HTMLElement;
@@ -331,7 +331,7 @@ export default function CreateTransferOrderPage({
           }
         }
       } catch (err) {
-        console.error('Lỗi khi tải master data phiếu điều chuyển:', err);
+        console.error('Lỗi khi tải master data phiếu nhập chuyển kho:', err);
       }
     }
     loadMasterData();
@@ -339,29 +339,29 @@ export default function CreateTransferOrderPage({
 
   // Active Tab Helpers
   const updateActiveTab = useCallback(
-    (updater: (prev: TransferTab) => TransferTab) => {
+    (updater: (prev: TransferRequestTab) => TransferRequestTab) => {
       setTabs((prev) => prev.map((t) => (t.tabId === activeTabId ? updater(t) : t)));
     },
     [activeTabId]
   );
 
-  const handleSourceWarehouseChange = (newSourceCode: string) => {
-    updateActiveTab((t) => ({
-      ...t,
-      sourceWarehouseCode: newSourceCode,
-      details: t.details.map((d) => ({ ...d, sourceWarehouseCode: newSourceCode })),
-    }));
-  };
-
   const handleDestinationWarehouseChange = (newDestCode: string) => {
     updateActiveTab((t) => ({
       ...t,
       destinationWarehouseCode: newDestCode,
+      details: t.details.map((d) => ({ ...d, destinationWarehouseCode: newDestCode })),
+    }));
+  };
+
+  const handleSourceWarehouseChange = (newSourceCode: string) => {
+    updateActiveTab((t) => ({
+      ...t,
+      sourceWarehouseCode: newSourceCode,
     }));
   };
 
   // Row update helpers
-  const updateRow = (rowId: string, patch: Partial<TransferRowItem>) => {
+  const updateRow = (rowId: string, patch: Partial<TransferRequestRowItem>) => {
     updateActiveTab((t) => ({
       ...t,
       details: t.details.map((item) => {
@@ -388,7 +388,7 @@ export default function CreateTransferOrderPage({
   const handleAddBlankRow = () => {
     updateActiveTab((t) => ({
       ...t,
-      details: [...t.details, makeEmptyRow(t.details.length, t.sourceWarehouseCode)],
+      details: [...t.details, makeEmptyRow(t.details.length, t.destinationWarehouseCode)],
     }));
   };
 
@@ -403,7 +403,7 @@ export default function CreateTransferOrderPage({
     updateActiveTab((t) => {
       const source = t.details[index];
       if (!source) return t;
-      const duplicated: TransferRowItem = {
+      const duplicated: TransferRequestRowItem = {
         ...source,
         rowId: `row-${Date.now()}-${Math.random()}`,
       };
@@ -448,13 +448,13 @@ export default function CreateTransferOrderPage({
           qty: 1,
         });
       } else {
-        const newRow: TransferRowItem = {
+        const newRow: TransferRequestRowItem = {
           rowId: `row-${Date.now()}-${Math.random()}`,
           productId: productIdToUse,
           productSku: skuToUse,
           productName: nameToUse,
           unit: unitToUse,
-          sourceWarehouseCode: activeTab.sourceWarehouseCode,
+          destinationWarehouseCode: activeTab.destinationWarehouseCode,
           qty: 1,
           price: priceToUse,
           totalAmount: priceToUse,
@@ -496,12 +496,12 @@ export default function CreateTransferOrderPage({
     if (onBack) {
       onBack();
     } else {
-      navigate('/delivery');
+      navigate('/delivery/transfer-requests');
     }
   };
 
-  // Save Transfer Handler
-  const handleSaveTransfer = async (statusSave: 'DRAFT' | 'APPROVED' | 'IN_TRANSIT') => {
+  // Save Transfer Request Handler
+  const handleSaveTransferRequest = async (statusSave: 'DRAFT' | 'PENDING' | 'APPROVED') => {
     if (!activeTab) return;
 
     if (activeValidItems.length === 0) {
@@ -510,25 +510,27 @@ export default function CreateTransferOrderPage({
     }
 
     if (!activeTab.sourceWarehouseCode || !activeTab.destinationWarehouseCode) {
-      setToast({ type: 'error', message: 'Vui lòng chọn đầy đủ Kho xuất và Kho nhập (Chi nhánh)' });
+      setToast({ type: 'error', message: 'Vui lòng chọn đầy đủ Kho nguồn và Kho đích' });
       return;
     }
 
     if (activeTab.sourceWarehouseCode === activeTab.destinationWarehouseCode) {
-      setToast({ type: 'error', message: 'Kho xuất và Kho nhập chi nhánh không được trùng nhau' });
+      setToast({ type: 'error', message: 'Kho nguồn và Kho đích không được trùng nhau' });
       return;
     }
 
     setSaving(true);
     try {
-      const payload = {
-        transferNo: activeTab.transferNo,
+      const storedUser = getStoredUser();
+      const newRequest = {
+        id: activeTab.id || `trq-${Date.now()}`,
+        requestNumber: activeTab.requestNo,
+        createdDate: activeTab.orderDate || new Date().toISOString(),
+        status: statusSave,
+        description: activeTab.generalNote || `Yêu cầu nhập chuyển kho từ ${activeTab.sourceWarehouseCode} sang ${activeTab.destinationWarehouseCode}`,
+        createdBy: activeTab.assignedStaffEmail || storedUser.fullName || storedUser.email || 'Nhân viên kho',
         sourceWarehouse: activeTab.sourceWarehouseCode,
         destinationWarehouse: activeTab.destinationWarehouseCode,
-        scheduledDate: activeTab.orderDate,
-        status: statusSave,
-        note: activeTab.generalNote || undefined,
-        createdBy: activeTab.assignedStaffEmail || currentUser?.fullName || currentUser?.email || 'NPT_Staff',
         items: activeValidItems.map((it) => ({
           id: it.productId || it.rowId,
           productCode: it.productSku || `SKU-${it.productId}`,
@@ -536,22 +538,35 @@ export default function CreateTransferOrderPage({
           unit: it.unit || 'Cái',
           quantity: Number(it.qty),
           price: Number(it.price || 0),
+          sourceWarehouse: activeTab.sourceWarehouseCode,
+          destinationWarehouse: activeTab.destinationWarehouseCode,
         })),
       };
 
+      const existingRaw = localStorage.getItem('wms_transfer_requests');
+      const existing = existingRaw ? JSON.parse(existingRaw) : [];
+      let updated: any[];
+
       if (activeTab.id) {
-        await deliveryApi.updateTransferOrder(activeTab.id, payload);
-        setToast({ type: 'success', message: `Cập nhật thành công phiếu điều chuyển: ${activeTab.transferNo}` });
+        updated = existing.map((r: any) => (r.id === activeTab.id ? newRequest : r));
       } else {
-        await deliveryApi.createTransferOrder(payload);
-        setToast({ type: 'success', message: `Tạo mới thành công phiếu điều chuyển: ${activeTab.transferNo}` });
+        updated = [newRequest, ...existing];
       }
+
+      localStorage.setItem('wms_transfer_requests', JSON.stringify(updated));
+
+      setToast({
+        type: 'success',
+        message: statusSave === 'DRAFT' ? `Đã lưu nháp phiếu nhập chuyển kho: ${activeTab.requestNo}` : `Đã tạo thành công phiếu nhập chuyển kho: ${activeTab.requestNo}`,
+      });
+
+      if (onSuccess) onSuccess();
 
       setTimeout(() => {
         handleBackNavigation();
       }, 1000);
     } catch (err: any) {
-      setToast({ type: 'error', message: err?.message || 'Lỗi khi lưu phiếu xuất chuyển kho' });
+      setToast({ type: 'error', message: err?.message || 'Lỗi khi lưu phiếu nhập chuyển kho' });
     } finally {
       setSaving(false);
     }
@@ -588,7 +603,7 @@ export default function CreateTransferOrderPage({
           isOpen={showScannerModal}
           onProductFound={handleBarcodeScanned}
           onClose={() => setShowScannerModal(false)}
-          title="Quét Mã Barcode Hàng Hóa Điều Chuyển Kho"
+          title="Quét Mã Barcode Hàng Hóa Nhập Chuyển Kho"
         />
       )}
 
@@ -596,9 +611,9 @@ export default function CreateTransferOrderPage({
       {!isFullscreen && (
         <div className="flex items-center justify-between">
           <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
-            <Send className="h-5 w-5 text-cyan-100" />
+            <Repeat className="h-5 w-5 text-cyan-100" />
             <h1 className="text-base font-black tracking-tight uppercase">
-              {activeTab?.id ? 'CHỈNH SỬA PHIẾU CHUYỂN KHO NỘI BỘ' : 'TẠO PHIẾU CHUYỂN KHO NỘI BỘ (LẬP LỆNH ĐIỀU CHUYỂN KHO)'}
+              {activeTab?.id ? 'CHỈNH SỬA PHIẾU NHẬP CHUYỂN KHO NỘI BỘ' : 'TẠO PHIẾU NHẬP CHUYỂN KHO NỘI BỘ (LẬP YÊU CẦU / PHIẾU NHẬP)'}
             </h1>
           </div>
 
@@ -630,7 +645,7 @@ export default function CreateTransferOrderPage({
             >
               <FileText className={`h-3.5 w-3.5 ${isActive ? 'text-cyan-100' : 'text-cyan-600'}`} />
               <span className="max-w-[150px] truncate">
-                {tab.transferNo ? tab.transferNo : `Phiếu #${idx + 1}`}
+                {tab.requestNo ? tab.requestNo : `Phiếu #${idx + 1}`}
               </span>
               {validItemsCount > 0 && (
                 <span
@@ -660,12 +675,12 @@ export default function CreateTransferOrderPage({
         })}
 
         {/* Add New Tab Button */}
-        {!editOrderData && (
+        {!targetEditData && (
           <button
             type="button"
             onClick={handleAddNewTab}
             className="inline-flex items-center gap-1 rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-50/60 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 hover:border-cyan-600 transition cursor-pointer"
-            title="Tạo thêm phiếu chuyển kho mới (Tab tiếp theo)"
+            title="Tạo thêm phiếu nhập chuyển kho mới (Tab tiếp theo)"
           >
             <Plus size={14} className="text-cyan-700" />
             <span>+ Thêm phiếu mới</span>
@@ -680,9 +695,9 @@ export default function CreateTransferOrderPage({
           {/* ═══ FORM METADATA CONTROL BAR (5 Columns) ═══ */}
           <div className="rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex-shrink-0">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {/* Ngày xuất / điều chuyển */}
+              {/* Ngày nhập / điều chuyển */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Ngày xuất / điều chuyển</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Ngày nhập / chuyển kho</label>
                 <input
                   type="datetime-local"
                   value={activeTab?.orderDate || ''}
@@ -691,55 +706,28 @@ export default function CreateTransferOrderPage({
                 />
               </div>
 
-              {/* Mã phiếu / Lệnh điều chuyển */}
+              {/* Mã phiếu / Số yêu cầu */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Mã phiếu / Lệnh điều chuyển</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Mã phiếu / Số yêu cầu</label>
                 <input
                   type="text"
-                  value={activeTab?.transferNo || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, transferNo: e.target.value }))}
-                  placeholder="TẠO TỰ ĐỘNG (PXCN...)"
+                  value={activeTab?.requestNo || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, requestNo: e.target.value }))}
+                  placeholder="TẠO TỰ ĐỘNG (PNCN...)"
                   className="h-8.5 w-full rounded-lg border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-cyan-800 uppercase outline-none focus:border-cyan-600"
                 />
               </div>
 
-              {/* Kho xuất hàng (Kho nguồn) */}
+              {/* Kho nhập hàng (Kho đích) */}
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
                   <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
-                  <span>Kho xuất (Kho nguồn)</span>
-                </label>
-                <select
-                  value={activeTab?.sourceWarehouseCode || 'KHO-TONG'}
-                  onChange={(e) => handleSourceWarehouseChange(e.target.value)}
-                  className="h-8.5 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
-                >
-                  {warehouses.length > 0 ? (
-                    warehouses.map((wh) => (
-                      <option key={wh.id || wh.code} value={wh.code}>
-                        [{wh.code}] {wh.name}
-                      </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="KHO-TONG">KHO-TONG - Kho Tổng Hà Nội</option>
-                      <option value="KH001">KH001 - Kho Hàng Hóa HCM</option>
-                      <option value="KHO-NVL">KHO-NVL - Kho nguyên vật liệu</option>
-                    </>
-                  )}
-                </select>
-              </div>
-
-              {/* Kho nhập hàng (Kho đích nội bộ) */}
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <ArrowRight className="h-3.5 w-3.5 text-emerald-600" />
                   <span>Kho nhập (Kho đích)</span>
                 </label>
                 <select
                   value={activeTab?.destinationWarehouseCode || 'KHO-CN-HCM'}
                   onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
-                  className="h-8.5 w-full rounded-lg border-2 border-emerald-500 bg-emerald-50/50 px-3 text-xs font-bold text-emerald-900 outline-none focus:border-emerald-600 cursor-pointer"
+                  className="h-8.5 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
                 >
                   {warehouses.length > 0 ? (
                     warehouses.map((wh) => (
@@ -757,11 +745,38 @@ export default function CreateTransferOrderPage({
                 </select>
               </div>
 
-              {/* Nhân viên điều chuyển */}
+              {/* Kho xuất hàng (Kho nguồn nội bộ) */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <ArrowRight className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Kho xuất (Kho nguồn)</span>
+                </label>
+                <select
+                  value={activeTab?.sourceWarehouseCode || 'KHO-TONG'}
+                  onChange={(e) => handleSourceWarehouseChange(e.target.value)}
+                  className="h-8.5 w-full rounded-lg border-2 border-emerald-500 bg-emerald-50/50 px-3 text-xs font-bold text-emerald-900 outline-none focus:border-emerald-600 cursor-pointer"
+                >
+                  {warehouses.length > 0 ? (
+                    warehouses.map((wh) => (
+                      <option key={wh.id || wh.code} value={wh.code}>
+                        [{wh.code}] {wh.name}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="KHO-TONG">KHO-TONG - Kho Tổng Hà Nội</option>
+                      <option value="KH001">KH001 - Kho Hàng Hóa HCM</option>
+                      <option value="KHO-NVL">KHO-NVL - Kho nguyên vật liệu</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* Nhân viên / Người yêu cầu */}
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
                   <User className="h-3.5 w-3.5 text-cyan-600" />
-                  <span>Nhân viên điều chuyển</span>
+                  <span>Nhân viên phụ trách</span>
                 </label>
                 <select
                   value={activeTab?.assignedStaffEmail || currentStaffEmail}
@@ -784,9 +799,9 @@ export default function CreateTransferOrderPage({
             {/* Table Header Controls */}
             <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs">
-                <Truck className="h-4 w-4 text-cyan-600" />
+                <Package className="h-4 w-4 text-cyan-600" />
                 <span>
-                  THÔNG TIN HÀNG HÓA XUẤT CHUYỂN ({activeValidItems.length} MẶT HÀNG - TỔNG SL: {totalQty})
+                  THÔNG TIN HÀNG HÓA NHẬP CHUYỂN ({activeValidItems.length} MẶT HÀNG - TỔNG SL: {totalQty})
                 </span>
               </div>
 
@@ -830,8 +845,8 @@ export default function CreateTransferOrderPage({
                     <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">MÃ SKU</th>
                     <th className="p-2 min-w-[200px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
                     <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
-                    <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">KHO XUẤT</th>
-                    <th className="p-2 w-20 text-center border-r border-slate-200 bg-slate-100">SL XUẤT</th>
+                    <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">KHO NHẬP</th>
+                    <th className="p-2 w-20 text-center border-r border-slate-200 bg-slate-100">SL NHẬP</th>
                     <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">ĐƠN GIÁ (đ)</th>
                     <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">THÀNH TIỀN</th>
                     <th className="p-2 min-w-[120px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
@@ -929,11 +944,11 @@ export default function CreateTransferOrderPage({
                           />
                         </td>
 
-                        {/* KHO XUẤT */}
+                        {/* KHO NHẬP */}
                         <td className="p-1 border-r border-slate-200">
                           <select
-                            value={row.sourceWarehouseCode || activeTab.sourceWarehouseCode}
-                            onChange={(e) => updateRow(row.rowId, { sourceWarehouseCode: e.target.value })}
+                            value={row.destinationWarehouseCode || activeTab.destinationWarehouseCode}
+                            onChange={(e) => updateRow(row.rowId, { destinationWarehouseCode: e.target.value })}
                             className="w-full h-8 px-1 rounded border border-slate-300 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500"
                           >
                             {warehouses.length > 0 ? (
@@ -944,15 +959,15 @@ export default function CreateTransferOrderPage({
                               ))
                             ) : (
                               <>
-                                <option value="KHO-TONG">KHO-TONG</option>
-                                <option value="KH001">KH001</option>
-                                <option value="KHO-NVL">KHO-NVL</option>
+                                <option value="KHO-CN-HCM">KHO-CN-HCM</option>
+                                <option value="KHO-CN-DN">KHO-CN-DN</option>
+                                <option value="KH006">KH006</option>
                               </>
                             )}
                           </select>
                         </td>
 
-                        {/* SỐ LƯỢNG XUẤT */}
+                        {/* SỐ LƯỢNG NHẬP */}
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="number"
@@ -1025,34 +1040,34 @@ export default function CreateTransferOrderPage({
           <div className="space-y-3">
             <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-2 text-cyan-800 font-extrabold text-xs">
               <Package className="h-4 w-4 text-cyan-600" />
-              <span>THÔNG TIN ĐIỀU CHUYỂN NỘI BỘ</span>
+              <span>THÔNG TIN NHẬP CHUYỂN NỘI BỘ</span>
             </div>
 
             {/* Notice Badge */}
             <div className="rounded-lg bg-blue-50 border border-blue-200 p-2.5 text-[11px] text-blue-800 font-semibold leading-relaxed">
-              ℹ Nghiệp vụ Chuyển Kho Nội Bộ giữa các kho trong cùng doanh nghiệp — Không phát sinh doanh thu hay thuế VAT.
+              ℹ Nghiệp vụ Nhập Chuyển Kho Nội Bộ giữa các kho trong cùng doanh nghiệp — Không phát sinh doanh thu hay thuế VAT.
             </div>
 
             {/* Quick Warehouse Overview */}
             <div className="rounded-xl border-2 border-cyan-100 bg-cyan-50/60 p-2.5 space-y-2 text-xs">
               <div className="flex items-center justify-between font-bold text-slate-700">
-                <span>Kho xuất (Kho nguồn):</span>
-                <span className="text-cyan-800 font-black">{activeTab?.sourceWarehouseCode}</span>
+                <span>Kho nhập (Kho đích):</span>
+                <span className="text-cyan-800 font-black">{activeTab?.destinationWarehouseCode}</span>
               </div>
               <div className="flex items-center justify-between font-bold text-slate-700">
-                <span>Kho nhập (Kho đích):</span>
-                <span className="text-emerald-800 font-black">{activeTab?.destinationWarehouseCode}</span>
+                <span>Kho xuất (Kho nguồn):</span>
+                <span className="text-emerald-800 font-black">{activeTab?.sourceWarehouseCode}</span>
               </div>
             </div>
 
             {/* Ghi chú điều chuyển */}
             <div>
-              <label className="mb-1 block text-xs font-bold text-slate-700">Lý do / Ghi chú điều chuyển nội bộ</label>
+              <label className="mb-1 block text-xs font-bold text-slate-700">Lý do / Ghi chú nhập chuyển kho</label>
               <textarea
                 rows={3}
                 value={activeTab?.generalNote || ''}
                 onChange={(e) => updateActiveTab((t) => ({ ...t, generalNote: e.target.value }))}
-                placeholder="Nhập lý do điều chuyển nội bộ (VD: Điều chuyển cân bằng tồn kho)..."
+                placeholder="Nhập lý do nhập chuyển kho nội bộ..."
                 className="w-full p-2.5 rounded-lg border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs"
               />
             </div>
@@ -1060,11 +1075,11 @@ export default function CreateTransferOrderPage({
             {/* Highlight Total Card */}
             <div className="bg-gradient-to-br from-cyan-50 to-emerald-50 border-2 border-cyan-200 rounded-xl p-3 space-y-2 text-xs">
               <div className="flex items-center justify-between text-slate-600 font-semibold">
-                <span>Số mặt hàng xuất:</span>
+                <span>Số mặt hàng nhập:</span>
                 <span className="font-bold text-slate-900">{activeValidItems.length}</span>
               </div>
               <div className="flex items-center justify-between text-slate-600 font-semibold">
-                <span>Tổng số lượng xuất:</span>
+                <span>Tổng số lượng nhập:</span>
                 <span className="font-bold text-slate-900">{totalQty}</span>
               </div>
               <div className="flex items-center justify-between pt-2 border-t border-cyan-200">
@@ -1079,17 +1094,17 @@ export default function CreateTransferOrderPage({
             <button
               type="button"
               disabled={saving}
-              onClick={() => handleSaveTransfer('APPROVED')}
+              onClick={() => handleSaveTransferRequest('PENDING')}
               className="w-full py-2.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
-              <span>{activeTab?.id ? 'Lưu & Duyệt thay đổi' : 'Lưu & Duyệt'}</span>
+              <span>{activeTab?.id ? 'Lưu & Cập nhật' : 'Lưu & Gửi yêu cầu'}</span>
             </button>
 
             <button
               type="button"
               disabled={saving}
-              onClick={() => handleSaveTransfer('DRAFT')}
+              onClick={() => handleSaveTransferRequest('DRAFT')}
               className="w-full py-2.5 px-4 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 text-cyan-700 font-extrabold shadow-sm transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
             >
               <Save className="h-4 w-4" />

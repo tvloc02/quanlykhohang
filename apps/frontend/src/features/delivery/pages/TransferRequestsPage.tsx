@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ChevronDown,
   Clock3,
@@ -212,6 +213,7 @@ function Select({
 }
 
 export default function TransferRequestsPage() {
+  const navigate = useNavigate();
   const [toast, setToast] = React.useState<Toast | null>(null);
   const [search, setSearch] = React.useState('');
   const [timeFilter, setTimeFilter] = React.useState<TimeFilter>('this-month');
@@ -237,28 +239,53 @@ export default function TransferRequestsPage() {
           },
         });
         if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setWarehouses(data);
-          }
+          const list = await res.json();
+          setWarehouses(Array.isArray(list) ? list : list.data || []);
         }
       } catch (e) {
-        console.error('Lỗi tải danh sách kho', e);
+        console.error('Lỗi tải danh sách kho:', e);
       }
     }
     loadWarehouses();
   }, []);
 
-  const loadRequests = React.useCallback(() => {
+  const loadRequests = React.useCallback(async () => {
     try {
-      const raw = localStorage.getItem('wms_transfer_requests');
-      if (raw) {
-        setRequests(JSON.parse(raw));
-      } else {
-        setRequests([]);
+      const localData = localStorage.getItem('wms_transfer_requests');
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        if (Array.isArray(parsed)) {
+          setRequests(parsed);
+          return;
+        }
       }
+      const initial: TransferRequest[] = [
+        {
+          id: 'trq-101',
+          requestNumber: 'REQ-2026-001',
+          createdDate: '2026-08-15T08:30:00.000Z',
+          status: 'PENDING',
+          description: 'Yêu cầu điều chuyển hàng hóa bổ sung chi nhánh HCM',
+          createdBy: 'Quản Trị Viên Hệ Thống',
+          sourceWarehouse: 'KHO-TONG',
+          destinationWarehouse: 'KHO-CN-HCM',
+          items: [
+            {
+              id: 'tri-1',
+              productCode: 'SP001',
+              productName: 'Áo Thun Nam Cotton',
+              unit: 'Cái',
+              quantity: 50,
+              sourceWarehouse: 'KHO-TONG',
+              destinationWarehouse: 'KHO-CN-HCM',
+            },
+          ],
+        },
+      ];
+      setRequests(initial);
+      localStorage.setItem('wms_transfer_requests', JSON.stringify(initial));
     } catch {
-      setRequests([]);
+      setToast({ type: 'error', message: 'Không thể tải danh sách yêu cầu điều chuyển' });
     }
   }, []);
 
@@ -360,7 +387,7 @@ export default function TransferRequestsPage() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Package className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Yêu Cầu Điều Chuyển</h1>
+            <h1 className="text-lg font-extrabold tracking-tight text-white uppercase">DANH SÁCH PHIẾU NHẬP CHUYỂN KHO NỘI BỘ</h1>
           </div>
         </div>
         <button
@@ -510,8 +537,16 @@ export default function TransferRequestsPage() {
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
+                          onClick={() => navigate('/delivery/create-transfer-request', { state: { editRequestData: request } })}
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          title="Chỉnh sửa phiếu nhập chuyển kho"
+                        >
+                          <Pencil className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openView(request)}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                           title="Xem chi tiết"
                         >
                           <Eye className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />

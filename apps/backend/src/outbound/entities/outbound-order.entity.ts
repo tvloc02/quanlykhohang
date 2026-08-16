@@ -10,7 +10,7 @@ export class OutboundOrder extends BaseEntity {
   @Column({ length: 50, nullable: true })
   orderNo?: string;
 
-  @Column({ length: 50, default: '4445' })
+  @Column({ length: 50, default: 'KHO-NVL' })
   branchCode: string;
 
   @Column({ length: 100, nullable: true })

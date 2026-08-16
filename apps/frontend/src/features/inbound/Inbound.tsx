@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import CreateStockInOrderPage from './pages/CreateStockInOrderPage';
 import {
   Search,
@@ -225,9 +225,12 @@ function authHeaders() {
 const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return '';
+  if (!codeOrName) return warehouseList[0]?.name || '-';
   const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
   if (found) return found.name;
+  if ((codeOrName === 'SPX001' || !codeOrName) && warehouseList.length > 0) {
+    return warehouseList[0].name;
+  }
   return codeOrName;
 }
 
@@ -259,7 +262,7 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT): FormDetailRow[] {
   return Array.from({ length: count }, (_, i) => makeEmptyRow(i));
 }
 
-function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', defaultBranch = 'SPX001'): InboundTab {
+function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', defaultBranch = 'KHO-NVL'): InboundTab {
   const d = new Date();
   const dateFormatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
 
@@ -299,6 +302,7 @@ export default function Inbound({
   codePrefix = 'PNK',
   partnerLabel = 'Nhà cung cấp',
 }: InboundProps) {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<InboundReceiptOrder[]>(DEFAULT_FALLBACK_ORDERS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -478,7 +482,7 @@ export default function Inbound({
             supplierId: item.supplierId || item.supplier?.id,
             supplierPhone: item.supplier?.phone || '',
             supplierAddress: item.supplier?.address || '',
-            warehouseCode: item.warehouseCode || 'SPX001',
+            warehouseCode: item.warehouseCode || item.details?.[0]?.warehouseCode || item.warehouse?.code || item.warehouseId || 'KHO-NVL',
             employeeName: item.creatorName || currentUserName,
             orderDate: item.orderDate ? new Date(item.orderDate).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'),
             expectedDate: item.expectedDate ? new Date(item.expectedDate).toLocaleDateString('vi-VN') : '',
@@ -547,7 +551,12 @@ export default function Inbound({
       if (whRes && whRes.ok) {
         const wData = await whRes.json();
         const wList = Array.isArray(wData) ? wData : wData.data || [];
-        if (wList.length > 0) setWarehouses(wList);
+        if (wList.length > 0) {
+          setWarehouses(wList);
+          setTabs((prev) =>
+            prev.map((t) => (t.branchCode === 'SPX001' ? { ...t, branchCode: wList[0].code || 'KHO-NVL' } : t))
+          );
+        }
       }
     } catch (err) {
       console.error('Lỗi khi tải dữ liệu Nhập Kho:', err);
@@ -933,7 +942,7 @@ export default function Inbound({
         productSku: r.productSku,
         productName: r.productName,
         unit: r.unit,
-        warehouseCode: activeTab.branchCode || 'SPX001',
+        warehouseCode: (activeTab.branchCode && activeTab.branchCode !== 'SPX001') ? activeTab.branchCode : (warehouses[0]?.code || 'KHO-NVL'),
         expectedQty: Number(r.qty),
         receivedQty: Number(r.qty),
         qty: Number(r.qty),
@@ -945,7 +954,7 @@ export default function Inbound({
         productSku: r.productSku,
         productName: r.productName,
         unit: r.unit,
-        warehouseCode: activeTab.branchCode || 'SPX001',
+        warehouseCode: (activeTab.branchCode && activeTab.branchCode !== 'SPX001') ? activeTab.branchCode : (warehouses[0]?.code || 'KHO-NVL'),
         expectedQty: Number(r.qty),
         receivedQty: Number(r.qty),
         qty: Number(r.qty),
@@ -964,7 +973,7 @@ export default function Inbound({
       supplierId: payload.supplierId,
       supplierPhone: activeTab.supplierPhone || '',
       supplierAddress: activeTab.supplierAddress || '',
-      warehouseCode: activeTab.branchCode || 'SPX001',
+      warehouseCode: (activeTab.branchCode && activeTab.branchCode !== 'SPX001') ? activeTab.branchCode : (warehouses[0]?.code || 'KHO-NVL'),
       employeeName: activeTab.employeeName || currentUserName,
       orderDate: activeTab.orderDate || new Date().toLocaleDateString('vi-VN'),
       status: activeTab.status || 'completed',
@@ -1083,7 +1092,13 @@ export default function Inbound({
               {canCreate && (
                 <button
                   type="button"
-                  onClick={() => handleOpenFormModal('create')}
+                  onClick={() => {
+                    if (featureMode === 'transfer-in') {
+                      navigate('/delivery/create-transfer-order');
+                      return;
+                    }
+                    handleOpenFormModal('create');
+                  }}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
                 >
                   <Plus className="h-4.5 w-4.5 text-cyan-700" />
