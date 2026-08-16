@@ -360,7 +360,7 @@ export default function TransferRequestsPage() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Package className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-bold tracking-tight text-white">Yêu Cầu Điều Chuyển</h1>
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Nhập Kho Nội Bộ</h1>
           </div>
         </div>
         <button
@@ -369,7 +369,7 @@ export default function TransferRequestsPage() {
           className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Tạo yêu cầu điều chuyển
+          Tạo yêu cầu nhập kho nội bộ
         </button>
       </div>
 

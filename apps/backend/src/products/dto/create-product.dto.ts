@@ -25,6 +25,12 @@ export class CreateProductDto {
   price?: number;
 
   @IsOptional()
+  importPrice?: number;
+
+  @IsOptional()
+  wholesalePrice?: number;
+
+  @IsOptional()
   images?: string[];
 
   @IsOptional()

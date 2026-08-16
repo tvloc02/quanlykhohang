@@ -302,7 +302,7 @@ export default function CreateTransferOrderPage() {
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-3.5 py-1.5 text-white shadow-md">
             <Send className="h-4 w-4 text-cyan-100" />
             <h1 className="text-base font-bold tracking-tight text-white uppercase">
-              TẠO PHIẾU XUẤT CHUYỂN CHI NHÁNH (LẬP LỆNH ĐIỀU CHUYỂN KHO)
+              LẬP PHIẾU XUẤT KHO NỘI BỘ
             </h1>
           </div>
 
@@ -316,12 +316,12 @@ export default function CreateTransferOrderPage() {
           </button>
         </div>
 
-        {/* Top Information Control Card (5 Columns: Ngày xuất, Mã lệnh, Kho xuất, Kho nhập chi nhánh, Nhân viên) */}
+        {/* Top Information Control Card (5 Columns: Ngày giao, Mã phiếu, Kho cần chuyển, Kho nhận, Nhân viên) */}
         <div className="rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {/* Ngày xuất / điều chuyển */}
+            {/* Ngày giao / ngày chuyển */}
             <div>
-              <label className="mb-1 block text-xs font-bold text-slate-700">Ngày xuất / điều chuyển</label>
+              <label className="mb-1 block text-xs font-bold text-slate-700">Ngày giao / Ngày chuyển kho</label>
               <input
                 type="datetime-local"
                 value={orderDate}
@@ -330,9 +330,9 @@ export default function CreateTransferOrderPage() {
               />
             </div>
 
-            {/* Mã HĐ / Lệnh */}
+            {/* Mã phiếu xuất kho nội bộ */}
             <div>
-              <label className="mb-1 block text-xs font-bold text-slate-700">Mã phiếu / Lệnh điều chuyển</label>
+              <label className="mb-1 block text-xs font-bold text-slate-700">Mã phiếu xuất kho nội bộ</label>
               <input
                 type="text"
                 value={transferCode}
@@ -342,11 +342,11 @@ export default function CreateTransferOrderPage() {
               />
             </div>
 
-            {/* Kho xuất (Kho nguồn) */}
+            {/* Kho cần chuyển (Kho nguồn) */}
             <div>
               <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
                 <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
-                <span>Kho xuất hàng (Kho nguồn)</span>
+                <span>Kho cần chuyển (Kho xuất)</span>
               </label>
               <select
                 value={sourceWarehouseCode}
@@ -369,11 +369,11 @@ export default function CreateTransferOrderPage() {
               </select>
             </div>
 
-            {/* Kho nhập (Chi nhánh nhận) */}
+            {/* Kho nhận (Chi nhánh nhận) */}
             <div>
               <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
                 <ArrowRight className="h-3.5 w-3.5 text-emerald-600" />
-                <span>Kho nhập (Kho nhận)</span>
+                <span>Kho nhận (Kho nhập)</span>
               </label>
               <select
                 value={destinationWarehouseCode}
@@ -400,7 +400,7 @@ export default function CreateTransferOrderPage() {
             <div>
               <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
                 <User className="h-3.5 w-3.5 text-cyan-600" />
-                <span>Nhân viên điều chuyển</span>
+                <span>Nhân viên phụ trách</span>
               </label>
               <select
                 value={assignedStaffEmail}
@@ -426,7 +426,7 @@ export default function CreateTransferOrderPage() {
             <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2 text-cyan-700 font-bold text-xs">
                 <Truck className="h-4 w-4 text-cyan-600" />
-                <span>THÔNG TIN HÀNG HÓA XUẤT CHUYỂN ({items.length} DÒNG - TỔNG SL: {totalQty})</span>
+                <span>THÔNG TIN HÀNG HÓA XUẤT KHO NỘI BỘ ({items.length} DÒNG - TỔNG SL: {totalQty})</span>
               </div>
               <button
                 type="button"
