@@ -644,6 +644,12 @@ export class InboundService {
         unitPrice: unitPrice.toFixed(2),
         requestedPrice: unitPrice.toFixed(2),
         totalLineAmount: (unitPrice * qty).toFixed(2),
+        weight: parseNumber(item.weight),
+        length: parseNumber(item.length),
+        width: parseNumber(item.width),
+        height: parseNumber(item.height),
+        volume: parseNumber(item.volume),
+        volumetricWeight: parseNumber(item.volumetricWeight),
       });
 
       savedDetails.push(await this.detailRepo.save(detail));
@@ -676,6 +682,12 @@ export class InboundService {
       unitPrice: unitPrice.toFixed(2),
       requestedPrice: unitPrice.toFixed(2),
       totalLineAmount: (unitPrice * expectedQty).toFixed(2),
+      weight: parseNumber(item.weight),
+      length: parseNumber(item.length),
+      width: parseNumber(item.width),
+      height: parseNumber(item.height),
+      volume: parseNumber(item.volume),
+      volumetricWeight: parseNumber(item.volumetricWeight),
     });
   }
 
@@ -910,6 +922,12 @@ export class InboundService {
       listPrice: parseNumber(detail.product?.price) || parseNumber(supplierProduct?.purchasePrice),
       supplierCatalogPrice: supplierProduct ? parseNumber(supplierProduct.purchasePrice) : null,
       totalLineAmount: parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty),
+      weight: parseNumber(detail.weight),
+      length: parseNumber(detail.length),
+      width: parseNumber(detail.width),
+      height: parseNumber(detail.height),
+      volume: parseNumber(detail.volume),
+      volumetricWeight: parseNumber(detail.volumetricWeight),
       product: detail.product
         ? {
           id: detail.product.id,

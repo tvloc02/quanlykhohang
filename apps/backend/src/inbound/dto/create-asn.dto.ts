@@ -54,6 +54,36 @@ export class PurchaseOrderItemDto {
   @Type(() => Number)
   @IsNumber()
   price?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  weight?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  length?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  width?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  height?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  volume?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  volumetricWeight?: number;
 }
 
 export class CreateAsnDto {

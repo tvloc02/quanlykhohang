@@ -17,6 +17,8 @@ export class ProductsService {
     @InjectRepository(Category) private categoryRepo: Repository<Category>,
     @InjectRepository(Supplier) private supplierRepo: Repository<Supplier>,
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
+    @InjectRepository(StockInHistory) private stockInHistoryRepo: Repository<StockInHistory>,
+    @InjectRepository(InboundDetail) private inboundDetailRepo: Repository<InboundDetail>,
   ) { }
 
   /**
