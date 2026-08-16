@@ -203,7 +203,7 @@ export default function CreateOutboundOrderPage({
           return parsed;
         }
       }
-    } catch {}
+    } catch { }
     return [createNewOutboundTab(1, currentUserName)];
   });
 
@@ -213,7 +213,7 @@ export default function CreateOutboundOrderPage({
       if (savedActiveId && tabs.some((t) => t.tabId === savedActiveId)) {
         return savedActiveId;
       }
-    } catch {}
+    } catch { }
     return tabs && tabs[0] ? tabs[0].tabId : '';
   });
 
@@ -283,7 +283,16 @@ export default function CreateOutboundOrderPage({
         if (prodRes && prodRes.ok) {
           const prodData = await prodRes.json();
           const list = Array.isArray(prodData) ? prodData : prodData.data || [];
-          setProducts(list);
+          const normalized: ProductOption[] = list.map((p: any) => ({
+            id: String(p.id),
+            internalSku: p.internalSku || p.sku || p.code || '',
+            name: p.name || '',
+            unit: p.unit || 'Cái',
+            purchasePrice: Number(p.importPrice || p.purchasePrice || 0),
+            salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
+            price: Number(p.retailPrice || p.salePrice || p.price || 0),
+          }));
+          setProducts(normalized);
         }
 
         if (userRes && userRes.ok) {
@@ -579,10 +588,13 @@ export default function CreateOutboundOrderPage({
     const kw = (rowText || '').trim().toLowerCase();
     if (!kw) return products;
     const matched = products.filter(
-      (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
+      (p) =>
+        p.name.toLowerCase().includes(kw) ||
+        (p.internalSku || '').toLowerCase().includes(kw) ||
+        `${p.internalSku} ${p.name}`.toLowerCase().includes(kw)
     );
-    const nonMatched = products.filter((p) => !matched.includes(p));
-    return [...matched, ...nonMatched];
+    if (matched.length > 0) return matched;
+    return products;
   };
 
   const filteredCustomers = useMemo(() => {
@@ -598,20 +610,18 @@ export default function CreateOutboundOrderPage({
 
   const contentMarkup = (
     <div
-      className={`animate-[fadeIn_0.2s_ease-out] ${
-        isFullScreen
+      className={`animate-[fadeIn_0.2s_ease-out] ${isFullScreen
           ? 'fixed inset-0 z-[9999] bg-slate-100 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
           : 'space-y-3 pb-20'
-      }`}
+        }`}
     >
       {/* Toast Alert */}
       {toast && (
         <div
-          className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${
-            toast.type === 'error'
+          className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${toast.type === 'error'
               ? 'bg-red-50 text-red-600 border-red-200'
               : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-          }`}
+            }`}
         >
           {toast.type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
           <p className="text-sm font-bold">{toast.message}</p>
@@ -731,11 +741,10 @@ export default function CreateOutboundOrderPage({
             <div
               key={tab.tabId}
               onClick={() => setActiveTabId(tab.tabId)}
-              className={`group inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer border shadow-xs select-none ${
-                isActive
+              className={`group inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer border shadow-xs select-none ${isActive
                   ? 'bg-cyan-600 text-white border-cyan-600 shadow-md ring-2 ring-cyan-200'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-cyan-50 hover:border-cyan-300 hover:text-cyan-800'
-              }`}
+                }`}
             >
               <FileText className={`h-3.5 w-3.5 ${isActive ? 'text-cyan-100' : 'text-cyan-600'}`} />
               <span className="max-w-[150px] truncate">
@@ -743,9 +752,8 @@ export default function CreateOutboundOrderPage({
               </span>
               {validItemsCount > 0 && (
                 <span
-                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
-                    isActive ? 'bg-white text-cyan-800' : 'bg-cyan-100 text-cyan-800'
-                  }`}
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${isActive ? 'bg-white text-cyan-800' : 'bg-cyan-100 text-cyan-800'
+                    }`}
                 >
                   {validItemsCount} SP
                 </span>
@@ -754,11 +762,10 @@ export default function CreateOutboundOrderPage({
                 <button
                   type="button"
                   onClick={(e) => handleCloseTab(tab.tabId, e)}
-                  className={`rounded p-0.5 transition ${
-                    isActive
+                  className={`rounded p-0.5 transition ${isActive
                       ? 'hover:bg-cyan-700 text-cyan-200 hover:text-white'
                       : 'hover:bg-slate-200 text-slate-400 hover:text-red-500'
-                  }`}
+                    }`}
                   title="Đóng phiếu này"
                 >
                   <X size={13} />
@@ -985,11 +992,11 @@ export default function CreateOutboundOrderPage({
                           {idx + 1}.
                         </td>
 
-                        {/* TÊN HÀNG HÓA - Searchable Interactive Dropdown */}
-                        <td className="p-1 border-r border-slate-200 relative product-table-dropdown">
+                        {/* TÊN HÀNG HÓA */}
+                        <td className="p-0 border-r border-slate-200 relative product-table-dropdown">
                           <input
                             type="text"
-                            value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
+                            value={row.productName || ''}
                             onChange={(e) => {
                               const val = e.target.value;
                               updateRow(row.rowId, { productName: val });
@@ -997,49 +1004,9 @@ export default function CreateOutboundOrderPage({
                             }}
                             onFocus={() => setActiveProductDropdownRowId(row.rowId)}
                             onClick={() => setActiveProductDropdownRowId(row.rowId)}
-                            placeholder="Chọn hoặc nhập hàng..."
-                            className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-500 text-xs cursor-text"
+                            placeholder="Chọn hoặc nhập tên hàng..."
+                            className="w-full h-8 px-2 bg-transparent font-semibold text-slate-800 outline-none focus:bg-cyan-100/50 text-xs cursor-text"
                           />
-
-                          {/* Interactive Table Dropdown for this row */}
-                          {activeProductDropdownRowId === row.rowId && (
-                            <div className="absolute left-0 top-full z-[100] mt-1 w-[420px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
-                              <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
-                                <span className="w-1/3 uppercase">Mã hàng</span>
-                                <span className="w-1/2 uppercase">Tên hàng hóa</span>
-                                <span className="w-1/4 text-right uppercase">Giá bán</span>
-                              </div>
-                              <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                                {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
-                                  <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
-                                ) : (
-                                  getFilteredProductsForRow(row.productName || row.productSku).map((p) => (
-                                    <div
-                                      key={p.id}
-                                      onClick={() => {
-                                        updateRow(row.rowId, {
-                                          productId: p.id,
-                                          productSku: p.internalSku,
-                                          productName: p.name,
-                                          unit: p.unit || 'Cái',
-                                          price: p.salePrice || p.price || 0,
-                                          qty: row.qty === 0 ? 1 : row.qty,
-                                        });
-                                        setActiveProductDropdownRowId(null);
-                                      }}
-                                      className="flex items-center px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs text-slate-700 transition"
-                                    >
-                                      <span className="w-1/3 font-bold text-cyan-800">{p.internalSku}</span>
-                                      <span className="w-1/2 font-medium text-slate-800 truncate pr-1">{p.name}</span>
-                                      <span className="w-1/4 text-right font-semibold text-slate-700">
-                                        {Number(p.salePrice || p.price || 0).toLocaleString('vi-VN')}
-                                      </span>
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </div>
-                          )}
                         </td>
 
                         {/* ĐVT */}

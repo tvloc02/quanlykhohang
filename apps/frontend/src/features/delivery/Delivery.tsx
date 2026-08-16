@@ -83,7 +83,7 @@ export default function Delivery() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Truck className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-extrabold tracking-tight text-white uppercase">DANH SÁCH PHIẾU XUẤT CHUYỂN KHO NỘI BỘ</h1>
+            <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Điều Chuyển Kho</h1>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -96,7 +96,7 @@ export default function Delivery() {
             className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-500 bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-emerald-700"
           >
             <FileText className="h-4 w-4" />
-            In phiếu điều chuyển
+            In phiếu xuất kho nội bộ
           </button>
           <button
             type="button"
@@ -104,7 +104,7 @@ export default function Delivery() {
             className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            Lập lệnh điều chuyển
+            Lập phiếu xuất kho nội bộ
           </button>
         </div>
       </div>
@@ -117,7 +117,7 @@ export default function Delivery() {
           <p className="text-lg font-black text-cyan-700 uppercase">{pending} CHỜ XỬ LÝ</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-lg font-black text-cyan-700 uppercase">{moving} ĐANG ĐIỀU CHUYỂN</p>
+          <p className="text-lg font-black text-cyan-700 uppercase">{moving} ĐANG VẬN CHUYỂN</p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
           <p className="text-lg font-black text-cyan-700 uppercase">{done} HOÀN THÀNH</p>
@@ -131,7 +131,7 @@ export default function Delivery() {
             type="text"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Tìm kiếm phiếu điều chuyển kho..."
+            placeholder="Tìm kiếm phiếu xuất kho nội bộ..."
             className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
           />
         </div>
@@ -152,8 +152,8 @@ export default function Delivery() {
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số phiếu</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số yêu cầu</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho xuất</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho nhập</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho cần chuyển</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho nhận</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày lập</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Trạng thái</th>
                 <th className="sticky right-0 w-32 border-x border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Thao tác</th>
@@ -163,8 +163,8 @@ export default function Delivery() {
               {paginatedOrders.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    <p className="mb-1 text-base font-bold text-slate-800">Chưa có phiếu điều chuyển</p>
-                    Hãy tạo phiếu điều chuyển bằng popup để bắt đầu.
+                    <p className="mb-1 text-base font-bold text-slate-800">Chưa có phiếu xuất kho nội bộ</p>
+                    Hãy tạo phiếu xuất kho nội bộ bằng nút "Lập phiếu xuất kho nội bộ" để bắt đầu.
                   </td>
                 </tr>
               ) : (
@@ -258,11 +258,10 @@ export default function Delivery() {
                     key={page}
                     type="button"
                     onClick={() => setCurrentPage(page)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${
-                      page === currentPage
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${page === currentPage
                         ? 'bg-cyan-600 text-white'
                         : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
+                      }`}
                   >
                     {page}
                   </button>
@@ -313,22 +312,22 @@ export default function Delivery() {
         initialData={
           selectedOrder
             ? {
-                commandNo: `12/LDD-${selectedOrder.transferNo || 'KTTU'}`,
-                sourceAddress: selectedOrder.sourceWarehouse || 'Kho tổng Hà Nội',
-                receiverName: selectedOrder.createdBy || 'Nguyễn Thị Mai',
-                destinationAddress: selectedOrder.destinationWarehouse || 'Kho chi nhánh TP.HCM',
-                items: selectedOrder.items && selectedOrder.items.length > 0
-                  ? selectedOrder.items.map((item, idx) => ({
-                      id: item.id || String(idx + 1),
-                      productName: item.productName || 'Sản phẩm điều chuyển',
-                      productCode: item.productCode || 'SKU-001',
-                      unit: item.unit || 'Cái',
-                      quantityExported: Number(item.quantity) || 1,
-                      quantityImported: Number(item.quantity) || 1,
-                      price: 10000000,
-                    }))
-                  : undefined,
-              }
+              commandNo: `12/LDD-${selectedOrder.transferNo || 'KTTU'}`,
+              sourceAddress: selectedOrder.sourceWarehouse || 'Kho tổng Hà Nội',
+              receiverName: selectedOrder.createdBy || 'Nguyễn Thị Mai',
+              destinationAddress: selectedOrder.destinationWarehouse || 'Kho chi nhánh TP.HCM',
+              items: selectedOrder.items && selectedOrder.items.length > 0
+                ? selectedOrder.items.map((item, idx) => ({
+                  id: item.id || String(idx + 1),
+                  productName: item.productName || 'Sản phẩm điều chuyển',
+                  productCode: item.productCode || 'SKU-001',
+                  unit: item.unit || 'Cái',
+                  quantityExported: Number(item.quantity) || 1,
+                  quantityImported: Number(item.quantity) || 1,
+                  price: 10000000,
+                }))
+                : undefined,
+            }
             : undefined
         }
         setToast={setToast}

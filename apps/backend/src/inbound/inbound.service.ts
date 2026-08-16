@@ -767,6 +767,44 @@ export class InboundService {
         `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
         [newPhysical, newAvailable, balance.id],
       );
+
+      const unitPrice = parseNumber(detail.unitPrice);
+      const lineAmount = parseNumber(detail.totalLineAmount || (unitPrice * qty));
+      const supplierName = receipt.supplierName || receipt.supplier?.name || 'Nhà cung cấp';
+      const creatorName = receipt.creatorName || receipt.approverName || 'Quản lý kho';
+
+      // 4. Ghi vết lịch sử nhập kho vào CSDL
+      try {
+        await this.dataSource.query(
+          `INSERT INTO stock_in_history (productId, orderCode, supplierName, warehouseCode, warehouseName, quantity, unitPrice, totalAmount, createdBy, note, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          [
+            productId,
+            receipt.poNumber || 'PNK-SYSTEM',
+            supplierName,
+            locCode,
+            `Kho ${locCode}`,
+            qty,
+            unitPrice,
+            lineAmount,
+            creatorName,
+            receipt.description || 'Nhập kho tự động',
+          ],
+        );
+      } catch (histErr) {
+        console.error('Lỗi lưu vết stock_in_history:', histErr);
+      }
+
+      // 5. Cập nhật giá nhập của sản phẩm nếu có
+      if (unitPrice > 0) {
+        try {
+          await this.dataSource.query(
+            `UPDATE products SET importPrice = ? WHERE id = ?`,
+            [unitPrice, productId],
+          );
+        } catch (priceErr) {
+          console.error('Lỗi cập nhật importPrice sản phẩm:', priceErr);
+        }
+      }
     }
   }
 

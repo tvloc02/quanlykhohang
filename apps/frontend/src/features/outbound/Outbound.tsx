@@ -221,6 +221,13 @@ function authHeaders() {
 function toDateOnlyString(dateStr?: string | Date | null): string {
   if (!dateStr) return '';
   const str = String(dateStr).trim();
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
   const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if (dmyMatch) {
     const day = dmyMatch[1].padStart(2, '0');
@@ -506,20 +513,6 @@ export default function Outbound({
     }
   }, [showFormModal, tabs, activeTabId]);
 
-  const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' = 'create', id?: string) => {
-    if (modeAction === 'edit' && id) {
-      setSearchParams({ action: 'edit', id });
-    } else {
-      setSearchParams({ action: 'create' });
-    }
-  }, [setSearchParams]);
-
-  const handleCloseFormModal = useCallback(() => {
-    sessionStorage.removeItem('outbound_tabs_draft');
-    sessionStorage.removeItem('outbound_active_tab_id');
-    setSearchParams({});
-  }, [setSearchParams]);
-
   // ── 1. Fetch Master Data & Outbound Orders ────────────────────
 
   const loadData = useCallback(async () => {
@@ -616,9 +609,24 @@ export default function Outbound({
     }
   }, [currentUserName]);
 
+  const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' = 'create', id?: string) => {
+    if (modeAction === 'edit' && id) {
+      setSearchParams({ action: 'edit', id });
+    } else {
+      setSearchParams({ action: 'create' });
+    }
+  }, [setSearchParams]);
+
+  const handleCloseFormModal = useCallback(() => {
+    sessionStorage.removeItem('outbound_tabs_draft');
+    sessionStorage.removeItem('outbound_active_tab_id');
+    setSearchParams({});
+    loadData();
+  }, [setSearchParams, loadData]);
+
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, showFormModal]);
 
   // Click outside to close dropdowns
   useEffect(() => {

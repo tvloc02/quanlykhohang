@@ -185,11 +185,10 @@ function Select({
                   onChange(option.value);
                   setIsOpen(false);
                 }}
-                className={`w-full rounded-lg px-4 py-2.5 text-left text-sm font-bold transition ${
-                  option.value === value
+                className={`w-full rounded-lg px-4 py-2.5 text-left text-sm font-bold transition ${option.value === value
                     ? 'bg-cyan-50 text-cyan-700 font-black'
                     : 'text-slate-700 hover:bg-cyan-50/50 hover:text-cyan-600'
-                }`}
+                  }`}
               >
                 {option.label}
               </button>
@@ -387,7 +386,7 @@ export default function TransferRequestsPage() {
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Package className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-lg font-extrabold tracking-tight text-white uppercase">DANH SÁCH PHIẾU NHẬP CHUYỂN KHO NỘI BỘ</h1>
+            <h1 className="text-lg font-bold tracking-tight text-white">Yêu Cầu Điều Chuyển</h1>
           </div>
         </div>
         <button
@@ -396,7 +395,7 @@ export default function TransferRequestsPage() {
           className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700"
         >
           <PlusCircle className="h-4 w-4" />
-          Tạo yêu cầu điều chuyển
+          Tạo yêu cầu nhập kho nội bộ
         </button>
       </div>
 
@@ -451,11 +450,10 @@ export default function TransferRequestsPage() {
           <button
             type="button"
             onClick={() => setShowAdvancedFilters((current) => !current)}
-            className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition shadow-sm ${
-              showAdvancedFilters
+            className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border-2 px-4 text-sm font-bold transition shadow-sm ${showAdvancedFilters
                 ? 'border-cyan-500 bg-cyan-50 text-cyan-600'
                 : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50'
-            }`}
+              }`}
           >
             <Filter className="h-4 w-4" />
             Bộ lọc
@@ -478,18 +476,18 @@ export default function TransferRequestsPage() {
 
       {showAdvancedFilters && (
         <div className="grid grid-cols-1 gap-4 rounded-xl border-2 border-cyan-500 bg-cyan-50/30 p-4 shadow-sm md:grid-cols-2 lg:grid-cols-3">
-          <Input label="Ngày bắt đầu" type="date" value="" onChange={() => {}} />
-          <Input label="Ngày kết thúc" type="date" value="" onChange={() => {}} />
+          <Input label="Ngày bắt đầu" type="date" value="" onChange={() => { }} />
+          <Input label="Ngày kết thúc" type="date" value="" onChange={() => { }} />
           <Select
             label="Kho nguồn"
             value=""
-            onChange={() => {}}
+            onChange={() => { }}
             options={warehouseOptions}
           />
           <Select
             label="Kho đích"
             value=""
-            onChange={() => {}}
+            onChange={() => { }}
             options={warehouseOptions}
           />
         </div>
@@ -645,11 +643,10 @@ export default function TransferRequestsPage() {
                     key={page}
                     type="button"
                     onClick={() => setCurrentPage(page)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${
-                      page === currentPage
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold shadow-sm ${page === currentPage
                         ? 'bg-cyan-600 text-white'
                         : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
+                      }`}
                   >
                     {page}
                   </button>
@@ -826,22 +823,22 @@ export default function TransferRequestsPage() {
         initialData={
           shippingNoteRequest
             ? {
-                commandNo: `12/LDD-${shippingNoteRequest.requestNumber.replace(/^REQ-?/i, '') || 'KTTU'}`,
-                sourceAddress: shippingNoteRequest.sourceWarehouse || 'Kho tổng Hà Nội',
-                receiverName: shippingNoteRequest.createdBy || 'Nguyễn Thị Mai',
-                destinationAddress: shippingNoteRequest.destinationWarehouse || 'Kho chi nhánh TP.HCM',
-                items: shippingNoteRequest.items && shippingNoteRequest.items.length > 0
-                  ? shippingNoteRequest.items.map((item, idx) => ({
-                      id: item.id || String(idx + 1),
-                      productName: item.productName || 'Sản phẩm điều chuyển',
-                      productCode: item.productCode || 'SKU-001',
-                      unit: item.unit || 'Cái',
-                      quantityExported: item.quantity || 1,
-                      quantityImported: item.quantity || 1,
-                      price: 10000000,
-                    }))
-                  : undefined,
-              }
+              commandNo: `12/LDD-${shippingNoteRequest.requestNumber.replace(/^REQ-?/i, '') || 'KTTU'}`,
+              sourceAddress: shippingNoteRequest.sourceWarehouse || 'Kho tổng Hà Nội',
+              receiverName: shippingNoteRequest.createdBy || 'Nguyễn Thị Mai',
+              destinationAddress: shippingNoteRequest.destinationWarehouse || 'Kho chi nhánh TP.HCM',
+              items: shippingNoteRequest.items && shippingNoteRequest.items.length > 0
+                ? shippingNoteRequest.items.map((item, idx) => ({
+                  id: item.id || String(idx + 1),
+                  productName: item.productName || 'Sản phẩm điều chuyển',
+                  productCode: item.productCode || 'SKU-001',
+                  unit: item.unit || 'Cái',
+                  quantityExported: item.quantity || 1,
+                  quantityImported: item.quantity || 1,
+                  price: 10000000,
+                }))
+                : undefined,
+            }
             : undefined
         }
         setToast={setToast}

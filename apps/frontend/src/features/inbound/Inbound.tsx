@@ -343,6 +343,10 @@ export default function Inbound({
   const [showScannerModal, setShowScannerModal] = useState(false);
 
   const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' = 'create', id?: string) => {
+    if (modeAction === 'create') {
+      sessionStorage.removeItem('inbound_tabs_draft');
+      sessionStorage.removeItem('inbound_active_tab_id');
+    }
     if (modeAction === 'edit' && id) {
       setSearchParams({ action: 'edit', id });
     } else {
