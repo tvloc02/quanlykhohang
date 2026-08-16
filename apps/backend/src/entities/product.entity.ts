@@ -20,8 +20,14 @@ export class Product extends BaseEntity {
   @Column({ nullable: true })
   unit?: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   price: number;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  importPrice: number;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  wholesalePrice: number;
 
   @Column({ type: 'json', nullable: true })
   images?: string[];

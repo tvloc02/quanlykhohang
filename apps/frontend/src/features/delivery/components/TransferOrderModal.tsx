@@ -227,9 +227,9 @@ export default function TransferOrderModal({
       <div className="flex w-full max-w-6xl max-h-[94vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl my-auto">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div>
-            <h2 className="text-xl font-black text-slate-900">Phiếu điều chuyển</h2>
+            <h2 className="text-xl font-black text-slate-900">Phiếu xuất kho nội bộ</h2>
             <p className="mt-1 text-sm font-medium text-slate-500">
-              {request ? `Tạo phiếu từ yêu cầu ${request.requestNumber}` : 'Tạo phiếu điều chuyển mới giữa các kho'}
+              {request ? `Tạo phiếu từ yêu cầu ${request.requestNumber}` : 'Tạo phiếu xuất kho nội bộ mới giữa các kho'}
             </p>
           </div>
           <button
@@ -244,7 +244,7 @@ export default function TransferOrderModal({
         <div className="overflow-y-auto p-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">Số phiếu điều chuyển</label>
+              <label className="mb-2 block text-sm font-bold text-slate-700">Số phiếu xuất kho nội bộ</label>
               <input
                 value={transferNo}
                 onChange={(event) => setTransferNo(event.target.value)}
@@ -269,7 +269,7 @@ export default function TransferOrderModal({
               />
             </div>
             <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">Kho nguồn</label>
+              <label className="mb-2 block text-sm font-bold text-slate-700">Kho cần chuyển (Kho nguồn)</label>
               {request ? (
                 <input
                   value={warehouseLabel(sourceWarehouse)}
@@ -292,7 +292,7 @@ export default function TransferOrderModal({
               )}
             </div>
             <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">Kho đích</label>
+              <label className="mb-2 block text-sm font-bold text-slate-700">Kho nhận (Kho nhập)</label>
               {request ? (
                 <input
                   value={warehouseLabel(destinationWarehouse)}
@@ -305,7 +305,7 @@ export default function TransferOrderModal({
                   onChange={(event) => setDestinationWarehouse(event.target.value)}
                   className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
                 >
-                  <option value="">-- Chọn kho đích --</option>
+                  <option value="">-- Chọn kho nhận --</option>
                   {warehouses.map((wh) => (
                     <option key={wh.id} value={wh.code || wh.id}>
                       {wh.name ? `${wh.name} (${wh.code})` : wh.code}

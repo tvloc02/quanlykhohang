@@ -262,7 +262,16 @@ export default function CreateOutboundOrderPage({
         if (prodRes && prodRes.ok) {
           const prodData = await prodRes.json();
           const list = Array.isArray(prodData) ? prodData : prodData.data || [];
-          setProducts(list);
+          const normalized: ProductOption[] = list.map((p: any) => ({
+            id: String(p.id),
+            internalSku: p.internalSku || p.sku || p.code || '',
+            name: p.name || '',
+            unit: p.unit || 'Cái',
+            purchasePrice: Number(p.importPrice || p.purchasePrice || 0),
+            salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
+            price: Number(p.retailPrice || p.salePrice || p.price || 0),
+          }));
+          setProducts(normalized);
         }
 
         if (userRes && userRes.ok) {
@@ -551,10 +560,13 @@ export default function CreateOutboundOrderPage({
     const kw = (rowText || '').trim().toLowerCase();
     if (!kw) return products;
     const matched = products.filter(
-      (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
+      (p) =>
+        p.name.toLowerCase().includes(kw) ||
+        (p.internalSku || '').toLowerCase().includes(kw) ||
+        `${p.internalSku} ${p.name}`.toLowerCase().includes(kw)
     );
-    const nonMatched = products.filter((p) => !matched.includes(p));
-    return [...matched, ...nonMatched];
+    if (matched.length > 0) return matched;
+    return products;
   };
 
   const filteredCustomers = useMemo(() => {
@@ -894,6 +906,46 @@ export default function CreateOutboundOrderPage({
                           placeholder="Chọn hoặc nhập tên hàng..."
                           className="w-full h-8 px-2 bg-transparent font-semibold text-slate-800 outline-none focus:bg-cyan-100/50 text-xs cursor-text"
                         />
+
+                        {/* Interactive Table Dropdown for this row */}
+                        {activeProductDropdownRowId === row.rowId && (
+                          <div className="absolute left-0 top-full z-[100] mt-1 w-[420px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
+                            <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
+                              <span className="w-1/3 uppercase">Mã hàng</span>
+                              <span className="w-1/2 uppercase">Tên hàng hóa</span>
+                              <span className="w-1/4 text-right uppercase">Giá bán</span>
+                            </div>
+                            <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                              {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
+                                <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
+                              ) : (
+                                getFilteredProductsForRow(row.productName || row.productSku).map((p) => (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => {
+                                      updateRow(row.rowId, {
+                                        productId: p.id,
+                                        productSku: p.internalSku,
+                                        productName: p.name,
+                                        unit: p.unit || 'Cái',
+                                        price: p.salePrice || p.price || 0,
+                                        qty: row.qty === 0 ? 1 : row.qty,
+                                      });
+                                      setActiveProductDropdownRowId(null);
+                                    }}
+                                    className="flex items-center px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs text-slate-700 transition"
+                                  >
+                                    <span className="w-1/3 font-bold text-cyan-800">{p.internalSku}</span>
+                                    <span className="w-1/2 font-medium text-slate-800 truncate pr-1">{p.name}</span>
+                                    <span className="w-1/4 text-right font-semibold text-slate-700 font-mono">
+                                      {Number(p.salePrice || p.price || 0).toLocaleString('vi-VN')} ₫
+                                    </span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* ĐVT */}

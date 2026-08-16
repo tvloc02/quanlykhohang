@@ -353,8 +353,8 @@ export class OutboundService {
   async findAll() {
     const orders = await this.orderRepo.find({
       relations: ['customer', 'details', 'details.product'],
-      order: { id: 'DESC' },
     });
+    orders.sort((a, b) => Number(b.id) - Number(a.id));
     return orders.map((o) => this.serializeOutbound(o));
   }
 

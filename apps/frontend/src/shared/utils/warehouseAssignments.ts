@@ -198,16 +198,38 @@ export async function upsertWarehouseToApi(warehouse: WarehouseRecord, forceMeth
   return normalizeWarehouseRecord(created);
 }
 
+export const DEFAULT_SYSTEM_WAREHOUSES: WarehouseRecord[] = [
+  normalizeWarehouseRecord({
+    id: 'wh_default_1',
+    code: 'KH001',
+    name: 'Kho Tổng (Hà Nội)',
+    address: 'Thanh Trì, Hà Nội',
+    status: 'active',
+    managerIds: [],
+    staffIds: [],
+  }),
+  normalizeWarehouseRecord({
+    id: 'wh_default_2',
+    code: 'KH002',
+    name: 'Kho Chi Nhánh HCM',
+    address: 'Quận 1, TP. Hồ Chí Minh',
+    status: 'active',
+    managerIds: [],
+    staffIds: [],
+  }),
+];
+
 export function getStoredWarehouses(): WarehouseRecord[] {
   try {
     const rawData = localStorage.getItem(STORAGE_KEY);
-    if (!rawData) return [];
+    if (!rawData) return DEFAULT_SYSTEM_WAREHOUSES;
     const parsedData = JSON.parse(rawData);
-    return Array.isArray(parsedData)
-      ? parsedData.map((warehouse) => normalizeWarehouseRecord(warehouse))
-      : [];
+    if (Array.isArray(parsedData) && parsedData.length > 0) {
+      return parsedData.map((warehouse) => normalizeWarehouseRecord(warehouse));
+    }
+    return DEFAULT_SYSTEM_WAREHOUSES;
   } catch {
-    return [];
+    return DEFAULT_SYSTEM_WAREHOUSES;
   }
 }
 
