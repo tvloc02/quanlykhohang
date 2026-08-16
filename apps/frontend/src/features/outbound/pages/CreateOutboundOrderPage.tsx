@@ -787,10 +787,10 @@ export default function CreateOutboundOrderPage({
         </button>
       </div>
 
-      {/* ═══ 2. MAIN 2-COLUMN LAYOUT (Left 9 Cols, Right 3 Cols) ═══ */}
-      <div className={`grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch ${isFullScreen ? 'flex-1 min-h-0' : 'items-start'}`}>
-        {/* ── LEFT COLUMN (9/12 width): METADATA + PRODUCT TABLE STACKED VERTICALLY ── */}
-        <div className={`lg:col-span-9 flex flex-col space-y-2.5 min-h-0 ${isFullScreen ? 'h-full' : ''}`}>
+      {/* ═══ 2. MAIN 2-COLUMN LAYOUT (Left Product Table, Right Sleek Payment Panel) ═══ */}
+      <div className={`flex flex-col lg:flex-row gap-3 items-stretch ${isFullScreen ? 'flex-1 min-h-0' : 'items-start'}`}>
+        {/* ── LEFT COLUMN: METADATA + PRODUCT TABLE STACKED VERTICALLY (Expands to fill all remaining width) ── */}
+        <div className={`flex-1 min-w-0 flex flex-col space-y-2.5 ${isFullScreen ? 'h-full' : ''}`}>
           {/* ═══ FORM METADATA CONTROL BAR ═══ */}
           <div className="rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex-shrink-0">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -963,7 +963,7 @@ export default function CreateOutboundOrderPage({
             </div>
 
             {/* Clean Grid Product Table */}
-            <div className={`overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 ${isFullScreen ? '' : 'max-h-[calc(100vh-340px)]'}`}>
+            <div className={`overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 ${isFullScreen ? '' : 'max-h-[calc(100vh-215px)]'}`}>
               <table className="w-full text-left border-collapse text-xs min-w-[950px]">
                 <thead className="bg-slate-100 text-slate-800 font-extrabold border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
                   <tr>
@@ -976,7 +976,7 @@ export default function CreateOutboundOrderPage({
                     <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">VAT (%)</th>
                     <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">THÀNH TIỀN</th>
                     <th className="p-2 w-24 min-w-[80px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
-                    <th className="p-2 w-20 text-center bg-slate-100">TT</th>
+                    <th className="p-2.5 w-32 text-center bg-slate-100 min-w-[110px]">THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1085,24 +1085,24 @@ export default function CreateOutboundOrderPage({
                           />
                         </td>
 
-                        {/* TT (Actions - Square Icon Buttons as requested) */}
-                        <td className="p-1 text-center">
+                        {/* TT (Actions) */}
+                        <td className="p-1.5 text-center pr-2">
                           <div className="flex items-center justify-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => handleDuplicateRow(idx)}
-                              className="flex h-7 w-7 items-center justify-center rounded-md border-2 border-cyan-500 bg-white text-cyan-600 shadow-xs transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400 bg-cyan-50 text-cyan-700 shadow-2xs transition hover:bg-cyan-600 hover:text-white hover:border-cyan-600 cursor-pointer"
                               title="Nhân đôi dòng"
                             >
-                              <Copy size={14} strokeWidth={2.2} />
+                              <Copy size={16} strokeWidth={2.2} />
                             </button>
                             <button
                               type="button"
                               onClick={() => handleRemoveRow(row.rowId)}
-                              className="flex h-7 w-7 items-center justify-center rounded-md border-2 border-cyan-500 bg-white text-cyan-600 shadow-xs transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-300 bg-rose-50 text-rose-600 shadow-2xs transition hover:bg-rose-600 hover:text-white hover:border-rose-600 cursor-pointer"
                               title="Xóa dòng"
                             >
-                              <Trash2 size={14} strokeWidth={2.2} />
+                              <Trash2 size={16} strokeWidth={2.2} />
                             </button>
                           </div>
                         </td>
@@ -1115,8 +1115,8 @@ export default function CreateOutboundOrderPage({
           </div>
         </div>
 
-        {/* ── RIGHT COLUMN (3/12 width): PAYMENT & FINANCIAL METADATA FORM ── */}
-        <div className={`lg:col-span-3 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 overflow-y-auto custom-scrollbar space-y-2 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
+        {/* ── RIGHT COLUMN (Compact Sleek Width 310px): PAYMENT & FINANCIAL METADATA FORM ── */}
+        <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
           <div className="space-y-2">
             <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-1.5 text-cyan-800 font-extrabold text-xs">
               <DollarSign className="h-4 w-4 text-cyan-600" />
@@ -1270,31 +1270,31 @@ export default function CreateOutboundOrderPage({
           </div>
 
           {/* Unified Action Buttons */}
-          <div className="space-y-1.5 pt-1 flex-shrink-0">
+          <div className="space-y-2 pt-2 flex-shrink-0">
             <button
               type="button"
               onClick={() => handleSaveOutboundOrder(true)}
-              className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
+              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
             >
-              <Printer size={15} />
+              <Printer size={18} strokeWidth={2.2} />
               <span>Lưu & In phiếu xuất</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleSaveOutboundOrder(false)}
-              className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-cyan-700 px-3 py-2 text-xs font-extrabold text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
+              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
             >
-              <Save size={15} />
+              <Save size={18} strokeWidth={2.2} />
               <span>Lưu phiếu xuất hàng</span>
             </button>
 
             <button
               type="button"
               onClick={handleBackNavigation}
-              className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2 text-xs font-extrabold text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
+              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
             >
-              <ArrowLeft size={16} />
+              <ArrowLeft size={18} strokeWidth={2.2} />
               <span>Hủy / Quay lại</span>
             </button>
           </div>

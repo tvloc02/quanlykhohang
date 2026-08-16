@@ -31,4 +31,22 @@ export class StockInOrderDetail extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalLineAmount: string;
+
+  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
+  weight: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
+  length: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
+  width: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
+  height: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 4, default: 0 })
+  volume: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
+  volumetricWeight: number;
 }

@@ -477,6 +477,12 @@ export class StockInOrdersService {
         producedQty: toNumber(detail.producedQty),
         unitPrice: toNumber(detail.unitPrice),
         totalLineAmount: toNumber(detail.totalLineAmount),
+        weight: toNumber(detail.weight),
+        length: toNumber(detail.length),
+        width: toNumber(detail.width),
+        height: toNumber(detail.height),
+        volume: toNumber(detail.volume),
+        volumetricWeight: toNumber(detail.volumetricWeight),
         product: detail.product
           ? {
               id: detail.product.id,
