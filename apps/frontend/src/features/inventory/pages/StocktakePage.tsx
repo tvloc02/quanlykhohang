@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import CreateStocktakeOrderPage from './CreateStocktakeOrderPage';
 import {
   Search,
   Plus,
@@ -511,6 +512,14 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
 
   const baseColCount = 3 + visibleMainCount + visibleDetailCount;
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const action = searchParams.get('action');
+  const showCreateForm = action === 'create' || isCreateView || showCreateModal;
+
+  if (showCreateForm) {
+    return <CreateStocktakeOrderPage standalone={false} />;
+  }
+
   return (
     <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
@@ -530,7 +539,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
             {/* 1. Thêm mới */}
             <button
               type="button"
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => setSearchParams({ action: 'create' })}
               className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             >
               <Plus className="h-4.5 w-4.5 text-cyan-700" />
