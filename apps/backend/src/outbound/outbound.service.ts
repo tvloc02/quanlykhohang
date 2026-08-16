@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { OutboundOrder } from './entities/outbound-order.entity';
@@ -97,7 +97,7 @@ function toDateString(value?: Date | string | null) {
 }
 
 @Injectable()
-export class OutboundService {
+export class OutboundService implements OnModuleInit {
   constructor(
     @InjectRepository(OutboundOrder) private orderRepo: Repository<OutboundOrder>,
     @InjectRepository(OutboundDetail) private detailRepo: Repository<OutboundDetail>,
@@ -109,7 +109,14 @@ export class OutboundService {
     private readonly outboxService: OutboxService,
     private readonly idempotencyService: IdempotencyService,
     @InjectDataSource() private readonly dataSource: DataSource,
-  ) {}
+  ) { }
+
+  async onModuleInit() {
+    try {
+    } catch (e) {
+      console.error('Lỗi dọn dẹp dữ liệu cũ outbound:', e);
+    }
+  }
 
   async getShippingNotes() {
     return this.shippingNoteRepo.find({ relations: ['orders'] });
@@ -121,7 +128,7 @@ export class OutboundService {
     if (orders.length === 0) throw new NotFoundException('Orders not found');
 
     const noteNo = 'PXK-' + Date.now().toString().slice(-6);
-    
+
     const shippingNote = this.shippingNoteRepo.create({
       noteNo,
       status: 'READY',
@@ -130,7 +137,7 @@ export class OutboundService {
       assignee: dto.assignee,
       orders,
     });
-    
+
     const saved = await this.shippingNoteRepo.save(shippingNote);
 
     // Update status of orders
@@ -139,7 +146,7 @@ export class OutboundService {
       order.shippingNote = saved;
       await this.orderRepo.save(order);
     }
-    
+
     return saved;
   }
 
@@ -151,8 +158,8 @@ export class OutboundService {
 
     const order = this.orderRepo.create({
       orderNo,
-      branchCode: dto.branchCode?.trim() || '4445',
-      employeeName: dto.employeeName?.trim() || 'HUUDQtest',
+      branchCode: dto.branchCode?.trim() || 'KHO-NVL',
+      employeeName: dto.employeeName?.trim() || 'Quản trị viên hệ thống',
       receiver: dto.receiver?.trim() || undefined,
       customerPhone: dto.customerPhone?.trim() || undefined,
       customerAddress: dto.customerAddress?.trim() || undefined,
@@ -197,7 +204,7 @@ export class OutboundService {
             address: dto.customerAddress?.trim() || undefined,
           });
           attachedCustomer = await this.customerRepo.save(newCust);
-        } catch {}
+        } catch { }
       }
     }
 
@@ -235,8 +242,8 @@ export class OutboundService {
       order.orderNo = nextNo;
     }
 
-    if (dto.branchCode !== undefined) order.branchCode = dto.branchCode.trim() || '4445';
-    if (dto.employeeName !== undefined) order.employeeName = dto.employeeName.trim() || undefined;
+    if (dto.branchCode !== undefined) order.branchCode = dto.branchCode.trim() || 'KHO-NVL';
+    if (dto.employeeName !== undefined) order.employeeName = dto.employeeName.trim() || 'Quản trị viên hệ thống';
     if (dto.receiver !== undefined) order.receiver = dto.receiver.trim() || undefined;
     if (dto.customerPhone !== undefined) order.customerPhone = dto.customerPhone.trim() || undefined;
     if (dto.customerAddress !== undefined) order.customerAddress = dto.customerAddress.trim() || undefined;
@@ -262,7 +269,7 @@ export class OutboundService {
             address: dto.customerAddress?.trim() || undefined,
           });
           attachedCustomer = await this.customerRepo.save(newCust);
-        } catch {}
+        } catch { }
       }
     }
 
@@ -525,7 +532,7 @@ export class OutboundService {
       const vatAmount = parseNumber(item.vatAmount) || ((sub * vatPercent) / 100);
       const totalLineAmount = parseNumber(item.totalLineAmount) || (sub + vatAmount);
 
-      const targetWhCode = item.warehouseCode?.trim() || branchCode?.trim() || 'SPX001';
+      const targetWhCode = item.warehouseCode?.trim() || branchCode?.trim();
 
       const detail = this.detailRepo.create({
         outboundOrder: { id: orderId } as OutboundOrder,
@@ -569,7 +576,7 @@ export class OutboundService {
       }
       if (!productId) continue;
 
-      const locCode = detail.warehouseCode || order.branchCode || 'SPX001';
+      const locCode = detail.warehouseCode || order.branchCode;
 
       // 1. Tìm balance theo kho cụ thể
       let [balance] = await this.dataSource.query(
@@ -623,9 +630,9 @@ export class OutboundService {
     const details = (order.details && order.details.length)
       ? order.details
       : await this.detailRepo.find({
-          where: { outboundOrder: { id: order.id } as any },
-          relations: ['product'],
-        });
+        where: { outboundOrder: { id: order.id } as any },
+        relations: ['product'],
+      });
 
     for (const detail of details) {
       let productId = detail.product?.id;
@@ -645,7 +652,7 @@ export class OutboundService {
       }
       if (!productId) continue;
 
-      const locCode = detail.warehouseCode || order.branchCode || 'SPX001';
+      const locCode = detail.warehouseCode || order.branchCode;
 
       let [balance] = await this.dataSource.query(
         `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
@@ -697,8 +704,8 @@ export class OutboundService {
     return {
       id: order.id,
       orderNo: order.orderNo || `XBH_${String(order.id).padStart(3, '0')}`,
-      branchCode: order.branchCode || '4445',
-      employeeName: order.employeeName || 'HUUDQtest',
+      branchCode: (!order.branchCode) ? 'KHO-NVL' : order.branchCode,
+      employeeName: (!order.employeeName) ? 'Quản trị viên hệ thống' : order.employeeName,
       receiver: order.receiver || '',
       customer: order.customerName || order.customer?.name || '888 - Khách lẻ',
       customerPhone: order.customerPhone || order.customer?.phone || '',
@@ -736,19 +743,19 @@ export class OutboundService {
         note: d.note,
         product: d.product
           ? {
-              id: d.product.id,
-              internalSku: d.productSku || d.product.internalSku,
-              name: d.productName || d.product.name,
-              unit: d.unit || d.product.unit,
-            }
+            id: d.product.id,
+            internalSku: d.productSku || d.product.internalSku,
+            name: d.productName || d.product.name,
+            unit: d.unit || d.product.unit,
+          }
           : (d.productName || d.productSku)
-          ? {
+            ? {
               id: '',
               internalSku: d.productSku || '',
               name: d.productName || d.productSku || '',
               unit: d.unit || 'Cái',
             }
-          : null,
+            : null,
       })),
     };
   }

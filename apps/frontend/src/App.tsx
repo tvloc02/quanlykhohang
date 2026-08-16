@@ -15,6 +15,7 @@ import WarehouseManagement from './features/warehouses/WarehouseManagement';
 import Delivery from './features/delivery/Delivery';
 import TransferRequestsPage from './features/delivery/pages/TransferRequestsPage';
 import CreateTransferOrderPage from './features/delivery/pages/CreateTransferOrderPage';
+import CreateTransferRequestPage from './features/delivery/pages/CreateTransferRequestPage';
 import Inventory from './features/inventory/Inventory';
 import Reports from './features/reports/Reports';
 import SalesReportPage from './features/reports/pages/SalesReportPage';
@@ -403,7 +404,7 @@ function App() {
           element={
             <RoleRoute menuId="delivery-transfer-orders">
               <MainLayout>
-                <Outbound featureMode="transfer-out" title="DANH SÁCH PHIẾU XUẤT CHUYỂN KHO" codePrefix="XCK" partnerLabel="Kho nhận" />
+                <Delivery />
               </MainLayout>
             </RoleRoute>
           }
@@ -413,7 +414,7 @@ function App() {
           element={
             <RoleRoute menuId="delivery-transfer-requests">
               <MainLayout>
-                <Inbound featureMode="transfer-in" title="DANH SÁCH PHIẾU NHẬP CHUYỂN KHO" codePrefix="NCK" partnerLabel="Kho xuất" />
+                <TransferRequestsPage />
               </MainLayout>
             </RoleRoute>
           }
@@ -646,9 +647,15 @@ function App() {
           path="/delivery/create-transfer-order"
           element={
             <RoleRoute menuId="delivery-transfer-orders">
-              <MainLayout>
-                <CreateTransferOrderPage />
-              </MainLayout>
+              <CreateTransferOrderPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/delivery/create-transfer-request"
+          element={
+            <RoleRoute menuId="delivery-transfer-requests">
+              <CreateTransferRequestPage />
             </RoleRoute>
           }
         />

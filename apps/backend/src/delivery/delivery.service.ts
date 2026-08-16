@@ -130,10 +130,17 @@ export class DeliveryService {
     const preferred = preferredNo?.trim();
     if (preferred) {
       const existing = await this.transferOrderRepo.findOneBy({ transferNo: preferred });
-      if (existing) {
-        throw new BadRequestException('Transfer number already exists');
+      if (!existing) {
+        return preferred;
       }
-      return preferred;
+      const year = new Date().getFullYear();
+      let suffix = Math.floor(1000 + Math.random() * 9000).toString();
+      let candidate = `${preferred}-${suffix}`;
+      while (await this.transferOrderRepo.findOneBy({ transferNo: candidate })) {
+        suffix = Math.floor(1000 + Math.random() * 9000).toString();
+        candidate = `${preferred}-${suffix}`;
+      }
+      return candidate;
     }
 
     const year = new Date().getFullYear();

@@ -633,7 +633,7 @@ export class InboundService {
       if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
 
       const unitPrice = parseNumber(item.unitPrice ?? item.price ?? (product?.price || 0));
-      const targetWhCode = item.warehouseCode?.trim() || defaultWarehouseCode?.trim() || 'SPX001';
+      const targetWhCode = item.warehouseCode?.trim() || defaultWarehouseCode?.trim() || 'KHO-NVL';
 
       const detail = this.detailRepo.create({
         inboundReceipt: receipt,
@@ -731,7 +731,7 @@ export class InboundService {
       let productId = detail.product?.id;
       if (!productId) continue;
 
-      const locCode = detail.warehouseCode || 'SPX001';
+      const locCode = detail.warehouseCode || 'KHO-NVL';
 
       // 1. Tìm balance theo kho cụ thể
       let [balance] = await this.dataSource.query(
@@ -782,7 +782,7 @@ export class InboundService {
       let productId = detail.product?.id;
       if (!productId) continue;
 
-      const locCode = detail.warehouseCode || 'SPX001';
+      const locCode = detail.warehouseCode || 'KHO-NVL';
 
       let [balance] = await this.dataSource.query(
         `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
