@@ -13,7 +13,6 @@ import {
   Info,
   Layers,
   LayoutGrid,
-  Lock,
   MapPin,
   Move3d,
   Package,
@@ -34,6 +33,12 @@ import {
   Trash2,
   Warehouse,
   Zap,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Filter,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import Toast from '../../../shared/components/Toast';
 import MainLayout from '../../../shared/components/MainLayout';
@@ -57,7 +62,7 @@ import {
   type ProductSlotInput,
 } from '../utils/aiSlottingEngine';
 
-// Default generator for continuous longitudinal rack rows (Dãy Kệ Dọc Chạy Suốt Phân Khu)
+// Default generator for continuous longitudinal rack rows
 function generateDefaultRacks(
   racksCount: number,
   zoneLength = 20,
@@ -67,26 +72,25 @@ function generateDefaultRacks(
   defaultBinsPerShelf = 2
 ): RackConfig[] {
   const racks: RackConfig[] = [];
-  const rackL = Math.max(zoneLength - 2, 4); // Chạy dọc gần suốt chiều dài phân khu (chừa 2m lối đi 2 đầu)
-  const rackW = 1.2; // Rộng 1.2 mét
-  const rackH = Math.max(zoneHeight - 1, 3); // Cao cách trần 1m
+  const rackL = Math.max(zoneLength - 2, 4);
+  const rackW = 1.2;
+  const rackH = Math.max(zoneHeight - 1, 3);
 
-  // Kích thước ô tự động từ tổng vách khoang & vách ngang
   const totalLengthBins = defaultBays * defaultBinsPerShelf;
-  const autoBinL = Math.round((rackL * 100) / totalLengthBins);
+  const autoBinL = Math.round((rackL * 100) / (totalLengthBins || 1));
   const autoBinW = Math.round(rackW * 100);
-  const autoBinH = Math.round((rackH * 100) / defaultShelves);
+  const autoBinH = Math.round((rackH * 100) / (defaultShelves || 1));
 
   for (let r = 1; r <= racksCount; r++) {
     const rCode = `R${String(r).padStart(2, '0')}`;
     racks.push({
       id: `rack-${r}`,
       rackCode: rCode,
-      name: `Dãy Kệ Dọc Suốt Kho ${rCode}`,
+      name: `Dãy Kệ Dọc ${rCode}`,
       length: rackL,
       width: rackW,
       height: rackH,
-      maxRackLoad: 16000, // kg (Dãy dọc chịu lực lớn)
+      maxRackLoad: 16000,
       baysCount: defaultBays,
       horizontalPartitions: defaultShelves,
       verticalPartitions: defaultBinsPerShelf,
@@ -116,15 +120,40 @@ export default function CreateWarehousePage() {
   const [detailAddress, setDetailAddress] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
 
-  // Specs Kho Tổng
+  // Master Specs
   const [length, setLength] = useState(50);
   const [width, setWidth] = useState(30);
   const [height, setHeight] = useState(12);
 
+  // Default initial zone for instant rendering without white screen
+  const initialDefaultZones: SubWarehouse[] = [
+    {
+      id: 'sub-init-1',
+      code: 'ZONE-A',
+      name: 'Phân Khu Kho Thường 1',
+      zoneType: 'AMBIENT',
+      status: 'active',
+      length: 25,
+      width: 15,
+      height: 7,
+      racksCount: 4,
+      shelvesPerRack: 5,
+      binsPerShelf: 2,
+      maxWeightPerBin: 500,
+      racks: generateDefaultRacks(4, 25, 7, 6, 5, 2),
+    },
+  ];
+
   // Subwarehouses / Zones list
-  const [subWarehouses, setSubWarehouses] = useState<SubWarehouse[]>([]);
-  const [activeZoneId, setActiveZoneId] = useState<string>('');
-  const [activeRackId, setActiveRackId] = useState<string>('');
+  const [subWarehouses, setSubWarehouses] = useState<SubWarehouse[]>(initialDefaultZones);
+  const [activeZoneId, setActiveZoneId] = useState<string>('sub-init-1');
+  const [activeRackId, setActiveRackId] = useState<string>('rack-1');
+
+  // Interactive Rack Checkboxes Selection State
+  const [selectedRackCodes, setSelectedRackCodes] = useState<string[]>([]);
+
+  // 2D Matrix Grid Scale / Zoom State (100%, 150%, 200%, 300%)
+  const [gridZoomScale, setGridZoomScale] = useState<number>(100);
 
   // Auto calculation toggle mode
   const [isAutoCalcBin, setIsAutoCalcBin] = useState<boolean>(true);
@@ -135,7 +164,7 @@ export default function CreateWarehousePage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Bin Edit Inspector Modal / Panel State
+  // Bin Edit Inspector Modal State
   const [editingBinCode, setEditingBinCode] = useState<string | null>(null);
   const [binCustomForm, setBinCustomForm] = useState<CustomBinConfig>({
     binCode: '',
@@ -148,7 +177,7 @@ export default function CreateWarehousePage() {
   // AI Slotting Simulator State
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const [simProduct, setSimProduct] = useState<ProductSlotInput>({
-    productName: 'Lô sản phẩm xuất khẩu',
+    productName: 'Lô hàng xuất nhập khẩu',
     tempRequirement: 'AMBIENT',
     packageLength: 60,
     packageWidth: 40,
@@ -191,12 +220,11 @@ export default function CreateWarehousePage() {
         }
       }
     } else {
-      // Default initial zones if new warehouse
       const defaultZones: SubWarehouse[] = [
         {
           id: `sub-${Date.now()}-1`,
           code: 'ZONE-A',
-          name: 'Phân Khu Dãy Kệ Dọc A',
+          name: 'Phân Khu Kho Thường 1',
           zoneType: 'AMBIENT',
           status: 'active',
           length: 25,
@@ -211,7 +239,7 @@ export default function CreateWarehousePage() {
         {
           id: `sub-${Date.now()}-2`,
           code: 'ZONE-COLD',
-          name: 'Phân Khu Kho Lạnh âm 18°C',
+          name: 'Phân Khu Kho Lạnh',
           zoneType: 'COLD',
           tempMin: -18,
           tempMax: 5,
@@ -230,14 +258,14 @@ export default function CreateWarehousePage() {
       setActiveZoneId(defaultZones[0].id);
       setActiveRackId(defaultZones[0].racks![0].id);
       setCode(`KH${Math.floor(100 + Math.random() * 900)}`);
-      setName('Kho Hàng Dãy Kệ Dọc Suốt Kho');
+      setName('Kho Hàng Chi Nhánh Tân Bình');
     }
   }, [id, isEditMode]);
 
   // Active Zone reference
   const activeZone = subWarehouses.find((z) => z.id === activeZoneId) || subWarehouses[0];
 
-  // Helper to parse inputs safely allowing 0 and empty backspace
+  // Helper to parse numeric inputs safely allowing 0 and backspacing
   const parseNumInput = (valStr: string): number => {
     if (valStr === '') return 0;
     const num = Number(valStr);
@@ -251,7 +279,7 @@ export default function CreateWarehousePage() {
 
   const activeRack = activeRacks.find((r) => r.id === activeRackId) || activeRacks[0];
 
-  // Helper: Update active zone fields with auto-rack continuous length sync
+  // Helper: Update active zone fields
   const updateActiveZone = (fields: Partial<SubWarehouse>) => {
     if (!activeZone) return;
     setSubWarehouses((prev) =>
@@ -264,7 +292,6 @@ export default function CreateWarehousePage() {
         const nextShelves = fields.shelvesPerRack !== undefined ? fields.shelvesPerRack : (z.shelvesPerRack ?? 5);
         const nextBinsPerShelf = fields.binsPerShelf !== undefined ? fields.binsPerShelf : (z.binsPerShelf ?? 2);
 
-        // Auto update racks continuous row lengths to match zone length
         const updatedRacks = generateDefaultRacks(nextRacksCount, nextLength, nextHeight, 6, nextShelves, nextBinsPerShelf);
 
         return {
@@ -279,7 +306,7 @@ export default function CreateWarehousePage() {
     );
   };
 
-  // Helper: Update specific rack fields with Auto-Volume computation
+  // Helper: Update specific rack fields
   const updateActiveRack = (fields: Partial<RackConfig>) => {
     if (!activeZone || !activeRack) return;
 
@@ -292,9 +319,9 @@ export default function CreateWarehousePage() {
 
           const merged: RackConfig = { ...r, ...fields };
 
-          const bays = merged.baysCount || merged.columnsCount || 6;
-          const shelves = merged.horizontalPartitions || merged.shelvesCount || 5;
-          const binsPerShelf = merged.verticalPartitions || merged.binsPerShelf || 2;
+          const bays = merged.baysCount !== undefined ? merged.baysCount : (merged.columnsCount || 6);
+          const shelves = merged.horizontalPartitions !== undefined ? merged.horizontalPartitions : (merged.shelvesCount || 5);
+          const binsPerShelf = merged.verticalPartitions !== undefined ? merged.verticalPartitions : (merged.binsPerShelf || 2);
 
           merged.baysCount = bays;
           merged.columnsCount = bays;
@@ -303,12 +330,11 @@ export default function CreateWarehousePage() {
           merged.verticalPartitions = binsPerShelf;
           merged.binsPerShelf = binsPerShelf;
 
-          // Auto recalculate individual bin dimensions for continuous row
           if (isAutoCalcBin) {
             const totalLenBins = bays * binsPerShelf;
-            merged.defaultBinLength = Math.round((merged.length * 100) / totalLenBins);
+            merged.defaultBinLength = Math.round((merged.length * 100) / (totalLenBins || 1));
             merged.defaultBinWidth = Math.round(merged.width * 100);
-            merged.defaultBinHeight = Math.round((merged.height * 100) / shelves);
+            merged.defaultBinHeight = Math.round((merged.height * 100) / (shelves || 1));
           }
 
           return merged;
@@ -319,142 +345,106 @@ export default function CreateWarehousePage() {
     );
   };
 
-  // Helper: Custom Bin edit update
-  const handleSaveCustomBin = (applyTo: 'SINGLE' | 'SHELF' | 'RACK') => {
-    if (!activeZone || !activeRack || !binCustomForm.binCode) return;
-
-    setSubWarehouses((prev) =>
-      prev.map((z) => {
-        if (z.id !== activeZone.id) return z;
-
-        const updatedRacks = (z.racks || activeRacks).map((r) => {
-          if (r.id !== activeRack.id) return r;
-
-          const currentCustom = { ...(r.customBins || {}) };
-
-          if (applyTo === 'SINGLE') {
-            currentCustom[binCustomForm.binCode] = { ...binCustomForm };
-          } else if (applyTo === 'SHELF') {
-            const bays = r.baysCount || 1;
-            for (let b = 1; b <= bays; b++) {
-              const bayCode = bays > 1 ? `B${String(b).padStart(2, '0')}-` : '';
-              const parts = binCustomForm.binCode.split('-');
-              const shelfCode = parts[parts.length - 2] || 'S01';
-              for (let c = 1; c <= r.binsPerShelf; c++) {
-                const code = `${z.code}-${r.rackCode}-${bayCode}${shelfCode}-C${String(c).padStart(2, '0')}`;
-                currentCustom[code] = {
-                  ...binCustomForm,
-                  binCode: code,
-                };
-              }
-            }
-          } else if (applyTo === 'RACK') {
-            const bays = r.baysCount || 1;
-            for (let b = 1; b <= bays; b++) {
-              const bayCode = bays > 1 ? `B${String(b).padStart(2, '0')}-` : '';
-              for (let s = 1; s <= r.shelvesCount; s++) {
-                for (let c = 1; c <= r.binsPerShelf; c++) {
-                  const code = `${z.code}-${r.rackCode}-${bayCode}S${String(s).padStart(2, '0')}-C${String(c).padStart(2, '0')}`;
-                  currentCustom[code] = {
-                    ...binCustomForm,
-                    binCode: code,
-                  };
-                }
-              }
-            }
-          }
-
-          return { ...r, customBins: currentCustom };
-        });
-
-        return { ...z, racks: updatedRacks };
-      })
-    );
-
-    setSuccess(`Đã cập nhật kích thước & trọng tải cho ô ${binCustomForm.binCode}!`);
-    setEditingBinCode(null);
+  // Rack Checkbox Toggles
+  const toggleRackCheckbox = (rackCode: string) => {
+    setSelectedRackCodes((prev) => {
+      if (prev.includes(rackCode)) {
+        return prev.filter((c) => c !== rackCode);
+      } else {
+        return [...prev, rackCode];
+      }
+    });
   };
 
-  // Add new Zone
-  const handleAddZone = (zoneType: 'AMBIENT' | 'COLD' | 'THERMAL' = 'AMBIENT') => {
-    const nextIndex = subWarehouses.length + 1;
-    const newId = `zone-${Date.now()}`;
-    const codePrefix = zoneType === 'COLD' ? 'COLD' : zoneType === 'THERMAL' ? 'THERM' : 'ZONE';
+  const selectAllRackCheckboxes = () => {
+    if (selectedRackCodes.length === activeRacks.length) {
+      setSelectedRackCodes([]);
+    } else {
+      setSelectedRackCodes(activeRacks.map((r) => r.rackCode));
+    }
+  };
+
+  // Filtered Racks for 2D Matrix display
+  const displayedRacks = activeRacks.filter(
+    (r) => selectedRackCodes.length === 0 || selectedRackCodes.includes(r.rackCode)
+  );
+
+  // Add Zone Handler
+  const handleAddZone = (type: 'AMBIENT' | 'COLD' | 'THERMAL') => {
+    const nextIdx = subWarehouses.length + 1;
+    const typeLabel = type === 'COLD' ? 'Kho Lạnh' : type === 'THERMAL' ? 'Kho Nhiệt' : 'Kho Thường';
     const newZone: SubWarehouse = {
-      id: newId,
-      code: `${codePrefix}-${String.fromCharCode(64 + nextIndex)}`,
-      name: `Phân Khu ${zoneType === 'COLD' ? 'Kho Lạnh' : zoneType === 'THERMAL' ? 'Kho Nhiệt' : 'Kho Thường'} ${nextIndex}`,
-      zoneType,
-      tempMin: zoneType === 'COLD' ? -18 : zoneType === 'THERMAL' ? 15 : 20,
-      tempMax: zoneType === 'COLD' ? 5 : zoneType === 'THERMAL' ? 22 : 35,
+      id: `sub-${Date.now()}`,
+      code: `ZONE-${String.fromCharCode(64 + nextIdx)}`,
+      name: `Phân Khu ${typeLabel} ${nextIdx}`,
+      zoneType: type,
       status: 'active',
       length: 20,
       width: 12,
       height: 6,
-      racksCount: 4,
+      racksCount: 3,
       shelvesPerRack: 5,
       binsPerShelf: 2,
-      maxWeightPerBin: zoneType === 'COLD' ? 600 : 500,
-      racks: generateDefaultRacks(4, 20, 6, 6, 5, 2),
+      racks: generateDefaultRacks(3, 20, 6, 6, 5, 2),
     };
-    setSubWarehouses((prev) => [...prev, newZone]);
-    setActiveZoneId(newId);
-    setActiveRackId(newZone.racks![0].id);
+    setSubWarehouses([...subWarehouses, newZone]);
+    setActiveZoneId(newZone.id);
+    if (newZone.racks && newZone.racks.length > 0) {
+      setActiveRackId(newZone.racks[0].id);
+    }
     setSuccess(`Đã tạo phân khu mới: ${newZone.name}`);
   };
 
-  // Delete Zone
-  const handleDeleteZone = (zoneId: string) => {
-    if (subWarehouses.length <= 1) {
-      setError('Kho hàng phải chứa ít nhất 1 Phân Khu.');
-      return;
-    }
-    const filtered = subWarehouses.filter((z) => z.id !== zoneId);
-    setSubWarehouses(filtered);
-    if (activeZoneId === zoneId) {
-      setActiveZoneId(filtered[0].id);
-    }
-  };
-
-  // Run AI Slotting Engine simulation
-  const handleRunAiSlotting = () => {
-    const fullTempRecord: WarehouseRecord = normalizeWarehouseRecord({
-      id: id || 'temp',
-      code: code || 'TEMP',
-      name: name || 'Kho Hàng',
-      address: [detailAddress, ward, province].filter(Boolean).join(', '),
-      status,
-      length,
-      width,
-      height,
-      subWarehouses,
-      managerIds: [],
-      staffIds: [],
-    });
-
-    const allBins = generateWarehouseBinCells(fullTempRecord);
-    const recs = calculateAiSlottingRecommendations(simProduct, allBins);
-    setAiRecommendations(recs);
-    setSuccess(`AI Slotting đã phân tích xong! Tìm thấy ${recs.length} vị trí ô/ngăn phù hợp.`);
-  };
-
-  // Save Warehouse Form
+  // Save warehouse form handler
   const handleSaveWarehouse = async () => {
-    if (!code.trim() || !name.trim()) {
-      setError('Vui lòng nhập mã kho và tên kho.');
+    if (!code || !name) {
+      setError('Vui lòng nhập Mã Kho Hàng và Tên Kho Hàng');
       return;
     }
 
     setSaving(true);
     setError('');
 
-    const fullAddress = [detailAddress, ward, province].filter(Boolean).join(', ');
+    try {
+      const fullAddress = `${detailAddress ? detailAddress + ', ' : ''}${ward}, ${province}`;
+      const payload: WarehouseRecord = {
+        id: id || `wh_${Date.now()}`,
+        code: code.trim(),
+        name: name.trim(),
+        province,
+        ward,
+        detailAddress,
+        address: fullAddress,
+        status,
+        length,
+        width,
+        height,
+        managerIds: [],
+        staffIds: [],
+        subWarehouses,
+      };
 
-    const payload: WarehouseRecord = normalizeWarehouseRecord({
-      id: id || crypto.randomUUID(),
-      code: code.trim().toUpperCase(),
-      name: name.trim(),
-      address: fullAddress,
+      await upsertWarehouseToApi(payload);
+      saveStoredWarehouses([payload]);
+      setSuccess('Lưu cấu hình kho hàng và phân khu kệ dọc thành công!');
+      setTimeout(() => {
+        navigate('/warehouses');
+      }, 1000);
+    } catch (err: any) {
+      setError(err.message || 'Lỗi khi lưu cấu hình kho');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Run AI Slotting Handler
+  const handleRunAiSlotting = () => {
+    if (!activeZone) return;
+    const currentWarehouse: WarehouseRecord = {
+      id: id || `wh_temp`,
+      code: code || 'KH001',
+      name: name || 'Kho Hàng',
+      address: `${detailAddress}, ${ward}, ${province}`,
       province,
       ward,
       detailAddress,
@@ -462,195 +452,160 @@ export default function CreateWarehousePage() {
       length,
       width,
       height,
-      totalArea: length * width,
-      totalVolume: length * width * height,
-      subWarehouses,
       managerIds: [],
       staffIds: [],
-    });
-
-    try {
-      await upsertWarehouseToApi(payload, isEditMode ? undefined : 'POST');
-      const existing = getStoredWarehouses();
-      const updated = existing.some((w) => w.id === payload.id)
-        ? existing.map((w) => (w.id === payload.id ? payload : w))
-        : [...existing, payload];
-      saveStoredWarehouses(updated);
-
-      setSuccess('Đã lưu cấu hình Kho Hàng, Phân Khu & Dãy Kệ Dọc Suốt Kho thành công!');
-      setTimeout(() => {
-        navigate('/warehouses');
-      }, 1000);
-    } catch (err: any) {
-      setError(err.message || 'Lỗi khi lưu thông tin kho hàng');
-    } finally {
-      setSaving(false);
-    }
+      subWarehouses,
+    };
+    const allBins = generateWarehouseBinCells(currentWarehouse);
+    const recs = calculateAiSlottingRecommendations(simProduct, allBins);
+    setAiRecommendations(recs);
   };
-
-  // Auto Volume Computations
-  const rackGrossVolume = activeRack ? activeRack.length * activeRack.width * activeRack.height : 0;
-  const singleBinVolCm3 = activeRack ? activeRack.defaultBinLength * activeRack.defaultBinWidth * activeRack.defaultBinHeight : 0;
-  const singleBinVolM3 = singleBinVolCm3 / 1000000;
-  const totalBays = activeRack ? activeRack.baysCount || 1 : 1;
-  const totalBinsCount = activeRack ? totalBays * activeRack.shelvesCount * activeRack.binsPerShelf : 0;
-  const rackNetUsableVolumeM3 = (singleBinVolM3 * totalBinsCount).toFixed(2);
-
-  // Generate bins for active zone matrix rendering
-  const activeZoneBins = activeZone
-    ? generateWarehouseBinCells(
-        normalizeWarehouseRecord({
-          id: 'temp',
-          code: code || 'TEMP',
-          name: name || 'Kho',
-          address: '',
-          status: 'active',
-          managerIds: [],
-          staffIds: [],
-          subWarehouses: [activeZone],
-        })
-      )
-    : [];
-
-  const recBinCodeMap = new Map(aiRecommendations.map((r) => [r.bin.binCode, r]));
 
   return (
     <MainLayout>
-      <div className="space-y-6 font-sans text-slate-800 antialiased pb-12">
-        <Toast
-          message={error || success}
-          type={error ? 'error' : 'success'}
-          onClose={() => {
-            setError('');
-            setSuccess('');
-          }}
-        />
+      <div className="space-y-6 font-sans pb-16">
+        {Toast && (error || success) && (
+          <Toast
+            message={error || success}
+            type={error ? 'error' : 'success'}
+            onClose={() => {
+              setError('');
+              setSuccess('');
+            }}
+          />
+        )}
 
-        {/* HEADER BAR */}
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center gap-4">
+        {/* PAGE HEADER & TOP NAVIGATION BAR (Cyan Gold Standard UI) */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-cyan-200/80 dark:border-cyan-900/60 shadow-sm">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => navigate('/warehouses')}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 transition text-slate-600 dark:text-slate-200 cursor-pointer"
-              title="Quay lại danh sách kho"
+              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-cyan-50 hover:text-cyan-600 transition cursor-pointer"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
-              <div className="flex items-center gap-2 text-xs text-cyan-600 font-bold uppercase tracking-wider mb-1">
-                <span>QUẢN LÝ KHO</span>
-                <ChevronRight className="h-3 w-3" />
-                <span>CẤU HÌNH DÃY KỆ DỌC SUỐT KHO & TÍNH THỂ TÍCH TỰ ĐỘNG</span>
+              <div className="flex items-center gap-2 text-xs font-extrabold text-cyan-600 dark:text-cyan-400">
+                <span>KHO HÀNG THÔNG MINH</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+                <span>{isEditMode ? 'CHỈNH SỬA KHO' : 'TẠO MỚI KHO HÀNG'}</span>
               </div>
-              <h1 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <Warehouse className="h-6 w-6 text-cyan-600" />
-                {isEditMode ? `CHỈNH SỬA KHO: ${name || code}` : 'TẠO MỚI KHO HÀNG & DÃY KỆ DỌC SUỐT KHO'}
+              <h1 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
+                Cấu Hình Dãy Kệ Dọc & Phân Khu Kho
               </h1>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* View Mode Switcher */}
-            <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-              <button
-                type="button"
-                onClick={() => setViewMode('2D_MATRIX')}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-black transition cursor-pointer ${
-                  viewMode === '2D_MATRIX'
-                    ? 'bg-cyan-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Grid className="h-4 w-4" />
-                Ma Trận 2D Excel Grid
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('3D_VIEW')}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-black transition cursor-pointer ${
-                  viewMode === '3D_VIEW'
-                    ? 'bg-cyan-600 text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Move3d className="h-4 w-4" />
-                Mô Phỏng 3D
-              </button>
-            </div>
-
-            {/* AI Slotting Toggle */}
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
               onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-black transition cursor-pointer ${
-                isAiPanelOpen
-                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
-                  : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-              }`}
+              className="px-4 py-2.5 rounded-xl border border-cyan-300 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 text-xs font-black hover:bg-cyan-100 transition flex items-center gap-2 cursor-pointer shadow-sm"
             >
-              <Sparkles className="h-4 w-4 text-amber-600" />
-              {isAiPanelOpen ? 'Ẩn AI Slotting' : 'Thử Nghiệm AI Slotting'}
+              <Sparkles className="h-4 w-4 text-cyan-600" />
+              {isAiPanelOpen ? 'Đóng AI Simulator' : 'Giả Lập AI Slotting'}
             </button>
 
-            {/* Save Button */}
             <button
               type="button"
               onClick={handleSaveWarehouse}
               disabled={saving}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black shadow-lg shadow-cyan-600/30 transition cursor-pointer disabled:opacity-50 active:scale-95"
+              className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black shadow-lg shadow-cyan-600/30 transition flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
             >
               <Save className="h-4 w-4" />
-              {saving ? 'Đang Lưu...' : 'LƯU CẤU HÌNH KHO & PHÂN KHU'}
+              {saving ? 'Đang Lưu...' : 'Lưu Cấu Hình Kho'}
             </button>
           </div>
         </div>
 
-        {/* AI SLOTTING SIMULATOR WIDGET (IF OPEN) */}
+        {/* TOP METRIC KPI SUMMARY CARDS (Uniform single-color Cyan theme like products/main) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+            <div className="flex items-center justify-between text-cyan-600 dark:text-cyan-400">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">MÃ KHO HÀNG</span>
+              <Building className="h-5 w-5" />
+            </div>
+            <div className="text-lg font-black text-slate-900 dark:text-white truncate">{code || 'CHƯA ĐẶT MÃ'}</div>
+            <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
+              Diện tích: {length * width} m² ({length}m × {width}m)
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+            <div className="flex items-center justify-between text-cyan-600 dark:text-cyan-400">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">SỐ PHÂN KHU (ZONES)</span>
+              <Layers className="h-5 w-5" />
+            </div>
+            <div className="text-lg font-black text-slate-900 dark:text-white">{subWarehouses.length} Phân Khu</div>
+            <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400 truncate">
+              Đang chọn: <span className="underline">{activeZone?.name || 'Chưa chọn'}</span>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+            <div className="flex items-center justify-between text-cyan-600 dark:text-cyan-400">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">DÃY KỆ DỌC SUỐT KHO</span>
+              <LayoutGrid className="h-5 w-5" />
+            </div>
+            <div className="text-lg font-black text-slate-900 dark:text-white">{activeRacks.length} Dãy Kệ Dọc</div>
+            <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
+              Đã tick chọn: {selectedRackCodes.length === 0 ? 'Tất cả' : `${selectedRackCodes.length}/${activeRacks.length} dãy`}
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
+            <div className="flex items-center justify-between text-cyan-600 dark:text-cyan-400">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">TỔNG THỂ TÍCH CHỨA HÀNG</span>
+              <Package className="h-5 w-5" />
+            </div>
+            <div className="text-lg font-black text-slate-900 dark:text-white">
+              {(length * width * height).toLocaleString()} m³
+            </div>
+            <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
+              Cao kho tổng: {height} mét
+            </div>
+          </div>
+        </div>
+
+        {/* AI SLOTTING SIMULATOR PANEL (IF OPEN) */}
         {isAiPanelOpen && (
-          <div className="bg-gradient-to-r from-slate-900 via-cyan-950 to-slate-900 text-white p-6 rounded-2xl border-2 border-amber-400 shadow-2xl space-y-4 animate-in slide-in-from-top-4">
-            <div className="flex items-center justify-between border-b border-cyan-800/60 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-400 text-slate-950 font-black">
-                  <Cpu className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-amber-400 flex items-center gap-2">
-                    BÀI TOÁN AI GỢI Ý VỊ TRÍ XẾP HÀNG (3D SLOTTING ENGINE)
-                  </h3>
-                  <p className="text-xs text-slate-300">
-                    Thuật toán Constraint Satisfaction (CSP) + Multi-Criteria Utility Scoring tự động tìm ô/ngăn tối ưu cho Đơn Nhập Kho
-                  </p>
-                </div>
+          <div className="bg-slate-900 text-white p-5 rounded-2xl border-2 border-cyan-400 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <Cpu className="h-5 w-5 text-cyan-400" />
+                <h3 className="text-sm font-black text-cyan-400 uppercase tracking-wider">
+                  BÀI TOÁN AI GỢI Ý VỊ TRÍ XẾP HÀNG (3D SLOTTING ENGINE)
+                </h3>
               </div>
 
               <button
                 type="button"
                 onClick={handleRunAiSlotting}
-                className="px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
+                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-xl font-black text-xs transition flex items-center gap-2 cursor-pointer shadow-md"
               >
                 <Zap className="h-4 w-4 fill-slate-950" />
-                CHẠY AI PHÂN TÍCH VỊ TRÍ
+                CHẠY AI GỢI Ý
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Mặt hàng thử nghiệm</label>
+                <label className="block text-slate-300 font-bold mb-1">Tên Lô Hàng</label>
                 <input
                   type="text"
                   value={simProduct.productName}
                   onChange={(e) => setSimProduct({ ...simProduct, productName: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold"
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Loại Môi Trường</label>
+                <label className="block text-slate-300 font-bold mb-1">Môi Trường Chứa</label>
                 <select
                   value={simProduct.tempRequirement}
                   onChange={(e) => setSimProduct({ ...simProduct, tempRequirement: e.target.value as any })}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-amber-300 font-bold"
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-cyan-300 font-bold"
                 >
                   <option value="COLD">❄️ Kho Lạnh (-18°C ~ 5°C)</option>
                   <option value="THERMAL">🌡️ Kho Nhiệt (15°C ~ 22°C)</option>
@@ -659,40 +614,13 @@ export default function CreateWarehousePage() {
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Tổng Trọng Lượng (kg)</label>
+                <label className="block text-slate-300 font-bold mb-1">Trọng Lượng (kg)</label>
                 <input
                   type="number"
                   value={simProduct.totalWeight}
                   onChange={(e) => setSimProduct({ ...simProduct, totalWeight: Number(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold"
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold"
                 />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Kích Thước Thùng (D x R x C cm)</label>
-                <div className="flex gap-1">
-                  <input
-                    type="number"
-                    value={simProduct.packageLength}
-                    onChange={(e) => setSimProduct({ ...simProduct, packageLength: Number(e.target.value) || 0 })}
-                    className="w-1/3 px-2 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-center font-semibold"
-                    placeholder="D"
-                  />
-                  <input
-                    type="number"
-                    value={simProduct.packageWidth}
-                    onChange={(e) => setSimProduct({ ...simProduct, packageWidth: Number(e.target.value) || 0 })}
-                    className="w-1/3 px-2 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-center font-semibold"
-                    placeholder="R"
-                  />
-                  <input
-                    type="number"
-                    value={simProduct.packageHeight}
-                    onChange={(e) => setSimProduct({ ...simProduct, packageHeight: Number(e.target.value) || 0 })}
-                    className="w-1/3 px-2 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-center font-semibold"
-                    placeholder="C"
-                  />
-                </div>
               </div>
 
               <div>
@@ -700,288 +628,168 @@ export default function CreateWarehousePage() {
                 <select
                   value={simProduct.turnoverClass}
                   onChange={(e) => setSimProduct({ ...simProduct, turnoverClass: e.target.value as any })}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-emerald-400 font-bold"
+                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-emerald-400 font-bold"
                 >
-                  <option value="A">Loại A (Bán rất nhanh - Gần cửa)</option>
+                  <option value="A">Loại A (Bán nhanh - Gần cửa)</option>
                   <option value="B">Loại B (Trung bình)</option>
-                  <option value="C">Loại C (Bán chậm - Tầng trên)</option>
+                  <option value="C">Loại C (Bán chậm - Tầng cao)</option>
                 </select>
               </div>
 
               <div className="flex items-end">
-                <div className="bg-slate-800/80 p-2.5 rounded-lg border border-slate-700 text-[11px] text-slate-300 w-full text-center font-bold">
+                <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700 text-xs text-cyan-300 font-bold w-full text-center truncate">
                   {aiRecommendations.length > 0
                     ? `Top 1: ${aiRecommendations[0]?.bin.binCode} (${aiRecommendations[0]?.score}%)`
-                    : 'Chưa có kết quả gợi ý'}
+                    : 'Bấm nút để chạy AI'}
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* MAIN SPLIT LAYOUT */}
+        {/* MAIN SPLIT LAYOUT (5 COLS CONFIG / 7 COLS VISUAL WORKSPACE) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* LEFT 5 COLS: MASTER SPECS, ZONE BUILDER & LONGITUDINAL RACK SPECS */}
-          <div className="lg:col-span-5 space-y-6">
-            {/* THÔNG TIN TỔNG QUAN KHO */}
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          {/* LEFT 5 COLUMNS: CONFIG & RACK CHECKBOXES */}
+          <div className="lg:col-span-5 space-y-5">
+            {/* CARD 1: KHO TỔNG SPECS & ADD ZONE */}
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-cyan-200/80 dark:border-cyan-900/60 shadow-sm space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <h2 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                   <Building className="h-4 w-4 text-cyan-600" />
-                  1. THÔNG SỐ KHO TỔNG
+                  1. THÔNG SỐ KHO TỔNG & PHÂN KHU
                 </h2>
-                <span className="text-xs px-2.5 py-1 rounded-full font-extrabold bg-cyan-50 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                <span className="text-xs font-extrabold text-cyan-600 bg-cyan-50 px-2.5 py-0.5 rounded-full border border-cyan-200">
                   {subWarehouses.length} Phân Khu
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Mã Kho Hàng *</label>
                   <input
                     type="text"
                     value={code}
                     onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    placeholder="VD: KH001"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Trạng Thái Kho</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
-                  >
-                    <option value="active">🟢 Đang hoạt động</option>
-                    <option value="inactive">🔴 Tạm dừng</option>
-                  </select>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Tên Kho Hàng *</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                  />
                 </div>
               </div>
 
-              <div className="text-xs">
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Tên Kho Hàng *</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="VD: Kho Kệ Dọc Suốt Kho"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-bold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="grid grid-cols-3 gap-2.5 text-xs bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Tỉnh / Thành Phố</label>
-                  <select
-                    value={province}
+                  <span className="text-[11px] text-slate-500 block font-semibold">Dài (m)</span>
+                  <input
+                    type="number"
+                    value={length}
                     onChange={(e) => {
-                      setProvince(e.target.value);
-                      const targetProv = VIETNAM_PROVINCES.find((p) => p.name === e.target.value);
-                      if (targetProv && targetProv.wards.length > 0) {
-                        setWard(targetProv.wards[0]);
-                      }
+                      const val = parseNumInput(e.target.value);
+                      setLength(val);
+                      if (activeZone) updateActiveZone({ length: val });
                     }}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
-                  >
-                    {VIETNAM_PROVINCES.map((p) => (
-                      <option key={p.name} value={p.name}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
+                    className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                  />
                 </div>
-
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Phường / Xã</label>
-                  <select
-                    value={ward}
-                    onChange={(e) => setWard(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
-                  >
-                    {(VIETNAM_PROVINCES.find((p) => p.name === province)?.wards || []).map((w) => (
-                      <option key={w} value={w}>
-                        {w}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="text-[11px] text-slate-500 block font-semibold">Rộng (m)</span>
+                  <input
+                    type="number"
+                    value={width}
+                    onChange={(e) => {
+                      const val = parseNumInput(e.target.value);
+                      setWidth(val);
+                      if (activeZone) updateActiveZone({ width: val });
+                    }}
+                    className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                  />
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-500 block font-semibold">Cao (m)</span>
+                  <input
+                    type="number"
+                    value={height}
+                    onChange={(e) => {
+                      const val = parseNumInput(e.target.value);
+                      setHeight(val);
+                      if (activeZone) updateActiveZone({ height: val });
+                    }}
+                    className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                  />
                 </div>
               </div>
 
-              <div className="text-xs">
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Địa chỉ chi tiết</label>
-                <input
-                  type="text"
-                  value={detailAddress}
-                  onChange={(e) => setDetailAddress(e.target.value)}
-                  placeholder="VD: Số 100 Đại Lộ Bình Dương"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 font-semibold bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
-                />
-              </div>
-
-              {/* TỔNG KÍCH THƯỚC KHO */}
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
-                <span className="font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-wider block">
-                  KÍCH THƯỚC PHỦ BÌ KHO TỔNG (MÉT)
+              {/* TẠO MỚI PHÂN KHU BUTTONS */}
+              <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <span className="text-[11px] font-black text-slate-500 uppercase tracking-wider block">
+                  THÊM MỚI PHÂN KHU VÀO KHO
                 </span>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <span className="text-[11px] text-slate-500 block">Dài (m)</span>
-                    <input
-                      type="number"
-                      value={length}
-                      onChange={(e) => {
-                        const val = Number(e.target.value) || 0;
-                        setLength(val);
-                        if (activeZone) updateActiveZone({ length: val });
-                      }}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-slate-500 block">Rộng (m)</span>
-                    <input
-                      type="number"
-                      value={width}
-                      onChange={(e) => {
-                        const val = Number(e.target.value) || 0;
-                        setWidth(val);
-                        if (activeZone) updateActiveZone({ width: val });
-                      }}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[11px] text-slate-500 block">Cao (m)</span>
-                    <input
-                      type="number"
-                      value={height}
-                      onChange={(e) => {
-                        const val = Number(e.target.value) || 0;
-                        setHeight(val);
-                        if (activeZone) updateActiveZone({ height: val });
-                      }}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-between items-center pt-1 text-[11px] font-extrabold text-cyan-700 dark:text-cyan-400">
-                  <span>Diện tích: {length * width} m²</span>
-                  <span>Thể tích kho: {(length * width * height).toLocaleString()} m³</span>
-                </div>
-              </div>
-            </div>
-
-            {/* DANH SÁCH PHÂN KHU & CẤU HÌNH PHÂN KHU */}
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-cyan-600" />
-                  2. CẤU HÌNH PHÂN KHU (ZONES)
-                </h2>
-
-                <div className="flex gap-1.5">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => handleAddZone('AMBIENT')}
-                    className="px-2.5 py-1.5 rounded-lg bg-cyan-50 hover:bg-cyan-100 text-cyan-700 text-[11px] font-bold border border-cyan-200 transition cursor-pointer"
+                    className="px-2.5 py-1.5 rounded-xl border border-cyan-300 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 text-[11px] font-black transition flex items-center justify-center gap-1 cursor-pointer"
                   >
-                    + Kho Thường
+                    <Plus className="h-3.5 w-3.5" /> + Kho Thường
                   </button>
                   <button
                     type="button"
                     onClick={() => handleAddZone('COLD')}
-                    className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold border border-blue-200 transition cursor-pointer flex items-center gap-1"
+                    className="px-2.5 py-1.5 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 text-[11px] font-black transition flex items-center justify-center gap-1 cursor-pointer"
                   >
-                    <Snowflake className="h-3 w-3" />
-                    + Kho Lạnh
+                    <Snowflake className="h-3.5 w-3.5" /> + Kho Lạnh
                   </button>
                   <button
                     type="button"
                     onClick={() => handleAddZone('THERMAL')}
-                    className="px-2.5 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-bold border border-purple-200 transition cursor-pointer flex items-center gap-1"
+                    className="px-2.5 py-1.5 rounded-xl border border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-800 text-[11px] font-black transition flex items-center justify-center gap-1 cursor-pointer"
                   >
-                    <Thermometer className="h-3 w-3" />
-                    + Kho Nhiệt
+                    <Thermometer className="h-3.5 w-3.5" /> + Kho Nhiệt
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* TABS SELECTOR FOR ZONES */}
-              <div className="flex flex-wrap gap-2">
-                {subWarehouses.map((z) => {
-                  const isActive = z.id === activeZoneId;
-                  const isCold = z.zoneType === 'COLD';
-                  const isThermal = z.zoneType === 'THERMAL';
-                  return (
+            {/* CARD 2: CẤU HÌNH PHÂN KHU DÃY KỆ DỌC */}
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-cyan-200/80 dark:border-cyan-900/60 shadow-sm space-y-4">
+              {/* ZONE SELECTOR TABS */}
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <h2 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-cyan-600" />
+                  2. CẤU HÌNH PHÂN KHU (ZONES)
+                </h2>
+
+                <div className="flex items-center gap-1 overflow-x-auto max-w-[240px]">
+                  {subWarehouses.map((z) => (
                     <button
                       key={z.id}
                       type="button"
                       onClick={() => {
                         setActiveZoneId(z.id);
-                        if (z.racks && z.racks.length > 0) {
-                          setActiveRackId(z.racks[0].id);
-                        }
+                        if (z.racks && z.racks.length > 0) setActiveRackId(z.racks[0].id);
+                        setSelectedRackCodes([]);
                       }}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer border ${
-                        isActive
-                          ? isCold
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-md'
-                            : isThermal
-                              ? 'bg-purple-600 text-white border-purple-600 shadow-md'
-                              : 'bg-cyan-600 text-white border-cyan-600 shadow-md'
-                          : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                      className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer border ${
+                        z.id === activeZone?.id
+                          ? 'bg-cyan-600 text-white border-cyan-600 shadow'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-cyan-50'
                       }`}
                     >
-                      {isCold ? (
-                        <Snowflake className="h-3.5 w-3.5" />
-                      ) : isThermal ? (
-                        <Thermometer className="h-3.5 w-3.5" />
-                      ) : (
-                        <Store className="h-3.5 w-3.5" />
-                      )}
-                      <span>{z.code}</span>
-                      {subWarehouses.length > 1 && (
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteZone(z.id);
-                          }}
-                          className="ml-1 text-xs hover:text-red-300 transition p-0.5"
-                          title="Xóa phân khu"
-                        >
-                          ✕
-                        </span>
-                      )}
+                      {z.code}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
 
-              {/* ACTIVE ZONE DETAIL EDITOR */}
               {activeZone && (
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-4 text-xs">
-                  <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2">
-                    <span className="font-extrabold text-slate-900 dark:text-white uppercase">
-                      KÍCH THƯỚC PHÂN KHU: {activeZone.code}
-                    </span>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                        activeZone.zoneType === 'COLD'
-                          ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                          : activeZone.zoneType === 'THERMAL'
-                            ? 'bg-purple-100 text-purple-800 border border-purple-300'
-                            : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      }`}
-                    >
-                      {activeZone.zoneType === 'COLD'
-                        ? 'Kho Lạnh (-18°C ~ 5°C)'
-                        : activeZone.zoneType === 'THERMAL'
-                          ? 'Kho Nhiệt (15°C ~ 22°C)'
-                          : 'Kho Thường Tiêu Chuẩn'}
-                    </span>
-                  </div>
-
+                <div className="space-y-4 text-xs">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Mã Phân Khu</label>
@@ -1003,36 +811,36 @@ export default function CreateWarehousePage() {
                     </div>
                   </div>
 
-                  {/* KÍCH THƯỚC PHÂN KHU, SỐ DÃY DỌC & SỐ VÁCH NGĂN */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                  {/* KÍCH THƯỚC PHÂN KHU & VÁCH NGĂN */}
+                  <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
                     <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Chiều Dài (m)</label>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Dài (m)</label>
                       <input
                         type="number"
                         min={0}
                         value={activeZone.length}
                         onChange={(e) => updateActiveZone({ length: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
                       />
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Chiều Rộng (m)</label>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Rộng (m)</label>
                       <input
                         type="number"
                         min={0}
                         value={activeZone.width}
                         onChange={(e) => updateActiveZone({ width: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
                       />
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Chiều Cao (m)</label>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Cao (m)</label>
                       <input
                         type="number"
                         min={0}
                         value={activeZone.height}
                         onChange={(e) => updateActiveZone({ height: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
                       />
                     </div>
                     <div>
@@ -1042,27 +850,27 @@ export default function CreateWarehousePage() {
                         min={0}
                         value={activeZone.racksCount ?? 4}
                         onChange={(e) => updateActiveZone({ racksCount: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600"
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600"
                       />
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Số Vách Ngang</label>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Vách Ngang</label>
                       <input
                         type="number"
                         min={0}
                         value={activeZone.shelvesPerRack ?? 5}
                         onChange={(e) => updateActiveZone({ shelvesPerRack: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600"
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600"
                       />
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Số Vách Dọc</label>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Vách Dọc</label>
                       <input
                         type="number"
                         min={0}
                         value={activeZone.binsPerShelf ?? 2}
                         onChange={(e) => updateActiveZone({ binsPerShelf: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600"
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600"
                       />
                     </div>
                   </div>
@@ -1070,502 +878,238 @@ export default function CreateWarehousePage() {
               )}
             </div>
 
-            {/* 3. THÔNG SỐ CHI TIẾT DÃY KỆ DỌC SUỐT KHO & TÍNH THỂ TÍCH TỰ ĐỘNG */}
-            {activeZone && activeRack && (
-              <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-cyan-500 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                    <Sliders className="h-4 w-4 text-cyan-600" />
-                    3. CẤU HÌNH DÃY KỆ DỌC SUỐT KHO & THỂ TÍCH
-                  </h2>
+            {/* CARD 3: INTERACTIVE RACK CHECKBOXES SELECTION LIST */}
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-cyan-400 dark:border-cyan-800 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                  <CheckSquare className="h-4 w-4 text-cyan-600" />
+                  TICK CHỌN & PHÂN CHIA DÃY KỆ DỌC
+                </h3>
 
-                  {/* RACK SELECTOR TABS */}
-                  <div className="flex items-center gap-1.5">
-                    {activeRacks.map((r) => (
-                      <button
-                        key={r.id}
-                        type="button"
-                        onClick={() => setActiveRackId(r.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer border ${
-                          r.id === activeRack.id
-                            ? 'bg-cyan-600 text-white border-cyan-600 shadow'
-                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                        }`}
-                      >
-                        {r.rackCode}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-4 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="font-black text-cyan-700 dark:text-cyan-400 uppercase text-xs flex items-center gap-1.5">
-                      <LayoutGrid className="h-4 w-4" />
-                      DÃY KỆ DỌC CONTINUOUS ROW: {activeRack.rackCode} ({activeRack.name})
-                    </span>
-                    <span className="text-[11px] font-bold text-slate-500">
-                      Tải trọng max cả dãy dọc: {activeRack.maxRackLoad.toLocaleString()} kg
-                    </span>
-                  </div>
-
-                  {/* KÍCH THƯỚC PHỦ BÌ DÃY KỆ DỌC RUNNING LENGTH */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Chiều Dài Dãy Dọc (mét)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={activeRack.length}
-                        onChange={(e) => updateActiveRack({ length: Number(e.target.value) || 1 })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-900"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Chiều Rộng Dãy (mét)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={activeRack.width}
-                        onChange={(e) => updateActiveRack({ width: Number(e.target.value) || 0.5 })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-900"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Chiều Cao Dãy (mét)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={activeRack.height}
-                        onChange={(e) => updateActiveRack({ height: Number(e.target.value) || 1 })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-900"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Sức Chịu Lực Max (kg)
-                      </label>
-                      <input
-                        type="number"
-                        value={activeRack.maxRackLoad}
-                        onChange={(e) => updateActiveRack({ maxRackLoad: Number(e.target.value) || 1000 })}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-black text-center text-amber-600 bg-white dark:bg-slate-900"
-                      />
-                    </div>
-                  </div>
-
-                  {/* SỐ KHOANG KỆ NỐI TIẾP DỌC DÃY, SỐ VÁCH NGANG & SỐ VÁCH DỌC */}
-                  <div className="p-3.5 rounded-xl bg-cyan-50/70 dark:bg-cyan-950/40 border border-cyan-200 dark:border-cyan-800/60 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-extrabold text-cyan-900 dark:text-cyan-200 uppercase text-[11px] flex items-center gap-1.5">
-                        <Sliders className="h-3.5 w-3.5 text-cyan-600" />
-                        CẤU TRÚC KHOANG KỆ & VÁCH NGĂN TRÊN DÃY KỆ DỌC
-                      </span>
-
-                      <label className="flex items-center gap-2 cursor-pointer text-[11px] font-bold text-cyan-800 dark:text-cyan-300">
-                        <input
-                          type="checkbox"
-                          checked={isAutoCalcBin}
-                          onChange={(e) => setIsAutoCalcBin(e.target.checked)}
-                          className="h-4 w-4 rounded text-cyan-600"
-                        />
-                        Tự động tính kích thước ô từ Vách Ngăn
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-extrabold text-slate-700 dark:text-slate-300 mb-1">
-                          1. Số Khoang Dọc (Bays)
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          max={30}
-                          value={activeRack.baysCount ?? 6}
-                          onChange={(e) => updateActiveRack({ baysCount: parseNumInput(e.target.value) })}
-                          className="w-full px-3 py-2 rounded-xl border border-cyan-300 dark:border-cyan-700 font-black text-center text-cyan-700 bg-white dark:bg-slate-900 text-sm"
-                        />
-                        <span className="text-[10px] text-slate-500 block text-center mt-1">Các khoang nối đuôi nhau</span>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-extrabold text-slate-700 dark:text-slate-300 mb-1">
-                          2. Số Vách Ngang (Shelves)
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          max={20}
-                          value={activeRack.horizontalPartitions ?? 5}
-                          onChange={(e) => {
-                            const val = parseNumInput(e.target.value);
-                            updateActiveRack({ horizontalPartitions: val, shelvesCount: val });
-                            updateActiveZone({ shelvesPerRack: val });
-                          }}
-                          className="w-full px-3 py-2 rounded-xl border border-cyan-300 dark:border-cyan-700 font-black text-center text-cyan-700 bg-white dark:bg-slate-900 text-sm"
-                        />
-                        <span className="text-[10px] text-slate-500 block text-center mt-1">Số tầng đỡ nằm ngang</span>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-extrabold text-slate-700 dark:text-slate-300 mb-1">
-                          3. Số Vách Dọc / Tầng (Bins)
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          max={20}
-                          value={activeRack.verticalPartitions ?? 2}
-                          onChange={(e) => {
-                            const val = parseNumInput(e.target.value);
-                            updateActiveRack({ verticalPartitions: val, binsPerShelf: val });
-                            updateActiveZone({ binsPerShelf: val });
-                          }}
-                          className="w-full px-3 py-2 rounded-xl border border-cyan-300 dark:border-cyan-700 font-black text-center text-cyan-700 bg-white dark:bg-slate-900 text-sm"
-                        />
-                        <span className="text-[10px] text-slate-500 block text-center mt-1">Số hộc chứa trong 1 tầng</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* KẾT QUẢ TÍNH THỂ TÍCH TỰ ĐỘNG */}
-                  <div className="p-3.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-2 text-[11px]">
-                    <span className="font-extrabold text-emerald-900 dark:text-emerald-300 uppercase tracking-wider block">
-                      ⚡ THỂ TÍCH CHỨA HÀNG TỰ ĐỘNG CỦA DÃY KỆ DỌC
-                    </span>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <div>
-                        <span className="text-slate-500 block font-medium">Thẻ Tích Phủ Bì Dãy Dọc</span>
-                        <span className="font-black text-slate-900 dark:text-white text-xs">{rackGrossVolume.toFixed(2)} m³</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block font-medium">Kích Thước 1 Hộc (Tự động)</span>
-                        <span className="font-black text-cyan-700 dark:text-cyan-400 text-xs">
-                          {activeRack.defaultBinLength} x {activeRack.defaultBinWidth} x {activeRack.defaultBinHeight} cm
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block font-medium">Thể Tích 1 Hộc Chứa</span>
-                        <span className="font-black text-emerald-700 dark:text-emerald-400 text-xs">
-                          {singleBinVolM3.toFixed(3)} m³ ({singleBinVolCm3.toLocaleString()} cm³)
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block font-medium">Tổng Thể Tích Chứa Hàng</span>
-                        <span className="font-black text-amber-600 text-xs">{rackNetUsableVolumeM3} m³ ({totalBinsCount} Hộc)</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={selectAllRackCheckboxes}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-50 dark:bg-cyan-950 hover:bg-cyan-100 text-cyan-700 dark:text-cyan-300 text-[11px] font-black transition cursor-pointer border border-cyan-200 dark:border-cyan-800"
+                >
+                  {selectedRackCodes.length === activeRacks.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả dãy'}
+                </button>
               </div>
-            )}
+
+              <p className="text-[11px] text-slate-500 font-semibold">
+                Tick chọn từng kệ bên dưới để hiển thị & phân chia trực quan trên Sơ đồ 2D/3D:
+              </p>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                {activeRacks.map((r) => {
+                  const isChecked = selectedRackCodes.length === 0 || selectedRackCodes.includes(r.rackCode);
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveRackId(r.id);
+                        toggleRackCheckbox(r.rackCode);
+                      }}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition cursor-pointer ${
+                        isChecked
+                          ? 'border-cyan-500 bg-cyan-50/80 dark:bg-cyan-950/60 text-cyan-900 dark:text-cyan-200 shadow-sm'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {isChecked ? (
+                          <CheckCircle className="h-4 w-4 text-cyan-600 fill-cyan-100" />
+                        ) : (
+                          <Square className="h-4 w-4 text-slate-400" />
+                        )}
+                        <span>{r.rackCode}</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">{r.baysCount || 6} B</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
-          {/* RIGHT 7 COLS: VISUALIZATION (2D EXCEL MATRIX GRID / 3D MODEL) FOR CONTINUOUS LONGITUDINAL RACKS */}
-          <div className="lg:col-span-7 space-y-6">
-            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4 min-h-[600px]">
-              <div className="flex flex-wrap items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3 gap-2">
+          {/* RIGHT 7 COLUMNS: VISUAL 2D MATRIX & 3D REALTIME WORKSPACE */}
+          <div className="lg:col-span-7 space-y-5">
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-cyan-200/80 dark:border-cyan-900/60 shadow-sm space-y-4">
+              {/* WORKSPACE HEADER & VIEW TOGGLES */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                    {viewMode === '2D_MATRIX' ? (
-                      <>
-                        <Grid className="h-4 w-4 text-cyan-600" />
-                        SƠ ĐỒ SỰ NỐI TIẾP DÃY KỆ DỌC SUỐT KHO (2D LONGITUDINAL RACK ROWS)
-                      </>
-                    ) : (
-                      <>
-                        <Move3d className="h-4 w-4 text-cyan-600" />
-                        MÔ PHỎNG KHỐI KỆ 3D ISOMETRIC
-                      </>
-                    )}
-                  </h2>
+                  <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                    SƠ ĐỒ TRỰC QUAN KỆ DỌC
+                  </span>
+                  <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                    {displayedRacks.length}/{activeRacks.length} Dãy được chọn
+                  </span>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="flex items-center gap-1 font-bold text-emerald-600">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span> Trống
-                  </span>
-                  <span className="flex items-center gap-1 font-bold text-amber-600">
-                    <span className="h-2.5 w-2.5 rounded-full bg-amber-500"></span> Một phần
-                  </span>
-                  <span className="flex items-center gap-1 font-bold text-red-600">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span> Đầy
-                  </span>
-                  {aiRecommendations.length > 0 && (
-                    <span className="flex items-center gap-1 font-black text-cyan-600 animate-pulse">
-                      <Sparkles className="h-3.5 w-3.5 text-cyan-500" /> Gợi ý AI
-                    </span>
+                <div className="flex items-center gap-2">
+                  {/* Mode Toggles */}
+                  <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('2D_MATRIX')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                        viewMode === '2D_MATRIX'
+                          ? 'bg-cyan-600 text-white shadow'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
+                      }`}
+                    >
+                      <Grid className="h-3.5 w-3.5" />
+                      Ma Trận 2D
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('3D_VIEW')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                        viewMode === '3D_VIEW'
+                          ? 'bg-cyan-600 text-white shadow'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
+                      }`}
+                    >
+                      <Move3d className="h-3.5 w-3.5" />
+                      Khối 3D
+                    </button>
+                  </div>
+
+                  {/* 2D Zoom Controls */}
+                  {viewMode === '2D_MATRIX' && (
+                    <div className="inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setGridZoomScale((z) => Math.max(100, z - 50))}
+                        className="px-2 py-1 hover:text-cyan-600 cursor-pointer"
+                        title="Thu nhỏ"
+                      >
+                        -
+                      </button>
+                      <span className="px-1 text-cyan-700 dark:text-cyan-400">{gridZoomScale}%</span>
+                      <button
+                        type="button"
+                        onClick={() => setGridZoomScale((z) => Math.min(300, z + 50))}
+                        className="px-2 py-1 hover:text-cyan-600 cursor-pointer"
+                        title="Phóng to đến 300%"
+                      >
+                        +
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
 
-              {/* 2D MATRIX LONGITUDINAL CONTINUOUS RACK VIEW MODE */}
-              {viewMode === '2D_MATRIX' && activeZone && activeRack && (
-                <div className="space-y-5">
-                  {/* RACK BANNER SPECS SUMMARY */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-950 via-slate-900 to-blue-950 text-white shadow-lg border border-blue-800 space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-black text-cyan-400 uppercase tracking-wider flex items-center gap-2">
-                        <Warehouse className="h-4 w-4 text-cyan-400" />
-                        KẾT CẤU DÃY KỆ DỌC SUỐT PHÂN KHU: {activeRack.rackCode} ({activeRack.name})
-                      </span>
-                      <span className="px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs">
-                        {totalBinsCount} Ô Hộc Chứa
-                      </span>
-                    </div>
+              {/* VIEW CANVAS RENDER */}
+              {viewMode === '3D_VIEW' ? (
+                <Warehouse3DViewer subWarehouse={activeZone} selectedRackIds={selectedRackCodes} />
+              ) : (
+                /* 2D MATRIX EXCEL GRID VIEW MODE */
+                <div className="space-y-4 overflow-x-auto">
+                  <div
+                    style={{ zoom: `${gridZoomScale}%` }}
+                    className="space-y-6 transition-all duration-200"
+                  >
+                    {displayedRacks.map((rack) => {
+                      const baysCount = rack.baysCount || rack.columnsCount || 6;
+                      const shelvesCount = rack.horizontalPartitions || rack.shelvesCount || 5;
+                      const binsPerShelf = rack.verticalPartitions || rack.binsPerShelf || 2;
 
-                    <div className="grid grid-cols-3 gap-3 text-xs text-slate-300 pt-1">
-                      <div>Chiều dài dãy dọc: <b className="text-white">{activeRack.length}m</b> (kéo từ đầu đến cuối kho)</div>
-                      <div>Chuỗi Khoang Kệ: <b className="text-amber-300">{totalBays} Khoang Bay Nối Tiếp</b></div>
-                      <div>Thể tích chứa thực tế: <b className="text-emerald-400">{rackNetUsableVolumeM3} m³</b></div>
-                    </div>
-                  </div>
-
-                  {/* VISUAL INDUSTRIAL BLUE/ORANGE RACK FRAME SIMULATION FOR LONGITUDINAL BAYS */}
-                  <div className="p-4 rounded-2xl border-4 border-blue-700 bg-slate-950 shadow-2xl space-y-4 overflow-x-auto">
-                    <div className="text-center text-xs font-black text-blue-400 uppercase tracking-widest border-b border-blue-800/80 pb-2">
-                      SƠ ĐỒ CHUYỂN TIẾP CÁC KHOANG KỆ DỌC (BAYS B01 ➔ B{String(totalBays).padStart(2, '0')}) NỐI LIỀN SUỐT CHIỀU DÀI DÃY {activeRack.rackCode}
-                    </div>
-
-                    {/* BAYS RENDERED SIDE BY SIDE ALONG THE LONGITUDINAL ROW */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {Array.from({ length: totalBays }).map((_, bIdx) => {
-                        const bayNum = bIdx + 1;
-                        const bayCode = `B${String(bayNum).padStart(2, '0')}`;
-
-                        return (
-                          <div key={bayCode} className="p-3 rounded-xl bg-slate-900 border-2 border-blue-900 space-y-2">
-                            <div className="flex justify-between items-center px-2 py-1 bg-blue-950 rounded-lg border border-blue-800 text-[11px] font-black text-cyan-400">
-                              <span>KHOANG KỆ DỌC #{bayNum}: {bayCode}</span>
-                              <span className="text-slate-400 font-semibold">{activeRack.shelvesCount} Tầng Hàng</span>
+                      return (
+                        <div
+                          key={rack.id}
+                          className="rounded-2xl border-2 border-cyan-300 dark:border-cyan-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3"
+                        >
+                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-cyan-600 text-white font-black text-xs">
+                                {rack.rackCode}
+                              </span>
+                              <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
+                                {rack.name} ({rack.length}m Dài × {rack.width}m Rộng)
+                              </span>
                             </div>
-
-                            {/* SHELVES IN THIS BAY */}
-                            <div className="space-y-2">
-                              {Array.from({ length: activeRack.shelvesCount })
-                                .map((_, sIdx) => activeRack.shelvesCount - sIdx)
-                                .map((shelfLevel) => {
-                                  const shelfCode = `S${String(shelfLevel).padStart(2, '0')}`;
-
-                                  return (
-                                    <div key={shelfCode} className="space-y-1">
-                                      {/* ORANGE BEAM LAYER */}
-                                      <div className="bg-gradient-to-r from-orange-600 via-amber-500 to-orange-600 px-2 py-0.5 text-slate-950 font-black text-[10px] rounded flex justify-between">
-                                        <span>TẦNG {shelfLevel} ({shelfCode})</span>
-                                        <span>{activeRack.binsPerShelf} Ô/Tầng</span>
-                                      </div>
-
-                                      {/* BINS GRID IN THIS SHELF OF THIS BAY */}
-                                      <div className="grid grid-cols-2 gap-1.5">
-                                        {Array.from({ length: activeRack.binsPerShelf }).map((_, cIdx) => {
-                                          const cellNum = cIdx + 1;
-                                          const cellCode = `C${String(cellNum).padStart(2, '0')}`;
-                                          const fullCode = `${activeZone.code}-${activeRack.rackCode}-${totalBays > 1 ? `${bayCode}-` : ''}${shelfCode}-${cellCode}`;
-
-                                          const custom = activeRack.customBins?.[fullCode];
-
-                                          const binData = activeZoneBins.find((b) => b.binCode === fullCode) || {
-                                            binCode: fullCode,
-                                            zoneId: activeZone.id,
-                                            zoneCode: activeZone.code,
-                                            zoneName: activeZone.name,
-                                            zoneType: activeZone.zoneType || 'AMBIENT',
-                                            rackNumber: parseInt(activeRack.rackCode.replace('R', ''), 10) || 1,
-                                            shelfLevel,
-                                            cellIndex: cellNum,
-                                            cellLength: custom?.length || activeRack.defaultBinLength,
-                                            cellWidth: custom?.width || activeRack.defaultBinWidth,
-                                            cellHeight: custom?.height || activeRack.defaultBinHeight,
-                                            maxWeightCapacity: custom?.maxWeight || activeRack.defaultBinMaxWeight,
-                                            currentWeight: 0,
-                                            status: 'EMPTY',
-                                          };
-
-                                          const aiRec = recBinCodeMap.get(fullCode);
-                                          const binVolM3 = ((binData.cellLength * binData.cellWidth * binData.cellHeight) / 1000000).toFixed(3);
-
-                                          return (
-                                            <div
-                                              key={fullCode}
-                                              onClick={() => {
-                                                setEditingBinCode(fullCode);
-                                                setBinCustomForm({
-                                                  binCode: fullCode,
-                                                  length: binData.cellLength,
-                                                  width: binData.cellWidth,
-                                                  height: binData.cellHeight,
-                                                  maxWeight: binData.maxWeightCapacity,
-                                                });
-                                              }}
-                                              className={`p-2 rounded-lg border-2 transition cursor-pointer relative flex flex-col justify-between h-24 ${
-                                                aiRec
-                                                  ? 'border-cyan-400 bg-cyan-950 shadow-lg ring-2 ring-cyan-400'
-                                                  : custom
-                                                    ? 'border-purple-400 bg-purple-950/60'
-                                                    : binData.status === 'FULL'
-                                                      ? 'border-red-500 bg-red-950/60'
-                                                      : binData.status === 'PARTIAL'
-                                                        ? 'border-amber-400 bg-amber-950/60'
-                                                        : 'border-amber-700/60 bg-amber-900/20 hover:border-amber-400'
-                                              }`}
-                                            >
-                                              {/* AI BADGE */}
-                                              {aiRec && (
-                                                <span className="absolute -top-2 -right-1 px-1 rounded bg-cyan-400 text-slate-950 text-[8px] font-black">
-                                                  {aiRec.score}% AI
-                                                </span>
-                                              )}
-
-                                              <div className="flex justify-between items-center">
-                                                <span className="text-[9px] font-black text-amber-300 font-mono truncate">
-                                                  {fullCode}
-                                                </span>
-                                                <span
-                                                  className={`h-2 w-2 rounded-full ${
-                                                    binData.status === 'FULL'
-                                                      ? 'bg-red-500'
-                                                      : binData.status === 'PARTIAL'
-                                                        ? 'bg-amber-500'
-                                                        : 'bg-emerald-400'
-                                                  }`}
-                                                />
-                                              </div>
-
-                                              <div className="text-[9px] text-slate-300 font-semibold space-y-0.5">
-                                                <div>{binData.cellLength}x{binData.cellWidth}x{binData.cellHeight} cm</div>
-                                                <div className="text-emerald-400 font-bold">{binVolM3} m³</div>
-                                                <div className="text-amber-400 font-bold">Max: {binData.maxWeightCapacity}kg</div>
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                            </div>
+                            <span className="text-[11px] font-bold text-slate-500">
+                              {baysCount} Khoang (Bays) × {shelvesCount} Tầng × {binsPerShelf} Hộc
+                            </span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
 
-              {/* 3D VIEW MODE */}
-              {viewMode === '3D_VIEW' && activeZone && (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-extrabold text-slate-800 dark:text-white uppercase">
-                      MÔ PHỎNG 3D KHÔNG GIAN KHO & DÃY KỆ DỌC (REALTIME 3D)
-                    </span>
-                    <span className="text-slate-500">Xoay 360° & Phóng to thu nhỏ để xem kết cấu</span>
-                  </div>
+                          {/* 2D BAYS GRID COLUMNS */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                            {Array.from({ length: baysCount }).map((_, bIdx) => {
+                              const bayNum = bIdx + 1;
+                              const bayCode = `B${String(bayNum).padStart(2, '0')}`;
 
-                  <div className="h-[480px] rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-950">
-                    <Warehouse3DViewer subWarehouse={activeZone} />
-                  </div>
-                </div>
-              )}
+                              return (
+                                <div
+                                  key={bayCode}
+                                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950 p-2 space-y-2"
+                                >
+                                  <div className="text-[11px] font-black text-center text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950 py-0.5 rounded border border-cyan-200 dark:border-cyan-900">
+                                    Khoang {bayCode}
+                                  </div>
 
-              {/* CUSTOM BIN EDIT MODAL / FORM (WHEN CLICKING A BIN) */}
-              {editingBinCode && (
-                <div className="p-5 rounded-2xl bg-slate-900 text-white border-2 border-cyan-400 shadow-2xl space-y-4 animate-in fade-in">
-                  <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-cyan-600 text-white font-black">
-                        <Edit className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-cyan-400 font-mono">
-                          TÙY CHỈNH KÍCH THƯỚC & TẢI TRỌNG RIÊNG CHO Ô: {editingBinCode}
-                        </h4>
-                        <p className="text-[11px] text-slate-400">
-                          Nhập kích thước riêng (Dài x Rộng x Cao cm) và Trọng tải cho ô/ngăn này
-                        </p>
-                      </div>
-                    </div>
+                                  {/* SHELVES & BINS CELL MATRIX */}
+                                  <div className="space-y-1.5">
+                                    {Array.from({ length: shelvesCount })
+                                      .map((_, sIdx) => shelvesCount - sIdx) // Render top level down
+                                      .map((shelfNum) => {
+                                        const shelfCode = `S${String(shelfNum).padStart(2, '0')}`;
 
-                    <button
-                      type="button"
-                      onClick={() => setEditingBinCode(null)}
-                      className="text-slate-400 hover:text-white text-xs p-1"
-                    >
-                      ✕ Đóng
-                    </button>
-                  </div>
+                                        return (
+                                          <div key={shelfCode} className="space-y-1">
+                                            <div className="text-[9px] font-bold text-slate-400 px-1">
+                                              Tầng {shelfCode}
+                                            </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div>
-                      <label className="block text-slate-300 font-bold mb-1">Chiều Dài Ô (cm)</label>
-                      <input
-                        type="number"
-                        value={binCustomForm.length}
-                        onChange={(e) => setBinCustomForm({ ...binCustomForm, length: Number(e.target.value) || 10 })}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white font-bold text-center"
-                      />
-                    </div>
+                                            <div
+                                              className="grid gap-1.5"
+                                              style={{ gridTemplateColumns: `repeat(${Math.max(1, binsPerShelf)}, minmax(0, 1fr))` }}
+                                            >
+                                              {Array.from({ length: binsPerShelf }).map((_, cIdx) => {
+                                                const cellNum = cIdx + 1;
+                                                const cellCode = `C${String(cellNum).padStart(2, '0')}`;
+                                                const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${bayCode}-${shelfCode}-${cellCode}`;
+                                                const isCustom = rack.customBins && rack.customBins[fullBinCode];
 
-                    <div>
-                      <label className="block text-slate-300 font-bold mb-1">Chiều Rộng Ô (cm)</label>
-                      <input
-                        type="number"
-                        value={binCustomForm.width}
-                        onChange={(e) => setBinCustomForm({ ...binCustomForm, width: Number(e.target.value) || 10 })}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white font-bold text-center"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-bold mb-1">Chiều Cao Ô (cm)</label>
-                      <input
-                        type="number"
-                        value={binCustomForm.height}
-                        onChange={(e) => setBinCustomForm({ ...binCustomForm, height: Number(e.target.value) || 10 })}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white font-bold text-center"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-amber-400 font-bold mb-1">Tải Trọng Max (kg)</label>
-                      <input
-                        type="number"
-                        value={binCustomForm.maxWeight}
-                        onChange={(e) => setBinCustomForm({ ...binCustomForm, maxWeight: Number(e.target.value) || 10 })}
-                        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-amber-400 font-black text-center"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-800 pt-3">
-                    <button
-                      type="button"
-                      onClick={() => handleSaveCustomBin('SINGLE')}
-                      className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold text-xs shadow transition cursor-pointer"
-                    >
-                      Lưu cho Ô này ({editingBinCode})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveCustomBin('SHELF')}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold text-xs shadow transition cursor-pointer"
-                    >
-                      Áp dụng cho CẢ TẦNG
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveCustomBin('RACK')}
-                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold text-xs shadow transition cursor-pointer"
-                    >
-                      Áp dụng cho TOÀN DÃY KỆ
-                    </button>
+                                                return (
+                                                  <button
+                                                    key={fullBinCode}
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setEditingBinCode(fullBinCode);
+                                                      setBinCustomForm(
+                                                        isCustom || {
+                                                          binCode: fullBinCode,
+                                                          length: rack.defaultBinLength || 120,
+                                                          width: rack.defaultBinWidth || 80,
+                                                          height: rack.defaultBinHeight || 100,
+                                                          maxWeight: rack.defaultBinMaxWeight || 500,
+                                                        }
+                                                      );
+                                                    }}
+                                                    className={`p-1.5 rounded-lg border text-center font-mono text-[10px] font-bold transition cursor-pointer ${
+                                                      isCustom
+                                                        ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 shadow-sm'
+                                                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-cyan-500 hover:bg-cyan-50'
+                                                    }`}
+                                                  >
+                                                    <span className="block truncate text-[9px]">{cellCode}</span>
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
