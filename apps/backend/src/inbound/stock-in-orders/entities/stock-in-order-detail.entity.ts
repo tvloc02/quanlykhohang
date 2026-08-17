@@ -49,4 +49,7 @@ export class StockInOrderDetail extends BaseEntity {
 
   @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
   volumetricWeight: number;
+
+  @Column({ type: 'text', nullable: true })
+  note?: string;
 }

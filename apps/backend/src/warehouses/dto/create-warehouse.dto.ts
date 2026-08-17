@@ -30,4 +30,7 @@ export class CreateWarehouseDto {
   @IsString({ each: true })
   @IsOptional()
   staffIds?: string[];
+
+  @IsOptional()
+  subWarehouses?: any;
 }

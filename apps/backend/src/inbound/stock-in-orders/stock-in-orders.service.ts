@@ -112,6 +112,7 @@ export class StockInOrdersService {
         height: Math.min(999999.99, toNumber(purchaseDetail.height)),
         volume: Math.min(999999.9999, toNumber(purchaseDetail.volume)),
         volumetricWeight: Math.min(999999.99, toNumber(purchaseDetail.volumetricWeight)),
+        note: purchaseDetail.note || '',
       }),
     );
 
@@ -489,6 +490,7 @@ export class StockInOrdersService {
         height: toNumber(detail.height),
         volume: toNumber(detail.volume),
         volumetricWeight: toNumber(detail.volumetricWeight),
+        note: detail.note || '',
         product: detail.product
           ? {
               id: detail.product.id,

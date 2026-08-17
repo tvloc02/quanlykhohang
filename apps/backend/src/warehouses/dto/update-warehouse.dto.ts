@@ -26,4 +26,7 @@ export class UpdateWarehouseDto {
   @IsString({ each: true })
   @IsOptional()
   staffIds?: string[];
+
+  @IsOptional()
+  subWarehouses?: any;
 }
