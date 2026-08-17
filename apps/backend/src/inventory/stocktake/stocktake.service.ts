@@ -279,14 +279,34 @@ export class StocktakeService {
       throw new BadRequestException('Sản phẩm đã có trong phiên kiểm kê này');
     }
 
-    // Get system quantity from StockBalance
-    const balance = await this.balanceRepo.findOne({
+    // Get system quantity from StockBalance with smart location matching
+    let balance = await this.balanceRepo.findOne({
       where: {
         product: { id: product.id } as any,
         locationCode: stocktake.locationCode,
       },
       relations: ['product'],
     });
+
+    if (!balance && (stocktake.locationCode === 'KH006' || stocktake.locationCode === 'Kho Thanh Trì')) {
+      balance = await this.balanceRepo.findOne({
+        where: {
+          product: { id: product.id } as any,
+          locationCode: 'KHO-NVL',
+        },
+        relations: ['product'],
+      });
+    }
+
+    if (!balance) {
+      balance = await this.balanceRepo.findOne({
+        where: {
+          product: { id: product.id } as any,
+        },
+        relations: ['product'],
+      });
+    }
+
     const systemQty = balance?.totalPhysical || 0;
 
     const countVal = dto.countedQty !== undefined && dto.countedQty !== null ? dto.countedQty : 0;
@@ -425,6 +445,25 @@ export class StocktakeService {
             relations: ['product'],
           });
 
+          if (!balance && (stocktake.locationCode === 'KH006' || stocktake.locationCode === 'Kho Thanh Trì')) {
+            balance = await manager.findOne(StockBalance, {
+              where: {
+                product: { id: detail.product.id } as any,
+                locationCode: 'KHO-NVL',
+              },
+              relations: ['product'],
+            });
+          }
+
+          if (!balance) {
+            balance = await manager.findOne(StockBalance, {
+              where: {
+                product: { id: detail.product.id } as any,
+              },
+              relations: ['product'],
+            });
+          }
+
           if (!balance) {
             const product = await manager.findOne(Product, { where: { id: detail.product.id } });
             if (product) {
@@ -438,11 +477,23 @@ export class StocktakeService {
             }
           } else {
             balance.totalPhysical = detail.countedQty;
+            balance.locationCode = stocktake.locationCode || balance.locationCode;
             balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
           }
 
           if (balance) {
             await manager.save(StockBalance, balance);
+
+            // Clean up any remaining duplicate balances for this product
+            const allBalances = await manager.find(StockBalance, {
+              where: { product: { id: detail.product.id } as any },
+            });
+            if (allBalances.length > 1) {
+              const duplicates = allBalances.filter((b) => b.id !== balance.id);
+              if (duplicates.length > 0) {
+                await manager.remove(StockBalance, duplicates);
+              }
+            }
           }
         }
       }
