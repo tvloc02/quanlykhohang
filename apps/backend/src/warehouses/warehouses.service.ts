@@ -14,10 +14,24 @@ export class WarehousesService {
   ) {}
 
   private parseWarehouse(warehouse: Warehouse) {
+    let parsedSubWarehouses = [];
+    if (warehouse.subWarehouses) {
+      if (Array.isArray(warehouse.subWarehouses)) {
+        parsedSubWarehouses = warehouse.subWarehouses;
+      } else if (typeof warehouse.subWarehouses === 'string' && (warehouse.subWarehouses as string).trim()) {
+        try {
+          parsedSubWarehouses = JSON.parse(warehouse.subWarehouses);
+        } catch {
+          parsedSubWarehouses = [];
+        }
+      }
+    }
+
     return {
       ...warehouse,
       managerIds: this.parseJsonArray(warehouse.managerIds),
       staffIds: this.parseJsonArray(warehouse.staffIds),
+      subWarehouses: parsedSubWarehouses,
     };
   }
 

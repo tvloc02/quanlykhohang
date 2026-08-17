@@ -737,6 +737,77 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
   const [selectedBinsMap, setSelectedBinsMap] = useState<Record<string, string[]>>({});
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState('');
+  const [dbOccupiedBinsMap, setDbOccupiedBinsMap] = useState<Map<string, number>>(new Map());
+
+  // Fetch real occupied bin codes from database
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    async function loadOccupied() {
+      try {
+        const occMap = new Map<string, number>();
+        const headers = authHeaders();
+
+        const dtRes = await fetch(`${API_BASE_URL}/inventory/visualizer/digital-twin?days=30`, { headers }).catch(() => null);
+        if (dtRes && dtRes.ok) {
+          const cells: any[] = await dtRes.json();
+          cells.forEach((c) => {
+            if (c.locationCode && (c.totalPhysical > 0 || c.allocated > 0)) {
+              occMap.set(c.locationCode, Number(c.totalPhysical || c.allocated || 1));
+            }
+          });
+        }
+
+        const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null);
+        if (poRes && poRes.ok) {
+          const pos: any[] = await poRes.json();
+          pos.forEach((po) => {
+            (po.details || []).forEach((d: any) => {
+              const noteText = d.note || '';
+              if (noteText.includes('[Vị trí Ô:')) {
+                const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+                if (match && match[1]) {
+                  match[1].split(',').forEach((code: string) => {
+                    const bin = code.trim();
+                    if (bin) occMap.set(bin, Number(d.receivedQty || d.expectedQty || 1));
+                  });
+                }
+              }
+            });
+          });
+        }
+
+        if (isMounted) setDbOccupiedBinsMap(occMap);
+      } catch (err) {
+        console.error('Lỗi tải dữ liệu ô kệ đã có hàng:', err);
+      }
+    }
+    loadOccupied();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
+
+  // Set of bins already assigned to items in this order
+  const currentOrderAssignedBins = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((it) => {
+      (it.assignedBins || []).forEach((b) => {
+        if (b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')) && b !== it.warehouseCode) {
+          set.add(b);
+        }
+      });
+      if (it.locationBin && it.locationBin !== it.warehouseCode) {
+        it.locationBin.split(',').forEach((s) => {
+          const trimmed = s.trim();
+          if (trimmed && (trimmed.includes('-S0') || trimmed.includes('-R0') || trimmed.includes('-C'))) {
+            set.add(trimmed);
+          }
+        });
+      }
+    });
+    return set;
+  }, [items]);
 
   // 1. Generate Racks Visual Grid Topology dynamically for the selected warehouse
   const racksTopology: RackStructure[] = useMemo(() => {
@@ -754,7 +825,22 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       return Array.from({ length: cellsCount }).map((_, idx) => {
         const cellNum = (idx + 1).toString().padStart(2, '0');
         const binCode = `${zonePrefix}-${rackId}-${floorId}-C${cellNum}`;
-        const isOccupied = idx === 7 && floorId === 'S01';
+
+        let isOccupied = false;
+        // Bins belonging to the current order items are NOT marked as occupied by outside stock
+        if (!currentOrderAssignedBins.has(binCode)) {
+          if (dbOccupiedBinsMap.has(binCode)) {
+            isOccupied = true;
+          } else {
+            for (const [key] of dbOccupiedBinsMap.entries()) {
+              if (key.includes(binCode) || binCode.includes(key)) {
+                isOccupied = true;
+                break;
+              }
+            }
+          }
+        }
+
         return {
           binCode,
           cellCode: `Ô C${cellNum}`,
@@ -854,7 +940,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         ],
       },
     ];
-  }, [warehouseCode]);
+  }, [warehouseCode, dbOccupiedBinsMap, currentOrderAssignedBins]);
 
   // 2. Initialize selections and AI chat when modal opens
   useEffect(() => {
@@ -883,9 +969,14 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
     // Pass 1: Keep already assigned bins (only if valid bin codes, not raw warehouse codes)
     items.forEach((item) => {
-      const validBins = (item.assignedBins || []).filter(
+      let validBins = (item.assignedBins || []).filter(
         (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')) && b !== item.warehouseCode
       );
+      if (validBins.length === 0 && item.locationBin && item.locationBin !== item.warehouseCode) {
+        validBins = item.locationBin.split(',').map((s) => s.trim()).filter(
+          (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C'))
+        );
+      }
       if (validBins.length > 0) {
         initialMap[item.rowId] = [...validBins];
         validBins.forEach((b) => usedBinsSet.add(b));
@@ -1305,7 +1396,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                               onClick={() => !isCellDisabled && toggleBinSelection(cell.binCode)}
                               className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between ${
                                 cell.isOccupied
-                                  ? 'bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed'
+                                  ? 'bg-amber-100/90 border-2 border-amber-500 text-amber-950 font-black shadow-xs opacity-90 cursor-not-allowed'
                                   : isOccupiedByOther
                                   ? 'bg-amber-50/70 border-amber-300 opacity-75 cursor-not-allowed'
                                   : isSelected
@@ -1314,9 +1405,14 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                               }`}
                             >
                               <div className="flex items-center justify-between mb-1">
-                                <span className={`text-xs font-black ${isSelected ? 'text-white' : isOccupiedByOther ? 'text-amber-900' : 'text-slate-900'}`}>
+                                <span className={`text-xs font-black ${cell.isOccupied ? 'text-amber-950' : isSelected ? 'text-white' : isOccupiedByOther ? 'text-amber-900' : 'text-slate-900'}`}>
                                   {cell.cellCode}
                                 </span>
+                                {cell.isOccupied && (
+                                  <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-md shadow-2xs">
+                                    🔒 Đã có hàng
+                                  </span>
+                                )}
                                 {isSelected && (
                                   <span className="bg-white text-cyan-900 text-[9px] font-black px-1.5 py-0.2 rounded-md shadow-2xs">
                                     ✓ Đã chọn
@@ -1881,6 +1977,19 @@ export default function CreateStockInOrderPage({
           const afterDisc = sub * (1 - discP / 100);
           const tot = Number(d.totalLineAmount || d.totalAmount || afterDisc * (1 + vatP / 100));
           const rowWhCode = d.warehouseCode || orderWhCode;
+          const rawAssignedBins = Array.isArray(d.assignedBins) ? d.assignedBins : [];
+          let parsedBins: string[] = rawAssignedBins.filter((b: string) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')));
+
+          if (parsedBins.length === 0 && d.locationBin && typeof d.locationBin === 'string' && d.locationBin !== rowWhCode) {
+            parsedBins = d.locationBin.split(',').map((b: string) => b.trim()).filter((b: string) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')));
+          }
+
+          if (parsedBins.length === 0 && d.note && typeof d.note === 'string' && d.note.includes('[Vị trí Ô:')) {
+            const match = d.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+            if (match && match[1]) {
+              parsedBins = match[1].split(',').map((b: string) => b.trim()).filter((b: string) => b && b.length > 2);
+            }
+          }
 
           return {
             rowId: d.id || `row-loaded-${idx}`,
@@ -1902,8 +2011,8 @@ export default function CreateStockInOrderPage({
             volume: Number(d.volume || 0),
             volumetricWeight: Number(d.volumetricWeight || 0),
             warehouseCode: rowWhCode,
-            locationBin: d.locationBin || rowWhCode,
-            assignedBins: d.assignedBins && d.assignedBins.length > 0 ? d.assignedBins : [rowWhCode],
+            locationBin: parsedBins.join(', ') || rowWhCode,
+            assignedBins: parsedBins.length > 0 ? parsedBins : [rowWhCode],
           };
         });
 

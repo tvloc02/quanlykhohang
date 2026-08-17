@@ -226,12 +226,14 @@ export class SmartInventoryService {
     const maxActivity = Math.max(...Array.from(activityMap.values()), 1);
 
     const cells: DigitalTwinCell[] = [];
-    const zones = ['A', 'B', 'C', 'D'];
+    const processedCodes = new Set<string>();
 
+    const zones = ['A', 'B', 'C', 'D'];
     for (const zone of zones) {
       for (let rack = 1; rack <= 4; rack++) {
         for (let bin = 1; bin <= 3; bin++) {
           const locCode = `${zone}-0${rack}-0${bin}`;
+          processedCodes.add(locCode);
           const locBalances = balances.filter((b) => b.locationCode === locCode);
 
           const totalPhysical = locBalances.reduce((sum, b) => sum + b.totalPhysical, 0);
@@ -260,6 +262,37 @@ export class SmartInventoryService {
         }
       }
     }
+
+    // Process any additional specific bin location codes stored in stock_balances (e.g. ZONE-A-R01-S05-C01)
+    balances.forEach((b) => {
+      if (!b.locationCode || processedCodes.has(b.locationCode)) return;
+      processedCodes.add(b.locationCode);
+
+      const locBalances = balances.filter((x) => x.locationCode === b.locationCode);
+      const totalPhysical = locBalances.reduce((sum, x) => sum + x.totalPhysical, 0);
+      const allocated = locBalances.reduce((sum, x) => sum + x.allocated, 0);
+      const available = locBalances.reduce((sum, x) => sum + x.available, 0);
+      const maxCapacity = 500;
+      const occupancyRate = Math.min(Math.round((totalPhysical / maxCapacity) * 100), 100);
+
+      cells.push({
+        locationCode: b.locationCode,
+        zone: b.locationCode.split('-')[0] || 'ZONE',
+        rack: b.locationCode.includes('-R') ? b.locationCode.split('-')[1] : 'RACK',
+        bin: b.locationCode.split('-').pop() || b.locationCode,
+        totalPhysical,
+        allocated,
+        available,
+        maxCapacity,
+        occupancyRate,
+        isFrozen: frozenCodes.has(b.locationCode),
+        activityCount: activityMap.get(b.locationCode) || 5,
+        heatmapIntensity: totalPhysical > 0 ? 0.9 : 0.1,
+        productsCount: locBalances.length,
+      });
+    });
+
+    return cells;
 
     return cells;
   }
