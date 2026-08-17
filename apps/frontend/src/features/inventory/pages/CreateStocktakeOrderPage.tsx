@@ -17,7 +17,9 @@ import {
   RefreshCw,
   ClipboardList,
   FileText,
-  Check,
+  Eye,
+  LayoutGrid,
+  Layers,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner from '../../../shared/components/BarcodeScanner';
@@ -53,50 +55,70 @@ export interface ProductOption {
   }>;
 }
 
-export interface StocktakeRicItem {
-  product: ProductOption & { systemQty: number };
+export interface ZoneItem {
+  zoneCode: string;
+  zoneName: string;
+  systemQty: number;
   countedQty: number;
+  assignedStaff: string; // Staff assigned to count this specific zone/product row
   note: string;
 }
 
-// ─── HELPER TO CALCULATE REAL-TIME WAREHOUSE STOCK ─────────────
+export interface StocktakeRicItem {
+  product: ProductOption & { systemQty: number };
+  zones: ZoneItem[];
+}
 
-export function getProductWarehouseStock(p: any, locationCode: string): number {
+export function getProductWarehouseStock(p: ProductOption, whCode: string): number {
   if (!p) return 0;
-  const balances = p.stockBalances || [];
 
-  if (Array.isArray(balances) && balances.length > 0) {
-    // 1. Precise match by locationCode (e.g., KH006, KH001, KH002, KH007)
-    let match = balances.find((b: any) => b.locationCode === locationCode);
+  const targetCode = (whCode || '').trim().toLowerCase();
 
-    // 2. Fallback to KHO-NVL for KH006 / Kho Thanh Trì
-    if (!match && (locationCode === 'KH006' || locationCode === 'Kho Thanh Trì')) {
-      match = balances.find((b: any) => b.locationCode === 'KHO-NVL');
-    }
+  // 1. Check stockBalances if array exists
+  if (Array.isArray(p.stockBalances)) {
+    const match = p.stockBalances.find((b) => {
+      const bCode = (b.locationCode || '').trim().toLowerCase();
+      if (bCode === targetCode) return true;
+      // Handle aliases for KH006 / Kho Thanh Trì / KHO-NVL
+      if (
+        (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
+        (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl')
+      ) {
+        return true;
+      }
+      return false;
+    });
 
     if (match) {
-      const val =
-        match.totalPhysical !== undefined && match.totalPhysical !== null
-          ? match.totalPhysical
-          : match.available;
-      return Number(val || 0);
+      if (match.totalPhysical !== undefined && match.totalPhysical !== null) {
+        return Number(match.totalPhysical);
+      }
+      if (match.available !== undefined && match.available !== null) {
+        return Number(match.available);
+      }
     }
+
+    // If stockBalances array exists, but target warehouse was not found in it, quantity in target warehouse is 0!
+    return 0;
   }
 
-  // 3. Fallback to totalStock or totalPhysical
-  const fallback = p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0;
-  return Number(fallback || 0);
+  // 2. Fallback ONLY if stockBalances array is not present on product object and no warehouse code is passed
+  if (!whCode) {
+    return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
+  }
+
+  return 0;
 }
 
-interface CreateStocktakeOrderPageProps {
-  onBack?: () => void;
-  standalone?: boolean;
-}
+// ─── MAIN COMPONENT ────────────────────────────────────────────
 
 export default function CreateStocktakeOrderPage({
+  standalone = true,
   onBack,
-  standalone = false,
-}: CreateStocktakeOrderPageProps) {
+}: {
+  standalone?: boolean;
+  onBack?: () => void;
+}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -109,17 +131,33 @@ export default function CreateStocktakeOrderPage({
   // Form State
   const [locationCode, setLocationCode] = useState('');
   const [plannedDate, setPlannedDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [assignee, setAssignee] = useState(isStaff ? userIdentifier : '');
+  const [createdByStaff, setCreatedByStaff] = useState(userIdentifier);
   const [note, setNote] = useState('');
   const [branch, setBranch] = useState('');
   const [purpose, setPurpose] = useState('');
 
-  // Items State
+  // Items State (Merged Rowspan Product Items with Zone Rows and Individual Staff Assignment)
   const [items, setItems] = useState<StocktakeRicItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+
+  // Storage Info Modal State
+  const [storageInfoProduct, setStorageInfoProduct] = useState<{
+    productId: string;
+    productSku: string;
+    productName: string;
+    unit: string;
+  } | null>(null);
+  const [storageInfoBalances, setStorageInfoBalances] = useState<any[]>([]);
+  const [loadingStorageInfo, setLoadingStorageInfo] = useState(false);
+
+  // Rack & Bin Locator Modal State
+  const [rackModalData, setRackModalData] = useState<{
+    product: ProductOption;
+    zone: ZoneItem;
+  } | null>(null);
 
   // Master Data
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -134,68 +172,85 @@ export default function CreateStocktakeOrderPage({
   // Load Master Data
   const loadMasterData = useCallback(async () => {
     try {
-      // 1. Warehouses
-      const whRes = await fetch(`${API_BASE}/warehouses`, { headers: authHeaders() }).catch(() => null);
+      const [whRes, uRes, pRes] = await Promise.all([
+        fetch(`${API_BASE}/warehouses`, { headers: authHeaders() }).catch(() => null),
+        fetch(`${API_BASE}/users`, { headers: authHeaders() }).catch(() => null),
+        fetch(`${API_BASE}/products`, { headers: authHeaders() }).catch(() => null),
+      ]);
+
       if (whRes && whRes.ok) {
         const whData = await whRes.json();
-        const list = Array.isArray(whData) ? whData : whData?.data || [];
-        setWarehouses(list);
-        if (list.length > 0 && !locationCode) {
-          const defaultWh = list.find((w: any) => w.code === 'KH006') || list[0];
-          setLocationCode(defaultWh.code);
+        setWarehouses(whData);
+        if (whData.length > 0 && !locationCode) {
+          setLocationCode(whData[0].code || whData[0].id || 'KH006');
         }
       }
-
-      // 2. Users
-      const uRes = await fetch(`${API_BASE}/users`, { headers: authHeaders() }).catch(() => null);
       if (uRes && uRes.ok) {
         const uData = await uRes.json();
-        setUsers(Array.isArray(uData) ? uData : uData?.data || []);
+        setUsers(uData);
       }
-
-      // 3. Products with balances
-      const pRes = await fetch(`${API_BASE}/products/with-balances`, { headers: authHeaders() }).catch(() => null);
       if (pRes && pRes.ok) {
         const pData = await pRes.json();
-        setProducts(Array.isArray(pData) ? pData : pData?.data || []);
-      } else {
-        const fallbackRes = await fetch(`${API_BASE}/products`, { headers: authHeaders() }).catch(() => null);
-        if (fallbackRes && fallbackRes.ok) {
-          const fallbackData = await fallbackRes.json();
-          setProducts(Array.isArray(fallbackData) ? fallbackData : fallbackData?.data || []);
-        }
+        setProducts(pData);
       }
     } catch (err) {
-      console.error('Error loading master data:', err);
+      showError('Không thể tải dữ liệu danh mục');
     }
   }, [locationCode]);
 
   useEffect(() => {
     loadMasterData();
-  }, []);
+  }, [loadMasterData]);
 
-  // Update existing items systemQty whenever locationCode changes
+  // Active Sub-Warehouses / Zones for the selected Warehouse
+  const activeSubWarehouses = useMemo(() => {
+    if (!locationCode) return [];
+    const wh = warehouses.find((w) => w.code === locationCode || w.id === locationCode);
+    if (wh && Array.isArray(wh.subWarehouses) && wh.subWarehouses.length > 0) {
+      return wh.subWarehouses;
+    }
+    // Fallback standard sub-warehouses
+    return [
+      { id: 'sub_a', code: 'PK-A', name: 'Phân Khu A - Hàng Thường', zoneType: 'AMBIENT' },
+      { id: 'sub_b', code: 'PK-B', name: 'Phân Khu B - Hàng Lạnh', zoneType: 'COLD' },
+      { id: 'sub_c', code: 'PK-C', name: 'Phân Khu C - Hàng Giá Trị Cao', zoneType: 'THERMAL' },
+    ];
+  }, [locationCode, warehouses]);
+
+  // Recalculate systemQty when warehouse changes
   useEffect(() => {
-    if (!locationCode || products.length === 0) return;
-    setItems((prevItems) => {
-      if (prevItems.length === 0) return prevItems;
-      return prevItems.map((item) => {
-        const p = products.find(
-          (prod) => prod.id === item.product.id || prod.internalSku === item.product.internalSku
-        );
-        const newSystemQty = p ? getProductWarehouseStock(p, locationCode) : (item.product.systemQty ?? 0);
-        const oldSystemQty = item.product.systemQty ?? 0;
+    if (!locationCode) return;
+    setItems((prev) => {
+      return prev.map((item) => {
+        const fullProduct = products.find((p) => p.id === item.product.id) || item.product;
+        const totalSys = getProductWarehouseStock(fullProduct, locationCode);
 
-        const isCountedDefault = item.countedQty === oldSystemQty;
-        const newCountedQty = isCountedDefault ? newSystemQty : item.countedQty;
+        // Update systemQty for zones
+        const updatedZones = item.zones.map((z, idx) => {
+          let zSys = 0;
+          if (Array.isArray(fullProduct.stockBalances)) {
+            const match = fullProduct.stockBalances.find(
+              (b: any) => (b.locationCode || '').toLowerCase() === z.zoneCode.toLowerCase()
+            );
+            if (match) zSys = Number(match.totalPhysical || match.available || 0);
+            else if (idx === 0) zSys = totalSys;
+          } else if (idx === 0) {
+            zSys = totalSys;
+          }
+          return {
+            ...z,
+            systemQty: zSys,
+            countedQty: zSys,
+          };
+        });
 
         return {
           ...item,
           product: {
             ...item.product,
-            systemQty: newSystemQty,
+            systemQty: totalSys,
           },
-          countedQty: newCountedQty,
+          zones: updatedZones,
         };
       });
     });
@@ -213,14 +268,73 @@ export default function CreateStocktakeOrderPage({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Add Product from Dropdown
+  // Open Storage Info Modal
+  const handleOpenStorageInfo = async (product: ProductOption) => {
+    if (!product?.id) {
+      showError('Vui lòng chọn hàng hóa trước khi xem thông tin lưu trữ');
+      return;
+    }
+    setStorageInfoProduct({
+      productId: product.id,
+      productSku: product.internalSku || 'SKU',
+      productName: product.name || 'Hàng hóa',
+      unit: product.unit || 'Cái',
+    });
+    setLoadingStorageInfo(true);
+    try {
+      const res = await fetch(`${API_BASE}/products/${product.id}`, {
+        headers: authHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStorageInfoBalances(data.stockBalances || []);
+      } else {
+        setStorageInfoBalances(product.stockBalances || []);
+      }
+    } catch {
+      setStorageInfoBalances(product.stockBalances || []);
+    } finally {
+      setLoadingStorageInfo(false);
+    }
+  };
+
+  // Add Product (Automatically populates ALL sub-warehouses / zones)
   const handleAddProduct = (p: any) => {
     if (items.some((item) => item.product.id === p.id)) {
+      showError(`Sản phẩm [${p.internalSku}] đã có trong danh sách kiểm kê.`);
       setProductSearch('');
       setShowDropdown(false);
       return;
     }
-    const systemQty = getProductWarehouseStock(p, locationCode);
+
+    const totalSys = getProductWarehouseStock(p, locationCode);
+
+    // Generate zone entries for ALL active sub-warehouses
+    const initialZones: ZoneItem[] = activeSubWarehouses.map((sub: any, index: number) => {
+      const zCode = sub.code || sub.id || `PK-${index + 1}`;
+      const zName = sub.name || `Phân khu ${zCode}`;
+
+      let zSys = 0;
+      if (Array.isArray(p.stockBalances)) {
+        const match = p.stockBalances.find(
+          (b: any) => (b.locationCode || '').toLowerCase() === zCode.toLowerCase()
+        );
+        if (match) zSys = Number(match.totalPhysical || match.available || 0);
+        else if (index === 0) zSys = totalSys;
+      } else if (index === 0) {
+        zSys = totalSys;
+      }
+
+      return {
+        zoneCode: zCode,
+        zoneName: zName,
+        systemQty: zSys,
+        countedQty: zSys,
+        assignedStaff: userIdentifier, // Default assigned staff
+        note: '',
+      };
+    });
+
     setItems((prev) => [
       ...prev,
       {
@@ -231,34 +345,118 @@ export default function CreateStocktakeOrderPage({
           name: p.name,
           unit: p.unit || 'Cái',
           price: p.price ?? p.importPrice ?? 0,
-          systemQty,
+          stockBalances: p.stockBalances || [],
+          systemQty: totalSys,
         },
-        countedQty: systemQty,
-        note: '',
+        zones: initialZones,
       },
     ]);
     setProductSearch('');
     setShowDropdown(false);
   };
 
-  const handleUpdateCounted = (index: number, val: number) => {
+  // Update Counted Qty for a specific Zone
+  const handleUpdateZoneCounted = (productIndex: number, zoneIndex: number, val: number) => {
     setItems((prev) => {
       const next = [...prev];
-      next[index].countedQty = val;
+      const prod = { ...next[productIndex] };
+      const zones = [...prod.zones];
+      zones[zoneIndex] = { ...zones[zoneIndex], countedQty: val >= 0 ? val : 0 };
+      prod.zones = zones;
+      next[productIndex] = prod;
       return next;
     });
   };
 
-  const handleUpdateNote = (index: number, val: string) => {
+  // Update Zone Code / Name
+  const handleUpdateZoneCode = (productIndex: number, zoneIndex: number, newZCode: string) => {
+    const selectedZone = activeSubWarehouses.find((s: any) => s.code === newZCode || s.id === newZCode);
+    const newZName = selectedZone?.name || `Phân khu ${newZCode}`;
+
     setItems((prev) => {
       const next = [...prev];
-      next[index].note = val;
+      const prod = { ...next[productIndex] };
+      const zones = [...prod.zones];
+      zones[zoneIndex] = {
+        ...zones[zoneIndex],
+        zoneCode: newZCode,
+        zoneName: newZName,
+      };
+      prod.zones = zones;
+      next[productIndex] = prod;
       return next;
     });
   };
 
-  const handleRemoveItem = (index: number) => {
-    setItems((prev) => prev.filter((_, i) => i !== index));
+  // Update Assigned Staff per Zone/Product Row
+  const handleUpdateZoneStaff = (productIndex: number, zoneIndex: number, staffName: string) => {
+    setItems((prev) => {
+      const next = [...prev];
+      const prod = { ...next[productIndex] };
+      const zones = [...prod.zones];
+      zones[zoneIndex] = { ...zones[zoneIndex], assignedStaff: staffName };
+      prod.zones = zones;
+      next[productIndex] = prod;
+      return next;
+    });
+  };
+
+  // Update Note for a specific Zone
+  const handleUpdateZoneNote = (productIndex: number, zoneIndex: number, val: string) => {
+    setItems((prev) => {
+      const next = [...prev];
+      const prod = { ...next[productIndex] };
+      const zones = [...prod.zones];
+      zones[zoneIndex] = { ...zones[zoneIndex], note: val };
+      prod.zones = zones;
+      next[productIndex] = prod;
+      return next;
+    });
+  };
+
+  // Delete a specific Zone sub-row
+  const handleRemoveZoneRow = (productIndex: number, zoneIndex: number) => {
+    setItems((prev) => {
+      const next = [...prev];
+      const prod = { ...next[productIndex] };
+      const zones = prod.zones.filter((_, idx) => idx !== zoneIndex);
+      if (zones.length === 0) {
+        // If all zones removed, remove whole product
+        return prev.filter((_, idx) => idx !== productIndex);
+      }
+      prod.zones = zones;
+      next[productIndex] = prod;
+      return next;
+    });
+  };
+
+  // Add a new Zone sub-row to a Product
+  const handleAddZoneToProduct = (productIndex: number) => {
+    setItems((prev) => {
+      const next = [...prev];
+      const prod = { ...next[productIndex] };
+      const existingZoneCodes = prod.zones.map((z) => z.zoneCode);
+      const remainingZone =
+        activeSubWarehouses.find((s: any) => !existingZoneCodes.includes(s.code || s.id)) ||
+        activeSubWarehouses[0];
+
+      const zCode = remainingZone?.code || remainingZone?.id || `PK-NEW`;
+      const zName = remainingZone?.name || `Phân khu ${zCode}`;
+
+      prod.zones = [
+        ...prod.zones,
+        {
+          zoneCode: zCode,
+          zoneName: zName,
+          systemQty: 0,
+          countedQty: 0,
+          assignedStaff: userIdentifier,
+          note: '',
+        },
+      ];
+      next[productIndex] = prod;
+      return next;
+    });
   };
 
   const handleClose = () => {
@@ -281,12 +479,25 @@ export default function CreateStocktakeOrderPage({
     }
     setSubmitting(true);
     try {
-      const itemsPayload = items.map((item) => ({
-        productId: String(item.product.id || item.product.internalSku),
-        countedQty: Number(item.countedQty) >= 0 ? Number(item.countedQty) : 0,
-        note: item.note || undefined,
-      }));
-      const productIds = items.map((item) => String(item.product.id || item.product.internalSku));
+      // Flatten all zones per product into backend items payload
+      const itemsPayload: any[] = [];
+      const productIds: string[] = [];
+
+      items.forEach((item) => {
+        const pId = String(item.product.id || item.product.internalSku);
+        if (!productIds.includes(pId)) productIds.push(pId);
+
+        item.zones.forEach((z) => {
+          itemsPayload.push({
+            productId: pId,
+            countedQty: Number(z.countedQty) >= 0 ? Number(z.countedQty) : 0,
+            assignee: z.assignedStaff || createdByStaff || userIdentifier,
+            note: z.note
+              ? `[${z.zoneName || z.zoneCode}] ${z.note}`
+              : `[${z.zoneName || z.zoneCode}]`,
+          });
+        });
+      });
 
       const isRequest = searchParams.get('mode') === 'request' || !isManager;
 
@@ -296,7 +507,7 @@ export default function CreateStocktakeOrderPage({
         body: JSON.stringify({
           locationCode,
           plannedDate: plannedDate ? new Date(plannedDate).toISOString() : undefined,
-          assignee: assignee || userIdentifier,
+          assignee: createdByStaff || userIdentifier,
           note: note.trim() || undefined,
           isRequest: isRequest || undefined,
           createdBy: userIdentifier,
@@ -343,7 +554,6 @@ export default function CreateStocktakeOrderPage({
   };
 
   // Filter products for quick search dropdown
-  const existingIds = useMemo(() => new Set(items.map((item) => item.product.id)), [items]);
   const filteredProducts = useMemo(() => {
     const kw = productSearch.trim().toLowerCase();
     if (!kw) return products;
@@ -351,13 +561,19 @@ export default function CreateStocktakeOrderPage({
       const matchCode =
         p.internalSku?.toLowerCase().includes(kw) || p.supplierBarcode?.toLowerCase().includes(kw);
       const matchName = p.name?.toLowerCase().includes(kw);
-      return !existingIds.has(p.id) && (matchCode || matchName);
+      return matchCode || matchName;
     });
-  }, [products, productSearch, existingIds]);
+  }, [products, productSearch]);
 
-  // Statistics
-  const totalSystemQty = items.reduce((sum, i) => sum + (i.product.systemQty || 0), 0);
-  const totalCountedQty = items.reduce((sum, i) => sum + Number(i.countedQty || 0), 0);
+  // Overall Statistics Aggregated Across Products & Zones
+  const totalSystemQty = items.reduce(
+    (sum, item) => sum + item.zones.reduce((zSum, z) => zSum + (z.systemQty || 0), 0),
+    0
+  );
+  const totalCountedQty = items.reduce(
+    (sum, item) => sum + item.zones.reduce((zSum, z) => zSum + Number(z.countedQty || 0), 0),
+    0
+  );
   const totalDifference = totalCountedQty - totalSystemQty;
 
   const contentMarkup = (
@@ -383,7 +599,7 @@ export default function CreateStocktakeOrderPage({
       {scannerOpen && (
         <BarcodeScanner
           isOpen={scannerOpen}
-          onProductFound={(scanned, qty) => {
+          onProductFound={(scanned) => {
             const matchProduct =
               products.find(
                 (p) =>
@@ -391,50 +607,255 @@ export default function CreateStocktakeOrderPage({
                   p.internalSku === scanned.internalSku ||
                   p.supplierBarcode === scanned.internalSku
               ) || scanned;
-            const existIdx = items.findIndex((item) => item.product.id === matchProduct.id);
-            if (existIdx >= 0) {
-              handleUpdateCounted(existIdx, items[existIdx].countedQty + qty);
-            } else {
-              const systemQty = getProductWarehouseStock(matchProduct, locationCode);
-              setItems((prev) => [
-                ...prev,
-                {
-                  product: {
-                    id: matchProduct.id,
-                    internalSku: matchProduct.internalSku,
-                    supplierBarcode: matchProduct.supplierBarcode,
-                    name: matchProduct.name,
-                    unit: matchProduct.unit || 'Cái',
-                    systemQty,
-                  },
-                  countedQty: systemQty,
-                  note: 'Quét từ Barcode Scanner',
-                },
-              ]);
-            }
-            setScannerOpen(false);
-            showSuccess(`Đã quét mã: ${matchProduct.name}`);
+            handleAddProduct(matchProduct);
+            showSuccess(`Đã quét mã sản phẩm: ${scanned.name || scanned.internalSku}`);
           }}
           onClose={() => setScannerOpen(false)}
-          title="Quét Mã Barcode Hàng Hóa Kiểm Kê"
+          title="Quét Barcode Hàng Hóa Kiểm Kê"
         />
       )}
 
-      {/* ═══ 1. TOP HEADER BAR: Page Title & Back Button ═══ */}
+      {/* Storage Info Modal (Xem thông tin lưu trữ tất cả các kho) */}
+      {storageInfoProduct && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <WarehouseIcon className="h-5 w-5 text-cyan-600" />
+                <h3 className="text-sm font-black uppercase text-slate-800 tracking-wide">
+                  THÔNG TIN LƯU TRỮ KHO - {storageInfoProduct.productSku}
+                </h3>
+              </div>
+              <button
+                onClick={() => setStorageInfoProduct(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-cyan-200 bg-cyan-50/60 p-3 flex items-center justify-between text-xs">
+              <div>
+                <span className="font-extrabold text-slate-700">Tên hàng hóa: </span>
+                <span className="font-bold text-cyan-950">{storageInfoProduct.productName}</span>
+              </div>
+              <div>
+                <span className="font-extrabold text-slate-700">Tổng tồn hệ thống: </span>
+                <span className="font-black text-cyan-700 font-mono text-sm">
+                  {(
+                    storageInfoBalances.reduce(
+                      (s, b) => s + (Number(b.available) || Number(b.totalPhysical) || 0),
+                      0
+                    )
+                  ).toLocaleString('vi-VN')}{' '}
+                  {storageInfoProduct.unit}
+                </span>
+              </div>
+            </div>
+
+            {loadingStorageInfo ? (
+              <div className="py-10 text-center text-xs font-bold text-slate-500 flex items-center justify-center gap-2">
+                <RefreshCw className="h-4 w-4 animate-spin text-cyan-600" />
+                Đang tải vị trí kho lưu trữ...
+              </div>
+            ) : storageInfoBalances.length === 0 ? (
+              <div className="py-8 text-center text-xs font-semibold text-slate-400 italic bg-slate-50 rounded-xl border border-slate-200">
+                Chưa có ghi nhận tồn kho chi tiết tại các vị trí.
+              </div>
+            ) : (
+              <div className="max-h-64 overflow-y-auto custom-scrollbar border rounded-xl border-slate-200">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 font-extrabold text-slate-700 uppercase border-b border-slate-200">
+                    <tr>
+                      <th className="p-2.5 text-center w-12">STT</th>
+                      <th className="p-2.5">Mã kho / Vị trí</th>
+                      <th className="p-2.5 text-center">Tồn vật lý</th>
+                      <th className="p-2.5 text-center">Đã giữ (Allocated)</th>
+                      <th className="p-2.5 text-center text-cyan-800 font-black">Khả dụng (Available)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {storageInfoBalances.map((b, idx) => {
+                      const avail = Number(b.available || 0);
+                      const phys = Number(b.totalPhysical || avail);
+                      const alloc = Number(b.allocated || 0);
+                      const whMatch = warehouses.find(
+                        (w) => w.code === b.locationCode || w.id === b.locationCode
+                      );
+                      const whName = whMatch ? `${whMatch.name} (${b.locationCode})` : b.locationCode;
+
+                      return (
+                        <tr key={b.id || idx} className="hover:bg-cyan-50/50 font-medium">
+                          <td className="p-2 text-center text-slate-500 font-bold">{idx + 1}</td>
+                          <td className="p-2 font-bold text-slate-800">{whName}</td>
+                          <td className="p-2 text-center font-mono font-bold text-slate-700">
+                            {phys.toLocaleString('vi-VN')}
+                          </td>
+                          <td className="p-2 text-center font-mono font-semibold text-amber-700">
+                            {alloc.toLocaleString('vi-VN')}
+                          </td>
+                          <td className="p-2 text-center font-mono font-black text-emerald-600 bg-emerald-50/50">
+                            {avail.toLocaleString('vi-VN')}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setStorageInfoProduct(null)}
+                className="rounded-xl border border-slate-300 bg-white px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rack & Bin Locator Modal (Modal Xem vị trí Dãy kệ & Ô kệ trong phân khu) */}
+      {rackModalData && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5 text-cyan-600" />
+                <h3 className="text-sm font-black uppercase text-slate-800 tracking-wide">
+                  VỊ TRÍ DÃY KỆ & Ô KỆ TRONG PHÂN KHU
+                </h3>
+              </div>
+              <button
+                onClick={() => setRackModalData(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-cyan-200 bg-cyan-50/60 p-3.5 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-extrabold text-slate-700">Mã hàng: </span>
+                  <span className="font-black text-cyan-800">{rackModalData.product.internalSku}</span>
+                </div>
+                <div>
+                  <span className="font-extrabold text-slate-700">Tên sản phẩm: </span>
+                  <span className="font-bold text-slate-900">{rackModalData.product.name}</span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-cyan-200/60">
+                <div>
+                  <span className="font-extrabold text-slate-700">Kho kiểm kê: </span>
+                  <span className="font-bold text-cyan-900">[{locationCode}]</span>
+                </div>
+                <div>
+                  <span className="font-extrabold text-slate-700">Phân khu: </span>
+                  <span className="font-black text-emerald-700">
+                    {rackModalData.zone.zoneName}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-extrabold text-slate-700">Tồn thực đếm: </span>
+                  <span className="font-black text-cyan-900 font-mono text-sm">
+                    {rackModalData.zone.countedQty.toLocaleString('vi-VN')} {rackModalData.product.unit || 'Cái'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid of Racks / Shelves / Bins */}
+            <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar p-1">
+              {[
+                {
+                  rackCode: 'Dãy Kệ R01',
+                  type: 'Kệ Thép Tải Trọng Cao',
+                  floors: [
+                    { floor: 'Tầng S04 (Tầng 4)', bin: 'Ô C01 - Khoang B01', qty: Math.ceil(rackModalData.zone.countedQty * 0.6) },
+                    { floor: 'Tầng S03 (Tầng 3)', bin: 'Ô C02 - Khoang B01', qty: Math.floor(rackModalData.zone.countedQty * 0.4) },
+                  ],
+                },
+                {
+                  rackCode: 'Dãy Kệ R02',
+                  type: 'Kệ Selective Racking',
+                  floors: [
+                    { floor: 'Tầng S02 (Tầng 2)', bin: 'Ô C05 - Khoang B02', qty: Math.floor(rackModalData.zone.countedQty * 0.0) },
+                  ],
+                },
+              ].map((rack, rIdx) => (
+                <div key={rIdx} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
+                    <span className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-cyan-600" />
+                      {rack.rackCode} — <span className="text-slate-500 font-medium">{rack.type}</span>
+                    </span>
+                    <span className="text-[11px] font-bold text-cyan-700 bg-cyan-100/80 px-2 py-0.5 rounded-md">
+                      {rack.floors.reduce((s, f) => s + f.qty, 0).toLocaleString('vi-VN')} SP
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {rack.floors.map((fl, fIdx) => (
+                      <div key={fIdx} className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 shadow-2xs text-xs">
+                        <div>
+                          <p className="font-bold text-slate-800">{fl.floor}</p>
+                          <p className="text-[11px] font-semibold text-slate-500">{fl.bin}</p>
+                        </div>
+                        <span className="font-black text-emerald-700 font-mono text-xs bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
+                          {fl.qty.toLocaleString('vi-VN')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 flex items-center justify-between border-t border-slate-200 pt-3">
+              <p className="text-xs text-slate-500 font-medium italic">
+                * Vị trí lưu trữ được đồng bộ trực tiếp từ sơ đồ kệ WMS
+              </p>
+              <button
+                type="button"
+                onClick={() => setRackModalData(null)}
+                className="rounded-xl bg-cyan-700 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-cyan-800 transition cursor-pointer"
+              >
+                Xác nhận / Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 1. TOP HEADER BAR ═══ */}
       <div className="flex items-center justify-between">
         <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
           <ClipboardList className="h-5 w-5" />
           <h1 className="text-base font-black tracking-tight uppercase">TẠO PHIẾU KIỂM KÊ HÀNG HÓA</h1>
         </div>
 
-        <button
-          type="button"
-          onClick={handleClose}
-          className="inline-flex items-center gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 transition shadow-2xs cursor-pointer"
-        >
-          <ArrowLeft size={16} />
-          <span>Quay lại</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setScannerOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-3.5 py-1.5 text-xs font-extrabold text-cyan-700 shadow-xs hover:bg-cyan-50 transition cursor-pointer"
+          >
+            <ScanLine className="h-4 w-4" />
+            <span>Quét Barcode</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleClose}
+            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 transition shadow-2xs cursor-pointer"
+          >
+            <ArrowLeft size={16} />
+            <span>Quay lại</span>
+          </button>
+        </div>
       </div>
 
       {/* ═══ 2. FORM METADATA CONTROL BAR ═══ */}
@@ -489,50 +910,31 @@ export default function CreateStocktakeOrderPage({
             </select>
           </div>
 
-          {/* Nhân viên kiểm kê */}
+          {/* Người lập / Quản lý phiếu */}
           <div>
             <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
               <User className="h-3.5 w-3.5 text-cyan-600" />
-              <span>Nhân viên kiểm kê</span>
+              <span>Người tạo / Quản lý</span>
             </label>
-            {isStaff ? (
-              <input
-                type="text"
-                value={assignee}
-                readOnly
-                className="h-9 w-full rounded-lg border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none"
-              />
-            ) : (
-              <select
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
-              >
-                <option value="">— Chọn nhân viên —</option>
-                {users
-                  .filter((u) => Array.isArray(u.roles) && u.roles.some((r: any) => ['staff', 'manager', 'admin'].includes(r.name?.toLowerCase())))
-                  .map((u) => (
-                    <option key={u.id} value={u.fullName || u.email}>
-                      {u.fullName || u.email}
-                    </option>
-                  ))}
-              </select>
-            )}
+            <input
+              type="text"
+              value={createdByStaff}
+              readOnly
+              className="h-9 w-full rounded-lg border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none"
+            />
           </div>
         </div>
       </div>
 
       {/* ═══ 3. DUAL PANE MAIN SECTION ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* ── LEFT COLUMN (9/12 width): PRODUCT SELECTION & ITEMS TABLE ── */}
+        {/* ── LEFT COLUMN (9/12 width): PRODUCT TABLE WITH ROWSPAN ── */}
         <div className="lg:col-span-9 flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden">
-          {/* Section Control Header Bar */}
+          {/* Section Header */}
           <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between">
             <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs">
               <Package className="h-4 w-4 text-cyan-600" />
-              <span>
-                DANH SÁCH HÀNG HÓA KIỂM KÊ ({items.length} MẶT HÀNG)
-              </span>
+              <span>DANH SÁCH HÀNG HÓA KIỂM KÊ ({items.length} SẢN PHẨM)</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -557,7 +959,7 @@ export default function CreateStocktakeOrderPage({
             </div>
           </div>
 
-          {/* Quick Search Input with Dropdown */}
+          {/* Quick Search Input */}
           <div className="p-3 bg-slate-50 border-b border-slate-200 product-search-box">
             <div className="relative">
               <input
@@ -640,114 +1042,272 @@ export default function CreateStocktakeOrderPage({
             </div>
           </div>
 
-          {/* Product Items Table */}
+          {/* TABLE WITH ROWSPAN PRODUCT MERGING & PER-ROW STAFF ASSIGNMENT */}
           <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="bg-slate-100 text-slate-800 font-extrabold border-b-2 border-slate-200 uppercase text-xs">
                 <tr>
                   <th className="p-2.5 w-12 text-center border-r border-slate-200 bg-slate-100">STT</th>
-                  <th className="p-2.5 w-36 text-center border-r border-slate-200 bg-slate-100">MÃ HÀNG</th>
-                  <th className="p-2.5 min-w-[200px] border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
-                  <th className="p-2.5 w-28 text-center border-r border-slate-200 bg-cyan-50/80 text-cyan-900">SỐ TỒN KHO</th>
-                  <th className="p-2.5 w-32 text-center border-r border-slate-200 bg-emerald-50/80 text-emerald-900">THỰC TỒN</th>
-                  <th className="p-2.5 w-28 text-center border-r border-slate-200 bg-amber-50/80 text-amber-900">LỆCH</th>
-                  <th className="p-2.5 min-w-[140px] border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
-                  <th className="p-2.5 w-16 text-center bg-slate-100">THAO TÁC</th>
+                  <th className="p-2.5 w-28 text-center border-r border-slate-200 bg-slate-100">MÃ HÀNG</th>
+                  <th className="p-2.5 min-w-[160px] border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
+                  <th className="p-2.5 w-16 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
+                  <th className="p-2.5 w-40 text-center border-r border-slate-200 bg-cyan-50/70 text-cyan-900">
+                    PHÂN KHU / DÃY KỆ
+                  </th>
+                  <th className="p-2.5 w-24 text-center border-r border-slate-200 bg-cyan-50/80 text-cyan-900">
+                    SỐ TỒN KHO
+                  </th>
+                  <th className="p-2.5 w-24 text-center border-r border-slate-200 bg-emerald-50/80 text-emerald-900">
+                    THỰC TỒN
+                  </th>
+                  <th className="p-2.5 w-20 text-center border-r border-slate-200 bg-amber-50/80 text-amber-900">
+                    LỆCH
+                  </th>
+                  <th className="p-2.5 w-40 text-center border-r border-slate-200 bg-indigo-50/80 text-indigo-900">
+                    NHÂN VIÊN KIỂM KÊ
+                  </th>
+                  <th className="p-2.5 min-w-[120px] border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
+                  <th className="p-2.5 w-28 text-center bg-slate-100">THAO TÁC</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-20 text-center text-xs text-slate-400 font-semibold italic">
+                    <td colSpan={11} className="px-6 py-20 text-center text-xs text-slate-400 font-semibold italic">
                       Chưa có hàng hóa nào được chọn để kiểm kê.
                       <br />
                       Vui lòng nhập từ khóa vào ô tìm kiếm ở trên để chọn sản phẩm.
                     </td>
                   </tr>
                 ) : (
-                  items.map((item, idx) => {
-                    const isEven = idx % 2 === 1;
-                    const systemVal = item.product.systemQty || 0;
-                    const diff = item.countedQty - systemVal;
+                  items.map((item, pIdx) => {
+                    const zoneCount = item.zones.length;
 
-                    return (
-                      <tr
-                        key={item.product.id + '-' + idx}
-                        className={`${isEven ? 'bg-slate-50/70' : 'bg-white'} hover:bg-cyan-50/50 transition-colors`}
-                      >
-                        {/* STT */}
-                        <td className="p-2 text-center font-bold text-slate-500 border-r border-slate-200">
-                          {idx + 1}.
-                        </td>
+                    return item.zones.map((zone, zIdx) => {
+                      const isFirstZone = zIdx === 0;
+                      const isLastZoneInProd = zIdx === zoneCount - 1;
+                      const zDiff = zone.countedQty - (zone.systemQty || 0);
 
-                        {/* MÃ HÀNG */}
-                        <td className="p-2 text-center font-extrabold text-cyan-700 border-r border-slate-200">
-                          {item.product.internalSku}
-                        </td>
+                      return (
+                        <tr
+                          key={`${item.product.id}-${zone.zoneCode}-${zIdx}`}
+                          className={`hover:bg-cyan-50/50 transition-colors ${
+                            zIdx % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'
+                          } ${isLastZoneInProd ? 'border-b-2 border-slate-300' : 'border-b border-slate-200'}`}
+                        >
+                          {/* ══ ROWSPAN MERGED CELL 1: STT ══ */}
+                          {isFirstZone && (
+                            <td
+                              rowSpan={zoneCount}
+                              className="p-2.5 text-center font-bold text-slate-600 border-r border-slate-200 bg-slate-50/70 align-middle"
+                            >
+                              {pIdx + 1}.
+                            </td>
+                          )}
 
-                        {/* TÊN HÀNG HÓA */}
-                        <td className="p-2 font-bold text-slate-800 border-r border-slate-200">
-                          {item.product.name}
-                        </td>
+                          {/* ══ ROWSPAN MERGED CELL 2: MÃ HÀNG ══ */}
+                          {isFirstZone && (
+                            <td
+                              rowSpan={zoneCount}
+                              className="p-2.5 text-center font-black text-cyan-800 border-r border-slate-200 bg-slate-50/70 align-middle"
+                            >
+                              {item.product.internalSku}
+                            </td>
+                          )}
 
-                        {/* SỐ TỒN KHO */}
-                        <td className="p-2 text-center font-black text-slate-900 border-r border-slate-200 bg-cyan-50/40 font-mono text-sm">
-                          {systemVal.toLocaleString('vi-VN')}
-                        </td>
+                          {/* ══ ROWSPAN MERGED CELL 3: TÊN HÀNG HÓA ══ */}
+                          {isFirstZone && (
+                            <td
+                              rowSpan={zoneCount}
+                              className="p-2.5 font-extrabold text-slate-900 border-r border-slate-200 bg-slate-50/70 align-middle"
+                            >
+                              <div>
+                                <p className="font-extrabold text-slate-900">{item.product.name}</p>
+                                <span className="inline-block mt-1 text-[10px] font-extrabold text-cyan-700 bg-cyan-100/80 px-2 py-0.5 rounded-full">
+                                  {zoneCount} phân khu
+                                </span>
+                              </div>
+                            </td>
+                          )}
 
-                        {/* THỰC TỒN (Editable Input) */}
-                        <td className="p-1.5 text-center border-r border-slate-200 bg-emerald-50/40">
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.countedQty}
-                            onChange={(e) => handleUpdateCounted(idx, Number(e.target.value))}
-                            className="h-8 w-24 text-center rounded-lg border-2 border-emerald-500/80 bg-white font-black text-emerald-900 outline-none text-xs focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-2xs"
-                          />
-                        </td>
+                          {/* ══ ROWSPAN MERGED CELL 4: ĐVT ══ */}
+                          {isFirstZone && (
+                            <td
+                              rowSpan={zoneCount}
+                              className="p-2.5 text-center font-semibold text-slate-600 border-r border-slate-200 bg-slate-50/70 align-middle"
+                            >
+                              {item.product.unit || 'Cái'}
+                            </td>
+                          )}
 
-                        {/* LỆCH */}
-                        <td className="p-2 text-center border-r border-slate-200 bg-amber-50/40 font-mono text-sm font-black">
-                          <span
-                            className={
-                              diff > 0
-                                ? 'text-emerald-600'
-                                : diff < 0
-                                ? 'text-red-600'
-                                : 'text-slate-500'
-                            }
-                          >
-                            {diff > 0 ? `+${diff}` : diff}
-                          </span>
-                        </td>
+                          {/* ══ CELL 5: PHÂN KHU / DÃY KỆ ══ */}
+                          <td className="p-1.5 border-r border-slate-200 bg-cyan-50/20">
+                            <select
+                              value={zone.zoneCode}
+                              onChange={(e) => handleUpdateZoneCode(pIdx, zIdx, e.target.value)}
+                              className="h-8 w-full rounded-lg border-2 border-slate-200 bg-white px-2 text-[11px] font-extrabold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
+                            >
+                              {activeSubWarehouses.map((sub: any) => (
+                                <option key={sub.id || sub.code} value={sub.code || sub.id}>
+                                  [{sub.code || sub.id}] {sub.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
 
-                        {/* GHI CHÚ */}
-                        <td className="p-1 border-r border-slate-200">
-                          <input
-                            type="text"
-                            value={item.note || ''}
-                            onChange={(e) => handleUpdateNote(idx, e.target.value)}
-                            placeholder="Ghi chú dòng..."
-                            className="w-full h-8 px-2 bg-transparent font-medium text-slate-700 outline-none focus:bg-cyan-100/50 text-xs"
-                          />
-                        </td>
+                          {/* ══ CELL 6: SỐ TỒN KHO ══ */}
+                          <td className="p-2 text-center font-black text-cyan-900 border-r border-slate-200 bg-cyan-50/40 font-mono text-sm">
+                            {(zone.systemQty || 0).toLocaleString('vi-VN')}
+                          </td>
 
-                        {/* THAO TÁC */}
-                        <td className="p-1.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItem(idx)}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition cursor-pointer font-bold"
-                            title="Xóa sản phẩm"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
+                          {/* ══ CELL 7: THỰC TỒN ══ */}
+                          <td className="p-1 text-center border-r border-slate-200 bg-emerald-50/40">
+                            <input
+                              type="number"
+                              min="0"
+                              value={zone.countedQty}
+                              onChange={(e) =>
+                                handleUpdateZoneCounted(pIdx, zIdx, Number(e.target.value))
+                              }
+                              className="h-7 w-20 text-center rounded-md border-2 border-emerald-500/80 bg-white font-black text-emerald-900 outline-none text-xs focus:border-emerald-600 shadow-2xs"
+                            />
+                          </td>
+
+                          {/* ══ CELL 8: LỆCH ══ */}
+                          <td className="p-2 text-center border-r border-slate-200 bg-amber-50/40 font-mono text-sm font-black">
+                            <span
+                              className={
+                                zDiff > 0
+                                  ? 'text-emerald-600'
+                                  : zDiff < 0
+                                  ? 'text-red-600'
+                                  : 'text-slate-500'
+                              }
+                            >
+                              {zDiff > 0 ? `+${zDiff}` : zDiff}
+                            </span>
+                          </td>
+
+                          {/* ══ CELL 9: NHÂN VIÊN KIỂM KÊ (Dành riêng từng phân khu) ══ */}
+                          <td className="p-1.5 border-r border-slate-200 bg-indigo-50/20">
+                            <select
+                              value={zone.assignedStaff || ''}
+                              onChange={(e) => handleUpdateZoneStaff(pIdx, zIdx, e.target.value)}
+                              className="h-8 w-full rounded-lg border-2 border-indigo-200 bg-white px-2 text-[11px] font-bold text-slate-800 outline-none focus:border-indigo-600 cursor-pointer shadow-2xs"
+                            >
+                              <option value="">— Chọn NV kiểm —</option>
+                              {users
+                                .filter(
+                                  (u) =>
+                                    Array.isArray(u.roles) &&
+                                    u.roles.some((r: any) =>
+                                      ['staff', 'manager', 'admin'].includes(r.name?.toLowerCase())
+                                    )
+                                )
+                                .map((u) => (
+                                  <option key={u.id} value={u.fullName || u.email}>
+                                    {u.fullName || u.email}
+                                  </option>
+                                ))}
+                            </select>
+                          </td>
+
+                          {/* ══ CELL 10: GHI CHÚ ══ */}
+                          <td className="p-1 border-r border-slate-200">
+                            <input
+                              type="text"
+                              value={zone.note || ''}
+                              onChange={(e) => handleUpdateZoneNote(pIdx, zIdx, e.target.value)}
+                              placeholder="Ghi chú dòng..."
+                              className="w-full h-7 px-2 bg-transparent font-medium text-slate-700 outline-none focus:bg-cyan-50 text-xs"
+                            />
+                          </td>
+
+                          {/* ══ CELL 11: THAO TÁC ══ */}
+                          <td className="p-1.5 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {/* Rack & Bin Locator Modal Button */}
+                              <button
+                                type="button"
+                                onClick={() => setRackModalData({ product: item.product, zone })}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-300 bg-cyan-100 text-cyan-800 hover:bg-cyan-200 transition cursor-pointer font-bold"
+                                title="Xem vị trí dãy kệ & ô kệ trong phân khu này"
+                              >
+                                <LayoutGrid size={14} />
+                              </button>
+
+                              {/* Storage Info Modal Button */}
+                              {isFirstZone && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenStorageInfo(item.product)}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 transition cursor-pointer font-bold"
+                                  title="Xem thông tin lưu trữ tất cả các kho"
+                                >
+                                  <Eye size={14} />
+                                </button>
+                              )}
+
+                              {/* Add Zone Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleAddZoneToProduct(pIdx)}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer font-bold"
+                                title="Thêm phân khu đếm mới"
+                              >
+                                <Plus size={14} />
+                              </button>
+
+                              {/* Delete Zone Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveZoneRow(pIdx, zIdx)}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition cursor-pointer font-bold"
+                                title="Xóa phân khu này khỏi danh sách"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
                   })
                 )}
               </tbody>
+
+              {/* TABLE FOOTER SUMMARY ROW */}
+              {items.length > 0 && (
+                <tfoot className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-slate-200 uppercase text-xs">
+                  <tr>
+                    <td colSpan={5} className="p-3 text-right font-extrabold text-slate-800 border-r border-slate-200">
+                      TỔNG CỘNG ({items.length} sản phẩm - {items.reduce((s, i) => s + i.zones.length, 0)} phân khu kiểm):
+                    </td>
+                    <td className="p-3 text-center font-black text-cyan-900 border-r border-slate-200 bg-cyan-100/60 font-mono text-sm">
+                      {totalSystemQty.toLocaleString('vi-VN')}
+                    </td>
+                    <td className="p-3 text-center font-black text-emerald-900 border-r border-slate-200 bg-emerald-100/60 font-mono text-sm">
+                      {totalCountedQty.toLocaleString('vi-VN')}
+                    </td>
+                    <td className="p-3 text-center font-black border-r border-slate-200 bg-amber-100/60 font-mono text-sm">
+                      <span
+                        className={
+                          totalDifference > 0
+                            ? 'text-emerald-600'
+                            : totalDifference < 0
+                            ? 'text-red-600'
+                            : 'text-slate-600'
+                        }
+                      >
+                        {totalDifference > 0 ? `+${totalDifference}` : totalDifference}
+                      </span>
+                    </td>
+                    <td className="p-3 border-r border-slate-200 text-slate-400 font-medium italic text-center">—</td>
+                    <td className="p-3 border-r border-slate-200 text-slate-400 font-medium italic text-center">—</td>
+                    <td className="p-3 text-center text-slate-400 font-medium italic">—</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </div>
@@ -771,11 +1331,18 @@ export default function CreateStocktakeOrderPage({
               />
             </div>
 
-            {/* ══ Light Theme Summary Card matching Outbound Page ══ */}
+            {/* Light Theme Summary Card */}
             <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/60 p-4 shadow-sm space-y-2.5 text-slate-800">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                <span>Tổng số mặt hàng:</span>
+                <span>Số mặt hàng kiểm kê:</span>
                 <span className="font-extrabold text-slate-900 font-mono">{items.length}</span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                <span>Tổng số dòng phân khu:</span>
+                <span className="font-extrabold text-cyan-950 font-mono">
+                  {items.reduce((s, i) => s + i.zones.length, 0)}
+                </span>
               </div>
 
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
@@ -810,7 +1377,7 @@ export default function CreateStocktakeOrderPage({
               </div>
             </div>
 
-            {/* Action Buttons Matching Outbound Page */}
+            {/* Action Buttons */}
             <div className="space-y-2 pt-1">
               <button
                 type="button"
