@@ -199,6 +199,13 @@ export class InboundService {
   async updatePurchaseOrder(id: string, dto: CreateAsnDto, user?: any) {
     const receipt = await this.findReceiptEntity(id, user);
 
+    const isDraft = ['DRAFT', 'draft', 'DRAFT_PO'].includes(receipt.status || '');
+    if (!isDraft) {
+      throw new BadRequestException(
+        `Chỉ có thể chỉnh sửa phiếu nhập kho ở trạng thái Đơn nháp (DRAFT). Phiếu đã lưu chính thức (${receipt.status || 'Đã nhập kho'}) không thể chỉnh sửa.`
+      );
+    }
+
     if (user?.role === 'supplier' && user?.supplierId) {
       dto.supplierId = user.supplierId;
     }
@@ -580,8 +587,8 @@ export class InboundService {
     const receipts = await this.receiptRepo.find({
       where: whereClause,
       relations: ['details', 'details.product', 'supplier'],
-      order: { id: 'DESC' },
     });
+    receipts.sort((a, b) => Number(b.id) - Number(a.id));
     return Promise.all(receipts.map((receipt) => this.serializeReceipt(receipt)));
   }
 
@@ -633,6 +640,18 @@ export class InboundService {
       if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
 
       const unitPrice = parseNumber(item.unitPrice ?? item.price ?? (product?.price || 0));
+      const discPercent = parseNumber(item.discountPercent || (item as any).discount);
+      const vatPercent = parseNumber(item.vatPercent || (item as any).vatRate);
+
+      const lineTotalBeforeDisc = unitPrice * qty;
+      const discAmount = (lineTotalBeforeDisc * discPercent) / 100;
+      const lineTotalAfterDisc = Math.max(0, lineTotalBeforeDisc - discAmount);
+      const vatAmount = (lineTotalAfterDisc * vatPercent) / 100;
+      const calcTotalLine = lineTotalAfterDisc + vatAmount;
+      const totalLineAmount = (item.totalAmount && parseNumber(item.totalAmount) > 0)
+        ? parseNumber(item.totalAmount)
+        : calcTotalLine;
+
       const targetWhCode = item.warehouseCode?.trim() || defaultWarehouseCode?.trim() || 'KHO-NVL';
 
       const assignedStr = (item as any).locationBin || (Array.isArray((item as any).assignedBins) ? (item as any).assignedBins.join(', ') : '');
@@ -651,7 +670,9 @@ export class InboundService {
         receivedQty: qty,
         unitPrice: unitPrice.toFixed(2),
         requestedPrice: unitPrice.toFixed(2),
-        totalLineAmount: (unitPrice * qty).toFixed(2),
+        discountPercent: discPercent,
+        vatPercent: vatPercent,
+        totalLineAmount: totalLineAmount.toFixed(2),
         weight: Math.min(999999.99, parseNumber(item.weight)),
         length: Math.min(999999.99, parseNumber(item.length)),
         width: Math.min(999999.99, parseNumber(item.width)),
@@ -743,7 +764,7 @@ export class InboundService {
       relations: ['inboundReceipt', 'product'],
     });
 
-    const totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty)), 0);
+    const totalAmount = details.reduce((sum, detail) => sum + parseNumber(detail.totalLineAmount || (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty))), 0);
     await this.receiptRepo.update(receiptId, { totalAmount: totalAmount.toFixed(2) });
   }
 
@@ -950,14 +971,26 @@ export class InboundService {
       }
     }
 
+    const unitPrice = parseNumber(detail.unitPrice);
+    const qty = parseNumber(detail.expectedQty);
+    const discP = parseNumber(detail.discountPercent);
+    const vatP = parseNumber(detail.vatPercent);
+    const lineTotalBeforeDisc = unitPrice * qty;
+    const discAmt = (lineTotalBeforeDisc * discP) / 100;
+    const lineAfterDisc = Math.max(0, lineTotalBeforeDisc - discAmt);
+    const vatAmt = (lineAfterDisc * vatP) / 100;
+    const calcTotal = lineAfterDisc + vatAmt;
+
     return {
       id: detail.id,
       warehouseCode: detail.warehouseCode,
       locationBin: parsedAssignedBins.join(', ') || detail.warehouseCode || '',
       assignedBins: parsedAssignedBins,
-      expectedQty: parseNumber(detail.expectedQty),
+      expectedQty: qty,
       receivedQty: parseNumber(detail.receivedQty),
-      unitPrice: parseNumber(detail.unitPrice),
+      unitPrice: unitPrice,
+      discountPercent: discP,
+      vatPercent: vatP,
       supplierPrice: detail.supplierPrice ? parseNumber(detail.supplierPrice) : null,
       rounds: Array.isArray(detail.negotiationHistory)
         ? detail.negotiationHistory.map((round) => ({ ...round, enterprisePrice: round.enterpriseResponded ? round.enterprisePrice : null }))
@@ -965,7 +998,7 @@ export class InboundService {
       requestedPrice: parseNumber(detail.requestedPrice ?? detail.unitPrice),
       listPrice: parseNumber(detail.product?.price) || parseNumber(supplierProduct?.purchasePrice),
       supplierCatalogPrice: supplierProduct ? parseNumber(supplierProduct.purchasePrice) : null,
-      totalLineAmount: parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty),
+      totalLineAmount: detail.totalLineAmount ? parseNumber(detail.totalLineAmount) : calcTotal,
       weight: parseNumber(detail.weight),
       length: parseNumber(detail.length),
       width: parseNumber(detail.width),

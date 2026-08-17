@@ -711,6 +711,48 @@ interface AiChatMessage {
   time: string;
 }
 
+function calculateEffectiveBinCapacity(item: FormDetailRow): { capacity: number; isDefault: boolean; note: string } {
+  if (item.packageQty && item.packageQty > 0) {
+    return {
+      capacity: item.packageQty,
+      isDefault: false,
+      note: `Theo quy cách thùng/lô mẫu đã chọn: ${item.packageQty} ${item.unit || 'Cái'}/ô`,
+    };
+  }
+
+  const qty = Number(item.qty) || 1;
+  const weightPerUnit = (item.weight && item.weight > 0) ? item.weight / qty : 0;
+  const volumePerUnit = (item.volume && item.volume > 0) ? item.volume / qty : 0;
+
+  const binMaxWeight = 500;
+  const binMaxVol = 0.45;
+
+  let capWeight = Infinity;
+  let capVol = Infinity;
+
+  if (weightPerUnit > 0) {
+    capWeight = Math.floor(binMaxWeight / weightPerUnit);
+  }
+  if (volumePerUnit > 0) {
+    capVol = Math.floor(binMaxVol / volumePerUnit);
+  }
+
+  const physicalCap = Math.min(capWeight, capVol);
+  if (physicalCap > 0 && physicalCap !== Infinity) {
+    return {
+      capacity: physicalCap,
+      isDefault: false,
+      note: `Tính từ Kích thước/Trọng lượng thực tế (${physicalCap} ${item.unit || 'Cái'}/ô)`,
+    };
+  }
+
+  return {
+    capacity: 100,
+    isDefault: true,
+    note: `Định mức mặc định tạm tính (Chưa nhập TL/Kích thước: 100 ${item.unit || 'Cái'}/ô)`,
+  };
+}
+
 interface AiSlottingChatModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -987,7 +1029,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     items.forEach((item) => {
       const shouldAutoAssign = targetRowId ? item.rowId === targetRowId : true;
       if (!initialMap[item.rowId] && shouldAutoAssign) {
-        const itemPackSize = item.packageQty || 100;
+        const capInfo = calculateEffectiveBinCapacity(item);
+        const itemPackSize = capInfo.capacity;
         const requiredCount = Math.max(1, Math.ceil((item.qty || 1) / itemPackSize));
         const preselected: string[] = [];
 
@@ -1016,7 +1059,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
     const activeItem = items.find((i) => i.rowId === initialTargetId) || items[0];
     const itemQty = activeItem?.qty || 0;
-    const itemPackSize = activeItem?.packageQty || 100;
+    const capInfo = calculateEffectiveBinCapacity(activeItem);
+    const itemPackSize = capInfo.capacity;
     const totalBinsNeeded = Math.max(1, Math.ceil(itemQty / itemPackSize));
     const maxQtyPerBin = itemPackSize;
     const maxQtyPerRack = 40 * maxQtyPerBin;
@@ -1026,12 +1070,16 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     const firstBinName = itemSelectedBins[0] || 'ZA-R01-S04-C01';
     const lastBinName = itemSelectedBins[itemSelectedBins.length - 1] || 'ZA-R01-S04-C10';
 
+    const capacityNotice = capInfo.isDefault
+      ? `\n⚠️ Chú ý: Do mặt hàng này CHƯA NHẬP Trọng lượng & Kích thước, AI đang áp dụng định mức MẶC ĐỊNH TẠM TÍNH (100 ${activeItem?.unit || 'Cái'}/ô). Hãy bấm nút [TL & KÍCH THƯỚC] ở giao diện nhập kho để AI tự động tính lại sức chứa m³/kg chính xác!`
+      : `\n✅ Sức chứa ô chứa đã được AI tính toán tự động dựa trên Kích thước & Trọng lượng thực tế của sản phẩm.`;
+
     const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     setMessages([
       {
         id: 'msg-1',
         sender: 'ai',
-        text: `🤖 CHỈ DẪN SẮP XẾP KHO AI SMART WMS\n\n📦 Mặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\n📊 Thông số Sức chứa Kệ & Ô chứa:\n• Sức chứa 1 Ô chứa (Bin Capacity): Tối đa ${maxQtyPerBin} ${activeItem?.unit || 'Cái'}/ô (Tải trọng: 500kg | Thể tích: 0.45m³).\n• Sức chứa 1 Dãy kệ (Rack Capacity): 4 Tầng x 10 Ô = 40 Ô chứa (Chứa tối đa ${maxQtyPerRack.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'}/dãy kệ).\n\n💡 Chỉ dẫn Phân bổ Vị trí AI:\n• Số lượng Ô kệ cần dùng: ${totalBinsNeeded} Ô chứa (Trực thuộc ${totalRacksNeeded} Dãy kệ R01).\n• Vị trí gợi ý: Đã tự động đề xuất ${totalBinsNeeded} ô trống từ ${firstBinName} ➔ ${lastBinName} giúp di chuyển tối ưu và tránh trùng lặp với mặt hàng khác.`,
+        text: `🤖 CHỈ DẪN SẮP XẾP KHO AI SMART WMS\n\n📦 Mặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\n📊 Thông số Sức chứa Kệ & Ô chứa:\n• Sức chứa 1 Ô chứa (Bin Capacity): Tối đa ${maxQtyPerBin} ${activeItem?.unit || 'Cái'}/ô (${capInfo.note}).\n• Sức chứa 1 Dãy kệ (Rack Capacity): 4 Tầng x 10 Ô = 40 Ô chứa (Chứa tối đa ${maxQtyPerRack.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'}/dãy kệ).${capacityNotice}\n\n💡 Chỉ dẫn Phân bổ Vị trí AI:\n• Số lượng Ô kệ cần dùng: ${totalBinsNeeded} Ô chứa (Trực thuộc ${totalRacksNeeded} Dãy kệ R01).\n• Vị trí gợi ý: Đã tự động đề xuất ${totalBinsNeeded} ô trống từ ${firstBinName} ➔ ${lastBinName} giúp di chuyển tối ưu và tránh trùng lặp với mặt hàng khác.`,
         time: now,
       },
     ]);
@@ -1040,7 +1088,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
   if (!isOpen) return null;
 
   const currentItem = items.find((i) => i.rowId === activeRowId) || items[0];
-  const packSize = currentItem?.packageQty || 100;
+  const capInfo = calculateEffectiveBinCapacity(currentItem);
+  const packSize = capInfo.capacity;
   const requiredCount = currentItem ? Math.max(1, Math.ceil((currentItem.qty || 1) / packSize)) : 1;
   const currentSelectedBins = selectedBinsMap[currentItem?.rowId || ''] || [];
   const currentRack = racksTopology.find((r) => r.rackId === activeRackId) || racksTopology[0];
@@ -1055,7 +1104,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       const itemToAssign = items.find((i) => i.rowId === rowId);
       if (!itemToAssign) return prev;
 
-      const itemPackSize = itemToAssign.packageQty || 100;
+      const itemPackSize = calculateEffectiveBinCapacity(itemToAssign).capacity;
       const requiredCount = Math.max(1, Math.ceil((itemToAssign.qty || 1) / itemPackSize));
 
       const usedBins = new Set<string>();
@@ -1280,7 +1329,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                 </span>
                 {items.map((it, idx) => {
                   const isActive = it.rowId === activeRowId;
-                  const countReq = Math.max(1, Math.ceil((it.qty || 1) / (it.packageQty || 100)));
+                  const itemCap = calculateEffectiveBinCapacity(it).capacity;
+                  const countReq = Math.max(1, Math.ceil((it.qty || 1) / itemCap));
                   const selectedCount = (selectedBinsMap[it.rowId] || []).length;
                   return (
                     <button
@@ -1800,6 +1850,10 @@ export default function CreateStockInOrderPage({
     return tabs.find((t) => t.tabId === activeTabId) || tabs[0];
   }, [tabs, activeTabId]);
 
+  const isViewMode = actionParam === 'view';
+  const isTabDraft = !activeTab?.id || ['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT');
+  const isReadOnly = isViewMode || !isTabDraft;
+
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;
     const newTab = createNewInboundTab(newTabIndex, currentUserName);
@@ -2297,33 +2351,74 @@ export default function CreateStockInOrderPage({
     return activeValidItems.reduce((s, r) => s + (Number(r.volumetricWeight) || 0), 0);
   }, [activeValidItems]);
 
-  const subtotal = useMemo(() => {
+  const rawGoodsSubtotal = useMemo(() => {
     return activeValidItems.reduce(
-      (s, r) => s + (Number(r.totalAmount) || Number(r.qty) * Number(r.price)),
+      (s, r) => s + (Number(r.qty) || 0) * (Number(r.price) || 0),
       0
     );
   }, [activeValidItems]);
 
-  const discountAmount = useMemo(() => {
-    return (subtotal * (activeTab?.discount || 0)) / 100;
-  }, [subtotal, activeTab?.discount]);
+  const totalRowDiscount = useMemo(() => {
+    return activeValidItems.reduce((s, r) => {
+      const qty = Number(r.qty) || 0;
+      const price = Number(r.price) || 0;
+      const discPercent = Number(r.discountPercent) || 0;
+      return s + (qty * price * discPercent) / 100;
+    }, 0);
+  }, [activeValidItems]);
 
-  const vatAmount = useMemo(() => {
-    const afterDiscount = subtotal - discountAmount;
-    return (afterDiscount * (activeTab?.vatRate || 0)) / 100;
-  }, [subtotal, discountAmount, activeTab?.vatRate]);
+  const subtotalAfterRowDiscount = useMemo(() => {
+    return Math.max(0, rawGoodsSubtotal - totalRowDiscount);
+  }, [rawGoodsSubtotal, totalRowDiscount]);
+
+  const orderDiscountAmount = useMemo(() => {
+    return (subtotalAfterRowDiscount * (activeTab?.discount || 0)) / 100;
+  }, [subtotalAfterRowDiscount, activeTab?.discount]);
+
+  const totalDiscount = useMemo(() => {
+    return totalRowDiscount + orderDiscountAmount;
+  }, [totalRowDiscount, orderDiscountAmount]);
+
+  const subtotalAfterAllDiscount = useMemo(() => {
+    return Math.max(0, subtotalAfterRowDiscount - orderDiscountAmount);
+  }, [subtotalAfterRowDiscount, orderDiscountAmount]);
+
+  const totalRowVat = useMemo(() => {
+    return activeValidItems.reduce((s, r) => {
+      const qty = Number(r.qty) || 0;
+      const price = Number(r.price) || 0;
+      const discPercent = Number(r.discountPercent) || 0;
+      const lineBeforeDisc = qty * price;
+      const discAmt = (lineBeforeDisc * discPercent) / 100;
+      const lineAfterDisc = Math.max(0, lineBeforeDisc - discAmt);
+      const vatPercent = Number(r.vatPercent) || 0;
+      return s + (lineAfterDisc * vatPercent) / 100;
+    }, 0);
+  }, [activeValidItems]);
+
+  const orderVatAmount = useMemo(() => {
+    return (subtotalAfterAllDiscount * (activeTab?.vatRate || 0)) / 100;
+  }, [subtotalAfterAllDiscount, activeTab?.vatRate]);
+
+  const totalVat = useMemo(() => {
+    return totalRowVat + orderVatAmount;
+  }, [totalRowVat, orderVatAmount]);
 
   const grandTotal = useMemo(() => {
     if (!activeTab) return 0;
     return Math.max(
       0,
-      subtotal - discountAmount + (activeTab.shippingFee || 0) + vatAmount
+      subtotalAfterAllDiscount + totalVat + (activeTab.shippingFee || 0)
     );
-  }, [subtotal, discountAmount, activeTab, vatAmount]);
+  }, [subtotalAfterAllDiscount, totalVat, activeTab]);
+
+  const subtotal = rawGoodsSubtotal;
+  const vatAmount = totalVat;
 
   const remainingDebt = useMemo(() => {
     if (!activeTab) return 0;
-    return Math.max(0, grandTotal - (activeTab.amountPaid || 0));
+    const paid = activeTab.amountPaid !== undefined && activeTab.amountPaid !== null ? activeTab.amountPaid : grandTotal;
+    return Math.max(0, grandTotal - paid);
   }, [grandTotal, activeTab]);
 
   const handleConfirmAiSlotting = (updatedRows: FormDetailRow[]) => {
@@ -2380,6 +2475,16 @@ export default function CreateStockInOrderPage({
     bypassAi = false
   ) => {
     if (!activeTab) return;
+
+    const isTabDraft = !activeTab.id || ['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab.status || 'DRAFT');
+    if (!isTabDraft) {
+      setToast({
+        message: 'Phiếu nhập kho này đã lưu chính thức và không thể chỉnh sửa lại!',
+        type: 'error',
+      });
+      return;
+    }
+
     if (activeValidItems.length === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
       return;
@@ -2444,31 +2549,39 @@ export default function CreateStockInOrderPage({
     };
 
     try {
-      const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders`, {
-        method: 'POST',
+      const isEditing = Boolean(activeTab.id);
+      const endpoint = isEditing
+        ? `${API_BASE_URL}/inbound/purchase-orders/${activeTab.id}`
+        : `${API_BASE_URL}/inbound/purchase-orders`;
+      const httpMethod = isEditing ? 'PUT' : 'POST';
+
+      const res = await fetch(endpoint, {
+        method: httpMethod,
         headers: authHeaders(),
         body: JSON.stringify(poPayload),
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || 'Không tạo được đơn nhập hàng');
+        throw new Error(errData?.message || 'Không thể lưu đơn nhập hàng');
       }
 
-      const createdPO = await res.json();
+      const savedPO = await res.json();
 
-      const stockInPayload = {
-        orderCode: `PNK-${createdPO.poNumber || generatedNo}`,
-        note: activeTab.description || undefined,
-        currentStepUserEmail: currentUser?.email,
-        status: saveStatus,
-      };
+      if (!isEditing) {
+        const stockInPayload = {
+          orderCode: `PNK-${savedPO.poNumber || generatedNo}`,
+          note: activeTab.description || undefined,
+          currentStepUserEmail: currentUser?.email,
+          status: saveStatus,
+        };
 
-      await fetch(`${API_BASE_URL}/inbound/stock-in-orders/from-purchase-orders/${createdPO.id}`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify(stockInPayload),
-      }).catch(() => null);
+        await fetch(`${API_BASE_URL}/inbound/stock-in-orders/from-purchase-orders/${savedPO.id}`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(stockInPayload),
+        }).catch(() => null);
+      }
 
       setToast({
         message: `Đã lưu thành công phiếu nhập kho ${generatedNo}!`,
@@ -2710,9 +2823,10 @@ export default function CreateStockInOrderPage({
             <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">Ngày nhập hàng</label>
             <input
               type="datetime-local"
+              disabled={isReadOnly}
               value={activeTab?.orderDate || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -2721,10 +2835,11 @@ export default function CreateStockInOrderPage({
             <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">Mã phiếu / Lệnh</label>
             <input
               type="text"
+              disabled={isReadOnly}
               value={activeTab?.orderNo || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderNo: e.target.value }))}
               placeholder="TẠO TỰ ĐỘNG (PNK...)"
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-slate-50 px-3 text-sm font-extrabold text-cyan-900 uppercase outline-none focus:border-cyan-600"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-slate-50 px-3 text-sm font-extrabold text-cyan-900 uppercase outline-none focus:border-cyan-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -2735,36 +2850,44 @@ export default function CreateStockInOrderPage({
                 <Building2 className="h-4 w-4 text-cyan-600" />
                 <span>Nhà cung cấp</span>
               </label>
-              <button
-                type="button"
-                onClick={() => setShowAddSupplierModal(true)}
-                className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer"
-              >
-                <UserPlus size={13} />
-                <span>+ Thêm NCC</span>
-              </button>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddSupplierModal(true)}
+                  className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  <UserPlus size={13} />
+                  <span>+ Thêm NCC</span>
+                </button>
+              )}
             </div>
             <input
               type="text"
+              disabled={isReadOnly}
               value={
                 showSupplierDropdown
                   ? supplierSearch
                   : activeTab?.supplierName || ''
               }
               onChange={(e) => {
+                if (isReadOnly) return;
                 setSupplierSearch(e.target.value);
                 setShowSupplierDropdown(true);
               }}
               onFocus={() => {
+                if (isReadOnly) return;
                 setSupplierSearch('');
                 setShowSupplierDropdown(true);
               }}
-              onClick={() => setShowSupplierDropdown(true)}
+              onClick={() => {
+                if (isReadOnly) return;
+                setShowSupplierDropdown(true);
+              }}
               placeholder="Tìm theo tên, mã NCC, SĐT..."
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
             />
 
-            {showSupplierDropdown && (
+            {!isReadOnly && showSupplierDropdown && (
               <div className="absolute left-0 top-full z-[100] mt-1 w-[400px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
                 <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-black text-slate-700 sticky top-0 z-10">
                   <span className="w-1/3 uppercase">Mã NCC</span>
@@ -2808,8 +2931,13 @@ export default function CreateStockInOrderPage({
               <span>Kho nhập hàng</span>
             </label>
             <div
-              onClick={() => setShowWarehouseDropdown((prev) => !prev)}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 flex items-center justify-between cursor-pointer shadow-xs transition hover:bg-cyan-100/70"
+              onClick={() => {
+                if (isReadOnly) return;
+                setShowWarehouseDropdown((prev) => !prev);
+              }}
+              className={`h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 flex items-center justify-between shadow-xs transition ${
+                isReadOnly ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:bg-cyan-100/70'
+              }`}
             >
               <span className="truncate">
                 {warehouses.find((w) => w.code === activeTab?.warehouseCode)
@@ -2822,7 +2950,7 @@ export default function CreateStockInOrderPage({
               />
             </div>
 
-            {showWarehouseDropdown && (
+            {!isReadOnly && showWarehouseDropdown && (
               <div className="absolute left-0 top-full z-[100] mt-1.5 w-full rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-[fadeIn_0.15s_ease-out]">
                 <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1">
                   {(warehouses.length > 0
@@ -2877,23 +3005,27 @@ export default function CreateStockInOrderPage({
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowScannerModal(true)}
-                  className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
-                >
-                  <ScanLine className="h-4 w-4 text-cyan-600" />
-                  <span>Quét Barcode</span>
-                </button>
+                {!isReadOnly && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowScannerModal(true)}
+                      className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
+                    >
+                      <ScanLine className="h-4 w-4 text-cyan-600" />
+                      <span>Quét Barcode</span>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={handleAddBlankRow}
-                  className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Thêm dòng mới</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={handleAddBlankRow}
+                      className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Thêm dòng mới</span>
+                    </button>
+                  </>
+                )}
 
                 <button
                   type="button"
@@ -2943,20 +3075,26 @@ export default function CreateStockInOrderPage({
                         <td className="p-1 border-r border-slate-200 relative product-table-dropdown">
                           <input
                             type="text"
+                            disabled={isReadOnly}
                             value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
                             onChange={(e) => {
+                              if (isReadOnly) return;
                               const val = e.target.value;
                               updateRow(row.rowId, { productName: val });
                               setActiveProductDropdownRowId(row.rowId);
                             }}
-                            onFocus={() => setActiveProductDropdownRowId(row.rowId)}
-                            onClick={() => setActiveProductDropdownRowId(row.rowId)}
+                            onFocus={() => {
+                              if (!isReadOnly) setActiveProductDropdownRowId(row.rowId);
+                            }}
+                            onClick={() => {
+                              if (!isReadOnly) setActiveProductDropdownRowId(row.rowId);
+                            }}
                             placeholder="Chọn hoặc nhập hàng..."
-                            className="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 text-xs sm:text-sm cursor-text"
+                            className="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 text-xs sm:text-sm cursor-text disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
 
                           {/* Interactive Table Dropdown for this row */}
-                          {activeProductDropdownRowId === row.rowId && (
+                          {!isReadOnly && activeProductDropdownRowId === row.rowId && (
                             <div className="absolute left-0 top-full z-[100] mt-1 w-[450px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
                               <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 sticky top-0 z-10">
                                 <span className="w-1/3 uppercase">Mã hàng</span>
@@ -3000,9 +3138,10 @@ export default function CreateStockInOrderPage({
                         <td className="p-1 text-center border-r border-slate-200">
                           <input
                             type="text"
+                            disabled={isReadOnly}
                             value={row.unit}
                             onChange={(e) => updateRow(row.rowId, { unit: e.target.value })}
-                            className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-bold outline-none focus:border-cyan-600 text-xs sm:text-sm text-slate-800"
+                            className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-bold outline-none focus:border-cyan-600 text-xs sm:text-sm text-slate-800 disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
 
@@ -3011,10 +3150,11 @@ export default function CreateStockInOrderPage({
                           <input
                             type="number"
                             min="0"
+                            disabled={isReadOnly}
                             value={row.qty === 0 ? '' : row.qty}
                             onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
                             placeholder="0"
-                            className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 bg-white font-black text-slate-900 outline-none focus:border-cyan-600 text-xs sm:text-sm"
+                            className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 bg-white font-black text-slate-900 outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
 
@@ -3022,13 +3162,14 @@ export default function CreateStockInOrderPage({
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="text"
+                            disabled={isReadOnly}
                             value={row.price === 0 ? '' : formatNumberWithCommas(row.price)}
                             onChange={(e) => {
                               const parsed = parseFormattedNumber(e.target.value);
                               updateRow(row.rowId, { price: parsed });
                             }}
                             placeholder="0"
-                            className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-black text-slate-900 outline-none focus:border-cyan-600 text-xs sm:text-sm"
+                            className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-black text-slate-900 outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
 
@@ -3038,10 +3179,11 @@ export default function CreateStockInOrderPage({
                             type="number"
                             min="0"
                             max="100"
+                            disabled={isReadOnly}
                             value={row.discountPercent === 0 ? '' : row.discountPercent}
                             onChange={(e) => updateRow(row.rowId, { discountPercent: Number(e.target.value) })}
                             placeholder="0"
-                            className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-bold outline-none focus:border-cyan-600 text-xs sm:text-sm"
+                            className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-bold outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
 
@@ -3051,10 +3193,11 @@ export default function CreateStockInOrderPage({
                             type="number"
                             min="0"
                             max="100"
+                            disabled={isReadOnly}
                             value={row.vatPercent === 0 ? '' : row.vatPercent}
                             onChange={(e) => updateRow(row.rowId, { vatPercent: Number(e.target.value) })}
                             placeholder="0"
-                            className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-bold outline-none focus:border-cyan-600 text-xs sm:text-sm"
+                            className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-bold outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
 
@@ -3067,9 +3210,10 @@ export default function CreateStockInOrderPage({
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="date"
+                            disabled={isReadOnly}
                             value={row.expiryDate || ''}
                             onChange={(e) => updateRow(row.rowId, { expiryDate: e.target.value })}
-                            className="w-full h-9 px-1.5 text-center rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 text-xs sm:text-sm"
+                            className="w-full h-9 px-1.5 text-center rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
 
@@ -3077,10 +3221,11 @@ export default function CreateStockInOrderPage({
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="text"
+                            disabled={isReadOnly}
                             value={row.note}
                             onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
                             placeholder="Ghi chú..."
-                            className="w-full h-9 px-2 rounded-lg border border-slate-300 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 text-xs sm:text-sm"
+                            className="w-full h-9 px-2 rounded-lg border border-slate-300 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>
 
@@ -3126,25 +3271,29 @@ export default function CreateStockInOrderPage({
                               <Scale size={16} strokeWidth={2} />
                             </button>
 
-                            {/* 3. Nhân đôi dòng */}
-                            <button
-                              type="button"
-                              onClick={() => handleDuplicateRow(idx)}
-                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-400 bg-white text-cyan-600 shadow-2xs transition hover:bg-cyan-600 hover:text-white hover:border-cyan-600 cursor-pointer"
-                              title="Nhân đôi dòng"
-                            >
-                              <Copy size={16} strokeWidth={2} />
-                            </button>
+                            {!isReadOnly && (
+                              <>
+                                {/* 3. Nhân đôi dòng */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDuplicateRow(idx)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-400 bg-white text-cyan-600 shadow-2xs transition hover:bg-cyan-600 hover:text-white hover:border-cyan-600 cursor-pointer"
+                                  title="Nhân đôi dòng"
+                                >
+                                  <Copy size={16} strokeWidth={2} />
+                                </button>
 
-                            {/* 4. Xóa dòng (Red button matching layout) */}
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveRow(row.rowId)}
-                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 bg-white text-rose-500 shadow-2xs transition hover:bg-rose-600 hover:text-white hover:border-rose-600 cursor-pointer"
-                              title="Xóa dòng"
-                            >
-                              <Trash2 size={16} strokeWidth={2} />
-                            </button>
+                                {/* 4. Xóa dòng */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveRow(row.rowId)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 bg-white text-rose-500 shadow-2xs transition hover:bg-rose-600 hover:text-white hover:border-rose-600 cursor-pointer"
+                                  title="Xóa dòng"
+                                >
+                                  <Trash2 size={16} strokeWidth={2} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -3204,8 +3353,13 @@ export default function CreateStockInOrderPage({
             <div className="relative employee-dropdown-box">
               <label className="mb-1 block text-xs font-bold text-slate-700">Nhân viên lập phiếu</label>
               <div
-                onClick={() => setShowEmployeeDropdown((prev) => !prev)}
-                className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between cursor-pointer outline-none hover:border-cyan-500 shadow-xs transition"
+                onClick={() => {
+                  if (isReadOnly) return;
+                  setShowEmployeeDropdown((prev) => !prev);
+                }}
+                className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between outline-none shadow-xs transition ${
+                  isReadOnly ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-500'
+                }`}
               >
                 <span className="truncate">{activeTab?.employeeName || currentUserName}</span>
                 <ChevronDown
@@ -3214,7 +3368,7 @@ export default function CreateStockInOrderPage({
                 />
               </div>
 
-              {showEmployeeDropdown && (
+              {!isReadOnly && showEmployeeDropdown && (
                 <div className="absolute left-0 top-full z-[100] mt-1 w-full rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-[fadeIn_0.15s_ease-out]">
                   <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-1">
                     {[
@@ -3252,10 +3406,11 @@ export default function CreateStockInOrderPage({
               <label className="mb-0.5 block text-xs font-bold text-slate-700">Ghi chú phiếu nhập</label>
               <textarea
                 rows={1}
+                disabled={isReadOnly}
                 value={activeTab?.description || ''}
                 onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
                 placeholder="Nhập ghi chú..."
-                className="w-full p-1.5 rounded-lg border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs"
+                className="w-full p-1.5 rounded-lg border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -3266,33 +3421,36 @@ export default function CreateStockInOrderPage({
                 <label className="flex items-center gap-1 cursor-pointer">
                   <input
                     type="radio"
+                    disabled={isReadOnly}
                     name="inboundPaymentMethod"
                     value="Tiền mặt"
                     checked={(activeTab?.paymentMethod || 'Tiền mặt') === 'Tiền mặt'}
                     onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer disabled:cursor-not-allowed"
                   />
                   <span>Tiền mặt</span>
                 </label>
                 <label className="flex items-center gap-1 cursor-pointer">
                   <input
                     type="radio"
+                    disabled={isReadOnly}
                     name="inboundPaymentMethod"
                     value="Chuyển khoản"
                     checked={activeTab?.paymentMethod === 'Chuyển khoản'}
                     onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer disabled:cursor-not-allowed"
                   />
                   <span>Chuyển khoản</span>
                 </label>
                 <label className="flex items-center gap-1 cursor-pointer">
                   <input
                     type="radio"
+                    disabled={isReadOnly}
                     name="inboundPaymentMethod"
                     value="ATM"
                     checked={activeTab?.paymentMethod === 'ATM'}
                     onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer disabled:cursor-not-allowed"
                   />
                   <span>ATM</span>
                 </label>
@@ -3302,8 +3460,13 @@ export default function CreateStockInOrderPage({
               <div className="relative account-dropdown-box mt-2">
                 <label className="mb-1 block text-xs font-bold text-slate-700">Tài khoản thanh toán</label>
                 <div
-                  onClick={() => setShowAccountDropdown((prev) => !prev)}
-                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between cursor-pointer outline-none hover:border-cyan-500 shadow-xs transition"
+                  onClick={() => {
+                    if (isReadOnly) return;
+                    setShowAccountDropdown((prev) => !prev);
+                  }}
+                  className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between outline-none shadow-xs transition ${
+                    isReadOnly ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-500'
+                  }`}
                 >
                   <span className="truncate">
                     {activeTab?.paymentAccount || 'Chọn tài khoản thanh toán...'}
@@ -3314,7 +3477,7 @@ export default function CreateStockInOrderPage({
                   />
                 </div>
 
-                {showAccountDropdown && (
+                {!isReadOnly && showAccountDropdown && (
                   <div className="absolute left-0 top-full z-[100] mt-1 w-full rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-[fadeIn_0.15s_ease-out]">
                     <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-1">
                       {[
@@ -3349,50 +3512,34 @@ export default function CreateStockInOrderPage({
             </div>
 
             {/* ══ Light-Themed Cyan Financial Breakdown Box ══ */}
-            <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/60 p-2.5 shadow-sm space-y-1.5 text-slate-800">
+            <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/60 p-3 shadow-sm space-y-2 text-slate-800">
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
                 <span>Thành tiền hàng:</span>
-                <span className="font-extrabold text-slate-900">{subtotal.toLocaleString('vi-VN')} đ</span>
+                <span className="font-extrabold text-slate-900">{rawGoodsSubtotal.toLocaleString('vi-VN')} đ</span>
               </div>
 
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                <span>Chiết khấu (%):</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={activeTab?.discount || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, discount: Number(e.target.value) }))}
-                  placeholder="0"
-                  className="h-7 w-20 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
-                />
+                <span>Chiết khấu:</span>
+                <span className="font-extrabold text-slate-900">
+                  {totalDiscount > 0 ? `-${totalDiscount.toLocaleString('vi-VN')} đ` : '0 đ'}
+                </span>
               </div>
 
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                <span>Thuế VAT (%):</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={activeTab?.vatRate || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, vatRate: Number(e.target.value) }))}
-                  placeholder="0"
-                  className="h-7 w-20 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
-                />
+                <span>Thuế VAT:</span>
+                <span className="font-extrabold text-emerald-700">
+                  {totalVat > 0 ? `+${totalVat.toLocaleString('vi-VN')} đ` : '0 đ'}
+                </span>
               </div>
 
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
                 <span>Phí vận chuyển:</span>
-                <input
-                  type="text"
-                  value={activeTab?.shippingFee ? formatNumberWithCommas(activeTab.shippingFee) : ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, shippingFee: parseFormattedNumber(e.target.value) }))}
-                  placeholder="0"
-                  className="h-7 w-24 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
-                />
+                <span className="font-extrabold text-slate-900">
+                  {activeTab?.shippingFee ? `${activeTab.shippingFee.toLocaleString('vi-VN')} đ` : '0 đ'}
+                </span>
               </div>
 
-              <div className="border-t border-slate-300/80 pt-1.5 flex items-center justify-between">
+              <div className="border-t border-slate-300/80 pt-2 flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-900">
                   TỔNG THÀNH TOÁN:
                 </span>
@@ -3403,64 +3550,85 @@ export default function CreateStockInOrderPage({
 
               <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-0.5">
                 <span>Trả nhà cung cấp:</span>
-                <input
-                  type="text"
-                  value={activeTab?.amountPaid ? formatNumberWithCommas(activeTab.amountPaid) : ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, amountPaid: parseFormattedNumber(e.target.value) }))}
-                  placeholder={formatNumberWithCommas(grandTotal)}
-                  className="h-7 w-24 rounded bg-white px-2 text-right font-extrabold text-emerald-700 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
-                />
+                <span className="font-extrabold text-emerald-700">
+                  {((activeTab?.amountPaid !== undefined && activeTab?.amountPaid !== null) ? activeTab.amountPaid : grandTotal).toLocaleString('vi-VN')} đ
+                </span>
               </div>
 
-              {remainingDebt > 0 && (
-                <div className="flex items-center justify-between text-xs font-bold text-red-600 pt-1 border-t border-slate-200">
-                  <span>Còn nợ lại NCC:</span>
-                  <span className="font-extrabold">{remainingDebt.toLocaleString('vi-VN')} đ</span>
-                </div>
-              )}
+              <div className="flex items-center justify-between text-xs font-semibold pt-1 border-t border-slate-200">
+                <span className="text-slate-700">Còn nợ lại NCC:</span>
+                <span className={`font-extrabold ${remainingDebt > 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                  {remainingDebt.toLocaleString('vi-VN')} đ
+                </span>
+              </div>
             </div>
           </div>
 
           {/* Unified Large Prominent Action Buttons */}
           <div className="space-y-2 pt-2 flex-shrink-0">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => handleSaveInboundOrder(true, 'COMPLETED')}
-              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer disabled:opacity-50"
-            >
-              <Printer size={18} strokeWidth={2.2} />
-              <span>Lưu & In phiếu nhập</span>
-            </button>
+            {actionParam === 'view' ? (
+              <>
+                <div className="rounded-xl border border-cyan-300 bg-cyan-50 p-3 text-center text-xs font-bold text-cyan-900 shadow-xs flex items-center justify-center gap-2">
+                  <AlertCircle size={16} className="text-cyan-700 flex-shrink-0" />
+                  <span>Đang xem chi tiết phiếu nhập kho ở chế độ Chỉ đọc (Read-only).</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleBackNavigation}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
+                >
+                  <ArrowLeft size={18} strokeWidth={2.2} />
+                  <span>QUAY LẠI DANH SÁCH</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {activeTab?.id && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT') && (
+                  <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-center text-xs font-extrabold text-amber-800 shadow-xs">
+                    🔒 Phiếu đã lưu chính thức ({activeTab.status || 'Đã nhập kho'}). Chỉ hỗ trợ xem thông tin, không thể chỉnh sửa.
+                  </div>
+                )}
 
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => handleSaveInboundOrder(false, 'COMPLETED')}
-              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer disabled:opacity-50"
-            >
-              <Save size={18} strokeWidth={2.2} />
-              <span>Lưu phiếu nhập kho</span>
-            </button>
+                <button
+                  type="button"
+                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  onClick={() => handleSaveInboundOrder(true, 'COMPLETED')}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Printer size={18} strokeWidth={2.2} />
+                  <span>Lưu & In phiếu nhập</span>
+                </button>
 
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => handleSaveInboundOrder(false, 'DRAFT')}
-              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-sm hover:bg-amber-600 transition active:scale-95 cursor-pointer disabled:opacity-50"
-            >
-              <FileText size={18} strokeWidth={2.2} />
-              <span>Lưu tạm phiếu nhập</span>
-            </button>
+                <button
+                  type="button"
+                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  onClick={() => handleSaveInboundOrder(false, 'COMPLETED')}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Save size={18} strokeWidth={2.2} />
+                  <span>Lưu phiếu nhập kho</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={handleBackNavigation}
-              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
-            >
-              <ArrowLeft size={18} strokeWidth={2.2} />
-              <span>Hủy / Quay lại</span>
-            </button>
+                <button
+                  type="button"
+                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  onClick={() => handleSaveInboundOrder(false, 'DRAFT')}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-sm hover:bg-amber-600 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <FileText size={18} strokeWidth={2.2} />
+                  <span>Lưu tạm phiếu nhập</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleBackNavigation}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
+                >
+                  <ArrowLeft size={18} strokeWidth={2.2} />
+                  <span>Hủy / Quay lại</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

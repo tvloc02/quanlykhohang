@@ -177,6 +177,7 @@ interface OutboundTab {
 export interface OutboundOrder {
   id: string;
   orderNo: string;
+  orderType?: string;
   customer: string;
   customerId?: string;
   customerPhone?: string;
@@ -276,7 +277,77 @@ const DEFAULT_FALLBACK_CUSTOMERS: CustomerOption[] = [];
 
 const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [];
 
-const DEFAULT_FALLBACK_ORDERS: OutboundOrder[] = [];
+const DEFAULT_FALLBACK_ORDERS: OutboundOrder[] = [
+  {
+    id: 'out-1',
+    orderNo: 'PXK_601',
+    orderType: 'outbound_sales',
+    customer: 'Công ty TNHH Thương Mại & Dịch Vụ Nam Hà',
+    customerPhone: '0988123456',
+    customerAddress: '123 Nguyễn Trãi, Thanh Xuân, Hà Nội',
+    branchCode: 'KHO-TONG',
+    employeeName: 'Quản trị viên hệ thống',
+    orderDate: '17/08/2026',
+    status: 'Đã giao hàng',
+    description: 'Xuất bán hàng theo hợp đồng số HD-2026/08',
+    subtotal: 12500000,
+    discount: 500000,
+    vatAmount: 1200000,
+    totalAmount: 13200000,
+    amountPaid: 13200000,
+    itemsCount: 2,
+    totalQty: 50,
+    details: [
+      { productId: 'p1', productSku: 'SP001', productName: 'Đèn Led Module 3 bóng Samsung', unit: 'Cái', qty: 30, price: 250000, totalLineAmount: 7500000 },
+      { productId: 'p2', productSku: 'SP002', productName: 'Cảm biến hồng ngoại kho hàng', unit: 'Cái', qty: 20, price: 250000, totalLineAmount: 5000000 },
+    ],
+  },
+  {
+    id: 'out-2',
+    orderNo: 'PXK_602',
+    orderType: 'outbound_sales',
+    customer: 'Đại lý Vật tư Xây dựng Minh Phát',
+    customerPhone: '0912345678',
+    customerAddress: '456 Lê Duẩn, Hải Châu, Đà Nẵng',
+    branchCode: 'KHO-NVL',
+    employeeName: 'Nguyễn Văn Quản Lý',
+    orderDate: '16/08/2026',
+    status: 'Đã giao hàng',
+    description: 'Xuất kho giao đại lý miền Trung',
+    subtotal: 8400000,
+    discount: 0,
+    vatAmount: 840000,
+    totalAmount: 9240000,
+    amountPaid: 9240000,
+    itemsCount: 1,
+    totalQty: 24,
+    details: [
+      { productId: 'p3', productSku: 'SP003', productName: 'Bình nước giữ nhiệt inox 1.2L', unit: 'Cái', qty: 24, price: 350000, totalLineAmount: 8400000 },
+    ],
+  },
+];
+
+const DEFAULT_FALLBACK_RETAIL_ORDERS: OutboundOrder[] = [
+  {
+    id: 'ret-1',
+    orderNo: 'XBL_601',
+    orderType: 'retail',
+    customer: 'Khách hàng bán lẻ',
+    branchCode: 'KHO-NVL',
+    employeeName: 'Quản trị viên hệ thống',
+    orderDate: '17/08/2026',
+    status: 'Đã giao hàng',
+    description: 'Xuất bán lẻ cho khách vãng lai',
+    subtotal: 130000,
+    totalAmount: 130000,
+    amountPaid: 130000,
+    itemsCount: 1,
+    totalQty: 2,
+    details: [
+      { productId: 'p1', productSku: 'SP001', productName: 'Đèn Led Module 3 bóng Samsung', unit: 'Cái', qty: 2, price: 65000, totalLineAmount: 130000 },
+    ],
+  },
+];
 
 const DEFAULT_FALLBACK_DISPOSAL_ORDERS: OutboundOrder[] = [
   {
@@ -383,7 +454,7 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', 
 }
 
 export interface OutboundProps {
-  featureMode?: 'orders' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal';
+  featureMode?: 'orders' | 'retail' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal';
   title?: string;
   codePrefix?: string;
   partnerLabel?: string;
@@ -396,8 +467,11 @@ export default function Outbound({
   partnerLabel = 'Khách hàng',
 }: OutboundProps) {
   const navigate = useNavigate();
+  const isRetail = featureMode === 'retail' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/retail'));
   const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
-  const [orders, setOrders] = useState<OutboundOrder[]>(isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : DEFAULT_FALLBACK_ORDERS);
+  const [orders, setOrders] = useState<OutboundOrder[]>(
+    isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : (isRetail ? DEFAULT_FALLBACK_RETAIL_ORDERS : DEFAULT_FALLBACK_ORDERS)
+  );
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -586,13 +660,15 @@ export default function Outbound({
         if (list.length > 0) {
           const targetList = isDisposal
             ? list.filter((item: any) => item.orderType === 'disposal' || (item.orderNo && item.orderNo.startsWith('XH')))
-            : list.filter((item: any) => item.orderType !== 'disposal' && (!item.orderNo || !item.orderNo.startsWith('XH')));
+            : isRetail
+            ? list.filter((item: any) => item.orderType === 'retail' || item.orderType === 'RETAIL' || (item.orderNo && item.orderNo.startsWith('XBL')))
+            : list.filter((item: any) => item.orderType !== 'disposal' && item.orderType !== 'retail' && item.orderType !== 'RETAIL' && (!item.orderNo || (!item.orderNo.startsWith('XH') && !item.orderNo.startsWith('XBL'))));
 
           const formatted: OutboundOrder[] = targetList.map((item: any, idx: number) => ({
             id: String(item.id || idx),
-            orderNo: item.orderNo || item.receiptNo || (isDisposal ? `XH_${1000 + idx}` : `XBH_${1000 + idx}`),
+            orderNo: item.orderNo || item.receiptNo || (isDisposal ? `XH_${1000 + idx}` : (isRetail ? `XBL_${1000 + idx}` : `XBH_${1000 + idx}`)),
             orderType: item.orderType,
-            customer: item.customer || item.customerName || item.customer?.name || (isDisposal ? 'Hàng hết hạn / hư hỏng' : '888 - Khách lẻ'),
+            customer: item.customer || item.customerName || item.customer?.name || (isDisposal ? 'Hàng hết hạn / hư hỏng' : (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ')),
             customerId: item.customerId || item.customer?.id,
             customerPhone: item.customerPhone || item.customer?.phone || '',
             customerAddress: item.customerAddress || item.customer?.address || '',
@@ -622,7 +698,7 @@ export default function Outbound({
           }));
           setOrders(formatted);
         } else {
-          setOrders([]);
+          setOrders(isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : (isRetail ? DEFAULT_FALLBACK_RETAIL_ORDERS : DEFAULT_FALLBACK_ORDERS));
         }
       }
 

@@ -36,6 +36,7 @@ export interface ProductOption {
   unit?: string;
   purchasePrice?: number;
   salePrice?: number;
+  wholesalePrice?: number;
   price?: number;
 }
 
@@ -104,12 +105,12 @@ const DEFAULT_ROWS_COUNT = 50;
 const API_BASE_URL = 'http://localhost:3000/api';
 
 const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [
-  { id: 'p1', internalSku: 'SP001', name: 'Đèn Led Module 3 bóng Samsung', unit: 'Cái', purchasePrice: 45000, salePrice: 65000, price: 65000 },
-  { id: 'p2', internalSku: 'SP002', name: 'Cảm biến nhiệt độ công nghiệp Omron', unit: 'Bộ', purchasePrice: 320000, salePrice: 450000, price: 450000 },
-  { id: 'p3', internalSku: 'SP003', name: 'Dây cáp mạng Cat6 UTP 305m', unit: 'Cuộn', purchasePrice: 1200000, salePrice: 1500000, price: 1500000 },
-  { id: 'p4', internalSku: 'SP004', name: 'Bộ nguồn Tổ Ong 12V 30A High Quality', unit: 'Cái', purchasePrice: 180000, salePrice: 240000, price: 240000 },
-  { id: 'p5', internalSku: 'SP005', name: 'Công tắc hành trình Panasonic HZ-12', unit: 'Cái', purchasePrice: 85000, salePrice: 120000, price: 120000 },
-  { id: 'p6', internalSku: 'SP006', name: 'Thanh nhôm định hình 20x20 2m', unit: 'Thanh', purchasePrice: 110000, salePrice: 160000, price: 160000 },
+  { id: 'p1', internalSku: 'SP001', name: 'Đèn Led Module 3 bóng Samsung', unit: 'Cái', purchasePrice: 45000, salePrice: 65000, wholesalePrice: 55000, price: 65000 },
+  { id: 'p2', internalSku: 'SP002', name: 'Cảm biến nhiệt độ công nghiệp Omron', unit: 'Bộ', purchasePrice: 320000, salePrice: 450000, wholesalePrice: 390000, price: 450000 },
+  { id: 'p3', internalSku: 'SP003', name: 'Dây cáp mạng Cat6 UTP 305m', unit: 'Cuộn', purchasePrice: 1200000, salePrice: 1500000, wholesalePrice: 1350000, price: 1500000 },
+  { id: 'p4', internalSku: 'SP004', name: 'Bộ nguồn Tổ Ong 12V 30A High Quality', unit: 'Cái', purchasePrice: 180000, salePrice: 240000, wholesalePrice: 210000, price: 240000 },
+  { id: 'p5', internalSku: 'SP005', name: 'Công tắc hành trình Panasonic HZ-12', unit: 'Cái', purchasePrice: 85000, salePrice: 120000, wholesalePrice: 100000, price: 120000 },
+  { id: 'p6', internalSku: 'SP006', name: 'Thanh nhôm định hình 20x20 2m', unit: 'Thanh', purchasePrice: 110000, salePrice: 160000, wholesalePrice: 135000, price: 160000 },
 ];
 
 function formatNumberWithCommas(val: number | string): string {
@@ -185,7 +186,7 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administra
 export interface CreateOutboundOrderPageProps {
   onBack?: () => void;
   standalone?: boolean;
-  featureMode?: 'orders' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal';
+  featureMode?: 'orders' | 'retail' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal';
   title?: string;
   codePrefix?: string;
   partnerLabel?: string;
@@ -200,7 +201,15 @@ export default function CreateOutboundOrderPage({
   partnerLabel = 'Khách hàng',
 }: CreateOutboundOrderPageProps) {
   const navigate = useNavigate();
+  const isRetail = featureMode === 'retail' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/retail'));
   const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
+
+  const getProductPriceForMode = useCallback((p: ProductOption) => {
+    if (isRetail) {
+      return p.salePrice || p.price || 0;
+    }
+    return (p.wholesalePrice && p.wholesalePrice > 0) ? p.wholesalePrice : (p.salePrice || p.price || 0);
+  }, [isRetail]);
 
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'System Administrator';
@@ -329,6 +338,7 @@ export default function CreateOutboundOrderPage({
               unit: p.unit || 'Cái',
               purchasePrice: Number(p.importPrice || p.purchasePrice || 0),
               salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
+              wholesalePrice: Number(p.wholesalePrice || 0),
               price: Number(p.retailPrice || p.salePrice || p.price || 0),
             }));
             setProducts(normalized);
@@ -364,7 +374,7 @@ export default function CreateOutboundOrderPage({
     if (onBack) {
       onBack();
     } else {
-      navigate(isDisposal ? '/outbound/disposal' : '/outbound/orders');
+      navigate(isDisposal ? '/outbound/disposal' : (isRetail ? '/outbound/retail' : '/outbound/orders'));
     }
   };
 
@@ -389,7 +399,7 @@ export default function CreateOutboundOrderPage({
             newRow.productSku = p.internalSku;
             newRow.productName = p.name;
             newRow.unit = p.unit || 'Cái';
-            newRow.price = p.salePrice || p.price || 0;
+            newRow.price = getProductPriceForMode(p);
             if (newRow.qty === 0) newRow.qty = 1;
           }
         }
@@ -447,7 +457,9 @@ export default function CreateOutboundOrderPage({
     if (!scanned || !activeTab) return;
 
     const barcodeVal = scanned.supplierBarcode || scanned.internalSku || '';
-    const priceVal = scanned.purchasePrice || scanned.salePrice || 0;
+    const rawRetail = scanned.salePrice || scanned.purchasePrice || 0;
+    const rawWholesale = (scanned as any).wholesalePrice || rawRetail;
+    const priceVal = isRetail ? rawRetail : (rawWholesale > 0 ? rawWholesale : rawRetail);
 
     // 1. Ưu tiên kiểm tra sản phẩm đã có trong bảng chưa, nếu có thì cộng dồn số lượng
     const existingIndex = activeTab.details.findIndex(
@@ -576,7 +588,7 @@ export default function CreateOutboundOrderPage({
 
     const defaultCode = isDisposal
       ? `XH_${Date.now().toString().slice(-6)}`
-      : `PXK_${Date.now().toString().slice(-6)}`;
+      : (isRetail ? `XBL_${Date.now().toString().slice(-6)}` : `XBH_${Date.now().toString().slice(-6)}`);
 
     const finalOrderNo = activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : defaultCode;
 
@@ -610,11 +622,11 @@ export default function CreateOutboundOrderPage({
         }
       : {
           orderNo: finalOrderNo,
-          orderType: 'orders',
+          orderType: isRetail ? 'retail' : 'orders',
           branchCode: activeTab.branchCode || 'KHO-NVL',
           employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
           customerId: activeTab.customerId,
-          customerName: activeTab.customer?.trim() || '888 - Khách lẻ',
+          customerName: activeTab.customer?.trim() || (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ'),
           customerPhone: activeTab.customerPhone?.trim() || undefined,
           customerAddress: activeTab.customerAddress?.trim() || undefined,
           orderDate: activeTab.orderDate,
@@ -689,6 +701,7 @@ export default function CreateOutboundOrderPage({
 
   const handleSelectQuickProduct = (p: ProductOption) => {
     if (!activeTab) return;
+    const targetPrice = getProductPriceForMode(p);
     const emptyRow = activeTab.details.find((r) => !r.productId && !r.productName);
     if (emptyRow) {
       updateRow(emptyRow.rowId, {
@@ -696,7 +709,7 @@ export default function CreateOutboundOrderPage({
         productSku: p.internalSku,
         productName: p.name,
         unit: p.unit || 'Cái',
-        price: p.salePrice || p.price || 0,
+        price: targetPrice,
         qty: 1,
       });
     } else {
@@ -705,9 +718,9 @@ export default function CreateOutboundOrderPage({
       newRow.productSku = p.internalSku;
       newRow.productName = p.name;
       newRow.unit = p.unit || 'Cái';
-      newRow.price = p.salePrice || p.price || 0;
+      newRow.price = targetPrice;
       newRow.qty = 1;
-      newRow.totalAmount = p.salePrice || p.price || 0;
+      newRow.totalAmount = targetPrice;
       updateActiveTab((tab) => ({ ...tab, details: [...tab.details, newRow] }));
     }
     setQuickProductSearch('');
@@ -1117,7 +1130,7 @@ export default function CreateOutboundOrderPage({
                             <span className="text-[11px] font-semibold text-slate-500">({p.unit || 'Cái'})</span>
                           </div>
                           <div className="text-right">
-                            <span className="font-extrabold text-cyan-900">{Number(p.salePrice || p.price || 0).toLocaleString('vi-VN')} đ</span>
+                            <span className="font-extrabold text-cyan-900">{getProductPriceForMode(p).toLocaleString('vi-VN')} đ</span>
                           </div>
                         </div>
                       ))
@@ -1239,7 +1252,7 @@ export default function CreateOutboundOrderPage({
                                           productSku: p.internalSku,
                                           productName: p.name,
                                           unit: p.unit || 'Cái',
-                                          price: p.salePrice || p.price || p.purchasePrice || 0,
+                                          price: getProductPriceForMode(p),
                                           qty: row.qty === 0 ? 1 : row.qty,
                                         });
                                         setActiveProductDropdownRowId(null);
@@ -1249,7 +1262,7 @@ export default function CreateOutboundOrderPage({
                                       <span className="w-1/3 font-extrabold text-cyan-800">{p.internalSku}</span>
                                       <span className="w-1/2 font-bold text-slate-800 truncate pr-1">{p.name}</span>
                                       <span className="w-1/4 text-right font-extrabold text-slate-900">
-                                        {Number(p.salePrice || p.price || 0).toLocaleString('vi-VN')} đ
+                                        {getProductPriceForMode(p).toLocaleString('vi-VN')} đ
                                       </span>
                                     </div>
                                   ))

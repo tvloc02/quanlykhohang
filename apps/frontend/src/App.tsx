@@ -453,7 +453,7 @@ function App() {
           element={
             <RoleRoute menuId="outbound-retail">
               <MainLayout>
-                <Outbound featureMode="orders" title="DANH SÁCH PHIẾU XUẤT BÁN LẺ" codePrefix="PXK" partnerLabel="Khách hàng" />
+                <Outbound featureMode="retail" title="DANH SÁCH PHIẾU XUẤT BÁN LẺ" codePrefix="XBL" partnerLabel="Khách hàng" />
               </MainLayout>
             </RoleRoute>
           }
