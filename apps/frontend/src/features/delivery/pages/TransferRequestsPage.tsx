@@ -304,7 +304,8 @@ export default function TransferRequestsPage() {
     return () => document.removeEventListener('mousedown', handleDocumentMouseDown);
   }, []);
 
-  const handleDeleteRequest = (id: string) => {
+  const handleDeleteRequest = (id: string, requestNumber?: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa yêu cầu điều chuyển ${requestNumber || id}?`)) return;
     const updated = requests.filter((r) => r.id !== id);
     setRequests(updated);
     localStorage.setItem('wms_transfer_requests', JSON.stringify(updated));
@@ -508,57 +509,59 @@ export default function TransferRequestsPage() {
                 <th className="sticky right-0 w-44 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">Thao tác</th>
               </tr>
             </thead>
-            <tbody>
-              {paginatedRequests.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    Hiện không có yêu cầu điều chuyển. Hãy tạo yêu cầu mới hoặc chuyển sang lập phiếu điều chuyển.
-                  </td>
-                </tr>
-              ) : (
+            <tbody className="bg-white font-medium">
+              {paginatedRequests.length > 0 ? (
                 paginatedRequests.map((request, index) => (
                   <tr key={request.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">
                       {startIndex + index}
                     </td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{request.requestNumber}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatDateTime(request.createdDate)}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{renderWarehouse(request.sourceWarehouse, warehouses)}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{renderWarehouse(request.destinationWarehouse, warehouses)}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{request.createdBy}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                      <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${statusClass(request.status)}`}>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-cyan-900">{request.requestNumber}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{formatDateTime(request.createdDate)}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{renderWarehouse(request.sourceWarehouse, warehouses)}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{renderWarehouse(request.destinationWarehouse, warehouses)}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{request.createdBy}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
+                      <span className={`inline-flex rounded-lg border px-2.5 py-0.5 text-xs font-bold ${statusClass(request.status)}`}>
                         {formatStatus(request.status)}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
                           onClick={() => navigate('/delivery/create-transfer-request', { state: { editRequestData: request } })}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border-2 border-cyan-500 bg-white text-cyan-600 shadow-xs transition hover:bg-cyan-50 cursor-pointer"
                           title="Chỉnh sửa phiếu nhập chuyển kho"
                         >
-                          <Pencil className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
+                          <Pencil className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                         </button>
                         <button
                           type="button"
                           onClick={() => openView(request)}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border-2 border-cyan-500 bg-white text-cyan-600 shadow-xs transition hover:bg-cyan-50 cursor-pointer"
                           title="Xem chi tiết"
                         >
-                          <Eye className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
+                          <Eye className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                         </button>
                         {request.status === 'PENDING' && (
                           <button
                             type="button"
                             onClick={() => approveRequest(request)}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border-2 border-cyan-500 bg-white text-cyan-600 shadow-xs transition hover:bg-cyan-50 cursor-pointer"
                             title="Duyệt yêu cầu"
                           >
-                            <CheckCircle2 className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
+                            <CheckCircle2 className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRequest(request.id, request.requestNumber)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border-2 border-rose-500 bg-white text-rose-600 shadow-xs transition hover:bg-rose-50 cursor-pointer"
+                          title="Xóa yêu cầu điều chuyển"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-rose-600" strokeWidth={2.2} />
+                        </button>
                         <button
                           type="button"
                           onClick={(event) => {
@@ -577,16 +580,29 @@ export default function TransferRequestsPage() {
                               });
                             }
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border-2 border-cyan-500 bg-white text-cyan-600 shadow-xs transition hover:bg-cyan-50 cursor-pointer"
                           title="Thao tác khác"
                         >
-                          <MoreHorizontal className="h-4 w-4 text-cyan-600" strokeWidth={2.5} />
+                          <MoreHorizontal className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.5} />
                         </button>
                       </div>
                     </td>
                   </tr>
                 ))
-              )}
+              ) : null}
+
+              {/* Lớp kẻ dòng ô vuông bảng trống đủ 10 dòng tiêu chuẩn */}
+              {Array.from({ length: Math.max(0, 10 - paginatedRequests.length) }).map((_, idx) => (
+                <tr key={`empty-request-${idx}`} className={`h-11 ${paginatedRequests.length === 0 && idx === 3 ? 'bg-slate-50/50' : ''}`}>
+                  <td className="border-x border-b border-slate-200 px-3 py-3 text-center text-slate-300 font-mono text-[11px]">
+                    {paginatedRequests.length + idx + 1}
+                  </td>
+                  <td className="border-x border-b border-slate-200 px-3 py-3 text-center text-slate-400 text-xs italic" colSpan={6}>
+                    {paginatedRequests.length === 0 && idx === 3 ? 'Hiện không có yêu cầu điều chuyển. Hãy tạo yêu cầu mới hoặc chuyển sang lập phiếu điều chuyển.' : ''}
+                  </td>
+                  <td className="sticky right-0 border-l border-b border-slate-200 bg-white px-3 py-3"></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

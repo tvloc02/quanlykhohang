@@ -1198,8 +1198,7 @@ export default function CreateWarehousePage() {
                       const vachNgang = activeZone?.shelvesPerRack ?? 5;
                       const baysCount = Math.max(1, vachDoc - 1);
                       const shelvesCount = Math.max(1, vachNgang - 1);
-                      const binsPerShelf = rack.binsPerShelf || 2;
-                      const totalBinsPerShelf = baysCount * binsPerShelf;
+                      const totalBinsPerShelf = baysCount;
 
                       return (
                         <div
@@ -1251,67 +1250,62 @@ export default function CreateWarehousePage() {
                                     {/* HORIZONTAL GRID OF Ô (BINS) FOR THIS TẦNG */}
                                     <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
                                       {Array.from({ length: baysCount }).map((_, bIdx) => {
-                                        const bayNum = bIdx + 1;
-                                        const bayCode = `B${String(bayNum).padStart(2, '0')}`;
+                                        const cellNum = bIdx + 1;
+                                        const bayCode = `B${String(cellNum).padStart(2, '0')}`;
+                                        const binLabel = `Ô C${String(cellNum).padStart(2, '0')}`;
+                                        const cellCode = `C${String(cellNum).padStart(2, '0')}`;
+                                        const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${bayCode}-${shelfCode}-${cellCode}`;
+                                        const isCustom = rack.customBins && rack.customBins[fullBinCode];
 
-                                        return Array.from({ length: binsPerShelf }).map((_, cIdx) => {
-                                          const cellNum = cIdx + 1;
-                                          const globalBinIdx = bIdx * binsPerShelf + cellNum;
-                                          const binLabel = `Ô C${String(globalBinIdx).padStart(2, '0')}`;
-                                          const cellCode = `C${String(cellNum).padStart(2, '0')}`;
-                                          const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${bayCode}-${shelfCode}-${cellCode}`;
-                                          const isCustom = rack.customBins && rack.customBins[fullBinCode];
+                                        const occupiedInfo = getOccupiedInfo(fullBinCode, activeZone?.code, rack.rackCode, bayCode, shelfCode, cellCode);
+                                        const hasGoods = Boolean(occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0));
 
-                                          const occupiedInfo = getOccupiedInfo(fullBinCode, activeZone?.code, rack.rackCode, bayCode, shelfCode, cellCode);
-                                          const hasGoods = Boolean(occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0));
-
-                                          return (
-                                            <button
-                                              key={fullBinCode}
-                                              type="button"
-                                              onClick={() => {
-                                                setEditingBinCode(fullBinCode);
-                                                setBinCustomForm(
-                                                  isCustom || {
-                                                    binCode: fullBinCode,
-                                                    length: rack.defaultBinLength || 120,
-                                                    width: rack.defaultBinWidth || 80,
-                                                    height: rack.defaultBinHeight || 100,
-                                                    maxWeight: rack.defaultBinMaxWeight || 500,
-                                                  }
-                                                );
-                                              }}
-                                              className={`p-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-between gap-1 shadow-sm ${
-                                                hasGoods
-                                                  ? 'border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/80 text-amber-950 dark:text-amber-100 shadow-md ring-2 ring-amber-300/60 font-black'
-                                                  : isCustom
-                                                    ? 'border-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 text-cyan-900 dark:text-cyan-200'
-                                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 text-slate-700 dark:text-slate-200'
-                                              }`}
-                                            >
-                                              <div className="w-full flex items-center justify-between gap-1">
-                                                <span className={`text-xs font-black ${hasGoods ? 'text-amber-900 dark:text-amber-200' : 'text-cyan-700 dark:text-cyan-300'}`}>
-                                                  {binLabel}
-                                                </span>
-                                                {hasGoods && (
-                                                  <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" title="Có hàng lưu trữ" />
-                                                )}
-                                              </div>
-                                              <span className="text-[10px] font-bold text-slate-400">
-                                                Khoang {bayCode}
+                                        return (
+                                          <button
+                                            key={fullBinCode}
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingBinCode(fullBinCode);
+                                              setBinCustomForm(
+                                                isCustom || {
+                                                  binCode: fullBinCode,
+                                                  length: rack.defaultBinLength || 120,
+                                                  width: rack.defaultBinWidth || 80,
+                                                  height: rack.defaultBinHeight || 100,
+                                                  maxWeight: rack.defaultBinMaxWeight || 500,
+                                                }
+                                              );
+                                            }}
+                                            className={`p-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-between gap-1 shadow-sm ${
+                                              hasGoods
+                                                ? 'border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/80 text-amber-950 dark:text-amber-100 shadow-md ring-2 ring-amber-300/60 font-black'
+                                                : isCustom
+                                                  ? 'border-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 text-cyan-900 dark:text-cyan-200'
+                                                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 text-slate-700 dark:text-slate-200'
+                                            }`}
+                                          >
+                                            <div className="w-full flex items-center justify-between gap-1">
+                                              <span className={`text-xs font-black ${hasGoods ? 'text-amber-900 dark:text-amber-200' : 'text-cyan-700 dark:text-cyan-300'}`}>
+                                                {binLabel}
                                               </span>
-                                              {hasGoods ? (
-                                                <span className="text-[10px] font-black text-amber-950 bg-amber-300 dark:bg-amber-700 dark:text-amber-50 px-1.5 py-0.5 rounded-md w-full truncate border border-amber-400 shadow-2xs flex items-center justify-center gap-0.5">
-                                                  📦 {occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1} sp
-                                                </span>
-                                              ) : (
-                                                <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-full truncate">
-                                                  {isCustom ? `${isCustom.maxWeight}kg` : `${rack.defaultBinMaxWeight || 500}kg`}
-                                                </span>
+                                              {hasGoods && (
+                                                <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" title="Có hàng lưu trữ" />
                                               )}
-                                            </button>
-                                          );
-                                        });
+                                            </div>
+                                            <span className="text-[10px] font-bold text-slate-400">
+                                              Khoang {bayCode}
+                                            </span>
+                                            {hasGoods ? (
+                                              <span className="text-[10px] font-black text-amber-950 bg-amber-300 dark:bg-amber-700 dark:text-amber-50 px-1.5 py-0.5 rounded-md w-full truncate border border-amber-400 shadow-2xs flex items-center justify-center gap-0.5">
+                                                📦 {occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1} sp
+                                              </span>
+                                            ) : (
+                                              <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-full truncate">
+                                                {isCustom ? `${isCustom.maxWeight}kg` : `${rack.defaultBinMaxWeight || 500}kg`}
+                                              </span>
+                                            )}
+                                          </button>
+                                        );
                                       })}
                                     </div>
                                   </div>

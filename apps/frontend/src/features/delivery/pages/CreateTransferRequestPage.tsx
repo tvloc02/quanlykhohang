@@ -18,9 +18,17 @@ import {
   Maximize2,
   Minimize2,
   Repeat,
+  RotateCcw,
+  Clock,
+  Phone,
+  Car,
+  Calendar,
+  Bike,
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import MainLayout from '../../../shared/components/MainLayout';
+import { getStoredShippers, type Shipper } from '../services/shipperService';
+import QuickAddShipperModal from '../components/QuickAddShipperModal';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -32,6 +40,16 @@ export interface ProductOption {
   purchasePrice?: number;
   salePrice?: number;
   price?: number;
+  totalStock?: number;
+  totalPhysical?: number;
+  stockQty?: number;
+  stockBalances?: Array<{
+    id?: string;
+    locationCode: string;
+    totalPhysical?: number;
+    allocated?: number;
+    available?: number;
+  }>;
 }
 
 export interface WarehouseOption {
@@ -59,6 +77,11 @@ export interface TransferRequestRowItem {
   note: string;
 }
 
+function formatISOWithSeconds(d = new Date()): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export interface TransferRequestTab {
   tabId: string;
   title: string;
@@ -68,6 +91,11 @@ export interface TransferRequestTab {
   destinationWarehouseCode: string;
   assignedStaffEmail: string;
   orderDate: string;
+  dispatchDate: string;
+  receiveDate: string;
+  driverName: string;
+  driverPhone: string;
+  vehiclePlate: string;
   generalNote: string;
   status: string;
   details: TransferRequestRowItem[];
@@ -93,6 +121,52 @@ function getStoredUser() {
 
 function formatMoney(amount: number) {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
+}
+
+export function getProductPrice(p?: ProductOption | any): number {
+  if (!p) return 0;
+  return Number(
+    p.importPrice ||
+    p.purchasePrice ||
+    p.price ||
+    p.retailPrice ||
+    p.wholesalePrice ||
+    p.salePrice ||
+    0
+  );
+}
+
+export function getProductWarehouseStock(p: ProductOption, whCode?: string): number {
+  if (!p) return 0;
+  const targetCode = (whCode || '').trim().toLowerCase();
+
+  if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
+    if (targetCode) {
+      const match = p.stockBalances.find((b) => {
+        const bCode = (b.locationCode || '').trim().toLowerCase();
+        if (bCode === targetCode) return true;
+        if (
+          (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
+          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl')
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      if (match) {
+        if (match.available !== undefined && match.available !== null) {
+          return Number(match.available);
+        }
+        if (match.totalPhysical !== undefined && match.totalPhysical !== null) {
+          return Number(match.totalPhysical);
+        }
+      }
+      return 0;
+    }
+  }
+
+  return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
 }
 
 function generateRequestCode() {
@@ -127,11 +201,8 @@ function createNewTransferRequestTab(
   defaultSource = 'KHO-TONG',
   defaultDest = 'KHO-CN-HCM'
 ): TransferRequestTab {
-  const d = new Date();
-  const dateFormatted = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d
-    .getDate()
-    .toString()
-    .padStart(2, '0')}T${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  const now = new Date();
+  const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
@@ -140,7 +211,12 @@ function createNewTransferRequestTab(
     sourceWarehouseCode: defaultSource,
     destinationWarehouseCode: defaultDest,
     assignedStaffEmail: defaultStaffEmail,
-    orderDate: dateFormatted,
+    orderDate: formatISOWithSeconds(now),
+    dispatchDate: formatISOWithSeconds(now),
+    receiveDate: formatISOWithSeconds(nextDay),
+    driverName: '',
+    driverPhone: '',
+    vehiclePlate: '',
     generalNote: '',
     status: 'PENDING',
     details: makeInitialRows(DEFAULT_ROWS_COUNT, defaultDest),
@@ -179,6 +255,14 @@ export default function CreateTransferRequestPage({
   const [activeProductDropdownRowId, setActiveProductDropdownRowId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [shippers, setShippers] = useState<Shipper[]>(() => getStoredShippers());
+  const [showQuickAddShipperModal, setShowQuickAddShipperModal] = useState(false);
+
+  useEffect(() => {
+    const handleShippersUpdate = () => setShippers(getStoredShippers());
+    window.addEventListener('shippers-updated', handleShippersUpdate);
+    return () => window.removeEventListener('shippers-updated', handleShippersUpdate);
+  }, []);
 
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<TransferRequestTab[]>(() => {
@@ -210,8 +294,13 @@ export default function CreateTransferRequestPage({
           destinationWarehouseCode: targetEditData.destinationWarehouse || 'KHO-CN-HCM',
           assignedStaffEmail: targetEditData.createdBy || currentStaffEmail,
           orderDate: targetEditData.createdDate || targetEditData.scheduledDate
-            ? new Date(targetEditData.createdDate || targetEditData.scheduledDate).toISOString().slice(0, 16)
-            : new Date().toISOString().slice(0, 16),
+            ? new Date(targetEditData.createdDate || targetEditData.scheduledDate).toISOString().slice(0, 19)
+            : formatISOWithSeconds(),
+          dispatchDate: targetEditData.dispatchDate || formatISOWithSeconds(),
+          receiveDate: targetEditData.receiveDate || formatISOWithSeconds(new Date(Date.now() + 86400000)),
+          driverName: targetEditData.driverName || '',
+          driverPhone: targetEditData.driverPhone || '',
+          vehiclePlate: targetEditData.vehiclePlate || '',
           generalNote: targetEditData.description || targetEditData.note || '',
           status: targetEditData.status || 'PENDING',
           details: paddedRows,
@@ -220,13 +309,8 @@ export default function CreateTransferRequestPage({
     }
 
     try {
-      const savedDraft = sessionStorage.getItem('transfer_request_tabs_draft');
-      if (savedDraft) {
-        const parsed = JSON.parse(savedDraft);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
+      sessionStorage.removeItem('transfer_request_tabs_draft');
+      sessionStorage.removeItem('transfer_request_active_tab_id');
     } catch {}
     return [createNewTransferRequestTab(1, currentStaffEmail)];
   });
@@ -374,8 +458,15 @@ export default function CreateTransferRequestPage({
             updated.productName = matched.name;
             updated.productSku = matched.internalSku;
             updated.unit = matched.unit || 'Cái';
-            updated.price = matched.purchasePrice || matched.salePrice || 0;
+            if (patch.price === undefined || patch.price === 0) {
+              updated.price = getProductPrice(matched);
+            }
             if (updated.qty === 0) updated.qty = 1;
+          }
+        } else if (patch.productId && patch.price === 0) {
+          const matched = products.find((p) => p.id === patch.productId);
+          if (matched) {
+            updated.price = getProductPrice(matched);
           }
         }
 
@@ -493,11 +584,29 @@ export default function CreateTransferRequestPage({
 
   // Back action navigation
   const handleBackNavigation = () => {
+    try {
+      sessionStorage.removeItem('transfer_request_tabs_draft');
+      sessionStorage.removeItem('transfer_request_active_tab_id');
+    } catch {}
     if (onBack) {
       onBack();
     } else {
       navigate('/delivery/transfer-requests');
     }
+  };
+
+  // Clear / Reset Current Tab Rows
+  const handleClearCurrentTab = () => {
+    if (!activeTab) return;
+    updateActiveTab((t) => ({
+      ...t,
+      details: makeInitialRows(DEFAULT_ROWS_COUNT, t.destinationWarehouseCode),
+    }));
+    try {
+      sessionStorage.removeItem('transfer_request_tabs_draft');
+      sessionStorage.removeItem('transfer_request_active_tab_id');
+    } catch {}
+    setToast({ message: 'Đã xóa toàn bộ sản phẩm và làm mới phiếu!', type: 'success' });
   };
 
   // Save Transfer Request Handler
@@ -554,6 +663,11 @@ export default function CreateTransferRequestPage({
       }
 
       localStorage.setItem('wms_transfer_requests', JSON.stringify(updated));
+
+      try {
+        sessionStorage.removeItem('transfer_request_tabs_draft');
+        sessionStorage.removeItem('transfer_request_active_tab_id');
+      } catch {}
 
       setToast({
         type: 'success',
@@ -617,14 +731,25 @@ export default function CreateTransferRequestPage({
             </h1>
           </div>
 
-          <button
-            type="button"
-            onClick={handleBackNavigation}
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition shadow-xs cursor-pointer"
-          >
-            <ArrowLeft size={16} />
-            <span>Quay lại</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleClearCurrentTab}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-amber-500 bg-white px-3.5 py-2 text-xs font-bold text-amber-700 hover:bg-amber-50 transition shadow-xs cursor-pointer"
+              title="Làm mới form và xóa các dòng đã chọn"
+            >
+              <RotateCcw className="h-4 w-4 text-amber-600" />
+              <span>Làm mới phiếu</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleBackNavigation}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition shadow-xs cursor-pointer"
+            >
+              <ArrowLeft size={16} />
+              <span>Quay lại</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -692,20 +817,10 @@ export default function CreateTransferRequestPage({
       <div className={`grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch ${isFullscreen ? 'flex-1 min-h-0' : 'items-start'}`}>
         {/* ── LEFT COLUMN (9/12 width): METADATA + PRODUCT TABLE STACKED VERTICALLY ── */}
         <div className={`lg:col-span-9 flex flex-col space-y-2.5 min-h-0 ${isFullscreen ? 'h-full' : ''}`}>
-          {/* ═══ FORM METADATA CONTROL BAR (5 Columns) ═══ */}
-          <div className="rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex-shrink-0">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {/* Ngày nhập / điều chuyển */}
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Ngày nhập / chuyển kho</label>
-                <input
-                  type="datetime-local"
-                  value={activeTab?.orderDate || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
-                  className="h-8.5 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600"
-                />
-              </div>
-
+          {/* ═══ FORM METADATA CONTROL BAR (2 Rows Layout) ═══ */}
+          <div className="rounded-xl border-2 border-slate-200 bg-white p-3.5 shadow-sm flex-shrink-0 space-y-3">
+            {/* Row 1: Thông tin Mã phiếu & Kho xuất nhập */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {/* Mã phiếu / Số yêu cầu */}
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700">Mã phiếu / Số yêu cầu</label>
@@ -713,48 +828,21 @@ export default function CreateTransferRequestPage({
                   type="text"
                   value={activeTab?.requestNo || ''}
                   onChange={(e) => updateActiveTab((t) => ({ ...t, requestNo: e.target.value }))}
-                  placeholder="TẠO TỰ ĐỘNG (PNCN...)"
-                  className="h-8.5 w-full rounded-lg border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-cyan-800 uppercase outline-none focus:border-cyan-600"
+                  placeholder="TẠO TỰ ĐỘNG (YCNC...)"
+                  className="h-9 w-full rounded-lg border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-cyan-800 uppercase outline-none focus:border-cyan-600"
                 />
-              </div>
-
-              {/* Kho nhập hàng (Kho đích) */}
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
-                  <span>Kho nhập (Kho đích)</span>
-                </label>
-                <select
-                  value={activeTab?.destinationWarehouseCode || 'KHO-CN-HCM'}
-                  onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
-                  className="h-8.5 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
-                >
-                  {warehouses.length > 0 ? (
-                    warehouses.map((wh) => (
-                      <option key={wh.id || wh.code} value={wh.code}>
-                        [{wh.code}] {wh.name}
-                      </option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="KHO-CN-HCM">KHO-CN-HCM - Kho Hàng TP.HCM</option>
-                      <option value="KHO-CN-DN">KHO-CN-DN - Kho Hàng Đà Nẵng</option>
-                      <option value="KH006">KH006 - Kho NVL Tổng hợp</option>
-                    </>
-                  )}
-                </select>
               </div>
 
               {/* Kho xuất hàng (Kho nguồn nội bộ) */}
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-                  <ArrowRight className="h-3.5 w-3.5 text-emerald-600" />
+                  <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
                   <span>Kho xuất (Kho nguồn)</span>
                 </label>
                 <select
                   value={activeTab?.sourceWarehouseCode || 'KHO-TONG'}
                   onChange={(e) => handleSourceWarehouseChange(e.target.value)}
-                  className="h-8.5 w-full rounded-lg border-2 border-emerald-500 bg-emerald-50/50 px-3 text-xs font-bold text-emerald-900 outline-none focus:border-emerald-600 cursor-pointer"
+                  className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
                 >
                   {warehouses.length > 0 ? (
                     warehouses.map((wh) => (
@@ -772,6 +860,33 @@ export default function CreateTransferRequestPage({
                 </select>
               </div>
 
+              {/* Kho nhập hàng (Kho đích) */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <ArrowRight className="h-3.5 w-3.5 text-cyan-600" />
+                  <span>Kho nhập (Kho đích)</span>
+                </label>
+                <select
+                  value={activeTab?.destinationWarehouseCode || 'KHO-CN-HCM'}
+                  onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
+                  className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
+                >
+                  {warehouses.length > 0 ? (
+                    warehouses.map((wh) => (
+                      <option key={wh.id || wh.code} value={wh.code}>
+                        [{wh.code}] {wh.name}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="KHO-CN-HCM">KHO-CN-HCM - Kho Hàng TP.HCM</option>
+                      <option value="KHO-CN-DN">KHO-CN-DN - Kho Hàng Đà Nẵng</option>
+                      <option value="KH006">KH006 - Kho NVL Tổng hợp</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
               {/* Nhân viên / Người yêu cầu */}
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
@@ -781,7 +896,7 @@ export default function CreateTransferRequestPage({
                 <select
                   value={activeTab?.assignedStaffEmail || currentStaffEmail}
                   onChange={(e) => updateActiveTab((t) => ({ ...t, assignedStaffEmail: e.target.value }))}
-                  className="h-8.5 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
+                  className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
                 >
                   <option value={currentStaffEmail}>{currentUser?.fullName || currentUser?.email || 'Quản Trị Viên Hệ Thống'}</option>
                   {users.map((u) => (
@@ -790,6 +905,123 @@ export default function CreateTransferRequestPage({
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Row 2: Thời gian xuất/nhận (Giờ phút giây) + Thông tin tài xế & phương tiện */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 pt-2 border-t border-slate-100">
+              {/* Ngày & Giờ Xuất Giao Hàng */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5 text-cyan-600" />
+                  <span>Ngày & giờ giao (Xuất)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  step="1"
+                  value={activeTab?.dispatchDate || activeTab?.orderDate || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, dispatchDate: e.target.value, orderDate: e.target.value }))}
+                  className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-600"
+                />
+              </div>
+
+              {/* Ngày & Giờ Dự Kiến Nhận */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5 text-cyan-600" />
+                  <span>Ngày & giờ nhận (Dự kiến)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  step="1"
+                  value={activeTab?.receiveDate || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, receiveDate: e.target.value }))}
+                  className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:border-cyan-600"
+                />
+              </div>
+
+              {/* Tên tài xế vận chuyển / Shipper */}
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <Bike className="h-3.5 w-3.5 text-cyan-600" />
+                    <span>TÀI XẾ / SHIPPER VẬN CHUYỂN</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickAddShipperModal(true)}
+                    className="inline-flex items-center gap-0.5 text-[11px] font-black text-cyan-600 hover:text-cyan-800 hover:underline cursor-pointer"
+                    title="Thêm nhanh tài xế / Shipper mới"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Thêm</span>
+                  </button>
+                </div>
+                <div className="flex gap-1.5">
+                  <select
+                    value={activeTab?.driverName || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const matched = shippers.find((s) => s.name === val);
+                      if (matched) {
+                        updateActiveTab((t) => ({
+                          ...t,
+                          driverName: matched.name,
+                          driverPhone: matched.phone,
+                          vehiclePlate: matched.vehiclePlate,
+                        }));
+                      } else {
+                        updateActiveTab((t) => ({ ...t, driverName: val }));
+                      }
+                    }}
+                    className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-cyan-600 cursor-pointer"
+                  >
+                    <option value="">-- Chọn hoặc nhập tài xế --</option>
+                    {shippers.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        [{s.company || 'Nội bộ'}] {s.name} - {s.phone} ({s.vehiclePlate || 'N/A'})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickAddShipperModal(true)}
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border-2 border-cyan-500 bg-cyan-600 text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+                    title="Thêm nhanh tài xế / Shipper mới vào danh sách"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* SĐT tài xế liên hệ */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <Phone className="h-3.5 w-3.5 text-cyan-600" />
+                  <span>SĐT tài xế liên hệ</span>
+                </label>
+                <input
+                  type="tel"
+                  value={activeTab?.driverPhone || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, driverPhone: e.target.value }))}
+                  placeholder="Nhập SĐT tài xế"
+                  className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-cyan-600"
+                />
+              </div>
+
+              {/* Biển số xe / Phương tiện */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <Car className="h-3.5 w-3.5 text-cyan-600" />
+                  <span>Biển số xe / Phương tiện</span>
+                </label>
+                <input
+                  type="text"
+                  value={activeTab?.vehiclePlate || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, vehiclePlate: e.target.value }))}
+                  placeholder="VD: 30L-636.86"
+                  className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-black text-slate-900 outline-none focus:border-cyan-600 uppercase"
+                />
               </div>
             </div>
           </div>
@@ -899,35 +1131,38 @@ export default function CreateTransferRequestPage({
                               <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-[11px] font-bold text-slate-600 sticky top-0 z-10">
                                 <span className="w-1/3 uppercase">Mã SKU</span>
                                 <span className="w-1/3 uppercase">Tên Hàng Hóa</span>
-                                <span className="w-1/3 text-right uppercase">Giá tham chiếu</span>
+                                <span className="w-1/3 text-right uppercase">SL Tồn Kho Xuất</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
                                 {getFilteredProductsForRow(row.productName).length === 0 ? (
                                   <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy sản phẩm phù hợp</div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName).map((p) => (
-                                    <div
-                                      key={p.id}
-                                      onClick={() => {
-                                        updateRow(row.rowId, {
-                                          productId: p.id,
-                                          productSku: p.internalSku,
-                                          productName: p.name,
-                                          unit: p.unit || 'Cái',
-                                          price: p.purchasePrice || p.salePrice || 0,
-                                          qty: row.qty > 0 ? row.qty : 1,
-                                        });
-                                        setActiveProductDropdownRowId(null);
-                                      }}
-                                      className="flex items-center px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs transition"
-                                    >
-                                      <span className="w-1/3 font-bold text-cyan-800">{p.internalSku || 'SKU---'}</span>
-                                      <span className="w-1/3 font-semibold text-slate-800 truncate pr-1">{p.name}</span>
-                                      <span className="w-1/3 text-right text-slate-600 font-medium">
-                                        {formatMoney(p.purchasePrice || p.salePrice || 0)}
-                                      </span>
-                                    </div>
-                                  ))
+                                  getFilteredProductsForRow(row.productName).map((p) => {
+                                    const stockInSource = getProductWarehouseStock(p, activeTab?.sourceWarehouseCode);
+                                    return (
+                                      <div
+                                        key={p.id}
+                                        onClick={() => {
+                                          updateRow(row.rowId, {
+                                            productId: p.id,
+                                            productSku: p.internalSku,
+                                            productName: p.name,
+                                            unit: p.unit || 'Cái',
+                                            price: getProductPrice(p),
+                                            qty: row.qty > 0 ? row.qty : 1,
+                                          });
+                                          setActiveProductDropdownRowId(null);
+                                        }}
+                                        className="flex items-center px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs transition"
+                                      >
+                                        <span className="w-1/3 font-bold text-cyan-800">{p.internalSku || 'SKU---'}</span>
+                                        <span className="w-1/3 font-semibold text-slate-800 truncate pr-1">{p.name}</span>
+                                        <span className="w-1/3 text-right text-cyan-900 font-black font-mono">
+                                          {stockInSource.toLocaleString('vi-VN')} {p.unit || 'Cái'}
+                                        </span>
+                                      </div>
+                                    );
+                                  })
                                 )}
                               </div>
                             </div>
@@ -1121,6 +1356,29 @@ export default function CreateTransferRequestPage({
           </div>
         </div>
       </div>
+
+      <BarcodeScanner
+        isOpen={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        onProductFound={(prod: ScannedProduct) => {
+          handleBarcodeScanned(prod);
+          setShowScannerModal(false);
+        }}
+      />
+
+      <QuickAddShipperModal
+        isOpen={showQuickAddShipperModal}
+        onClose={() => setShowQuickAddShipperModal(false)}
+        onSuccess={(newShipper) => {
+          updateActiveTab((t) => ({
+            ...t,
+            driverName: newShipper.name,
+            driverPhone: newShipper.phone,
+            vehiclePlate: newShipper.vehiclePlate,
+          }));
+          setToast({ message: `Đã chọn Shipper "${newShipper.name}"`, type: 'success' });
+        }}
+      />
     </div>
   );
 

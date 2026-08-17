@@ -892,6 +892,22 @@ export default function Inbound({
     loadData();
   };
 
+  const handleDeleteSingleOrder = async (ord: InboundReceiptOrder) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa phiếu nhập ${ord.receiptNo}?`)) return;
+    try {
+      if (/^\d+$/.test(ord.id)) {
+        await fetch(`${API_BASE_URL}/inbound/purchase-orders/${ord.id}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        }).catch(() => null);
+      }
+    } catch {}
+
+    setOrders((prev) => prev.filter((o) => o.id !== ord.id));
+    setToast({ message: `Đã xóa thành công phiếu nhập ${ord.receiptNo}`, type: 'success' });
+    loadData();
+  };
+
   const handleCopySelected = () => {
     if (selectedIds.size === 0) {
       setToast({ message: 'Vui lòng chọn 1 phiếu nhập để sao chép', type: 'error' });
@@ -1299,7 +1315,7 @@ export default function Inbound({
                     {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Thanh toán</th>}
                     {columnVis.note && <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Ghi chú</th>}
                     {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>}
-                    <th className="sticky right-0 top-0 z-30 w-36 min-w-[140px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
+                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white">
@@ -1369,7 +1385,7 @@ export default function Inbound({
                                 <StatusBadge status={ord.status} />
                               </td>
                             )}
-                            <td className="sticky right-0 z-10 w-36 min-w-[140px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200">
+                            <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200">
                               <div className="flex items-center justify-center gap-1.5">
                                 {canEdit && (
                                   <button
@@ -1408,6 +1424,19 @@ export default function Inbound({
                                     className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
                                   >
                                     <Printer size={16} strokeWidth={2.5} />
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteSingleOrder(ord);
+                                    }}
+                                    title="Xóa phiếu nhập"
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 bg-white text-rose-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-700 cursor-pointer"
+                                  >
+                                    <Trash2 size={16} strokeWidth={2.5} />
                                   </button>
                                 )}
                               </div>

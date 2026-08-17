@@ -877,13 +877,13 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         racks.forEach((rk) => {
           const rId = rk.rackCode || rk.id || 'R01';
           const numShelves = rk.shelvesCount || (rk as any).horizontalPartitions ? (rk as any).horizontalPartitions - 1 : sub.shelvesPerRack || 4;
-          const numBins = ((rk as any).baysCount && rk.binsPerShelf)
-            ? (rk as any).baysCount * rk.binsPerShelf
+          const numBins = (rk as any).verticalPartitions
+            ? (rk as any).verticalPartitions - 1
             : rk.binsPerShelf && rk.binsPerShelf > 2
-              ? rk.binsPerShelf
-              : (rk as any).verticalPartitions
-                ? ((rk as any).verticalPartitions - 1) * 2
-                : sub.binsPerShelf || 12;
+              ? rk.binsPerShelf - 1
+              : sub.binsPerShelf && sub.binsPerShelf > 2
+                ? sub.binsPerShelf - 1
+                : 6;
 
           const floors = Array.from({ length: numShelves }).map((_, flIdx) => {
             const floorNum = numShelves - flIdx;

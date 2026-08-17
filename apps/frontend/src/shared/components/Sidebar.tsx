@@ -252,10 +252,11 @@ const menuItems: MenuItem[] = [
     id: 'shipper',
     icon: Bike,
     label: 'Shipper',
-    path: '/delivery/transfer-orders',
+    path: '/delivery/shippers',
     allowedRoles: ['admin', 'manager', 'staff'],
     children: [
       { id: 'shipper-delivery', icon: Truck, label: 'Quản lý Giao hàng', path: '/delivery/transfer-orders' },
+      { id: 'shipper-list', icon: Bike, label: 'Danh sách Shipper / Tài xế', path: '/delivery/shippers' },
     ],
   },
   // 11. VAT Điện tử

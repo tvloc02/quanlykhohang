@@ -464,6 +464,21 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
     loadData();
   };
 
+  const handleDeleteSingleStocktake = async (id: string, stocktakeNo: string) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa phiên kiểm kê ${stocktakeNo}?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/inventory/stocktakes/${id}`, { method: 'DELETE', headers: authHeaders() });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || 'Xóa không thành công');
+      }
+      showSuccess(`Đã xóa phiên kiểm kê ${stocktakeNo}`);
+      loadData();
+    } catch (err: any) {
+      showError(err.message || 'Lỗi khi xóa phiên kiểm kê');
+    }
+  };
+
   // ── Toggle select ───────────────────────────────────────────
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -1004,6 +1019,19 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                                   className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-purple-500 bg-white text-purple-600 shadow-sm transition hover:bg-purple-50 hover:text-purple-700 cursor-pointer"
                                 >
                                   <Check size={16} strokeWidth={2.5} />
+                                </button>
+                              )}
+                              {isManager && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteSingleStocktake(item.id, item.stocktakeNo);
+                                  }}
+                                  title="Xóa phiên kiểm kê"
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 bg-white text-rose-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-700 cursor-pointer"
+                                >
+                                  <Trash2 size={16} strokeWidth={2.5} />
                                 </button>
                               )}
                             </div>

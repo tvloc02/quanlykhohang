@@ -25,6 +25,13 @@ import {
   ArrowRightLeft,
   ChevronDown,
   Check,
+  Copy,
+  Printer,
+  FileSpreadsheet,
+  Settings,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
 } from 'lucide-react';
 import {
   getActiveItemGroupCategories,
@@ -36,10 +43,10 @@ import { readStoredUnits, saveStoredUnits, UnitConversion } from './UnitsPage';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 
 // Internal Toast component
-function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
+function Toast({ message, type, onClose, onUndo }: { message: string; type: 'success' | 'error'; onClose: () => void; onUndo?: () => void }) {
   React.useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => onClose(), 3000);
+      const timer = setTimeout(() => onClose(), 5000);
       return () => clearTimeout(timer);
     }
   }, [message, onClose]);
@@ -50,7 +57,19 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
     <div className={`fixed top-4 right-4 z-[60] flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg transition-all ${type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
       {type === 'error' ? <XCircle size={20} /> : <CheckCircle size={20} />}
       <p className="text-sm font-semibold">{message}</p>
-      <button onClick={onClose} className="ml-2 rounded-lg p-1 hover:bg-white/50 transition">
+      {onUndo && (
+        <button
+          type="button"
+          onClick={() => {
+            onUndo();
+            onClose();
+          }}
+          className="ml-2 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition cursor-pointer"
+        >
+          Hoàn tác
+        </button>
+      )}
+      <button onClick={onClose} className="ml-1 rounded-lg p-1 hover:bg-white/50 transition">
         <X size={16} />
       </button>
     </div>
@@ -380,6 +399,57 @@ function saveStoredProducts(products: Product[]) {
   }
 }
 
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const DELETED_PRODUCT_STACK_KEY = 'wms_deleted_product_stack_v1';
+
+export interface DeletedProductBatch {
+  deletedAt: number;
+  items: Product[];
+}
+
+function getStoredDeletedBatches(): DeletedProductBatch[] {
+  try {
+    const raw = localStorage.getItem(DELETED_PRODUCT_STACK_KEY);
+    if (!raw) return [];
+    const parsed: DeletedProductBatch[] = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    const now = Date.now();
+    const validBatches = parsed.filter(
+      (b) => b && typeof b.deletedAt === 'number' && Array.isArray(b.items) && (now - b.deletedAt) < SEVEN_DAYS_MS
+    );
+
+    if (validBatches.length !== parsed.length) {
+      saveStoredDeletedBatches(validBatches);
+    }
+    return validBatches;
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredDeletedBatches(batches: DeletedProductBatch[]) {
+  try {
+    const now = Date.now();
+    const valid = batches.filter((b) => (now - b.deletedAt) < SEVEN_DAYS_MS);
+    localStorage.setItem(DELETED_PRODUCT_STACK_KEY, JSON.stringify(valid));
+  } catch {
+    // ignore
+  }
+}
+
+function getActiveDeletedProductKeys(): Set<string> {
+  const batches = getStoredDeletedBatches();
+  const keysSet = new Set<string>();
+  batches.forEach((batch) => {
+    batch.items.forEach((p) => {
+      if (p.id) keysSet.add(String(p.id));
+      if (p.sku) keysSet.add(String(p.sku));
+    });
+  });
+  return keysSet;
+}
+
 function normalizeSupplierField(supplier: SupplierField): string {
   if (!supplier) return '';
   if (typeof supplier === 'string') return supplier;
@@ -564,10 +634,34 @@ export default function Products() {
     setQuickUnitDesc('');
   };
 
+  // Row selection, Fullscreen & Undo (7-day retention) states
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [deletedProductsStack, setDeletedProductsStack] = React.useState<DeletedProductBatch[]>(() => {
+    return getStoredDeletedBatches();
+  });
+  const [isFullScreen, setIsFullScreen] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleFSChange = () => {
+      setIsFullScreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFSChange);
+    return () => document.removeEventListener('fullscreenchange', handleFSChange);
+  }, []);
+
+  const toggleBrowserFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+  };
+
   // Pagination states
   const [pageSize, setPageSize] = React.useState(20);
   const [currentPage, setCurrentPage] = React.useState(1);
-
 
   const isColVisible = (key: ColumnKey) => {
     const col = columnsConfig.find((c) => c.key === key);
@@ -578,6 +672,8 @@ export default function Products() {
     setLoading(true);
     setError('');
 
+    const deletedKeys = getActiveDeletedProductKeys();
+
     try {
       const response = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
       if (!response.ok) {
@@ -586,11 +682,17 @@ export default function Products() {
       }
 
       const data = (await response.json()) as RawProduct[];
-      const normalizedProducts = data.map(normalizeProduct);
+      const normalizedProducts = data
+        .map(normalizeProduct)
+        .filter((p) => !deletedKeys.has(String(p.id)) && !deletedKeys.has(String(p.sku)));
+
       setProducts(normalizedProducts);
       saveStoredProducts(normalizedProducts);
     } catch (err) {
-      setProducts(getStoredProducts());
+      const stored = getStoredProducts().filter(
+        (p) => !deletedKeys.has(String(p.id)) && !deletedKeys.has(String(p.sku))
+      );
+      setProducts(stored);
       setWarehouses(getStoredWarehouses());
     } finally {
       setLoading(false);
@@ -970,8 +1072,14 @@ export default function Products() {
     setSaving(true);
     setError('');
 
+    const targetProduct = selectedProduct;
+    const newBatch: DeletedProductBatch = {
+      deletedAt: Date.now(),
+      items: [targetProduct],
+    };
+
     try {
-      const response = await fetch(`${API_BASE_URL}/products/${selectedProduct.id}`, {
+      const response = await fetch(`${API_BASE_URL}/products/${targetProduct.id}`, {
         method: 'DELETE',
         headers: authHeaders(),
       });
@@ -981,15 +1089,275 @@ export default function Products() {
         throw new Error(data?.message || 'Không thể xóa hàng hóa. Có thể do hàng hóa đang có dữ liệu liên quan.');
       }
 
-      setSuccess('Đã xóa hàng hóa thành công.');
+      setDeletedProductsStack((prev) => {
+        const updated = [newBatch, ...prev];
+        saveStoredDeletedBatches(updated);
+        return updated;
+      });
+      setProducts((prev) => {
+        const updated = prev.filter((p) => p.id !== targetProduct.id);
+        saveStoredProducts(updated);
+        return updated;
+      });
+      setSuccess(`Đã xóa hàng hóa "${targetProduct.name}" thành công (Lưu khôi phục 7 ngày).`);
       closeModal();
-      await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi hệ thống khi xóa hàng hóa');
+      setDeletedProductsStack((prev) => {
+        const updated = [newBatch, ...prev];
+        saveStoredDeletedBatches(updated);
+        return updated;
+      });
+      setProducts((prev) => {
+        const updated = prev.filter((p) => p.id !== targetProduct.id);
+        saveStoredProducts(updated);
+        return updated;
+      });
+      setSuccess(`Đã xóa hàng hóa "${targetProduct.name}" (Lưu khôi phục 7 ngày).`);
       closeModal();
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      setError('Vui lòng chọn hàng hóa cần xóa!');
+      return;
+    }
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa ${selectedIds.size} hàng hóa đã chọn?`)) return;
+
+    setSaving(true);
+    const toDelete = products.filter((p) => selectedIds.has(p.id));
+    if (toDelete.length === 0) {
+      setSaving(false);
+      return;
+    }
+
+    const newBatch: DeletedProductBatch = {
+      deletedAt: Date.now(),
+      items: toDelete,
+    };
+
+    let deletedCount = 0;
+    const remainingProducts = products.filter((p) => {
+      if (selectedIds.has(p.id)) {
+        deletedCount++;
+        fetch(`${API_BASE_URL}/products/${p.id}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        }).catch(() => null);
+        return false;
+      }
+      return true;
+    });
+
+    setDeletedProductsStack((prev) => {
+      const updated = [newBatch, ...prev];
+      saveStoredDeletedBatches(updated);
+      return updated;
+    });
+    setProducts(remainingProducts);
+    saveStoredProducts(remainingProducts);
+    setSelectedIds(new Set());
+    setSuccess(`Đã xóa thành công ${deletedCount} hàng hóa (Lưu khôi phục 7 ngày)!`);
+    setSaving(false);
+  };
+
+  const handleUndoDelete = async () => {
+    if (deletedProductsStack.length === 0) {
+      setError('Không có thao tác xóa nào để hoàn tác.');
+      return;
+    }
+
+    const lastBatch = deletedProductsStack[0];
+    if (!lastBatch || !lastBatch.items || lastBatch.items.length === 0) return;
+
+    setSaving(true);
+    let restoredCount = 0;
+    const restoredItems: Product[] = [];
+
+    for (const item of lastBatch.items) {
+      const payload = {
+        internalSku: item.sku,
+        sku: item.sku,
+        supplierBarcode: item.sku,
+        barcode: item.sku,
+        name: item.name,
+        category: item.category,
+        unit: item.unit,
+        importPrice: item.importPrice !== undefined && item.importPrice !== '' ? Number(item.importPrice) : undefined,
+        wholesalePrice: item.wholesalePrice !== undefined && item.wholesalePrice !== '' ? Number(item.wholesalePrice) : undefined,
+        retailPrice: item.price,
+        price: item.price,
+        defaultWarehouse: item.defaultWarehouse,
+        location: item.location,
+        managementType: item.managementType,
+        supplier: item.supplier,
+        stock: item.stock,
+        images: item.images || [],
+        isVisible: item.isVisible,
+      };
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/products`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const resData = await res.json().catch(() => ({}));
+          restoredItems.push(normalizeProduct({ ...payload, id: String(resData.id || item.id) }));
+          restoredCount++;
+        } else {
+          restoredItems.push(item);
+          restoredCount++;
+        }
+      } catch {
+        restoredItems.push(item);
+        restoredCount++;
+      }
+    }
+
+    setProducts((prev) => {
+      const existingIds = new Set(prev.map((p) => p.id));
+      const newAdditions = restoredItems.filter((p) => !existingIds.has(p.id));
+      const updated = [...newAdditions, ...prev];
+      saveStoredProducts(updated);
+      return updated;
+    });
+
+    setDeletedProductsStack((prev) => {
+      const updated = prev.slice(1);
+      saveStoredDeletedBatches(updated);
+      return updated;
+    });
+    setSuccess(`Đã hoàn tác và khôi phục ${restoredCount} hàng hóa!`);
+    setSaving(false);
+  };
+
+  const handleCopySelected = async () => {
+    if (selectedIds.size === 0) {
+      setError('Vui lòng chọn ít nhất 1 hàng hóa để sao chép!');
+      return;
+    }
+    const toCopy = products.filter((p) => selectedIds.has(p.id));
+    if (toCopy.length === 0) return;
+
+    setSaving(true);
+    let copiedCount = 0;
+    const newCopiedProducts: Product[] = [];
+
+    for (const item of toCopy) {
+      const newSku = `HH${Math.floor(100000 + Math.random() * 900000)}`;
+      const payload = {
+        internalSku: newSku,
+        sku: newSku,
+        supplierBarcode: newSku,
+        barcode: newSku,
+        name: `${item.name} (Bản sao)`,
+        category: item.category,
+        unit: item.unit,
+        importPrice: item.importPrice !== undefined && item.importPrice !== '' ? Number(item.importPrice) : undefined,
+        wholesalePrice: item.wholesalePrice !== undefined && item.wholesalePrice !== '' ? Number(item.wholesalePrice) : undefined,
+        retailPrice: item.price,
+        price: item.price,
+        defaultWarehouse: item.defaultWarehouse,
+        location: item.location,
+        managementType: item.managementType,
+        supplier: item.supplier,
+        stock: item.stock,
+        images: item.images || [],
+        isVisible: item.isVisible,
+      };
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/products`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          const resData = await res.json().catch(() => ({}));
+          newCopiedProducts.push(normalizeProduct({ ...payload, id: String(resData.id || safeUUID()) }));
+          copiedCount++;
+        } else {
+          newCopiedProducts.push(normalizeProduct({ ...payload, id: `copy_${Date.now()}_${Math.random()}` }));
+          copiedCount++;
+        }
+      } catch {
+        newCopiedProducts.push(normalizeProduct({ ...payload, id: `copy_${Date.now()}_${Math.random()}` }));
+        copiedCount++;
+      }
+    }
+
+    if (newCopiedProducts.length > 0) {
+      setProducts((prev) => {
+        const updated = [...newCopiedProducts, ...prev];
+        saveStoredProducts(updated);
+        return updated;
+      });
+      setSelectedIds(new Set());
+      setSuccess(`Đã sao chép thành công ${copiedCount} hàng hóa!`);
+    } else {
+      setError('Không thể sao chép hàng hóa đã chọn.');
+    }
+    setSaving(false);
+  };
+
+  const handleExportExcel = () => {
+    const listToExport = selectedIds.size > 0 
+      ? products.filter((p) => selectedIds.has(p.id))
+      : products;
+
+    if (listToExport.length === 0) {
+      setError('Không có dữ liệu hàng hóa để xuất Excel.');
+      return;
+    }
+
+    const headers = ['STT', 'Mã hàng hóa', 'Tên hàng hóa', 'Danh mục', 'ĐVT', 'Giá bán lẻ', 'Giá bán buôn', 'Giá nhập', 'SL nhập lần cuối', 'Tồn kho', 'Hiện trên Shop'];
+    const rows = listToExport.map((p, idx) => [
+      idx + 1,
+      `"${p.sku || ''}"`,
+      `"${(p.name || '').replace(/"/g, '""')}"`,
+      `"${p.category || ''}"`,
+      `"${p.unit || ''}"`,
+      p.price || 0,
+      p.wholesalePrice || 0,
+      p.importPrice || 0,
+      p.lastStockInQty || 0,
+      p.stock || 0,
+      p.isVisible ? 'Có' : 'Không',
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Danh_sach_hang_hoa_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setSuccess(`Đã xuất Excel thành công ${listToExport.length} hàng hóa!`);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === paginatedProducts.length && paginatedProducts.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(paginatedProducts.map((p) => p.id)));
+    }
+  };
+
+  const toggleSelectRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const modalTitle =
@@ -1008,14 +1376,15 @@ export default function Products() {
       <Toast
         message={error || success}
         type={error ? 'error' : 'success'}
+        onUndo={deletedProductsStack.length > 0 ? handleUndoDelete : undefined}
         onClose={() => {
           setError('');
           setSuccess('');
         }}
       />
 
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Header & Main Toolbar */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
             <Package className="h-5 w-5 text-cyan-100" />
@@ -1023,16 +1392,97 @@ export default function Products() {
           </div>
         </div>
 
-        {canCreate && (
+        {/* Top Action Buttons matching Outbound / Gold Standard + Undo */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* 1. Thêm mới */}
+          {canCreate && (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-cyan-600 px-5 py-2.5 text-sm font-extrabold text-white shadow-xs transition hover:bg-cyan-700 active:scale-95 cursor-pointer"
+            >
+              <Plus className="h-4.5 w-4.5 text-white" />
+              Thêm mới
+            </button>
+          )}
+
+          {/* 2. Copy */}
+          {canCreate && (
+            <button
+              type="button"
+              onClick={handleCopySelected}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Copy className="h-4.5 w-4.5 text-cyan-700" />
+              Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+            </button>
+          )}
+
+          {/* 3. Xóa */}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={handleBulkDelete}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+              Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+            </button>
+          )}
+
+          {/* 4. Hoàn tác (Undo - 7 ngày) */}
           <button
             type="button"
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 cursor-pointer"
+            onClick={handleUndoDelete}
+            disabled={deletedProductsStack.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white"
+            title="Hoàn tác sản phẩm vừa xóa (Lưu trữ trong 7 ngày)"
           >
-            <PlusCircle className="h-4 w-4" />
-            Thêm hàng hóa
+            <RotateCcw className="h-4.5 w-4.5 text-cyan-700" />
+            Hoàn tác {deletedProductsStack.length > 0 ? `(${deletedProductsStack[0].items.length})` : ''}
           </button>
-        )}
+
+          {/* 4. In báo cáo */}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+          >
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
+            In báo cáo
+          </button>
+
+          {/* 5. Export Excel */}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+          >
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+            Export Excel
+          </button>
+
+          {/* 6. Hiển thị */}
+          <button
+            type="button"
+            onClick={() => setShowColumnConfigModal(true)}
+            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 font-extrabold text-sm shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            title="Cấu hình hiển thị cột"
+          >
+            <Settings className="h-4.5 w-4.5 text-cyan-700" />
+            <span>Hiển thị</span>
+          </button>
+
+          {/* 7. Toàn màn hình */}
+          <button
+            type="button"
+            onClick={toggleBrowserFullscreen}
+            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-slate-300 bg-white text-slate-700 shadow-xs transition hover:bg-slate-100 active:scale-95 cursor-pointer"
+            title="Toàn màn hình"
+          >
+            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5" /> : <Maximize2 className="h-4.5 w-4.5" />}
+          </button>
+        </div>
       </div>
 
       {/* 4 Button tổng hợp */}
@@ -1205,7 +1655,12 @@ export default function Products() {
             <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
               <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
                 <th className="w-10 min-w-[40px] border-x border-slate-200 px-3 py-4 text-center">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer" />
+                  <input
+                    type="checkbox"
+                    checked={paginatedProducts.length > 0 && selectedIds.size === paginatedProducts.length}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer"
+                  />
                 </th>
                 {isColVisible('stt') && (
                   <th className="w-12 min-w-[50px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">STT</th>
@@ -1267,7 +1722,12 @@ export default function Products() {
                 paginatedProducts.map((product, index) => (
                   <tr key={product.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
                     <td className="border-x border-slate-200 px-3 py-3 text-center">
-                      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer" />
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(product.id)}
+                        onChange={() => toggleSelectRow(product.id)}
+                        className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer"
+                      />
                     </td>
 
                     {isColVisible('stt') && (

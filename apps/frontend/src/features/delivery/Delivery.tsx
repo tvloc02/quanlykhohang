@@ -159,37 +159,30 @@ export default function Delivery() {
                 <th className="sticky right-0 w-32 border-x border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Thao tác</th>
               </tr>
             </thead>
-            <tbody>
-              {paginatedOrders.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
-                    <p className="mb-1 text-base font-bold text-slate-800">Chưa có phiếu xuất kho nội bộ</p>
-                    Hãy tạo phiếu xuất kho nội bộ bằng nút "Lập phiếu xuất kho nội bộ" để bắt đầu.
-                  </td>
-                </tr>
-              ) : (
+            <tbody className="bg-white font-medium">
+              {paginatedOrders.length > 0 ? (
                 paginatedOrders.map((order, index) => (
                   <tr key={order.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{startIndex + index}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.transferNo}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.requestNumber || '-'}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.sourceWarehouse}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.destinationWarehouse}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatDateTime(order.createdAt)}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                      <span className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-bold ${statusConfig[order.status]?.color || ''}`}>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{startIndex + index}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-cyan-900">{order.transferNo}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{order.requestNumber || '-'}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{order.sourceWarehouse}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{order.destinationWarehouse}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-semibold text-slate-700">{formatDateTime(order.createdAt)}</td>
+                    <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
+                      <span className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-xs font-bold ${statusConfig[order.status]?.color || ''}`}>
                         {statusConfig[order.status]?.label || order.status}
                       </span>
                     </td>
-                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
                       <div className="flex items-center justify-center gap-2">
                         <button
                           type="button"
                           onClick={() => navigate('/delivery/create-transfer-order', { state: { editOrderData: order } })}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border-2 border-cyan-500 bg-white text-cyan-600 shadow-xs transition hover:bg-cyan-50 cursor-pointer"
                           title="Chỉnh sửa phiếu điều chuyển"
                         >
-                          <Pencil className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
+                          <Pencil className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
                         </button>
                         <button
                           type="button"
@@ -197,16 +190,29 @@ export default function Delivery() {
                             setSelectedOrder(order);
                             setShowShippingModal(true);
                           }}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-emerald-500 bg-white text-emerald-600 shadow-sm transition hover:bg-emerald-50 cursor-pointer"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border-2 border-emerald-500 bg-white text-emerald-600 shadow-xs transition hover:bg-emerald-50 cursor-pointer"
                           title="In / Xem phiếu điều chuyển"
                         >
-                          <FileText className="h-4 w-4 text-emerald-600" strokeWidth={2.2} />
+                          <FileText className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2.2} />
                         </button>
                       </div>
                     </td>
                   </tr>
                 ))
-              )}
+              ) : null}
+
+              {/* Lớp kẻ dòng ô vuông bảng trống đủ 10 dòng tiêu chuẩn */}
+              {Array.from({ length: Math.max(0, 10 - paginatedOrders.length) }).map((_, idx) => (
+                <tr key={`empty-delivery-${idx}`} className={`h-11 ${paginatedOrders.length === 0 && idx === 3 ? 'bg-slate-50/50' : ''}`}>
+                  <td className="border-x border-b border-slate-200 px-3 py-3 text-center text-slate-300 font-mono text-[11px]">
+                    {paginatedOrders.length + idx + 1}
+                  </td>
+                  <td className="border-x border-b border-slate-200 px-3 py-3 text-center text-slate-400 text-xs italic" colSpan={6}>
+                    {paginatedOrders.length === 0 && idx === 3 ? 'Chưa có phiếu xuất kho nội bộ. Hãy bấm nút "Lập phiếu xuất kho nội bộ" để bắt đầu.' : ''}
+                  </td>
+                  <td className="sticky right-0 border-l border-b border-slate-200 bg-white px-3 py-3"></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
