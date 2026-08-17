@@ -127,6 +127,22 @@ export function normalizeWarehouseRecord(
   const w = Number(warehouse.width) || 30;
   const h = Number(warehouse.height) || 12;
 
+  // Filter out any leftover auto-generated mock sub-warehouses from local storage cache
+  const cleanedSubWarehouses = Array.isArray(warehouse.subWarehouses)
+    ? warehouse.subWarehouses.filter((sub) => {
+        if (!sub) return false;
+        if (
+          typeof sub.id === 'string' &&
+          (sub.id.startsWith('sub_def') ||
+            sub.id.startsWith('sub_wh_') ||
+            sub.id.startsWith('sub_wh_default'))
+        ) {
+          return false;
+        }
+        return true;
+      })
+    : [];
+
   return {
     id: String(warehouse.id),
     code: String(warehouse.code ?? '').trim().toUpperCase(),
@@ -150,7 +166,7 @@ export function normalizeWarehouseRecord(
     ceilingSpec: warehouse.ceilingSpec ? String(warehouse.ceilingSpec) : 'Trần tôn PU cách nhiệt',
     floorSpec: warehouse.floorSpec ? String(warehouse.floorSpec) : 'Sàn bê tông chịu lực phủ Epoxy',
     doorSpec: warehouse.doorSpec ? String(warehouse.doorSpec) : 'Cửa cuộn tự động & cửa dock xuất nhập',
-    subWarehouses: Array.isArray(warehouse.subWarehouses) ? warehouse.subWarehouses : [],
+    subWarehouses: cleanedSubWarehouses,
   };
 }
 

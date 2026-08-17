@@ -215,16 +215,23 @@ function authHeaders() {
   };
 }
 
-function formatDate(value?: string) {
+function formatDate(value?: string | number | Date | null) {
   if (!value) return '-';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('vi-VN');
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 }
 
-function formatDateTime(value?: string) {
-  if (!value) return '-';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN');
+function formatDateTime(value?: string | number | Date | null) {
+  return formatDate(value);
 }
 
 function formatMoney(value: number) {
@@ -940,7 +947,7 @@ export default function GoodsReceiptsPage() {
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                         <span className="inline-flex items-center justify-center gap-2">
                           <CalendarDays className="h-4 w-4 text-slate-400" />
-                          {new Date((order as any).createdAt || 0).toLocaleString('vi-VN')}
+                          {formatDateTime((order as any).createdAt || (order as any).orderDate)}
                         </span>
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">

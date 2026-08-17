@@ -316,10 +316,19 @@ function buildEmptyForm(supplierId = '', warehouseCode = '', existingOrders: Pur
   };
 }
 
-function formatDate(value?: string) {
+function formatDate(value?: string | number | Date | null) {
   if (!value) return '-';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('vi-VN');
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 }
 
 function formatMoney(value: number) {
