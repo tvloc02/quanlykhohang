@@ -708,15 +708,17 @@ export class OutboundService implements OnModuleInit {
   }
 
   private serializeOutbound(order: OutboundOrder): SerializedOutbound {
-    const prefix = order.orderType === 'disposal' ? 'XH_' : 'XBH_';
+    const isRetail = order.orderType === 'retail' || order.orderType === 'RETAIL';
+    const isDisposal = order.orderType === 'disposal';
+    const prefix = isDisposal ? 'XH_' : (isRetail ? 'XBL_' : 'XBH_');
     return {
       id: order.id,
       orderNo: order.orderNo || `${prefix}${String(order.id).padStart(3, '0')}`,
-      orderType: order.orderType || 'outbound_sales',
+      orderType: order.orderType || (isDisposal ? 'disposal' : (isRetail ? 'retail' : 'orders')),
       branchCode: (!order.branchCode) ? 'KHO-NVL' : order.branchCode,
       employeeName: (!order.employeeName) ? 'Quản trị viên hệ thống' : order.employeeName,
       receiver: order.receiver || '',
-      customer: order.customerName || order.customer?.name || '888 - Khách lẻ',
+      customer: order.customerName || order.customer?.name || (isDisposal ? 'Hàng hết hạn / hư hỏng' : (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách đại lý / Bán buôn')),
       customerPhone: order.customerPhone || order.customer?.phone || '',
       customerAddress: order.customerAddress || order.customer?.address || '',
       orderDate: toDateString(order.orderDate || order.createdAt),
@@ -776,9 +778,11 @@ export class OutboundService implements OnModuleInit {
       if (!dup) return requested;
     }
 
-    const prefix = orderType === 'disposal' ? 'XH_' : 'XBH_';
+    const isRet = orderType === 'retail' || orderType === 'RETAIL';
+    const isDisp = orderType === 'disposal';
+    const prefix = isDisp ? 'XH_' : (isRet ? 'XBL_' : 'XBH_');
     const total = await this.orderRepo.count();
-    let index = total + (orderType === 'disposal' ? 101 : 605);
+    let index = total + (isDisp ? 101 : (isRet ? 501 : 605));
     let code = `${prefix}${index}`;
 
     while (await this.orderRepo.findOne({ where: { orderNo: code } })) {

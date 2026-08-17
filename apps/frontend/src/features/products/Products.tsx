@@ -964,15 +964,7 @@ export default function Products() {
       return;
     }
 
-    if (categoryOptions.length === 0) {
-      setError('Vui lòng tạo danh mục loại "Nhóm hàng vật tư hàng hóa" trước khi thêm hàng hóa.');
-      return;
-    }
-
-    if (!form.category) {
-      setError('Vui lòng chọn Danh mục cho hàng hóa.');
-      return;
-    }
+    const categoryToUse = form.category.trim() || categoryOptions[0]?.name || 'Quần tây';
 
     setSaving(true);
     setError('');
@@ -981,7 +973,7 @@ export default function Products() {
       const isEdit = modalMode === 'edit';
       const url = isEdit && selectedProduct ? `${API_BASE_URL}/products/${selectedProduct.id}` : `${API_BASE_URL}/products`;
 
-      const foundCategory = categoryOptions.find(c => c.name === form.category);
+      const foundCategory = categoryOptions.find(c => c.name === categoryToUse);
       let calculatedTotalStock = 0;
       warehouses.forEach((wh) => {
         const whKey = wh.name || wh.code || wh.id;
@@ -1004,7 +996,7 @@ export default function Products() {
         barcode: finalSku,
         name: form.name.trim(),
         categoryId: foundCategory ? foundCategory.id : undefined,
-        category: form.category.trim(),
+        category: categoryToUse,
         unit: form.unit.trim(),
         description: form.description.trim(),
         importPrice: form.importPrice !== '' ? Number(form.importPrice) : undefined,

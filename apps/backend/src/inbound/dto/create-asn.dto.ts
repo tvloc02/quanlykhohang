@@ -58,6 +58,21 @@ export class PurchaseOrderItemDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  discountPercent?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  vatPercent?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  totalAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   weight?: number;
 
   @IsOptional()

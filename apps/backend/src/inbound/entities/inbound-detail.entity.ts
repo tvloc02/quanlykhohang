@@ -35,6 +35,12 @@ export class InboundDetail extends BaseEntity {
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalLineAmount: string;
 
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  discountPercent: number;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  vatPercent: number;
+
   @Column({ type: 'decimal', precision: 10, scale: 3, default: 0 })
   weight: number;
 
