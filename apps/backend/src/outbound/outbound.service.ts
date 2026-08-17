@@ -17,6 +17,7 @@ import { OutboxService } from '../erp-integration/outbox/outbox.service';
 type SerializedOutbound = {
   id: string;
   orderNo: string;
+  orderType?: string;
   branchCode: string;
   employeeName: string;
   receiver: string;
@@ -153,7 +154,7 @@ export class OutboundService implements OnModuleInit {
   // ─── CRUD ──────────────────────────────────────────────────────
 
   async createOutbound(dto: CreateOutboundOrderDto) {
-    const orderNo = await this.generateOrderNo(dto.orderNo);
+    const orderNo = await this.generateOrderNo(dto.orderNo, dto.orderType);
     const parsedOrderDate = dto.orderDate ? parseCustomDate(dto.orderDate) : new Date();
 
     const order = this.orderRepo.create({
@@ -605,7 +606,10 @@ export class OutboundService implements OnModuleInit {
       }
 
       const qty = Number(detail.requiredQty) || 0;
-      const isDirectShipped = !order.status || order.status === 'Đã giao hàng' || order.status === 'shipped';
+      const isDirectShipped =
+        !order.status ||
+        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
+        order.orderType === 'disposal';
 
       if (isDirectShipped) {
         const newPhysical = Math.max(0, Number(balance.totalPhysical) - qty);
@@ -672,7 +676,10 @@ export class OutboundService implements OnModuleInit {
       if (!balance) continue;
 
       const qty = Number(detail.requiredQty) || 0;
-      const isDirectShipped = !order.status || order.status === 'Đã giao hàng' || order.status === 'shipped';
+      const isDirectShipped =
+        !order.status ||
+        ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
+        order.orderType === 'disposal';
 
       if (isDirectShipped) {
         const newPhysical = Number(balance.totalPhysical) + qty;
@@ -701,9 +708,11 @@ export class OutboundService implements OnModuleInit {
   }
 
   private serializeOutbound(order: OutboundOrder): SerializedOutbound {
+    const prefix = order.orderType === 'disposal' ? 'XH_' : 'XBH_';
     return {
       id: order.id,
-      orderNo: order.orderNo || `XBH_${String(order.id).padStart(3, '0')}`,
+      orderNo: order.orderNo || `${prefix}${String(order.id).padStart(3, '0')}`,
+      orderType: order.orderType || 'outbound_sales',
       branchCode: (!order.branchCode) ? 'KHO-NVL' : order.branchCode,
       employeeName: (!order.employeeName) ? 'Quản trị viên hệ thống' : order.employeeName,
       receiver: order.receiver || '',
@@ -713,7 +722,7 @@ export class OutboundService implements OnModuleInit {
       orderDate: toDateString(order.orderDate || order.createdAt),
       dueDate: toDateString(order.expectedDate),
       expectedDate: toDateString(order.expectedDate),
-      status: order.status || 'Đã giao hàng',
+      status: order.status || (order.orderType === 'disposal' ? 'Đã xuất hủy' : 'Đã giao hàng'),
       description: order.description,
       items: order.details?.length || order.items || 0,
       subtotal: parseNumber(order.subtotal),
@@ -760,20 +769,21 @@ export class OutboundService implements OnModuleInit {
     };
   }
 
-  private async generateOrderNo(preferred?: string) {
+  private async generateOrderNo(preferred?: string, orderType?: string) {
     const requested = preferred?.trim().toUpperCase();
     if (requested) {
       const dup = await this.orderRepo.findOne({ where: { orderNo: requested } });
       if (!dup) return requested;
     }
 
+    const prefix = orderType === 'disposal' ? 'XH_' : 'XBH_';
     const total = await this.orderRepo.count();
-    let index = total + 605;
-    let code = `XBH_${index}`;
+    let index = total + (orderType === 'disposal' ? 101 : 605);
+    let code = `${prefix}${index}`;
 
     while (await this.orderRepo.findOne({ where: { orderNo: code } })) {
       index += 1;
-      code = `XBH_${index}`;
+      code = `${prefix}${index}`;
     }
 
     return code;

@@ -278,7 +278,60 @@ const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [];
 
 const DEFAULT_FALLBACK_ORDERS: OutboundOrder[] = [];
 
-
+const DEFAULT_FALLBACK_DISPOSAL_ORDERS: OutboundOrder[] = [
+  {
+    id: 'disp-1',
+    orderNo: 'XH_610',
+    customer: 'Hàng hết hạn sử dụng (HSD)',
+    branchCode: 'KHO-TONG',
+    employeeName: 'System Administrator',
+    orderDate: '16/08/2026',
+    status: 'Đã xuất hủy',
+    description: 'Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp) do quá hạn bảo quản',
+    subtotal: 3500000,
+    totalAmount: 3500000,
+    itemsCount: 3,
+    totalQty: 25,
+    details: [
+      { productId: 'p1', productSku: 'SP001', productName: 'Sữa tươi thanh trùng 1L', unit: 'Hộp', qty: 15, price: 35000, totalLineAmount: 525000 },
+      { productId: 'p2', productSku: 'SP002', productName: 'Bánh bông lan trứng muối', unit: 'Gói', qty: 10, price: 45000, totalLineAmount: 450000 },
+    ],
+  },
+  {
+    id: 'disp-2',
+    orderNo: 'XH_609',
+    customer: 'Hàng hư hỏng / Bể vỡ trong quá trình lưu kho',
+    branchCode: 'KHO-NVL',
+    employeeName: 'System Administrator',
+    orderDate: '15/08/2026',
+    status: 'Đã xuất hủy',
+    description: 'Vỡ vỏ hộp và rách bao bì khi bốc dỡ xe nâng',
+    subtotal: 1200000,
+    totalAmount: 1200000,
+    itemsCount: 2,
+    totalQty: 8,
+    details: [
+      { productId: 'p3', productSku: 'SP003', productName: 'Bình nước giữ nhiệt inox', unit: 'Cái', qty: 8, price: 150000, totalLineAmount: 1200000 },
+    ],
+  },
+  {
+    id: 'disp-3',
+    orderNo: 'XH_608',
+    customer: 'Hàng ẩm mốc / Biến chất / Lỗi bảo quản',
+    branchCode: 'KHO-TONG',
+    employeeName: 'Minh',
+    orderDate: '12/08/2026',
+    status: 'Đã xuất hủy',
+    description: 'Ẩm mốc bao bì do sự cố rò rỉ khoang lạnh',
+    subtotal: 2400000,
+    totalAmount: 2400000,
+    itemsCount: 4,
+    totalQty: 16,
+    details: [
+      { productId: 'p4', productSku: 'SP004', productName: 'Bột mì đa dụng 1kg', unit: 'Túi', qty: 16, price: 150000, totalLineAmount: 2400000 },
+    ],
+  },
+];
 
 function makeEmptyRow(index: number): FormDetailRow {
   return {
@@ -302,29 +355,29 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT): FormDetailRow[] {
   return Array.from({ length: count }, (_, i) => makeEmptyRow(i));
 }
 
-function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'): OutboundTab {
+function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', isDisposal = false): OutboundTab {
   const d = new Date();
   const dateFormatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
 
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
     title: `# ${tabIndex}`,
-    orderNo: '',
-    branchCode: 'KHO-NVL',
+    orderNo: isDisposal ? `XH_${Math.floor(100 + Math.random() * 900)}` : '',
+    branchCode: 'KHO-TONG',
     employeeName: currentUserName || 'Quản lý kho',
-    customer: 'Khách hàng bán lẻ',
+    customer: isDisposal ? 'Hàng hết hạn sử dụng (HSD)' : 'Khách hàng bán lẻ',
     customerPhone: '',
     customerAddress: '',
     orderDate: dateFormatted,
     expectedDate: dateFormatted,
-    description: '',
+    description: isDisposal ? 'Xuất hủy hàng hỏng / hết hạn sử dụng' : '',
     discount: 0,
     shippingFee: 0,
     vatRate: 0,
     paymentMethod: 'Tiền mặt',
     paymentAccount: '',
     amountPaid: 0,
-    status: 'Đã giao hàng',
+    status: isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng',
     details: makeInitialRows(DEFAULT_ROWS_COUNT),
   };
 }
@@ -343,7 +396,8 @@ export default function Outbound({
   partnerLabel = 'Khách hàng',
 }: OutboundProps) {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState<OutboundOrder[]>(DEFAULT_FALLBACK_ORDERS);
+  const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
+  const [orders, setOrders] = useState<OutboundOrder[]>(isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : DEFAULT_FALLBACK_ORDERS);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -530,10 +584,15 @@ export default function Outbound({
         const raw = await ordRes.json();
         const list = Array.isArray(raw) ? raw : raw.data || [];
         if (list.length > 0) {
-          const formatted: OutboundOrder[] = list.map((item: any, idx: number) => ({
+          const targetList = isDisposal
+            ? list.filter((item: any) => item.orderType === 'disposal' || (item.orderNo && item.orderNo.startsWith('XH')))
+            : list.filter((item: any) => item.orderType !== 'disposal' && (!item.orderNo || !item.orderNo.startsWith('XH')));
+
+          const formatted: OutboundOrder[] = targetList.map((item: any, idx: number) => ({
             id: String(item.id || idx),
-            orderNo: item.orderNo || item.receiptNo || `XBH_${1000 + idx}`,
-            customer: item.customer || item.customerName || item.customer?.name || '888 - Khách lẻ',
+            orderNo: item.orderNo || item.receiptNo || (isDisposal ? `XH_${1000 + idx}` : `XBH_${1000 + idx}`),
+            orderType: item.orderType,
+            customer: item.customer || item.customerName || item.customer?.name || (isDisposal ? 'Hàng hết hạn / hư hỏng' : '888 - Khách lẻ'),
             customerId: item.customerId || item.customer?.id,
             customerPhone: item.customerPhone || item.customer?.phone || '',
             customerAddress: item.customerAddress || item.customer?.address || '',
@@ -541,8 +600,8 @@ export default function Outbound({
             employeeName: (!item.employeeName || item.employeeName === 'HUUDQtest') ? (item.creatorName && item.creatorName !== 'HUUDQtest' ? item.creatorName : currentUserName) : item.employeeName,
             orderDate: item.orderDate || item.createdAt || new Date().toISOString(),
             expectedDate: item.expectedDate || '',
-            status: item.status || 'Đã giao hàng',
-            description: item.description || '',
+            status: item.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'),
+            description: item.description || (isDisposal ? 'Xuất hủy hàng hóa' : ''),
             subtotal: Number(item.subtotal || item.totalAmount || 0),
             discount: Number(item.discount || 0),
             vatAmount: Number(item.vatAmount || 0),
@@ -607,7 +666,7 @@ export default function Outbound({
     } finally {
       setLoading(false);
     }
-  }, [currentUserName]);
+  }, [currentUserName, isDisposal]);
 
   const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' = 'create', id?: string) => {
     if (modeAction === 'edit' && id) {
@@ -1127,7 +1186,7 @@ export default function Outbound({
       (acc, ord) => ({
         totalOrders: acc.totalOrders + 1,
         totalAmount: acc.totalAmount + (ord.totalAmount || 0),
-        shippedCount: acc.shippedCount + (['shipped', 'Đã giao hàng'].includes(ord.status) ? 1 : 0),
+        shippedCount: acc.shippedCount + (['shipped', 'Đã giao hàng', 'Đã xuất hủy'].includes(ord.status) ? 1 : 0),
         pendingCount: acc.pendingCount + (['pending', 'Chờ xử lý', 'picking', 'Đang lấy hàng'].includes(ord.status) ? 1 : 0),
       }),
       { totalOrders: 0, totalAmount: 0, shippedCount: 0, pendingCount: 0 }
@@ -1135,6 +1194,31 @@ export default function Outbound({
   }, [orders]);
 
   const handleExportCSV = () => {
+    if (isDisposal) {
+      const header = ['STT', 'Kho Xuất Hủy', 'NV Lập', 'Mã Phiếu Hủy', 'Ngày Xuất Hủy', 'Lý Do Xuất Hủy', 'Tổng SL Hủy', 'Tổng Giá Trị Hủy (đ)', 'Phương Án / Ghi Chú', 'Trạng Thái'];
+      const rows = filteredOrders.map((o, idx) => [
+        idx + 1,
+        formatWarehouseDisplay(o.branchCode || o.warehouseCode, warehouses),
+        o.employeeName || currentUserName,
+        o.orderNo,
+        o.orderDate,
+        o.customer,
+        o.totalQty || 1,
+        o.totalAmount,
+        o.description || '',
+        o.status,
+      ]);
+      const csv = [header, ...rows].map((r) => r.map((cell) => `"${cell}"`).join(',')).join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `xuat_huy_hang_hoa_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
     const header = ['STT', 'Kho', 'NV', 'Mã Phiếu', 'Ngày Xuất', 'Khách Hàng', 'Địa Chỉ', 'SĐT', 'Thành Tiền', 'Chiết Khấu', 'VAT', 'Tổng Tiền', 'Thanh Toán', 'Trạng Thái'];
     const rows = filteredOrders.map((o, idx) => [
       idx + 1,
@@ -1189,7 +1273,7 @@ export default function Outbound({
                       navigate('/delivery/create-transfer-order');
                       return;
                     }
-                    const newTab = createNewOutboundTab(1, currentUserName);
+                    const newTab = createNewOutboundTab(1, currentUserName, isDisposal);
                     setTabs([newTab]);
                     setActiveTabId(newTab.tabId);
                     handleOpenFormModal('create');
@@ -1250,7 +1334,6 @@ export default function Outbound({
               )}
 
               {/* 6. Settings */}
-              {/* 6. Settings */}
               <button
                 type="button"
                 onClick={() => setShowColumnSettings(true)}
@@ -1276,7 +1359,7 @@ export default function Outbound({
           {/* Filter & Search Panel */}
           <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              {/* Search input - Matching height (h-12) with Date & Status filters */}
+              {/* Search input */}
               <div className="relative flex-1 min-w-[320px]">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600" />
                 <input
@@ -1284,7 +1367,7 @@ export default function Outbound({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="h-12 w-full rounded-xl border-2 border-cyan-600/40 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
-                  placeholder="Tìm theo mã phiếu xuất, khách hàng, SĐT, nhân viên..."
+                  placeholder={isDisposal ? "Tìm theo mã phiếu hủy, lý do xuất hủy, kho, nhân viên..." : "Tìm theo mã phiếu xuất, khách hàng, SĐT, nhân viên..."}
                 />
               </div>
 
@@ -1326,9 +1409,8 @@ export default function Outbound({
                     className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                   >
                     <option value="all">Tất cả</option>
-                    <option value="Đã giao hàng">Đã giao hàng</option>
+                    <option value="Đã xuất hủy">{isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'}</option>
                     <option value="Chờ xử lý">Chờ xử lý</option>
-                    <option value="Sẵn sàng xuất">Sẵn sàng xuất</option>
                     <option value="Đã hủy">Đã hủy</option>
                   </select>
                 </div>
@@ -1339,7 +1421,7 @@ export default function Outbound({
           {/* Main Order List Table */}
           <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
             <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full min-w-[1850px] border-collapse text-left">
+              <table className={`w-full border-collapse text-left ${isDisposal ? 'min-w-[1350px]' : 'min-w-[1850px]'}`}>
                 <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
                   <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
                     <th className="w-12 min-w-[50px] border-r border-slate-200 px-2 py-4 text-center">
@@ -1351,19 +1433,32 @@ export default function Outbound({
                       />
                     </th>
                     <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
-                    {columnVis.code && <th className="min-w-[210px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">Mã phiếu</th>}
-                    {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">Ngày xuất</th>}
-                    {columnVis.customerName && <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">Khách hàng</th>}
-                    {columnVis.customerPhone && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">SĐT</th>}
-                    {columnVis.customerAddress && <th className="min-w-[240px] border-r border-slate-200 px-4 py-4 text-center">Địa chỉ</th>}
-                    {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Kho</th>}
-                    {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Nhân viên</th>}
-                    {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Thành tiền</th>}
-                    {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 px-3 py-4 text-center">Chiết khấu</th>}
-                    {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">VAT</th>}
-                    {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Tổng tiền</th>}
-                    {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Thanh toán</th>}
-                    {columnVis.note && <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Ghi chú</th>}
+                    {columnVis.code && <th className="min-w-[160px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Mã phiếu hủy' : 'Mã phiếu'}</th>}
+                    {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất'}</th>}
+                    {columnVis.customerName && <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">{isDisposal ? 'Lý do xuất hủy' : 'Khách hàng'}</th>}
+                    {!isDisposal && (
+                      <>
+                        {columnVis.customerPhone && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">SĐT</th>}
+                        {columnVis.customerAddress && <th className="min-w-[240px] border-r border-slate-200 px-4 py-4 text-center">Địa chỉ</th>}
+                      </>
+                    )}
+                    {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{isDisposal ? 'Kho xuất hủy' : 'Kho'}</th>}
+                    {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{isDisposal ? 'Nhân viên thực hiện' : 'Nhân viên'}</th>}
+                    {isDisposal ? (
+                      <>
+                        <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">Tổng SL hủy</th>
+                        <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Giá trị hủy (đ)</th>
+                      </>
+                    ) : (
+                      <>
+                        {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Thành tiền</th>}
+                        {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 px-3 py-4 text-center">Chiết khấu</th>}
+                        {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">VAT</th>}
+                        {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Tổng tiền</th>}
+                        {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Thanh toán</th>}
+                      </>
+                    )}
+                    {columnVis.note && <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">{isDisposal ? 'Phương án / Ghi chú' : 'Ghi chú'}</th>}
                     {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>}
                     <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
                   </tr>
@@ -1372,13 +1467,13 @@ export default function Outbound({
                   {loading ? (
                     <tr>
                       <td colSpan={17} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                        Đang tải danh sách phiếu xuất bán hàng...
+                        {isDisposal ? 'Đang tải danh sách phiếu xuất hủy hàng hóa...' : 'Đang tải danh sách phiếu xuất bán hàng...'}
                       </td>
                     </tr>
                   ) : paginatedOrders.length === 0 ? (
                     <tr>
                       <td colSpan={17} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                        Không tìm thấy phiếu xuất bán hàng nào
+                        {isDisposal ? 'Không tìm thấy phiếu xuất hủy hàng hóa nào' : 'Không tìm thấy phiếu xuất bán hàng nào'}
                       </td>
                     </tr>
                   ) : (
@@ -1408,7 +1503,7 @@ export default function Outbound({
                                     setShowDetailModal(true);
                                   }}
                                   className="text-cyan-700 hover:text-cyan-900 hover:underline font-extrabold text-left cursor-pointer whitespace-nowrap"
-                                  title="Bấm để xem thông tin chi tiết đơn xuất"
+                                  title="Bấm để xem thông tin chi tiết"
                                 >
                                   {ord.orderNo}
                                 </button>
@@ -1416,23 +1511,36 @@ export default function Outbound({
                             )}
                             {columnVis.date && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{formatDateDisplay(ord.orderDate)}</td>}
                             {columnVis.customerName && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-slate-800">{ord.customer}</td>}
-                            {columnVis.customerPhone && <td className="border-r border-slate-200 px-3 py-3.5 text-sm font-medium text-slate-700">{ord.customerPhone || '-'}</td>}
-                            {columnVis.customerAddress && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-700 max-w-[240px] truncate" title={ord.customerAddress}>{ord.customerAddress || '-'}</td>}
+                            {!isDisposal && (
+                              <>
+                                {columnVis.customerPhone && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.customerPhone || '-'}</td>}
+                                {columnVis.customerAddress && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-700 max-w-[240px] truncate" title={ord.customerAddress}>{ord.customerAddress || '-'}</td>}
+                              </>
+                            )}
                             {columnVis.branch && (
                               <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
                                 {formatWarehouseDisplay(ord.branchCode || ord.warehouseCode, warehouses)}
                               </td>
                             )}
                             {columnVis.nv && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.employeeName || currentUserName}</td>}
-                            {columnVis.subtotal && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-bold text-slate-800">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
-                            {columnVis.discount && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-medium text-slate-600">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
-                            {columnVis.vat && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-medium text-slate-600">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
-                            {columnVis.totalAmount && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-black text-slate-900">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
-                            {columnVis.amountPaid && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
-                            {columnVis.note && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[180px] truncate" title={ord.description}>{ord.description || '-'}</td>}
+                            {isDisposal ? (
+                              <>
+                                <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-black text-cyan-800">{ord.totalQty || ord.itemsCount || 1}</td>
+                                <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-black text-rose-600">{(ord.totalAmount || 0).toLocaleString('vi-VN')} đ</td>
+                              </>
+                            ) : (
+                              <>
+                                {columnVis.subtotal && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-bold text-slate-800">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.discount && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-medium text-slate-600">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
+                                {columnVis.vat && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-medium text-slate-600">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
+                                {columnVis.totalAmount && <td className="border-r border-slate-200 px-3 py-4 text-right text-sm font-black text-slate-900">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.amountPaid && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                              </>
+                            )}
+                            {columnVis.note && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[200px] truncate" title={ord.description}>{ord.description || '-'}</td>}
                             {columnVis.status && (
                               <td className="border-r border-slate-200 px-3 py-3.5 text-center">
-                                <StatusBadge status={ord.status} />
+                                <StatusBadge status={ord.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng')} />
                               </td>
                             )}
                             <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200">
@@ -1441,7 +1549,7 @@ export default function Outbound({
                                   <button
                                     type="button"
                                     onClick={() => handleEditOrder(ord)}
-                                    title="Sửa phiếu xuất"
+                                    title={isDisposal ? "Sửa phiếu xuất hủy" : "Sửa phiếu xuất"}
                                     className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
                                   >
                                     <Pencil size={16} strokeWidth={2.5} />
@@ -1465,7 +1573,7 @@ export default function Outbound({
                                       setSelectedOrder(ord);
                                       setShowPrintModal(true);
                                     }}
-                                    title="In phiếu xuất"
+                                    title={isDisposal ? "In biên bản xuất hủy" : "In phiếu xuất"}
                                     className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
                                   >
                                     <Printer size={16} strokeWidth={2.5} />
@@ -1597,7 +1705,14 @@ export default function Outbound({
           </div>
         </div>
       ) : (
-        <CreateOutboundOrderPage standalone={false} onBack={handleCloseFormModal} />
+        <CreateOutboundOrderPage
+          standalone={false}
+          onBack={handleCloseFormModal}
+          featureMode={featureMode}
+          title={title}
+          codePrefix={codePrefix}
+          partnerLabel={partnerLabel}
+        />
       )}
         {/* ─── MODAL ADD CUSTOMER ─────────────────────────────────────── */}
       {showAddCustomerModal && (
@@ -1710,15 +1825,17 @@ export default function Outbound({
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black uppercase text-slate-900">Chi tiết Phiếu Xuất Kho #{selectedOrder.orderNo}</h2>
+              <h2 className="text-base font-black uppercase text-slate-900">
+                {isDisposal ? `Chi tiết Phiếu Xuất Hủy Hàng Hóa #${selectedOrder.orderNo}` : `Chi tiết Phiếu Xuất Kho #${selectedOrder.orderNo}`}
+              </h2>
               <button onClick={() => setShowDetailModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
                 <X size={20} />
               </button>
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
-                <div><span className="text-slate-400">Khách hàng:</span> <span className="font-bold">{selectedOrder.customer}</span></div>
-                <div><span className="text-slate-400">Kho xuất:</span> <span className="font-bold">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></div>
+                <div><span className="text-slate-400">{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'}</span> <span className="font-bold">{selectedOrder.customer}</span></div>
+                <div><span className="text-slate-400">{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'}</span> <span className="font-bold">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></div>
                 <div><span className="text-slate-400">Ngày lập:</span> <span>{selectedOrder.orderDate}</span></div>
                 <div><span className="text-slate-400">Trạng thái:</span> <StatusBadge status={selectedOrder.status} /></div>
               </div>
@@ -1729,9 +1846,9 @@ export default function Outbound({
                       <th className="p-2 text-center">Mã SKU</th>
                       <th className="p-2 text-center">Tên sản phẩm</th>
                       <th className="p-2 text-center">ĐVT</th>
-                      <th className="p-2 text-center">SL</th>
-                      <th className="p-2 text-center">Đơn giá</th>
-                      <th className="p-2 text-center">Thành tiền</th>
+                      <th className="p-2 text-center">SL {isDisposal ? 'hủy' : ''}</th>
+                      <th className="p-2 text-center">{isDisposal ? 'Giá vốn ước tính' : 'Đơn giá'}</th>
+                      <th className="p-2 text-center">{isDisposal ? 'Giá trị thiệt hại' : 'Thành tiền'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1749,7 +1866,10 @@ export default function Outbound({
                 </table>
               </div>
               <div className="flex justify-end text-sm font-black text-slate-900 border-t border-slate-200 pt-3">
-                Tổng giá trị: {selectedOrder.totalAmount.toLocaleString('vi-VN')} đ
+                {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng giá trị: '}
+                <span className={isDisposal ? 'text-rose-600 ml-1.5' : 'text-slate-900 ml-1.5'}>
+                  {selectedOrder.totalAmount.toLocaleString('vi-VN')} đ
+                </span>
               </div>
             </div>
           </div>
@@ -1761,21 +1881,25 @@ export default function Outbound({
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black text-slate-900">Xem trước Phiếu Xuất Bán Hàng</h2>
+              <h2 className="text-base font-black text-slate-900">
+                {isDisposal ? 'Xem trước Biên Bản Xuất Hủy Hàng Hóa' : 'Xem trước Phiếu Xuất Bán Hàng'}
+              </h2>
               <button onClick={() => setShowPrintModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
                 <X size={20} />
               </button>
             </div>
             <div className="p-4 border border-slate-300 rounded-xl space-y-3 text-xs">
               <div className="text-center">
-                <h2 className="text-base font-black uppercase text-slate-900">PHIẾU XUẤT BÁN HÀNG</h2>
+                <h2 className="text-base font-black uppercase text-slate-900">
+                  {isDisposal ? 'BIÊN BẢN XUẤT HỦY HÀNG HÓA' : 'PHIẾU XUẤT BÁN HÀNG'}
+                </h2>
                 <p className="text-slate-500">Mã phiếu: {selectedOrder.orderNo} - Ngày: {selectedOrder.orderDate}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 font-semibold">
-                <p>Khách hàng: {selectedOrder.customer}</p>
-                <p>Kho xuất: {formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</p>
-                <p>SĐT: {selectedOrder.customerPhone || '-'}</p>
-                <p>Người lập: {selectedOrder.employeeName}</p>
+                <p>{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'} {selectedOrder.customer}</p>
+                <p>{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'} {formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</p>
+                {!isDisposal && <p>SĐT: {selectedOrder.customerPhone || '-'}</p>}
+                <p>{isDisposal ? 'Người lập / Giám sát:' : 'Người lập:'} {selectedOrder.employeeName}</p>
               </div>
               <table className="w-full border-collapse border border-slate-300 text-xs">
                 <thead className="bg-slate-100 font-bold text-center">
@@ -1783,9 +1907,9 @@ export default function Outbound({
                     <th className="border p-1">STT</th>
                     <th className="border p-1">Tên hàng</th>
                     <th className="border p-1">ĐVT</th>
-                    <th className="border p-1">SL</th>
-                    <th className="border p-1">Đơn giá</th>
-                    <th className="border p-1">Thành tiền</th>
+                    <th className="border p-1">SL {isDisposal ? 'hủy' : ''}</th>
+                    <th className="border p-1">{isDisposal ? 'Giá vốn (đ)' : 'Đơn giá'}</th>
+                    <th className="border p-1">{isDisposal ? 'Giá trị hủy (đ)' : 'Thành tiền'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1801,11 +1925,14 @@ export default function Outbound({
                   ))}
                 </tbody>
               </table>
-              <div className="text-right font-black text-sm">Tổng tiền: {selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ</div>
+              <div className="text-right font-black text-sm">
+                {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng tiền: '}
+                {selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ
+              </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer">
-                <Printer size={16} /> In Phiếu
+                <Printer size={16} /> In Biên Bản
               </button>
             </div>
           </div>
