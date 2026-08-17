@@ -17,6 +17,7 @@ import Delivery from './features/delivery/Delivery';
 import TransferRequestsPage from './features/delivery/pages/TransferRequestsPage';
 import CreateTransferOrderPage from './features/delivery/pages/CreateTransferOrderPage';
 import CreateTransferRequestPage from './features/delivery/pages/CreateTransferRequestPage';
+import ShipperManagementPage from './features/delivery/pages/ShipperManagementPage';
 import Inventory from './features/inventory/Inventory';
 import Reports from './features/reports/Reports';
 import SalesReportPage from './features/reports/pages/SalesReportPage';
@@ -657,6 +658,16 @@ function App() {
             <RoleRoute menuId="delivery-transfer-requests">
               <MainLayout>
                 <TransferRequestsPage />
+              </MainLayout>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/delivery/shippers"
+          element={
+            <RoleRoute menuId="delivery-transfer-orders">
+              <MainLayout>
+                <ShipperManagementPage />
               </MainLayout>
             </RoleRoute>
           }

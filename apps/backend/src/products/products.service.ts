@@ -257,22 +257,30 @@ export class ProductsService {
   }
 
   async remove(id: string) {
-    // Không cho phép xóa nếu có tồn kho
-    const hasBalances = await this.balanceRepo.count({
+    // Lấy tất cả bản ghi tồn kho của sản phẩm
+    const balances = await this.balanceRepo.find({
       where: { product: { id } }
     });
 
-    if (hasBalances > 0) {
-      throw new BadRequestException('Hàng hóa đang có dữ liệu tồn kho, không thể xóa');
+    // Kiểm tra xem sản phẩm có thực sự còn tồn kho > 0 không
+    const hasActiveStock = balances.some(
+      (b) => Number(b.totalPhysical || 0) > 0 || Number(b.available || 0) > 0
+    );
+
+    if (hasActiveStock) {
+      throw new BadRequestException('Hàng hóa đang có tồn kho > 0, không thể xóa. Vui lòng xuất hết kho trước.');
     }
 
     try {
+      // Xóa các bản ghi tồn kho bằng 0 liên quan trước để tránh lỗi khóa ngoại
+      if (balances.length > 0) {
+        await this.balanceRepo.delete({ product: { id } as any }).catch(() => null);
+      }
       await this.productRepo.delete(id);
       return { deleted: true };
     } catch (err: any) {
-      // Bắt lỗi khóa ngoại nếu hàng hóa đang nằm trong đơn đặt hàng, phiếu xuất, v.v.
       if (err.code === 'ER_ROW_IS_REFERENCED_2') {
-        throw new BadRequestException('Hàng hóa đang có giao dịch liên quan (chưa xóa hết), không thể xóa');
+        throw new BadRequestException('Hàng hóa đang có giao dịch chứng từ liên quan, không thể xóa');
       }
       throw new BadRequestException(err.sqlMessage || err.message || 'Lỗi hệ thống khi xóa hàng hóa');
     }
