@@ -86,6 +86,7 @@ export type WarehouseRecord = {
 
   // Danh sách kho nhỏ / Phân khu bên trong
   subWarehouses?: SubWarehouse[];
+  occupancyRate?: number; // % Tỷ lệ lấp đầy / Đã chứa
 };
 
 const STORAGE_KEY = 'smart-wms-warehouses';

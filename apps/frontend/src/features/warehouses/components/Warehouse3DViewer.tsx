@@ -145,13 +145,18 @@ export default function Warehouse3DViewer({ subWarehouse, selectedRackIds = [] }
       const zStart = 1.0;
       const zEnd = zStart + rackLengthZ;
 
+      // Vách Ngang Input (Total horizontal partition beam levels, e.g. 5 = 1 bottom + 3 middle + 1 top roof)
+      const vachNgangInput = subWarehouse?.shelvesPerRack && subWarehouse.shelvesPerRack > 0 ? subWarehouse.shelvesPerRack : 5;
+      const shelvesCount = Math.max(1, vachNgangInput - 1); // 4 storage shelf levels
+
       // Calculate realistic rack height & shelf level Y positions starting from near ground (0.3m)
       const baseGroundY = 0.3; // Level 1 is 0.3m above ground slab
-      const shelfGap = shelvesPerRack > 1 ? Math.min(1.8, (H * 0.8 - baseGroundY) / (shelvesPerRack - 1)) : 1.5;
-      const rackTopY = shelvesPerRack > 0 ? baseGroundY + (shelvesPerRack - 1) * shelfGap + 0.6 : H * 0.8;
+      const shelfGap = shelvesCount > 1 ? Math.min(1.8, (H * 0.8 - baseGroundY) / shelvesCount) : 1.5;
+      const rackTopY = baseGroundY + shelvesCount * shelfGap;
 
-      // Number of structural bay posts along length Z
-      const bayCountZ = Math.max(1, Math.floor(rackLengthZ / 2.5));
+      // Vách Dọc Input (Total vertical partition posts, e.g. 2 = 1 start/head + 1 end/tail)
+      const vachDocInput = subWarehouse?.binsPerShelf && subWarehouse.binsPerShelf > 0 ? subWarehouse.binsPerShelf : 2;
+      const bayCountZ = Math.max(1, vachDocInput - 1); // 1 bay between head and tail
       const bayStepZ = rackLengthZ / bayCountZ;
 
       const palletColors = ['#0891b2', '#059669', '#d97706', '#dc2626', '#4f46e5', '#2563eb'];
@@ -186,9 +191,9 @@ export default function Warehouse3DViewer({ subWarehouse, selectedRackIds = [] }
           ctx.stroke();
         }
 
-        // Draw Horizontal Beams & Cargo Bins
-        for (let s = 0; s < shelvesPerRack; s++) {
-          const sy = baseGroundY + s * shelfGap;
+        // Draw Horizontal Beams & Cargo Bins (Total vachNgangInput levels: bottom floor s=0 to top roof s=shelvesCount)
+        for (let s = 0; s <= shelvesCount; s++) {
+          const sy = s === shelvesCount ? rackTopY : baseGroundY + s * shelfGap;
 
           const bLeftStart = project(xLeft, sy, zStart);
           const bLeftEnd = project(xLeft, sy, zEnd);
@@ -208,7 +213,7 @@ export default function Warehouse3DViewer({ subWarehouse, selectedRackIds = [] }
           ctx.lineTo(bRightEnd.x, bRightEnd.y);
           ctx.stroke();
 
-          // Cross ties
+          // Cross ties at every level including top roof level
           ctx.strokeStyle = isSelected ? '#67e8f9' : '#e2e8f0';
           ctx.lineWidth = 1.2;
           for (let b = 0; b <= bayCountZ; b++) {
@@ -221,8 +226,8 @@ export default function Warehouse3DViewer({ subWarehouse, selectedRackIds = [] }
             ctx.stroke();
           }
 
-          // Draw 3D Pallet Cargo Boxes
-          if (!wireframe) {
+          // Draw 3D Pallet Cargo Boxes for storage shelf levels s < shelvesCount
+          if (!wireframe && s < shelvesCount) {
             const boxH = Math.min(1.2, shelfGap * 0.75);
 
             for (let b = 0; b < bayCountZ; b++) {
