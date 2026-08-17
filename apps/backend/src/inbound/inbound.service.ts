@@ -650,6 +650,7 @@ export class InboundService {
         height: Math.min(999999.99, parseNumber(item.height)),
         volume: Math.min(999999.9999, parseNumber(item.volume)),
         volumetricWeight: Math.min(999999.99, parseNumber(item.volumetricWeight)),
+        note: item.note ? String(item.note) : undefined,
       });
 
       savedDetails.push(await this.detailRepo.save(detail));
@@ -928,6 +929,7 @@ export class InboundService {
       height: parseNumber(detail.height),
       volume: parseNumber(detail.volume),
       volumetricWeight: parseNumber(detail.volumetricWeight),
+      note: detail.note || '',
       product: detail.product
         ? {
           id: detail.product.id,

@@ -110,6 +110,7 @@ export class WarehousesService {
       status: createWarehouseDto.status || 'active',
       managerIds: Array.isArray(createWarehouseDto.managerIds) ? createWarehouseDto.managerIds.join(',') : '',
       staffIds: Array.isArray(createWarehouseDto.staffIds) ? createWarehouseDto.staffIds.join(',') : '',
+      subWarehouses: createWarehouseDto.subWarehouses ? (createWarehouseDto.subWarehouses as any) : [],
     });
 
     const saved = await this.repo.save(warehouse);
@@ -160,6 +161,10 @@ export class WarehousesService {
 
     if (updateWarehouseDto.staffIds !== undefined) {
       warehouse.staffIds = Array.isArray(updateWarehouseDto.staffIds) ? updateWarehouseDto.staffIds.join(',') : '';
+    }
+
+    if (updateWarehouseDto.subWarehouses !== undefined) {
+      (warehouse as any).subWarehouses = updateWarehouseDto.subWarehouses;
     }
 
     const updated = await this.repo.save(warehouse);

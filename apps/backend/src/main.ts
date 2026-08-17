@@ -27,9 +27,18 @@ async function ensureWarehouseTable(dataSource: DataSource) {
   try {
     await dataSource.query(`ALTER TABLE \`warehouses\` MODIFY COLUMN \`managerIds\` text NULL`);
     await dataSource.query(`ALTER TABLE \`warehouses\` MODIFY COLUMN \`staffIds\` text NULL`);
+    await dataSource.query(`ALTER TABLE \`warehouses\` ADD COLUMN \`subWarehouses\` text NULL`);
   } catch {
     // Ignore errors if columns are already correct
   }
+
+  try {
+    await dataSource.query(`ALTER TABLE \`inbound_details\` ADD COLUMN \`note\` text NULL`);
+  } catch {}
+
+  try {
+    await dataSource.query(`ALTER TABLE \`stock_in_order_details\` ADD COLUMN \`note\` text NULL`);
+  } catch {}
 }
 
 async function bootstrap() {

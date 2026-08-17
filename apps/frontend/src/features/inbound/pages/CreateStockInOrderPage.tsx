@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
-import { getStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -790,8 +790,14 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
         racks.forEach((rk) => {
           const rId = rk.rackCode || rk.id || 'R01';
-          const numShelves = rk.shelvesCount || sub.shelvesPerRack || 4;
-          const numBins = rk.binsPerShelf || sub.binsPerShelf || 10;
+          const numShelves = rk.shelvesCount || (rk as any).horizontalPartitions ? (rk as any).horizontalPartitions - 1 : sub.shelvesPerRack || 4;
+          const numBins = ((rk as any).baysCount && rk.binsPerShelf)
+            ? (rk as any).baysCount * rk.binsPerShelf
+            : rk.binsPerShelf && rk.binsPerShelf > 2
+              ? rk.binsPerShelf
+              : (rk as any).verticalPartitions
+                ? ((rk as any).verticalPartitions - 1) * 2
+                : sub.binsPerShelf || 12;
 
           const floors = Array.from({ length: numShelves }).map((_, flIdx) => {
             const floorNum = numShelves - flIdx;
@@ -888,7 +894,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
     // Pass 2: Auto-assign remaining items sequentially from FREE cells without overlapping
     items.forEach((item) => {
-      if (!initialMap[item.rowId]) {
+      const shouldAutoAssign = targetRowId ? item.rowId === targetRowId : true;
+      if (!initialMap[item.rowId] && shouldAutoAssign) {
         const itemPackSize = item.packageQty || 100;
         const requiredCount = Math.max(1, Math.ceil((item.qty || 1) / itemPackSize));
         const preselected: string[] = [];
@@ -949,6 +956,42 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
   const handleSwitchActiveItem = (rowId: string) => {
     setActiveRowId(rowId);
+
+    // Auto-suggest for this item if it has no bins assigned in selectedBinsMap yet
+    setSelectedBinsMap((prev) => {
+      if (prev[rowId] && prev[rowId].length > 0) return prev;
+
+      const itemToAssign = items.find((i) => i.rowId === rowId);
+      if (!itemToAssign) return prev;
+
+      const itemPackSize = itemToAssign.packageQty || 100;
+      const requiredCount = Math.max(1, Math.ceil((itemToAssign.qty || 1) / itemPackSize));
+
+      const usedBins = new Set<string>();
+      Object.values(prev).forEach((binsArr) => {
+        binsArr.forEach((b) => usedBins.add(b));
+      });
+
+      const freeCells: string[] = [];
+      racksTopology.forEach((rk) => {
+        rk.floors.forEach((fl) => {
+          fl.cells.forEach((cl) => {
+            if (!cl.isOccupied && !usedBins.has(cl.binCode)) {
+              freeCells.push(cl.binCode);
+            }
+          });
+        });
+      });
+
+      const preselected = freeCells.slice(0, requiredCount);
+      if (preselected.length === 0) return prev;
+
+      return {
+        ...prev,
+        [rowId]: preselected,
+      };
+    });
+
     const itemBins = selectedBinsMap[rowId] || [];
     if (itemBins.length > 0) {
       const firstBin = itemBins[0];
@@ -1011,7 +1054,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
   const handleConfirmSelections = () => {
     const updatedRows = items.map((r) => {
-      const chosenBins = selectedBinsMap[r.rowId] || r.assignedBins || [];
+      const chosenBins = selectedBinsMap[r.rowId] || [];
       if (chosenBins.length > 0) {
         const cleanNote = (r.note || '').replace(/\[Vị trí Ô:\s*[^\]]+\]/g, '').trim();
         return {
@@ -1020,8 +1063,15 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
           locationBin: chosenBins.join(', '),
           note: cleanNote ? `${cleanNote} [Vị trí Ô: ${chosenBins.join(', ')}]` : `[Vị trí Ô: ${chosenBins.join(', ')}]`,
         };
+      } else {
+        const cleanNote = (r.note || '').replace(/\[Vị trí Ô:\s*[^\]]+\]/g, '').trim();
+        return {
+          ...r,
+          assignedBins: [],
+          locationBin: '',
+          note: cleanNote,
+        };
       }
-      return r;
     });
     onConfirmAll(updatedRows);
   };
@@ -1764,6 +1814,10 @@ export default function CreateStockInOrderPage({
           const whData = await whRes.json();
           const list = Array.isArray(whData) ? whData : whData.data || [];
           setWarehouses(list);
+          try {
+            const merged = mergeStoredWarehouses(list);
+            saveStoredWarehouses(merged);
+          } catch {}
           if (list.length > 0) {
             const firstWhCode = list[0].code;
             setTabs((prevTabs) =>

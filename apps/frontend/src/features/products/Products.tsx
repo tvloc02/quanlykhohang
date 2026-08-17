@@ -192,6 +192,8 @@ type RawProduct = {
   importPrice?: number | '';
   wholesalePrice?: number | '';
   retailPrice?: number | '';
+  lastStockInQty?: number;
+  lastImportQty?: number;
   stock?: number;
   totalStock?: number;
   isVisible?: boolean;
@@ -211,6 +213,7 @@ type Product = {
   importPrice?: number | '';
   wholesalePrice?: number | '';
   retailPrice?: number | '';
+  lastStockInQty?: number;
   stock: number;
   warehouseStocks?: Record<string, number>;
   images: string[];
@@ -282,7 +285,10 @@ type ColumnKey =
   | 'name'
   | 'category'
   | 'unit'
-  | 'price'
+  | 'retailPrice'
+  | 'wholesalePrice'
+  | 'importPrice'
+  | 'lastStockInQty'
   | 'stock'
   | 'isVisible'
   | 'actions';
@@ -419,9 +425,18 @@ async function handleFileUploadToCloudinary(file: File): Promise<string> {
 
 function normalizeProduct(product: RawProduct & Record<string, any>): Product {
   const stockVal = Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0));
-  const rPrice = product.retailPrice !== undefined && product.retailPrice !== '' ? Number(product.retailPrice) : Number(product.price || 0);
-  const iPrice = product.importPrice !== undefined && product.importPrice !== '' ? Number(product.importPrice) : '';
-  const wPrice = product.wholesalePrice !== undefined && product.wholesalePrice !== '' ? Number(product.wholesalePrice) : '';
+  const rPrice = product.retailPrice !== undefined && product.retailPrice !== '' && product.retailPrice !== null
+    ? Number(product.retailPrice)
+    : Number(product.price || 0);
+  const iPrice = product.importPrice !== undefined && product.importPrice !== '' && product.importPrice !== null
+    ? Number(product.importPrice)
+    : 0;
+  const wPrice = product.wholesalePrice !== undefined && product.wholesalePrice !== '' && product.wholesalePrice !== null
+    ? Number(product.wholesalePrice)
+    : 0;
+  const lastQty = product.lastStockInQty !== undefined && product.lastStockInQty !== null
+    ? Number(product.lastStockInQty)
+    : (product.lastImportQty !== undefined && product.lastImportQty !== null ? Number(product.lastImportQty) : 0);
 
   return {
     ...product,
@@ -438,6 +453,7 @@ function normalizeProduct(product: RawProduct & Record<string, any>): Product {
     importPrice: iPrice,
     wholesalePrice: wPrice,
     retailPrice: rPrice,
+    lastStockInQty: lastQty,
     stock: stockVal,
     warehouseStocks: (product as any).warehouseStocks || {},
     images: (product as any).images || [],
@@ -501,7 +517,10 @@ export default function Products() {
     { key: 'name', label: 'Tên hàng hóa', visible: true },
     { key: 'category', label: 'Danh mục', visible: true },
     { key: 'unit', label: 'ĐV Tính', visible: true },
-    { key: 'price', label: 'Giá', visible: true },
+    { key: 'retailPrice', label: 'Giá bán lẻ', visible: true },
+    { key: 'wholesalePrice', label: 'Giá bán buôn', visible: true },
+    { key: 'importPrice', label: 'Giá nhập', visible: true },
+    { key: 'lastStockInQty', label: 'SL nhập lần cuối', visible: true },
     { key: 'stock', label: 'Tồn kho', visible: true },
     { key: 'isVisible', label: 'Hiện trên Shop', visible: true },
     { key: 'actions', label: 'Thao tác', visible: true },
@@ -1180,49 +1199,58 @@ export default function Products() {
       </div>
 
       {/* Table Section */}
-      <div className="mt-5 overflow-hidden rounded-xl border-2 border-slate-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] border-collapse bg-white">
-            <thead className="bg-cyan-50">
-              <tr className="border-b-2 border-slate-200">
-                <th className="w-10 border-x border-slate-200 px-3 py-4 text-center">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
+      <div className="mt-5 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full min-w-[1600px] border-collapse bg-white text-left">
+            <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
+              <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
+                <th className="w-10 min-w-[40px] border-x border-slate-200 px-3 py-4 text-center">
+                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer" />
                 </th>
                 {isColVisible('stt') && (
-                  <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
+                  <th className="w-12 min-w-[50px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">STT</th>
                 )}
                 {isColVisible('image') && (
-                  <th className="w-20 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ảnh</th>
+                  <th className="w-20 min-w-[70px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Ảnh</th>
                 )}
                 {isColVisible('sku') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã hàng hóa</th>
+                  <th className="min-w-[130px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Mã hàng hóa</th>
                 )}
                 {isColVisible('name') && (
-                  <th className="min-w-[200px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên hàng hóa</th>
+                  <th className="min-w-[200px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Tên hàng hóa</th>
                 )}
                 {isColVisible('category') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Danh mục</th>
+                  <th className="min-w-[130px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Danh mục</th>
                 )}
                 {isColVisible('unit') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">ĐV Tính</th>
+                  <th className="min-w-[100px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">ĐV Tính</th>
                 )}
-                {isColVisible('price') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Giá</th>
+                {isColVisible('retailPrice') && (
+                  <th className="min-w-[140px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Giá bán lẻ</th>
+                )}
+                {isColVisible('wholesalePrice') && (
+                  <th className="min-w-[140px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Giá bán buôn</th>
+                )}
+                {isColVisible('importPrice') && (
+                  <th className="min-w-[140px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Giá nhập</th>
+                )}
+                {isColVisible('lastStockInQty') && (
+                  <th className="min-w-[160px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">SL nhập lần cuối</th>
                 )}
                 {isColVisible('stock') && (
-                  <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tồn kho</th>
+                  <th className="min-w-[110px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Tồn kho</th>
                 )}
                 {isColVisible('isVisible') && (
-                  <th className="w-28 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 leading-tight">Hiện trên Shop</th>
+                  <th className="w-28 min-w-[130px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Hiện trên Shop</th>
                 )}
                 {isColVisible('actions') && (
-                  <th className="sticky right-0 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)] min-w-[200px]">
+                  <th className="sticky right-0 top-0 z-30 min-w-[180px] border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] whitespace-nowrap">
                     THAO TÁC
                   </th>
                 )}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-200 bg-white">
               {loading ? (
                 <tr>
                   <td colSpan={visibleColCount} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
@@ -1239,17 +1267,17 @@ export default function Products() {
                 paginatedProducts.map((product, index) => (
                   <tr key={product.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
                     <td className="border-x border-slate-200 px-3 py-3 text-center">
-                      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600" />
+                      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-cyan-600 cursor-pointer" />
                     </td>
 
                     {isColVisible('stt') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-700 font-semibold">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm text-slate-700 font-semibold whitespace-nowrap">
                         {startIndex + index}
                       </td>
                     )}
 
                     {isColVisible('image') && (
-                      <td className="border-x border-slate-200 px-2 py-2 text-center">
+                      <td className="border-x border-slate-200 px-2 py-2 text-center whitespace-nowrap">
                         {product.images?.[0] ? (
                           <img src={product.images[0]} alt={product.name} className="mx-auto h-12 w-12 rounded-lg object-cover border border-slate-200" />
                         ) : (
@@ -1261,37 +1289,57 @@ export default function Products() {
                     )}
 
                     {isColVisible('sku') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
                         {product.sku}
                       </td>
                     )}
 
                     {isColVisible('name') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
                         {product.name}
                       </td>
                     )}
 
                     {isColVisible('category') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
                         {product.category || '-'}
                       </td>
                     )}
 
                     {isColVisible('unit') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
                         {product.unit || '-'}
                       </td>
                     )}
 
-                    {isColVisible('price') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700">
-                        {product.price.toLocaleString('vi-VN')} ₫
+                    {isColVisible('retailPrice') && (
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
+                        {(product.retailPrice !== undefined && product.retailPrice !== '' ? Number(product.retailPrice) : product.price || 0).toLocaleString('vi-VN')} ₫
+                      </td>
+                    )}
+
+                    {isColVisible('wholesalePrice') && (
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
+                        {(product.wholesalePrice !== undefined && product.wholesalePrice !== '' ? Number(product.wholesalePrice) : 0).toLocaleString('vi-VN')} ₫
+                      </td>
+                    )}
+
+                    {isColVisible('importPrice') && (
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
+                        {(product.importPrice !== undefined && product.importPrice !== '' ? Number(product.importPrice) : 0).toLocaleString('vi-VN')} ₫
+                      </td>
+                    )}
+
+                    {isColVisible('lastStockInQty') && (
+                      <td className="border-x border-slate-200 px-3 py-3 text-center align-middle whitespace-nowrap">
+                        <span className="inline-flex rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                          {product.lastStockInQty || 0}
+                        </span>
                       </td>
                     )}
 
                     {isColVisible('stock') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center align-middle">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center align-middle whitespace-nowrap">
                         <span className="inline-flex rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
                           {product.stock}
                         </span>
@@ -1299,7 +1347,7 @@ export default function Products() {
                     )}
 
                     {isColVisible('isVisible') && (
-                      <td className="border-x border-slate-200 px-3 py-3 text-center align-middle">
+                      <td className="border-x border-slate-200 px-3 py-3 text-center align-middle whitespace-nowrap">
                         <button
                           onClick={async () => {
                             try {
@@ -1325,11 +1373,11 @@ export default function Products() {
                     )}
 
                     {isColVisible('actions') && (
-                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
+                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                             title="Thêm mới / Chi tiết"
                             onClick={() => openProductModal('view', product)}
                           >
@@ -1337,7 +1385,7 @@ export default function Products() {
                           </button>
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                             title="Lịch sử đơn hàng"
                             onClick={() => openHistoryModal(product)}
                           >
@@ -1356,7 +1404,7 @@ export default function Products() {
                           {canDelete && (
                             <button
                               type="button"
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 hover:border-red-600 cursor-pointer"
                               title="Xóa hàng hóa"
                               onClick={() => openProductModal('delete', product)}
                             >

@@ -127,6 +127,11 @@ export class ProductsService {
         relations: ['product'],
       });
 
+      const inboundDetails = await this.inboundDetailRepo.find({
+        relations: ['product'],
+        order: { id: 'DESC' },
+      });
+
       return products.map((product) => {
         const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
         const totalStock = productBalances.reduce(
@@ -134,9 +139,18 @@ export class ProductsService {
           0
         );
 
+        const lastInbound = inboundDetails.find((d) => d.product && d.product.id === product.id);
+        const lastStockInQty = lastInbound
+          ? Number(lastInbound.receivedQty || lastInbound.expectedQty || 0)
+          : (totalStock > 0 ? totalStock : 0);
+
         return {
           ...product,
           totalStock,
+          retailPrice: Number(product.price || 0),
+          wholesalePrice: Number(product.wholesalePrice || 0),
+          importPrice: Number(product.importPrice || 0),
+          lastStockInQty,
           stockBalances: productBalances.map((b) => ({
             id: b.id,
             locationCode: b.locationCode,
@@ -160,8 +174,19 @@ export class ProductsService {
       relations: ['product'],
     });
 
+    const inboundDetails = await this.inboundDetailRepo.find({
+      relations: ['product'],
+      order: { id: 'DESC' },
+    });
+
     return products.map((product) => {
       const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
+      const totalStock = productBalances.reduce((sum, b) => sum + (Number(b.available) || 0), 0);
+      const lastInbound = inboundDetails.find((d) => d.product && d.product.id === product.id);
+      const lastStockInQty = lastInbound
+        ? Number(lastInbound.receivedQty || lastInbound.expectedQty || 0)
+        : (totalStock > 0 ? totalStock : 0);
+
       return {
         id: product.id,
         internalSku: product.internalSku,
@@ -170,8 +195,10 @@ export class ProductsService {
         unit: product.unit,
         minimumStock: product.minimumStock,
         price: product.price,
-        importPrice: product.importPrice || 0,
-        wholesalePrice: product.wholesalePrice || 0,
+        retailPrice: Number(product.price || 0),
+        importPrice: Number(product.importPrice || 0),
+        wholesalePrice: Number(product.wholesalePrice || 0),
+        lastStockInQty,
         category: product.category ? { id: product.category.id, name: product.category.name } : null,
         supplier: product.supplier ? { id: product.supplier.id, name: product.supplier.name } : null,
         stockBalances: productBalances.map((b) => ({
@@ -181,7 +208,7 @@ export class ProductsService {
           allocated: b.allocated,
           available: b.available,
         })),
-        totalStock: productBalances.reduce((sum, b) => sum + (Number(b.available) || 0), 0),
+        totalStock,
       };
     });
   }

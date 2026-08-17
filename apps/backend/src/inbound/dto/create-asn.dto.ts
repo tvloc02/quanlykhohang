@@ -84,6 +84,10 @@ export class PurchaseOrderItemDto {
   @Type(() => Number)
   @IsNumber()
   volumetricWeight?: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
 }
 
 export class CreateAsnDto {
