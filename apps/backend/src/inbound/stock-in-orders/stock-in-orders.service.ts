@@ -106,6 +106,12 @@ export class StockInOrdersService {
         actualQty: 0,
         unitPrice: toNumber(purchaseDetail.unitPrice).toFixed(2),
         totalLineAmount: (toNumber(purchaseDetail.unitPrice) * toNumber(purchaseDetail.expectedQty)).toFixed(2),
+        weight: Math.min(999999.99, toNumber(purchaseDetail.weight)),
+        length: Math.min(999999.99, toNumber(purchaseDetail.length)),
+        width: Math.min(999999.99, toNumber(purchaseDetail.width)),
+        height: Math.min(999999.99, toNumber(purchaseDetail.height)),
+        volume: Math.min(999999.9999, toNumber(purchaseDetail.volume)),
+        volumetricWeight: Math.min(999999.99, toNumber(purchaseDetail.volumetricWeight)),
       }),
     );
 

@@ -644,12 +644,12 @@ export class InboundService {
         unitPrice: unitPrice.toFixed(2),
         requestedPrice: unitPrice.toFixed(2),
         totalLineAmount: (unitPrice * qty).toFixed(2),
-        weight: parseNumber(item.weight),
-        length: parseNumber(item.length),
-        width: parseNumber(item.width),
-        height: parseNumber(item.height),
-        volume: parseNumber(item.volume),
-        volumetricWeight: parseNumber(item.volumetricWeight),
+        weight: Math.min(999999.99, parseNumber(item.weight)),
+        length: Math.min(999999.99, parseNumber(item.length)),
+        width: Math.min(999999.99, parseNumber(item.width)),
+        height: Math.min(999999.99, parseNumber(item.height)),
+        volume: Math.min(999999.9999, parseNumber(item.volume)),
+        volumetricWeight: Math.min(999999.99, parseNumber(item.volumetricWeight)),
       });
 
       savedDetails.push(await this.detailRepo.save(detail));

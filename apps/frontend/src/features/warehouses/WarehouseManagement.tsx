@@ -869,11 +869,11 @@ export default function WarehouseManagement() {
 
       {/* MAIN DATA TABLE */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] border-collapse bg-white">
+        <div className="overflow-x-auto custom-scrollbar pb-1">
+          <table className="w-full min-w-[1850px] border-collapse bg-white">
             <thead className="bg-cyan-50/70">
               <tr className="border-b border-slate-200">
-                <th className="w-10 border-x border-slate-200 px-2 py-3 text-center">
+                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center whitespace-nowrap">
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
@@ -890,51 +890,60 @@ export default function WarehouseManagement() {
                     }}
                   />
                 </th>
-                <th className="w-12 border-x border-slate-200 px-2 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap">
                   STT
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[130px]">
                   Mã kho
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[220px]">
                   Tên kho
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[150px]">
                   Số phân khu
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[140px]">
+                  Tổng số kệ
+                </th>
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[160px]">
+                  Diện tích
+                </th>
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[130px]">
+                  % Đã chứa
+                </th>
+                <th className="border-x border-slate-200 px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[220px]">
                   Địa chỉ kho
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[180px]">
                   Quản lý kho
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[180px]">
                   Thủ kho
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[180px]">
                   NV kiểm kê
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[160px]">
                   Trạng thái
                 </th>
-                <th className="border-x border-slate-200 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800">
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[150px]">
                   Đóng băng
                 </th>
-                <th className="sticky right-0 w-48 border-l border-slate-200 bg-cyan-50/70 px-3 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
-                  Hành động
+                <th className="sticky right-0 w-48 border-l border-slate-200 bg-cyan-100 px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 shadow-[-6px_0_15px_rgba(0,0,0,0.08)] z-20 whitespace-nowrap">
+                  THAO TÁC
                 </th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
+                  <td colSpan={15} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
                     Đang tải danh sách kho hàng...
                   </td>
                 </tr>
               ) : paginatedWarehouses.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
+                  <td colSpan={15} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
                     {error ? 'Lỗi khi tải dữ liệu. Vui lòng thử lại.' : 'Chưa có kho hàng. Hãy tạo kho hàng mới.'}
                   </td>
                 </tr>
@@ -950,9 +959,12 @@ export default function WarehouseManagement() {
                   const storekeepers = assignedUsers.filter((u) => getUserRoleCategory(u) === 'storekeeper');
                   const checkers = assignedUsers.filter((u) => getUserRoleCategory(u) === 'inventory_checker');
 
+                  const totalRacks = w.subWarehouses?.reduce((acc, z) => acc + (z.racks?.length || z.racksCount || 0), 0) || 0;
+                  const occupancy = w.occupancyRate ?? 0;
+
                   return (
                     <tr key={w.id} className={`group border-b border-slate-200 transition ${w.isFrozen ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-cyan-50/40'}`}>
-                      <td className="border-x border-slate-200 px-2 py-3.5 text-center align-middle">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                         <input
                           type="checkbox"
                           className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
@@ -964,35 +976,69 @@ export default function WarehouseManagement() {
                           }}
                         />
                       </td>
-                      <td className="border-x border-slate-200 px-2 py-3.5 text-center text-xs font-bold text-slate-700">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-xs font-bold text-slate-700">
                         {startIndex + index}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-cyan-700 uppercase font-mono">
-                        {w.code}
+                      <td className="border-x border-slate-200 px-4 py-4 text-center align-middle">
+                        <span className="inline-block rounded-lg bg-cyan-50 px-3 py-1.5 text-xs font-extrabold text-cyan-800 border border-cyan-200 font-mono tracking-wider">
+                          {w.code}
+                        </span>
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-900">
-                        {w.name}
+                      <td className="border-x border-slate-200 px-5 py-4 text-left align-middle min-w-[220px]">
+                        <span className="text-sm font-extrabold text-slate-900 tracking-tight block">
+                          {w.name}
+                        </span>
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-700">
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-cyan-50 px-2.5 py-1 text-cyan-700 border border-cyan-200">
-                          <Layers className="h-3.5 w-3.5 text-cyan-600" />
+                      <td className="border-x border-slate-200 px-4 py-4 text-center align-middle">
+                        <span className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-50 px-3 py-1.5 text-xs font-bold text-cyan-700 border border-cyan-200 shadow-xs">
+                          <Layers className="h-4 w-4 text-cyan-600" />
                           {w.subWarehouses?.length || 0} Phân khu
                         </span>
                       </td>
-                      <td className="max-w-[200px] truncate border-x border-slate-200 px-3 py-3.5 text-center text-xs font-medium text-slate-700">
+                      <td className="border-x border-slate-200 px-4 py-4 text-center align-middle">
+                        <span className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 border border-indigo-200 shadow-xs">
+                          {totalRacks} Dãy Kệ
+                        </span>
+                      </td>
+                      <td className="border-x border-slate-200 px-4 py-4 text-center align-middle text-xs font-semibold text-slate-700">
+                        {w.length && w.width ? (
+                          <div>
+                            <span className="text-sm font-extrabold text-slate-800">{w.length * w.width} m²</span>
+                            <span className="block text-[11px] text-slate-400 font-mono">({w.length}m × {w.width}m)</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 font-mono text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="border-x border-slate-200 px-4 py-4 text-center align-middle">
+                        <div className="flex flex-col items-center justify-center gap-1 mx-auto max-w-[100px]">
+                          <span className={`text-xs font-black ${occupancy > 80 ? 'text-rose-600' : occupancy > 0 ? 'text-cyan-700' : 'text-slate-400'}`}>
+                            {occupancy}%
+                          </span>
+                          <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                occupancy > 80 ? 'bg-rose-500' : occupancy > 50 ? 'bg-cyan-500' : occupancy > 0 ? 'bg-emerald-500' : 'bg-slate-200'
+                              }`}
+                              style={{ width: `${occupancy}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="max-w-[240px] truncate border-x border-slate-200 px-5 py-4 text-left text-xs font-medium text-slate-700 align-middle">
                         {w.address ||
                           `${w.detailAddress ? w.detailAddress + ', ' : ''}${w.ward ? w.ward + ', ' : ''}${w.province || ''}`}
                       </td>
                       {/* Column 1: Quản lý kho */}
-                      <td className="border-x border-slate-200 px-2 py-3 text-center align-middle">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                         {managers.length === 0 ? (
-                          <span className="text-[11px] font-medium text-slate-400 font-mono">-</span>
+                          <span className="text-xs font-medium text-slate-400 font-mono">-</span>
                         ) : (
                           <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
                             {managers.slice(0, 2).map((u) => (
                               <span
                                 key={u.id}
-                                className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800"
+                                className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-800"
                                 title={`${u.fullName || u.email}`}
                               >
                                 {u.fullName || u.email.split('@')[0]}
@@ -1002,7 +1048,7 @@ export default function WarehouseManagement() {
                               <button
                                 type="button"
                                 onClick={() => setDetailPersonnelModal({ title: `Quản Lý Kho - ${w.name}`, users: managers })}
-                                className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
+                                className="rounded-lg bg-cyan-100 px-2 py-1 text-xs font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
                                 title="Xem tất cả quản lý"
                               >
                                 +{managers.length - 2}
@@ -1012,15 +1058,15 @@ export default function WarehouseManagement() {
                         )}
                       </td>
                       {/* Column 2: Thủ kho */}
-                      <td className="border-x border-slate-200 px-2 py-3 text-center align-middle">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                         {storekeepers.length === 0 ? (
-                          <span className="text-[11px] font-medium text-slate-400 font-mono">-</span>
+                          <span className="text-xs font-medium text-slate-400 font-mono">-</span>
                         ) : (
                           <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
                             {storekeepers.slice(0, 2).map((u) => (
                               <span
                                 key={u.id}
-                                className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800"
+                                className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-800"
                                 title={`${u.fullName || u.email}`}
                               >
                                 {u.fullName || u.email.split('@')[0]}
@@ -1030,7 +1076,7 @@ export default function WarehouseManagement() {
                               <button
                                 type="button"
                                 onClick={() => setDetailPersonnelModal({ title: `Thủ Kho - ${w.name}`, users: storekeepers })}
-                                className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
+                                className="rounded-lg bg-cyan-100 px-2 py-1 text-xs font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
                                 title="Xem tất cả thủ kho"
                               >
                                 +{storekeepers.length - 2}
@@ -1040,15 +1086,15 @@ export default function WarehouseManagement() {
                         )}
                       </td>
                       {/* Column 3: NV kiểm kê */}
-                      <td className="border-x border-slate-200 px-2 py-3 text-center align-middle">
+                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                         {checkers.length === 0 ? (
-                          <span className="text-[11px] font-medium text-slate-400 font-mono">-</span>
+                          <span className="text-xs font-medium text-slate-400 font-mono">-</span>
                         ) : (
                           <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
                             {checkers.slice(0, 2).map((u) => (
                               <span
                                 key={u.id}
-                                className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800"
+                                className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-800"
                                 title={`${u.fullName || u.email}`}
                               >
                                 {u.fullName || u.email.split('@')[0]}
@@ -1058,7 +1104,7 @@ export default function WarehouseManagement() {
                               <button
                                 type="button"
                                 onClick={() => setDetailPersonnelModal({ title: `NV Kiểm Kê - ${w.name}`, users: checkers })}
-                                className="rounded-md bg-cyan-100 px-1.5 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
+                                className="rounded-lg bg-cyan-100 px-2 py-1 text-xs font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
                                 title="Xem tất cả nhân viên kiểm kê"
                               >
                                 +{checkers.length - 2}
@@ -1067,28 +1113,28 @@ export default function WarehouseManagement() {
                           </div>
                         )}
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
+                      <td className="border-x border-slate-200 px-4 py-4 text-center align-middle">
                         <span
-                          className={`inline-flex rounded-lg border px-2.5 py-1 text-xs font-bold ${w.status === 'active'
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                              : 'border-slate-200 bg-slate-100 text-slate-600'
+                          className={`inline-flex rounded-xl border px-3.5 py-1.5 text-xs font-extrabold shadow-xs ${w.status === 'active'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                              : 'border-slate-300 bg-slate-100 text-slate-600'
                             }`}
                         >
                           {w.status === 'active' ? 'Đang hoạt động' : 'Không hoạt động'}
                         </span>
                       </td>
-                      <td className="border-x border-slate-200 px-3 py-3.5 text-center align-middle">
+                      <td className="border-x border-slate-200 px-4 py-4 text-center align-middle">
                         {w.isFrozen ? (
-                          <span className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-700 animate-pulse">
-                            <Lock className="h-3.5 w-3.5 text-red-600" /> Đóng băng
+                          <span className="inline-flex items-center gap-1 rounded-xl border border-red-300 bg-red-100 px-3.5 py-1.5 text-xs font-extrabold text-red-700 shadow-xs animate-pulse">
+                            <Lock className="h-4 w-4 text-red-600" /> Đóng băng
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200/60 bg-emerald-50/50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                            <Unlock className="h-3.5 w-3.5 text-emerald-600" /> Bình thường
+                          <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-300/80 bg-emerald-50/80 px-3.5 py-1.5 text-xs font-bold text-emerald-700 shadow-xs">
+                            <Unlock className="h-4 w-4 text-emerald-600" /> Bình thường
                           </span>
                         )}
                       </td>
-                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3.5 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/40">
+                      <td className="sticky right-0 border-l border-slate-200 bg-white group-hover:bg-cyan-50 px-4 py-4 text-center align-middle shadow-[-6px_0_15px_rgba(0,0,0,0.08)] z-10">
                         <div className="flex items-center justify-center gap-1.5">
                           {/* Lock / Unlock Freeze Toggle Button - Styled Cyan */}
                           <button

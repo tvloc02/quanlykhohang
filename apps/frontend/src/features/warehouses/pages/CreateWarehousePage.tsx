@@ -67,8 +67,8 @@ function generateDefaultRacks(
   racksCount: number,
   zoneLength = 20,
   zoneHeight = 6,
-  defaultBays = 6,
-  defaultShelves = 5,
+  vachDoc = 2,
+  vachNgang = 5,
   defaultBinsPerShelf = 2
 ): RackConfig[] {
   const racks: RackConfig[] = [];
@@ -76,10 +76,15 @@ function generateDefaultRacks(
   const rackW = 1.2;
   const rackH = Math.max(zoneHeight - 1, 3);
 
-  const totalLengthBins = defaultBays * defaultBinsPerShelf;
+  // Vách Dọc vachDoc (tính cả vách đầu và vách đuôi) -> Số khoang = vachDoc - 1
+  const calcBays = Math.max(1, vachDoc - 1);
+  // Vách Ngang vachNgang (tính cả dầm đáy dưới cùng và dầm mái trên cùng) -> Số tầng = vachNgang - 1
+  const calcShelves = Math.max(1, vachNgang - 1);
+
+  const totalLengthBins = calcBays * defaultBinsPerShelf;
   const autoBinL = Math.round((rackL * 100) / (totalLengthBins || 1));
   const autoBinW = Math.round(rackW * 100);
-  const autoBinH = Math.round((rackH * 100) / (defaultShelves || 1));
+  const autoBinH = Math.round((rackH * 100) / (calcShelves || 1));
 
   for (let r = 1; r <= racksCount; r++) {
     const rCode = `R${String(r).padStart(2, '0')}`;
@@ -91,11 +96,11 @@ function generateDefaultRacks(
       width: rackW,
       height: rackH,
       maxRackLoad: 16000,
-      baysCount: defaultBays,
-      horizontalPartitions: defaultShelves,
-      verticalPartitions: defaultBinsPerShelf,
-      columnsCount: defaultBays,
-      shelvesCount: defaultShelves,
+      baysCount: calcBays,
+      horizontalPartitions: vachNgang,
+      verticalPartitions: vachDoc,
+      columnsCount: calcBays,
+      shelvesCount: calcShelves,
       binsPerShelf: defaultBinsPerShelf,
       defaultBinLength: autoBinL,
       defaultBinWidth: autoBinW,
@@ -205,9 +210,22 @@ export default function CreateWarehousePage() {
         setHeight(norm.height || 12);
 
         const loadedZones = (norm.subWarehouses || []).map((z) => {
+          const vachDoc = z.binsPerShelf || (z as any).verticalPartitions || 2;
+          const vachNgang = z.shelvesPerRack || (z as any).horizontalPartitions || 5;
+          const calcBays = Math.max(1, vachDoc - 1);
+          const calcShelves = Math.max(1, vachNgang - 1);
+
           const rks = z.racks && z.racks.length > 0
-            ? z.racks
-            : generateDefaultRacks(z.racksCount || 4, z.length || 20, z.height || 6, (z as any).columnsCount || 6, z.shelvesPerRack || 5, z.binsPerShelf || 2);
+            ? z.racks.map((r) => ({
+                ...r,
+                baysCount: calcBays,
+                columnsCount: calcBays,
+                shelvesCount: calcShelves,
+                horizontalPartitions: vachNgang,
+                verticalPartitions: vachDoc,
+                binsPerShelf: r.binsPerShelf || 2,
+              }))
+            : generateDefaultRacks(z.racksCount || 4, z.length || 20, z.height || 6, vachDoc, vachNgang, 2);
           return { ...z, racks: rks };
         });
 
@@ -234,7 +252,7 @@ export default function CreateWarehousePage() {
           shelvesPerRack: 5,
           binsPerShelf: 2,
           maxWeightPerBin: 500,
-          racks: generateDefaultRacks(4, 25, 7, 6, 5, 2),
+          racks: generateDefaultRacks(4, 25, 7, 2, 5, 2),
         },
         {
           id: `sub-${Date.now()}-2`,
@@ -251,7 +269,7 @@ export default function CreateWarehousePage() {
           shelvesPerRack: 4,
           binsPerShelf: 2,
           maxWeightPerBin: 600,
-          racks: generateDefaultRacks(3, 20, 6, 5, 4, 2),
+          racks: generateDefaultRacks(3, 20, 6, 2, 4, 2),
         },
       ];
       setSubWarehouses(defaultZones);
@@ -275,7 +293,7 @@ export default function CreateWarehousePage() {
   // Ensure racks exist in activeZone
   const activeRacks = activeZone?.racks && activeZone.racks.length > 0
     ? activeZone.racks
-    : generateDefaultRacks(activeZone?.racksCount ?? 4, activeZone?.length || 20, activeZone?.height || 6, 6, activeZone?.shelvesPerRack ?? 5, activeZone?.binsPerShelf ?? 2);
+    : generateDefaultRacks(activeZone?.racksCount ?? 4, activeZone?.length || 20, activeZone?.height || 6, activeZone?.binsPerShelf ?? 2, activeZone?.shelvesPerRack ?? 5, 2);
 
   const activeRack = activeRacks.find((r) => r.id === activeRackId) || activeRacks[0];
 
@@ -291,8 +309,12 @@ export default function CreateWarehousePage() {
         const nextRacksCount = fields.racksCount !== undefined ? fields.racksCount : (z.racksCount ?? 4);
         const nextShelves = fields.shelvesPerRack !== undefined ? fields.shelvesPerRack : (z.shelvesPerRack ?? 5);
         const nextBinsPerShelf = fields.binsPerShelf !== undefined ? fields.binsPerShelf : (z.binsPerShelf ?? 2);
+        const nextMaxWeight = fields.maxWeightPerBin !== undefined ? fields.maxWeightPerBin : (z.maxWeightPerBin ?? 500);
 
-        const updatedRacks = generateDefaultRacks(nextRacksCount, nextLength, nextHeight, 6, nextShelves, nextBinsPerShelf);
+        const updatedRacks = generateDefaultRacks(nextRacksCount, nextLength, nextHeight, nextBinsPerShelf, nextShelves, 2).map((r) => ({
+          ...r,
+          defaultBinMaxWeight: nextMaxWeight,
+        }));
 
         return {
           ...z,
@@ -300,8 +322,28 @@ export default function CreateWarehousePage() {
           racksCount: nextRacksCount,
           shelvesPerRack: nextShelves,
           binsPerShelf: nextBinsPerShelf,
+          maxWeightPerBin: nextMaxWeight,
           racks: updatedRacks
         };
+      })
+    );
+  };
+
+  // Helper: Update rack weight by ID
+  const updateRackWeightById = (rackId: string, binWeight: number, maxRackLoad?: number) => {
+    if (!activeZone) return;
+    setSubWarehouses((prev) =>
+      prev.map((z) => {
+        if (z.id !== activeZone.id) return z;
+        const updatedRacks = (z.racks || []).map((r) => {
+          if (r.id !== rackId) return r;
+          return {
+            ...r,
+            defaultBinMaxWeight: binWeight,
+            maxRackLoad: maxRackLoad !== undefined ? maxRackLoad : r.maxRackLoad,
+          };
+        });
+        return { ...z, racks: updatedRacks };
       })
     );
   };
@@ -475,33 +517,22 @@ export default function CreateWarehousePage() {
           />
         )}
 
-        {/* PAGE HEADER & TOP NAVIGATION BAR (Cyan Gold Standard UI) */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-cyan-200/80 dark:border-cyan-900/60 shadow-sm">
+        {/* PAGE HEADER & TOP NAVIGATION BAR (Exact Products/Main UI Style) */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/warehouses')}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-cyan-50 hover:text-cyan-600 transition cursor-pointer"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2 text-xs font-extrabold text-cyan-600 dark:text-cyan-400">
-                <span>KHO HÀNG THÔNG MINH</span>
-                <ChevronRight className="h-3.5 w-3.5" />
-                <span>{isEditMode ? 'CHỈNH SỬA KHO' : 'TẠO MỚI KHO HÀNG'}</span>
-              </div>
-              <h1 className="text-xl font-black text-slate-900 dark:text-white mt-0.5">
-                Cấu Hình Dãy Kệ Dọc & Phân Khu Kho
+            <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
+              <Building className="h-5 w-5 text-cyan-100" />
+              <h1 className="text-lg font-bold tracking-tight text-white">
+                {isEditMode ? 'Cấu Hình Dãy Kệ Dọc & Phân Khu Kho' : 'Tạo Kho Hàng Mới'}
               </h1>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
-              className="px-4 py-2.5 rounded-xl border border-cyan-300 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 text-xs font-black hover:bg-cyan-100 transition flex items-center gap-2 cursor-pointer shadow-sm"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-50 px-4 py-2.5 text-xs font-bold text-cyan-800 shadow-sm transition hover:bg-cyan-100 cursor-pointer"
             >
               <Sparkles className="h-4 w-4 text-cyan-600" />
               {isAiPanelOpen ? 'Đóng AI Simulator' : 'Giả Lập AI Slotting'}
@@ -511,59 +542,67 @@ export default function CreateWarehousePage() {
               type="button"
               onClick={handleSaveWarehouse}
               disabled={saving}
-              className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black shadow-lg shadow-cyan-600/30 transition flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition cursor-pointer disabled:opacity-50 active:scale-95"
             >
               <Save className="h-4 w-4" />
               {saving ? 'Đang Lưu...' : 'Lưu Cấu Hình Kho'}
             </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/warehouses')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 shadow-sm transition cursor-pointer"
+              title="Quay lại danh sách kho"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Quay lại
+            </button>
           </div>
         </div>
 
-        {/* TOP METRIC KPI SUMMARY CARDS (Uniform single-color Cyan theme like products/main) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
-            <div className="flex items-center justify-between text-cyan-600 dark:text-cyan-400">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">MÃ KHO HÀNG</span>
-              <Building className="h-5 w-5" />
-            </div>
-            <div className="text-lg font-black text-slate-900 dark:text-white truncate">{code || 'CHƯA ĐẶT MÃ'}</div>
-            <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
-              Diện tích: {length * width} m² ({length}m × {width}m)
-            </div>
-          </div>
-
-          <div className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
-            <div className="flex items-center justify-between text-cyan-600 dark:text-cyan-400">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">SỐ PHÂN KHU (ZONES)</span>
-              <Layers className="h-5 w-5" />
-            </div>
-            <div className="text-lg font-black text-slate-900 dark:text-white">{subWarehouses.length} Phân Khu</div>
-            <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400 truncate">
-              Đang chọn: <span className="underline">{activeZone?.name || 'Chưa chọn'}</span>
+        {/* 4 BUTTON TỔNG HỢP / SUMMARY METRIC CARDS (Matches products/main) */}
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+            <div>
+              <p className="text-sm sm:text-base font-black text-cyan-700 uppercase">
+                MÃ KHO: {code || 'CHƯA ĐẶT'}
+              </p>
+              <p className="text-[11px] font-bold text-slate-500">
+                Diện tích: {length * width} m² ({length}m × {width}m)
+              </p>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
-            <div className="flex items-center justify-between text-cyan-600 dark:text-cyan-400">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">DÃY KỆ DỌC SUỐT KHO</span>
-              <LayoutGrid className="h-5 w-5" />
-            </div>
-            <div className="text-lg font-black text-slate-900 dark:text-white">{activeRacks.length} Dãy Kệ Dọc</div>
-            <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
-              Đã tick chọn: {selectedRackCodes.length === 0 ? 'Tất cả' : `${selectedRackCodes.length}/${activeRacks.length} dãy`}
+          <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+            <div>
+              <p className="text-sm sm:text-base font-black text-cyan-700 uppercase">
+                {subWarehouses.length} PHÂN KHU (ZONES)
+              </p>
+              <p className="text-[11px] font-bold text-slate-500 truncate max-w-[200px]">
+                Đang chọn: {activeZone?.name || 'Chưa chọn'}
+              </p>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-1">
-            <div className="flex items-center justify-between text-cyan-600 dark:text-cyan-400">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">TỔNG THỂ TÍCH CHỨA HÀNG</span>
-              <Package className="h-5 w-5" />
+          <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+            <div>
+              <p className="text-sm sm:text-base font-black text-cyan-700 uppercase">
+                {activeRacks.length} DÃY KỆ DỌC SUỐT KHO
+              </p>
+              <p className="text-[11px] font-bold text-slate-500">
+                Đã tick chọn: {selectedRackCodes.length === 0 ? 'Tất cả' : `${selectedRackCodes.length}/${activeRacks.length} dãy`}
+              </p>
             </div>
-            <div className="text-lg font-black text-slate-900 dark:text-white">
-              {(length * width * height).toLocaleString()} m³
-            </div>
-            <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
-              Cao kho tổng: {height} mét
+          </div>
+
+          <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+            <div>
+              <p className="text-sm sm:text-base font-black text-cyan-700 uppercase">
+                {(length * width * height).toLocaleString('vi-VN')} m³ THỂ TÍCH
+              </p>
+              <p className="text-[11px] font-bold text-slate-500">
+                Cao kho tổng: {height} mét
+              </p>
             </div>
           </div>
         </div>
@@ -873,17 +912,27 @@ export default function CreateWarehousePage() {
                         className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600"
                       />
                     </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Trọng Tải Ô (kg)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={activeZone.maxWeightPerBin ?? 500}
+                        onChange={(e) => updateActiveZone({ maxWeightPerBin: parseNumInput(e.target.value) })}
+                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-emerald-600"
+                      />
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* CARD 3: INTERACTIVE RACK CHECKBOXES SELECTION LIST */}
+            {/* CARD 3: INTERACTIVE RACK CHECKBOXES & ROW WEIGHT CONFIGURATION */}
             <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-cyan-400 dark:border-cyan-800 shadow-sm space-y-3">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
                 <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                   <CheckSquare className="h-4 w-4 text-cyan-600" />
-                  TICK CHỌN & PHÂN CHIA DÃY KỆ DỌC
+                  TICK CHỌN & CẤU HÌNH TRỌNG TẢI DÃY KỆ
                 </h3>
 
                 <button
@@ -896,36 +945,74 @@ export default function CreateWarehousePage() {
               </div>
 
               <p className="text-[11px] text-slate-500 font-semibold">
-                Tick chọn từng kệ bên dưới để hiển thị & phân chia trực quan trên Sơ đồ 2D/3D:
+                Tick chọn từng kệ và nhập Trọng Tải (kg) riêng cho từng hàng dãy kệ:
               </p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 {activeRacks.map((r) => {
                   const isChecked = selectedRackCodes.length === 0 || selectedRackCodes.includes(r.rackCode);
+                  const currentBinWeight = r.defaultBinMaxWeight ?? activeZone?.maxWeightPerBin ?? 500;
+                  const currentRackLoad = r.maxRackLoad ?? 16000;
+
                   return (
-                    <button
+                    <div
                       key={r.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveRackId(r.id);
-                        toggleRackCheckbox(r.rackCode);
-                      }}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between text-xs font-bold transition cursor-pointer ${
+                      className={`p-3 rounded-xl border transition space-y-2 ${
                         isChecked
-                          ? 'border-cyan-500 bg-cyan-50/80 dark:bg-cyan-950/60 text-cyan-900 dark:text-cyan-200 shadow-sm'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 text-slate-400'
+                          ? 'border-cyan-400 bg-cyan-50/60 dark:bg-cyan-950/40 text-slate-900 dark:text-slate-100 shadow-sm'
+                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-400 opacity-65'
                       }`}
                     >
-                      <span className="flex items-center gap-1.5">
-                        {isChecked ? (
-                          <CheckCircle className="h-4 w-4 text-cyan-600 fill-cyan-100" />
-                        ) : (
-                          <Square className="h-4 w-4 text-slate-400" />
-                        )}
-                        <span>{r.rackCode}</span>
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-medium">{r.baysCount || 6} B</span>
-                    </button>
+                      {/* TOP CHECKBOX HEADER */}
+                      <div className="flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveRackId(r.id);
+                            toggleRackCheckbox(r.rackCode);
+                          }}
+                          className="flex items-center gap-1.5 text-xs font-black cursor-pointer hover:text-cyan-600"
+                        >
+                          {isChecked ? (
+                            <CheckCircle className="h-4 w-4 text-cyan-600 fill-cyan-100 shrink-0" />
+                          ) : (
+                            <Square className="h-4 w-4 text-slate-400 shrink-0" />
+                          )}
+                          <span>{r.rackCode} - {r.name}</span>
+                        </button>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200">
+                          {activeZone?.binsPerShelf ?? 2} Vách Dọc
+                        </span>
+                      </div>
+
+                      {/* EDITABLE WEIGHT INPUT FIELDS FOR THIS RACK ROW */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                            Tải trọng ô (kg/ô)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={currentBinWeight}
+                            onChange={(e) => updateRackWeightById(r.id, parseNumInput(e.target.value), currentRackLoad)}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-cyan-700 text-center"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                            Trọng tải dãy (kg)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={currentRackLoad}
+                            onChange={(e) => updateRackWeightById(r.id, currentBinWeight, parseNumInput(e.target.value))}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-emerald-700 text-center"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -1011,101 +1098,113 @@ export default function CreateWarehousePage() {
                     className="space-y-6 transition-all duration-200"
                   >
                     {displayedRacks.map((rack) => {
-                      const baysCount = rack.baysCount || rack.columnsCount || 6;
-                      const shelvesCount = rack.horizontalPartitions || rack.shelvesCount || 5;
-                      const binsPerShelf = rack.verticalPartitions || rack.binsPerShelf || 2;
+                      const vachDoc = activeZone?.binsPerShelf ?? 2;
+                      const vachNgang = activeZone?.shelvesPerRack ?? 5;
+                      const baysCount = Math.max(1, vachDoc - 1);
+                      const shelvesCount = Math.max(1, vachNgang - 1);
+                      const binsPerShelf = rack.binsPerShelf || 2;
+                      const totalBinsPerShelf = baysCount * binsPerShelf;
 
                       return (
                         <div
                           key={rack.id}
-                          className="rounded-2xl border-2 border-cyan-300 dark:border-cyan-800 bg-white dark:bg-slate-900 p-4 shadow-sm space-y-3"
+                          className="rounded-2xl border-2 border-cyan-300 dark:border-cyan-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4"
                         >
-                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="px-2.5 py-0.5 rounded-lg bg-cyan-600 text-white font-black text-xs">
+                          {/* RACK ROW HEADER */}
+                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                            <div className="flex items-center gap-2.5">
+                              <span className="px-3 py-1 rounded-xl bg-cyan-600 text-white font-black text-xs shadow-sm">
                                 {rack.rackCode}
                               </span>
-                              <span className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
+                              <span className="font-extrabold text-sm text-slate-800 dark:text-slate-100">
                                 {rack.name} ({rack.length}m Dài × {rack.width}m Rộng)
                               </span>
                             </div>
-                            <span className="text-[11px] font-bold text-slate-500">
-                              {baysCount} Khoang (Bays) × {shelvesCount} Tầng × {binsPerShelf} Hộc
+                            <span className="text-xs font-bold text-slate-500 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                              {shelvesCount} Tầng ({vachNgang} Vách Ngang) × {totalBinsPerShelf} Ô ({vachDoc} Vách Dọc)
                             </span>
                           </div>
 
-                          {/* 2D BAYS GRID COLUMNS */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                            {Array.from({ length: baysCount }).map((_, bIdx) => {
-                              const bayNum = bIdx + 1;
-                              const bayCode = `B${String(bayNum).padStart(2, '0')}`;
+                          {/* 2D MATRIX ROWS: RENDERED TẦNG BY TẦNG (S04 -> S01) */}
+                          <div className="space-y-3">
+                            {Array.from({ length: shelvesCount })
+                              .map((_, sIdx) => shelvesCount - sIdx) // Render top level down (e.g. S04 -> S01)
+                              .map((shelfNum) => {
+                                const shelfCode = `S${String(shelfNum).padStart(2, '0')}`;
 
-                              return (
-                                <div
-                                  key={bayCode}
-                                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950 p-2 space-y-2"
-                                >
-                                  <div className="text-[11px] font-black text-center text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950 py-0.5 rounded border border-cyan-200 dark:border-cyan-900">
-                                    Khoang {bayCode}
-                                  </div>
+                                return (
+                                  <div
+                                    key={shelfCode}
+                                    className="rounded-xl border border-cyan-200/80 dark:border-cyan-900/60 bg-slate-50/70 dark:bg-slate-950 p-3 space-y-2"
+                                  >
+                                    {/* TẦNG ROW LABEL */}
+                                    <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800 pb-1.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2.5 py-0.5 rounded-lg bg-cyan-700 text-white font-black text-xs">
+                                          Tầng {shelfCode}
+                                        </span>
+                                        <span className="text-xs font-bold text-slate-500">
+                                          (Mâm kệ tầng {shelfNum})
+                                        </span>
+                                      </div>
+                                      <span className="text-[11px] font-bold text-cyan-600 dark:text-cyan-400">
+                                        {totalBinsPerShelf} Ô / Hộc chứa hàng
+                                      </span>
+                                    </div>
 
-                                  {/* SHELVES & BINS CELL MATRIX */}
-                                  <div className="space-y-1.5">
-                                    {Array.from({ length: shelvesCount })
-                                      .map((_, sIdx) => shelvesCount - sIdx) // Render top level down
-                                      .map((shelfNum) => {
-                                        const shelfCode = `S${String(shelfNum).padStart(2, '0')}`;
+                                    {/* HORIZONTAL GRID OF Ô (BINS) FOR THIS TẦNG */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                                      {Array.from({ length: baysCount }).map((_, bIdx) => {
+                                        const bayNum = bIdx + 1;
+                                        const bayCode = `B${String(bayNum).padStart(2, '0')}`;
 
-                                        return (
-                                          <div key={shelfCode} className="space-y-1">
-                                            <div className="text-[9px] font-bold text-slate-400 px-1">
-                                              Tầng {shelfCode}
-                                            </div>
+                                        return Array.from({ length: binsPerShelf }).map((_, cIdx) => {
+                                          const cellNum = cIdx + 1;
+                                          const globalBinIdx = bIdx * binsPerShelf + cellNum;
+                                          const binLabel = `Ô C${String(globalBinIdx).padStart(2, '0')}`;
+                                          const cellCode = `C${String(cellNum).padStart(2, '0')}`;
+                                          const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${bayCode}-${shelfCode}-${cellCode}`;
+                                          const isCustom = rack.customBins && rack.customBins[fullBinCode];
 
-                                            <div
-                                              className="grid gap-1.5"
-                                              style={{ gridTemplateColumns: `repeat(${Math.max(1, binsPerShelf)}, minmax(0, 1fr))` }}
-                                            >
-                                              {Array.from({ length: binsPerShelf }).map((_, cIdx) => {
-                                                const cellNum = cIdx + 1;
-                                                const cellCode = `C${String(cellNum).padStart(2, '0')}`;
-                                                const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${bayCode}-${shelfCode}-${cellCode}`;
-                                                const isCustom = rack.customBins && rack.customBins[fullBinCode];
-
-                                                return (
-                                                  <button
-                                                    key={fullBinCode}
-                                                    type="button"
-                                                    onClick={() => {
-                                                      setEditingBinCode(fullBinCode);
-                                                      setBinCustomForm(
-                                                        isCustom || {
-                                                          binCode: fullBinCode,
-                                                          length: rack.defaultBinLength || 120,
-                                                          width: rack.defaultBinWidth || 80,
-                                                          height: rack.defaultBinHeight || 100,
-                                                          maxWeight: rack.defaultBinMaxWeight || 500,
-                                                        }
-                                                      );
-                                                    }}
-                                                    className={`p-1.5 rounded-lg border text-center font-mono text-[10px] font-bold transition cursor-pointer ${
-                                                      isCustom
-                                                        ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 shadow-sm'
-                                                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-cyan-500 hover:bg-cyan-50'
-                                                    }`}
-                                                  >
-                                                    <span className="block truncate text-[9px]">{cellCode}</span>
-                                                  </button>
+                                          return (
+                                            <button
+                                              key={fullBinCode}
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingBinCode(fullBinCode);
+                                                setBinCustomForm(
+                                                  isCustom || {
+                                                    binCode: fullBinCode,
+                                                    length: rack.defaultBinLength || 120,
+                                                    width: rack.defaultBinWidth || 80,
+                                                    height: rack.defaultBinHeight || 100,
+                                                    maxWeight: rack.defaultBinMaxWeight || 500,
+                                                  }
                                                 );
-                                              })}
-                                            </div>
-                                          </div>
-                                        );
+                                              }}
+                                              className={`p-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-between gap-1 shadow-sm ${
+                                                isCustom
+                                                  ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200'
+                                                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 text-slate-700 dark:text-slate-200'
+                                              }`}
+                                            >
+                                              <span className="text-xs font-black text-cyan-700 dark:text-cyan-300">
+                                                {binLabel}
+                                              </span>
+                                              <span className="text-[10px] font-bold text-slate-400">
+                                                Khoang {bayCode}
+                                              </span>
+                                              <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-full truncate">
+                                                {isCustom ? `${isCustom.maxWeight}kg` : `${rack.defaultBinMaxWeight || 500}kg`}
+                                              </span>
+                                            </button>
+                                          );
+                                        });
                                       })}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
                           </div>
                         </div>
                       );

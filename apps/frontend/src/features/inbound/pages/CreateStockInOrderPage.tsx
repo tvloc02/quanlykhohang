@@ -26,6 +26,12 @@ import {
   Scale,
   Box,
   Calculator,
+  Sparkles,
+  Bot,
+  Send,
+  MapPin,
+  Layers,
+  AlertCircle,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -80,7 +86,7 @@ export interface FormDetailRow {
   vatAmount: number;
   totalAmount: number;
   weight?: number;
-  weightMode?: 'per_unit' | 'total';
+  weightMode?: 'per_unit' | 'total' | 'both';
   height?: number;
   length?: number;
   width?: number;
@@ -191,24 +197,30 @@ interface WeightDimensionsModalProps {
 const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onClose, onSave }) => {
   if (!row) return null;
 
-  const currentQty = Math.max(1, row.qty || 1);
+  const [batchSampleQty, setBatchSampleQty] = useState<number | ''>(row.qty || 1);
+  const currentQty = Math.max(1, (typeof batchSampleQty === 'number' && batchSampleQty > 0 ? batchSampleQty : row.qty) || 1);
 
   // Independent Checkbox Toggles: User can check Section 1 (Loose/Total), Section 2 (Batch Ratio), or BOTH!
-  const [enableSection1, setEnableSection1] = useState<boolean>(true);
-  const [enableSection2, setEnableSection2] = useState<boolean>(false);
+  const [enableSection1, setEnableSection1] = useState<boolean>(() => {
+    if (row.weightMode === 'per_unit') return false;
+    return true;
+  });
+  const [enableSection2, setEnableSection2] = useState<boolean>(() => {
+    if (row.weightMode === 'per_unit' || row.weightMode === 'both') return true;
+    return false;
+  });
 
   // ─── MỤC 1: HÀNG HÓA RỜI / TOÀN BỘ PHIẾU (Tất cả số lượng) ───
   const [directWeightTotal, setDirectWeightTotal] = useState<number | ''>(
-    row.weightMode === 'total' || !row.weight ? (row.weight || '') : ''
+    row.weightMode === 'total' || !row.weightMode || row.weightMode === 'both' ? (row.weight || '') : ''
   );
   const [directLength, setDirectLength] = useState<number | ''>(row.length || '');
   const [directWidth, setDirectWidth] = useState<number | ''>(row.width || '');
   const [directHeight, setDirectHeight] = useState<number | ''>(row.height || '');
 
   // ─── MỤC 2: HÀNG HÓA THEO LÔ QUY ĐỔI / MẪU (N sản phẩm = X kg = D x R x C) ───
-  const [batchSampleQty, setBatchSampleQty] = useState<number | ''>(row.qty || 1);
   const [batchSampleWeight, setBatchSampleWeight] = useState<number | ''>(
-    row.weightMode === 'per_unit' ? (row.weight || '') : ''
+    row.weightMode === 'per_unit' || row.weightMode === 'both' ? (row.weight || '') : ''
   );
   const [batchLength, setBatchLength] = useState<number | ''>(row.length || '');
   const [batchWidth, setBatchWidth] = useState<number | ''>(row.width || '');
@@ -271,12 +283,13 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
   }
 
   const finalVolumetricWeight = (finalVolume * 1000000) / divisor;
-  const finalChargeableWeight = Math.max(finalWeight, finalVolumetricWeight);
 
   const handleSave = () => {
+    const updatedQty = typeof batchSampleQty === 'number' && batchSampleQty > 0 ? batchSampleQty : row.qty;
     onSave(row.rowId, {
+      qty: updatedQty,
       weight: finalWeight,
-      weightMode: enableSection2 ? 'per_unit' : 'total',
+      weightMode: enableSection1 && enableSection2 ? 'both' : enableSection2 ? 'per_unit' : 'total',
       length: finalL,
       width: finalW,
       height: finalH,
@@ -536,20 +549,20 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
         </div>
 
         {/* ─────────────────────────────────────────────────────────────
-            TỔNG HỢP THÔNG SỐ AI SẮP XẾP KHO (AI WMS WAREHOUSE METRICS)
+            TỔNG HỢP THÔNG SỐ AI SẮP XẾP KHO (AI WMS WAREHOUSE METRICS) - CYAN & WHITE THEME
            ───────────────────────────────────────────────────────────── */}
-        <div className="mx-6 mb-4 bg-cyan-900 text-white p-4 rounded-2xl shadow-md border border-cyan-700 space-y-3">
-          <div className="flex items-center justify-between border-b border-cyan-800 pb-2">
-            <span className="uppercase text-xs font-black tracking-wide text-cyan-200 flex items-center gap-2">
-              <Box className="h-4 w-4 text-cyan-300" />
+        <div className="mx-6 mb-4 bg-gradient-to-r from-cyan-50 via-white to-cyan-50 text-slate-800 p-4 rounded-2xl shadow-sm border-2 border-cyan-400 space-y-3">
+          <div className="flex items-center justify-between border-b border-cyan-200 pb-2.5">
+            <span className="uppercase text-xs font-black tracking-wide text-cyan-900 flex items-center gap-2">
+              <Box className="h-4 w-4 text-cyan-600" />
               Tổng hợp Thông số AI Kho bãi & Vận tải ({currentQty} {row.unit})
             </span>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-cyan-200 font-bold uppercase">Hệ số cước:</span>
+              <span className="text-[10px] text-cyan-800 font-extrabold uppercase">Hệ số cước:</span>
               <select
                 value={divisor}
                 onChange={(e) => setDivisor(Number(e.target.value) as 5000 | 6000)}
-                className="h-6 px-2 rounded-md bg-cyan-950 border border-cyan-600 text-[11px] font-bold text-white outline-none cursor-pointer"
+                className="h-7 px-2.5 rounded-lg bg-white border-2 border-cyan-300 text-[11px] font-extrabold text-cyan-900 outline-none cursor-pointer hover:border-cyan-500 shadow-2xs"
               >
                 <option value={5000}>5000 (Air / Chuyển phát nhanh)</option>
                 <option value={6000}>6000 (Đường bộ / Tiêu chuẩn)</option>
@@ -558,17 +571,17 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
           </div>
 
           <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="bg-cyan-800/80 p-2.5 rounded-xl border border-cyan-600/60">
-              <span className="block text-[10px] uppercase font-bold text-cyan-200">Trọng lượng tổng</span>
-              <span className="text-base font-black text-white">{finalWeight.toFixed(2)} <span className="text-xs font-bold text-cyan-200">kg</span></span>
+            <div className="bg-white p-3 rounded-xl border-2 border-cyan-200 shadow-2xs">
+              <span className="block text-[10px] uppercase font-bold text-cyan-800 mb-0.5">Trọng lượng tổng</span>
+              <span className="text-base font-black text-cyan-950">{finalWeight.toFixed(2)} <span className="text-xs font-bold text-cyan-700">kg</span></span>
             </div>
-            <div className="bg-cyan-800/80 p-2.5 rounded-xl border border-cyan-600/60">
-              <span className="block text-[10px] uppercase font-bold text-emerald-300">Thể tích xếp kho AI</span>
-              <span className="text-base font-black text-emerald-300">{finalVolume.toFixed(3)} <span className="text-xs font-bold text-emerald-400">m³</span></span>
+            <div className="bg-cyan-100/60 p-3 rounded-xl border-2 border-cyan-300 shadow-2xs">
+              <span className="block text-[10px] uppercase font-bold text-cyan-900 mb-0.5">Thể tích xếp kho AI</span>
+              <span className="text-base font-black text-cyan-900">{finalVolume.toFixed(3)} <span className="text-xs font-bold text-cyan-800">m³</span></span>
             </div>
-            <div className="bg-amber-500/20 p-2.5 rounded-xl border border-amber-400/50">
-              <span className="block text-[10px] uppercase font-extrabold text-amber-300">TL Quy đổi Thể tích (VW)</span>
-              <span className="text-base font-black text-amber-200">{finalVolumetricWeight.toFixed(2)} <span className="text-xs font-bold text-amber-300">kg</span></span>
+            <div className="bg-amber-50 p-3 rounded-xl border-2 border-amber-300 shadow-2xs">
+              <span className="block text-[10px] uppercase font-extrabold text-amber-900 mb-0.5">TL Quy đổi Thể tích (VW)</span>
+              <span className="text-base font-black text-amber-900">{finalVolumetricWeight.toFixed(2)} <span className="text-xs font-bold text-amber-700">kg</span></span>
             </div>
           </div>
         </div>
@@ -598,6 +611,525 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
               Lưu & Áp dụng
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── AI SLOTTING CHAT & WAREHOUSE RECOMMENDATION MODAL ─────────────
+interface BinCell {
+  binCode: string;
+  cellCode: string;
+  bayCode: string;
+  maxWeight: number;
+  freeVol: number;
+  isOccupied?: boolean;
+}
+
+interface ShelfFloor {
+  floorId: string;
+  floorName: string;
+  floorDesc: string;
+  cells: BinCell[];
+}
+
+interface RackStructure {
+  rackId: string;
+  rackName: string;
+  dimensions: string;
+  spec: string;
+  zoneName: string;
+  floors: ShelfFloor[];
+}
+
+interface AiChatMessage {
+  id: string;
+  sender: 'ai' | 'user';
+  text: string;
+  time: string;
+}
+
+interface AiSlottingChatModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  items: FormDetailRow[];
+  warehouseCode: string;
+  onConfirmAll: (updatedRows: FormDetailRow[]) => void;
+  onSkipAi: () => void;
+}
+
+const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
+  isOpen,
+  onClose,
+  items,
+  warehouseCode,
+  onConfirmAll,
+  onSkipAi,
+}) => {
+  const [activeRowId, setActiveRowId] = useState<string>('');
+  const [activeRackId, setActiveRackId] = useState<string>('R01');
+  const [selectedBinsMap, setSelectedBinsMap] = useState<Record<string, string[]>>({});
+  const [messages, setMessages] = useState<AiChatMessage[]>([]);
+  const [inputMsg, setInputMsg] = useState('');
+
+  // 1. Generate Racks Visual Grid Topology
+  const racksTopology: RackStructure[] = useMemo(() => {
+    const createFloorCells = (zonePrefix: string, rackId: string, floorId: string): BinCell[] => {
+      const bays = ['B01', 'B01', 'B02', 'B02', 'B03', 'B03', 'B04', 'B04', 'B05', 'B05'];
+      return Array.from({ length: 10 }).map((_, idx) => {
+        const cellNum = (idx + 1).toString().padStart(2, '0');
+        const binCode = `${zonePrefix}-${rackId}-${floorId}-C${cellNum}`;
+        const isOccupied = (idx === 7 && floorId === 'S01'); // Mock occupied cell
+        return {
+          binCode,
+          cellCode: `Ô C${cellNum}`,
+          bayCode: `Khoang ${bays[idx]}`,
+          maxWeight: 500,
+          freeVol: 450,
+          isOccupied,
+        };
+      });
+    };
+
+    return [
+      {
+        rackId: 'R01',
+        rackName: 'Dãy Kệ Dọc R01',
+        dimensions: '18m Dài × 1.2m Rộng',
+        spec: '4 Tầng (5 Vách Ngang) × 10 Ô (6 Vách Dọc)',
+        zoneName: 'Khu A (Kho Thường Gần Cửa Xuất)',
+        floors: [
+          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells('ZA', 'R01', 'S04') },
+          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells('ZA', 'R01', 'S03') },
+          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells('ZA', 'R01', 'S02') },
+          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Tầng Trệt)', cells: createFloorCells('ZA', 'R01', 'S01') },
+        ],
+      },
+      {
+        rackId: 'R02',
+        rackName: 'Dãy Kệ Dọc R02',
+        dimensions: '18m Dài × 1.2m Rộng',
+        spec: '4 Tầng (5 Vách Ngang) × 10 Ô (6 Vách Dọc)',
+        zoneName: 'Khu A (Kho Thường Trung Tâm)',
+        floors: [
+          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells('ZA', 'R02', 'S04') },
+          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells('ZA', 'R02', 'S03') },
+          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells('ZA', 'R02', 'S02') },
+          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Tầng Trệt)', cells: createFloorCells('ZA', 'R02', 'S01') },
+        ],
+      },
+      {
+        rackId: 'R03',
+        rackName: 'Dãy Kệ Lạnh R03',
+        dimensions: '15m Dài × 1.5m Rộng',
+        spec: '4 Tầng (5 Vách Ngang) × 10 Ô (6 Vách Dọc)',
+        zoneName: 'Khu C (Kho Lạnh -18°C)',
+        floors: [
+          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4 (Kho lạnh)', cells: createFloorCells('ZC', 'R03', 'S04') },
+          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3 (Kho lạnh)', cells: createFloorCells('ZC', 'R03', 'S03') },
+          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2 (Kho lạnh)', cells: createFloorCells('ZC', 'R03', 'S02') },
+          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Kho lạnh)', cells: createFloorCells('ZC', 'R03', 'S01') },
+        ],
+      },
+    ];
+  }, []);
+
+  // 2. Initialize selections and AI chat when modal opens
+  useEffect(() => {
+    if (!isOpen || !items || items.length === 0) return;
+
+    setActiveRowId(items[0].rowId);
+
+    const initialMap: Record<string, string[]> = {};
+    items.forEach((item, idx) => {
+      // Calculate required bins count based on quantity
+      const requiredCount = Math.max(1, Math.ceil((item.qty || 1) / 100));
+      const preselected: string[] = [];
+      for (let i = 1; i <= requiredCount; i++) {
+        const cellNum = i.toString().padStart(2, '0');
+        const rackId = idx % 2 === 0 ? 'R01' : 'R02';
+        preselected.push(`ZA-${rackId}-S04-C${cellNum}`);
+      }
+      initialMap[item.rowId] = preselected;
+    });
+
+    setSelectedBinsMap(initialMap);
+
+    const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    setMessages([
+      {
+        id: 'msg-1',
+        sender: 'ai',
+        text: `🤖 **Xin chào Thủ Kho! Tôi là Trợ lý AI Smart WMS Slotting.**\n\nTôi đã vẽ **Sơ đồ Kệ & Ô chứa (Visual Rack Topology Grid)** khả dụng. Dựa trên số lượng lô hàng, AI gợi ý bạn cần tích chọn đủ số ô chứa tương ứng.\n\nBạn có thể click chọn trực tiếp các **Ô C01, Ô C02...** màu xanh bên phải để chọn vị trí xếp kho tùy ý!`,
+        time: now,
+      },
+    ]);
+  }, [isOpen, items]);
+
+  if (!isOpen) return null;
+
+  const currentItem = items.find((i) => i.rowId === activeRowId) || items[0];
+  const requiredCount = currentItem ? Math.max(1, Math.ceil((currentItem.qty || 1) / 100)) : 1;
+  const currentSelectedBins = selectedBinsMap[currentItem?.rowId || ''] || [];
+  const currentRack = racksTopology.find((r) => r.rackId === activeRackId) || racksTopology[0];
+
+  const handleSendMessage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!inputMsg.trim()) return;
+
+    const userText = inputMsg.trim();
+    const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+    setMessages((prev) => [
+      ...prev,
+      { id: `user-${Date.now()}`, sender: 'user', text: userText, time: now },
+    ]);
+    setInputMsg('');
+
+    setTimeout(() => {
+      let aiReply = '';
+      const lower = userText.toLowerCase();
+      if (lower.includes('đủ') || lower.includes('mấy ô') || lower.includes('số lượng')) {
+        aiReply = `📦 Lô hàng **${currentItem?.productName}** (SL: ${currentItem?.qty} ${currentItem?.unit}) được AI tính toán cần **tối thiểu ${requiredCount} Ô chứa** để xếp vừa thể tích. Hiện bạn đã tích chọn **${currentSelectedBins.length} ô**.`;
+      } else if (lower.includes('kho lạnh') || lower.includes('nhiệt độ')) {
+        aiReply = `❄️ Bạn hãy đổi tab Dãy Kệ sang **"Dãy Kệ Lạnh R03 (Khu C)"** ở phía trên sơ đồ để tích chọn các ô chứa lạnh -18°C nhé!`;
+      } else {
+        aiReply = `🤖 Tôi đã ghi nhận yêu cầu: "${userText}". Bạn có thể click trực tiếp các ô kệ **Ô C01, Ô C02...** trên sơ đồ 2D bên phải để thay đổi vị trí gán kho!`;
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        { id: `ai-${Date.now()}`, sender: 'ai', text: aiReply, time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) },
+      ]);
+    }, 400);
+  };
+
+  // Toggle selection of a specific cell in the grid
+  const toggleBinSelection = (binCode: string) => {
+    if (!activeRowId) return;
+
+    setSelectedBinsMap((prev) => {
+      const currentList = prev[activeRowId] || [];
+      if (currentList.includes(binCode)) {
+        return { ...prev, [activeRowId]: currentList.filter((b) => b !== binCode) };
+      } else {
+        return { ...prev, [activeRowId]: [...currentList, binCode] };
+      }
+    });
+  };
+
+  const handleConfirmSelections = () => {
+    const updatedRows = items.map((r) => {
+      const chosenBins = selectedBinsMap[r.rowId] || [];
+      if (chosenBins.length > 0) {
+        return {
+          ...r,
+          note: r.note ? `${r.note} [Vị trí Ô: ${chosenBins.join(', ')}]` : `[Vị trí Ô: ${chosenBins.join(', ')}]`,
+        };
+      }
+      return r;
+    });
+    onConfirmAll(updatedRows);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl border-2 border-cyan-400 w-full max-w-7xl h-[95vh] flex flex-col overflow-hidden">
+        
+        {/* Modal Header */}
+        <div className="bg-gradient-to-r from-cyan-600 via-cyan-500 to-teal-500 text-white px-6 py-3.5 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-2xl bg-white/20 border border-white/40 flex items-center justify-center text-white shadow-inner">
+              <Sparkles className="h-6 w-6 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-base font-black uppercase tracking-wide flex items-center gap-2">
+                Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Nhập Kho (Smart WMS Slotting Grid)
+              </h3>
+              <p className="text-xs text-cyan-100 font-medium">
+                Tự động tính toán số ô kệ cần thiết • Click chọn các Ô trống trên sơ đồ 2D kệ kho để gán nhập kho
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="h-8 w-8 rounded-2xl bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition cursor-pointer"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Modal Body: Left AI Chat (4 cols), Right Interactive Rack Visualizer Grid (8 cols) */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-0 flex-1 overflow-hidden bg-slate-50">
+          
+          {/* Left Column: AI Interactive Chat (4 cols) */}
+          <div className="md:col-span-4 border-r border-cyan-200 bg-cyan-50/30 flex flex-col h-full">
+            <div className="p-3 bg-white border-b border-cyan-100 flex items-center justify-between text-xs font-black text-cyan-900 shadow-2xs">
+              <span className="flex items-center gap-2">
+                <Bot className="h-5 w-5 text-cyan-600" /> Trợ lý AI Hỏi Đáp Slotting
+              </span>
+              <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase border border-emerald-300">
+                Online
+              </span>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
+              {messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}
+                >
+                  <div className="flex items-center gap-1.5 mb-1 text-[10px] text-slate-400 font-bold">
+                    <span>{m.sender === 'user' ? 'Thủ kho' : 'AI Assistant'}</span>
+                    <span>•</span>
+                    <span>{m.time}</span>
+                  </div>
+                  <div
+                    className={`max-w-[90%] p-3 rounded-2xl shadow-xs leading-relaxed whitespace-pre-wrap ${
+                      m.sender === 'user'
+                        ? 'bg-cyan-600 text-white rounded-br-none font-medium'
+                        : 'bg-white text-slate-800 border border-cyan-200 rounded-bl-none font-normal shadow-2xs'
+                    }`}
+                  >
+                    {m.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Quick Prompts */}
+            <div className="px-3 py-2 bg-white border-t border-cyan-100 flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setInputMsg('Mặt hàng này cần mấy ô kệ?')}
+                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition"
+              >
+                📦 Cần mấy ô chứa?
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMsg('Chuyển sang Kho Lạnh -18°C?')}
+                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition"
+              >
+                ❄️ Chọn Kệ Lạnh R03?
+              </button>
+            </div>
+
+            {/* Chat Input */}
+            <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-cyan-200 flex items-center gap-2">
+              <input
+                type="text"
+                value={inputMsg}
+                onChange={(e) => setInputMsg(e.target.value)}
+                placeholder="Hỏi AI về vị trí ô, sức chứa..."
+                className="flex-1 h-9 px-3 text-xs border border-slate-300 rounded-xl outline-none focus:border-cyan-600 bg-white font-medium text-slate-800"
+              />
+              <button
+                type="submit"
+                className="h-9 px-3.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl flex items-center justify-center transition cursor-pointer shadow-sm active:scale-95"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </form>
+          </div>
+
+          {/* Right Column: Interactive Visual Rack Topology Grid (8 cols) */}
+          <div className="md:col-span-8 p-4 flex flex-col h-full overflow-hidden bg-white">
+            
+            {/* 1. Item Switcher Bar */}
+            <div className="mb-3 bg-cyan-50/80 p-2.5 rounded-2xl border border-cyan-200 flex items-center justify-between">
+              <div className="flex items-center gap-2 overflow-x-auto">
+                <span className="text-xs font-black uppercase text-cyan-950 flex items-center gap-1.5 shrink-0">
+                  <Layers className="h-4 w-4 text-cyan-600" /> Đơn hàng:
+                </span>
+                {items.map((it, idx) => {
+                  const isActive = it.rowId === activeRowId;
+                  const countReq = Math.max(1, Math.ceil((it.qty || 1) / 100));
+                  const selectedCount = (selectedBinsMap[it.rowId] || []).length;
+                  return (
+                    <button
+                      key={it.rowId}
+                      type="button"
+                      onClick={() => setActiveRowId(it.rowId)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                        isActive
+                          ? 'bg-cyan-600 text-white shadow-sm'
+                          : 'bg-white hover:bg-cyan-100 text-slate-700 border border-cyan-200'
+                      }`}
+                    >
+                      <span>#{idx + 1} {it.productName || `Mặt hàng ${idx + 1}`}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-cyan-100 text-cyan-900'
+                      }`}>
+                        {selectedCount}/{countReq} Ô
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Status Indicator */}
+              <div className="shrink-0">
+                {currentSelectedBins.length >= requiredCount ? (
+                  <span className="bg-emerald-100 text-emerald-800 text-[11px] font-black px-2.5 py-1 rounded-xl border border-emerald-300 flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> Đã chọn đủ {currentSelectedBins.length} ô
+                  </span>
+                ) : (
+                  <span className="bg-amber-100 text-amber-900 text-[11px] font-black px-2.5 py-1 rounded-xl border border-amber-300 flex items-center gap-1 animate-pulse">
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-600" /> Thiếu {requiredCount - currentSelectedBins.length} ô nữa
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Rack Selection Tabs */}
+            <div className="flex items-center justify-between mb-3 border-b border-slate-200 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">Chọn Dãy Kệ:</span>
+                {racksTopology.map((rk) => (
+                  <button
+                    key={rk.rackId}
+                    type="button"
+                    onClick={() => setActiveRackId(rk.rackId)}
+                    className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                      activeRackId === rk.rackId
+                        ? 'bg-cyan-700 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {rk.rackId} ({rk.zoneName.split(' ')[0]} {rk.zoneName.split(' ')[1]})
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-[11px] font-bold text-cyan-900 bg-cyan-100/70 px-2.5 py-0.5 rounded-lg border border-cyan-200">
+                {currentRack.zoneName}
+              </div>
+            </div>
+
+            {/* 3. Main Visual Rack Topology Card (Matching User Screenshot Exactly!) */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4 shadow-sm">
+                
+                {/* Rack Topology Header Banner */}
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
+                  <div className="flex items-center gap-3">
+                    <span className="bg-cyan-600 text-white font-black text-xs font-mono px-3 py-1 rounded-xl shadow-xs">
+                      {currentRack.rackId}
+                    </span>
+                    <h4 className="text-sm font-black text-slate-900 tracking-wide">
+                      {currentRack.rackName} <span className="text-xs font-bold text-slate-500">({currentRack.dimensions})</span>
+                    </h4>
+                  </div>
+                  <span className="bg-cyan-50 border border-cyan-200 text-cyan-900 text-[11px] font-bold px-3 py-1 rounded-full">
+                    {currentRack.spec}
+                  </span>
+                </div>
+
+                {/* Floors List & Bins Matrix */}
+                <div className="space-y-4">
+                  {currentRack.floors.map((floor) => (
+                    <div key={floor.floorId} className="bg-cyan-50/30 rounded-2xl border border-cyan-200 p-3">
+                      
+                      {/* Floor Header */}
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-cyan-700 text-white text-[11px] font-black px-2.5 py-0.5 rounded-lg shadow-2xs">
+                            {floor.floorName}
+                          </span>
+                          <span className="text-xs font-bold text-slate-600">({floor.floorDesc})</span>
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-500">
+                          10 Ô / Hộc chứa hàng
+                        </span>
+                      </div>
+
+                      {/* Interactive 2D Cells Grid (10 Cell Cards per Floor) */}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                        {floor.cells.map((cell) => {
+                          const isSelected = currentSelectedBins.includes(cell.binCode);
+
+                          return (
+                            <div
+                              key={cell.binCode}
+                              onClick={() => !cell.isOccupied && toggleBinSelection(cell.binCode)}
+                              className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between cursor-pointer ${
+                                cell.isOccupied
+                                  ? 'bg-slate-100 border-slate-300 opacity-50 cursor-not-allowed'
+                                  : isSelected
+                                  ? 'bg-gradient-to-br from-cyan-600 to-teal-600 text-white border-2 border-cyan-700 shadow-md scale-102'
+                                  : 'bg-white hover:bg-cyan-50 text-slate-800 border-slate-200 hover:border-cyan-400 shadow-2xs'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <span className={`text-xs font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                                  {cell.cellCode}
+                                </span>
+                                {isSelected && (
+                                  <span className="bg-white text-cyan-900 text-[9px] font-black px-1.5 py-0.2 rounded-md shadow-2xs">
+                                    ✓ Đã chọn
+                                  </span>
+                                )}
+                              </div>
+
+                              <span className={`text-[10px] font-bold block mb-1.5 ${isSelected ? 'text-cyan-100' : 'text-slate-500'}`}>
+                                {cell.bayCode}
+                              </span>
+
+                              <div className="flex items-center justify-between pt-1 border-t border-black/10">
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                                  isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {cell.maxWeight}kg
+                                </span>
+                                <span className={`text-[9px] font-bold ${isSelected ? 'text-cyan-100' : 'text-cyan-900'}`}>
+                                  {cell.freeVol}m³
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                    </div>
+                  ))}
+                </div>
+
+              </div>
+            </div>
+
+            {/* Footer Summary & Action Buttons */}
+            <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
+              <div className="text-xs font-bold text-slate-700 flex items-center gap-2">
+                <span className="text-slate-500">Các Ô đang tích chọn:</span>
+                <span className="text-cyan-900 font-black bg-cyan-100 px-2.5 py-1 rounded-lg border border-cyan-300">
+                  {currentSelectedBins.length > 0 ? currentSelectedBins.join(', ') : 'Chưa chọn ô nào'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onSkipAi}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition cursor-pointer"
+                >
+                  Lưu trực tiếp (Không chọn ô)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSelections}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-xs font-black text-white uppercase tracking-wide shadow-md transition cursor-pointer active:scale-95 flex items-center gap-2"
+                >
+                  <Sparkles className="h-4 w-4 text-cyan-100" />
+                  Xác nhận gán các vị trí đã chọn & Lưu nhập kho
+                </button>
+              </div>
+            </div>
+
+          </div>
+
         </div>
       </div>
     </div>
@@ -670,6 +1202,8 @@ export default function CreateStockInOrderPage({
   const [weightModalRow, setWeightModalRow] = useState<FormDetailRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showAiSlottingModal, setShowAiSlottingModal] = useState(false);
+  const [pendingSaveConfig, setPendingSaveConfig] = useState<{ isPrint: boolean; saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' } | null>(null);
 
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<InboundTab[]>(() => {
@@ -1073,12 +1607,46 @@ export default function CreateStockInOrderPage({
     return Math.max(0, grandTotal - (activeTab.amountPaid || 0));
   }, [grandTotal, activeTab]);
 
-  const handleSaveInboundOrder = async (isPrint = false, saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' = 'COMPLETED') => {
+  const handleConfirmAiSlotting = (updatedRows: FormDetailRow[]) => {
+    setShowAiSlottingModal(false);
+    updateActiveTab((tab) => ({
+      ...tab,
+      details: updatedRows,
+    }));
+    const cfg = pendingSaveConfig || { isPrint: false, saveStatus: 'COMPLETED' };
+    setTimeout(() => {
+      handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
+    }, 100);
+  };
+
+  const handleSkipAiSlotting = () => {
+    setShowAiSlottingModal(false);
+    const cfg = pendingSaveConfig || { isPrint: false, saveStatus: 'COMPLETED' };
+    handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
+  };
+
+  const handleSaveInboundOrder = async (
+    isPrint = false,
+    saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' = 'COMPLETED',
+    bypassAi = false
+  ) => {
     if (!activeTab) return;
     if (activeValidItems.length === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
       return;
     }
+
+    if (!bypassAi) {
+      setPendingSaveConfig({ isPrint, saveStatus });
+      setShowAiSlottingModal(true);
+      return;
+    }
+
+    const safeNum = (v: any, max = 99999.999) => {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) return 0;
+      return Math.min(n, max);
+    };
 
     setSaving(true);
     const generatedNo = activeTab.orderNo.trim()
@@ -1113,15 +1681,15 @@ export default function CreateStockInOrderPage({
         expectedQty: Number(r.qty),
         receivedQty: saveStatus === 'COMPLETED' ? Number(r.qty) : 0,
         unitPrice: Number(r.price),
-        discountPercent: Number(r.discountPercent || 0),
-        vatPercent: Number(r.vatPercent || 0),
-        totalAmount: Number(r.totalAmount),
-        weight: Number(r.weight || 0),
-        length: Number(r.length || 0),
-        width: Number(r.width || 0),
-        height: Number(r.height || 0),
-        volume: Number(r.volume || 0),
-        volumetricWeight: Number(r.volumetricWeight || 0),
+        discountPercent: safeNum(r.discountPercent),
+        vatPercent: safeNum(r.vatPercent),
+        totalAmount: safeNum(r.totalAmount, 99999999.99),
+        weight: safeNum(r.weight),
+        length: safeNum(r.length),
+        width: safeNum(r.width),
+        height: safeNum(r.height),
+        volume: safeNum(r.volume, 99999.9999),
+        volumetricWeight: safeNum(r.volumetricWeight),
         note: r.note || '',
       })),
     };
@@ -2130,6 +2698,16 @@ export default function CreateStockInOrderPage({
           onSave={(rowId, updated) => updateRow(rowId, updated)}
         />
       )}
+
+      {/* AI Slotting Chat & Warehouse Location Guidance Modal */}
+      <AiSlottingChatModal
+        isOpen={showAiSlottingModal}
+        onClose={() => setShowAiSlottingModal(false)}
+        items={activeValidItems}
+        warehouseCode={activeTab?.warehouseCode || 'KH006'}
+        onConfirmAll={handleConfirmAiSlotting}
+        onSkipAi={handleSkipAiSlotting}
+      />
     </div>
   );
 
