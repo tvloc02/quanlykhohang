@@ -182,16 +182,25 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administra
   };
 }
 
-interface CreateOutboundOrderPageProps {
+export interface CreateOutboundOrderPageProps {
   onBack?: () => void;
   standalone?: boolean;
+  featureMode?: 'orders' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal';
+  title?: string;
+  codePrefix?: string;
+  partnerLabel?: string;
 }
 
 export default function CreateOutboundOrderPage({
   onBack,
   standalone = true,
+  featureMode = 'orders',
+  title,
+  codePrefix = 'PXK',
+  partnerLabel = 'Khách hàng',
 }: CreateOutboundOrderPageProps) {
   const navigate = useNavigate();
+  const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
 
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'System Administrator';
@@ -218,6 +227,8 @@ export default function CreateOutboundOrderPage({
   const [quickProductSearch, setQuickProductSearch] = useState('');
   const [showQuickSearchDropdown, setShowQuickSearchDropdown] = useState(false);
   const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false);
+  const [disposalReasonSelect, setDisposalReasonSelect] = useState('Hàng hết hạn sử dụng (HSD)');
+  const [disposalMethod, setDisposalMethod] = useState('Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)');
 
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<OutboundTab[]>(() => {
@@ -353,7 +364,7 @@ export default function CreateOutboundOrderPage({
     if (onBack) {
       onBack();
     } else {
-      navigate('/outbound/orders');
+      navigate(isDisposal ? '/outbound/disposal' : '/outbound/orders');
     }
   };
 
@@ -563,34 +574,70 @@ export default function CreateOutboundOrderPage({
       return;
     }
 
-    const payload = {
-      orderNo: activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : undefined,
-      orderType: 'orders',
-      branchCode: activeTab.branchCode || 'KHO-NVL',
-      employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
-      customerId: activeTab.customerId,
-      customerName: activeTab.customer?.trim() || '888 - Khách lẻ',
-      customerPhone: activeTab.customerPhone?.trim() || undefined,
-      customerAddress: activeTab.customerAddress?.trim() || undefined,
-      orderDate: activeTab.orderDate,
-      expectedDate: activeTab.orderDate,
-      status: activeTab.status || 'Đã giao hàng',
-      description: activeTab.description?.trim() || undefined,
-      subtotal,
-      discount: activeTab.discount || 0,
-      vatRate: activeTab.vatRate || 0,
-      vatAmount,
-      totalAmount: grandTotal,
-      amountPaid: activeTab.amountPaid || grandTotal,
-      details: activeValidItems.map((r) => ({
-        productId: r.productId,
-        productSku: r.productSku,
-        productName: r.productName,
-        unit: r.unit,
-        qty: Number(r.qty),
-        price: Number(r.price),
-      })),
-    };
+    const defaultCode = isDisposal
+      ? `XH_${Date.now().toString().slice(-6)}`
+      : `PXK_${Date.now().toString().slice(-6)}`;
+
+    const finalOrderNo = activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : defaultCode;
+
+    const payload = isDisposal
+      ? {
+          orderNo: finalOrderNo,
+          orderType: 'disposal',
+          branchCode: activeTab.branchCode || 'KHO-TONG',
+          employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
+          customerName: disposalReasonSelect || 'Hàng hết hạn / Hư hỏng',
+          orderDate: activeTab.orderDate,
+          expectedDate: activeTab.orderDate,
+          status: activeTab.status || 'Đã xuất hủy',
+          description: [disposalReasonSelect, activeTab.description?.trim(), disposalMethod ? `Phương án: ${disposalMethod}` : ''].filter(Boolean).join(' - '),
+          subtotal,
+          discount: 0,
+          vatRate: 0,
+          vatAmount: 0,
+          totalAmount: subtotal,
+          amountPaid: 0,
+          details: activeValidItems.map((r) => ({
+            productId: r.productId,
+            productSku: r.productSku,
+            productName: r.productName,
+            warehouseCode: activeTab.branchCode || 'KHO-TONG',
+            unit: r.unit,
+            qty: Number(r.qty),
+            price: Number(r.price),
+            note: r.note,
+          })),
+        }
+      : {
+          orderNo: finalOrderNo,
+          orderType: 'orders',
+          branchCode: activeTab.branchCode || 'KHO-NVL',
+          employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
+          customerId: activeTab.customerId,
+          customerName: activeTab.customer?.trim() || '888 - Khách lẻ',
+          customerPhone: activeTab.customerPhone?.trim() || undefined,
+          customerAddress: activeTab.customerAddress?.trim() || undefined,
+          orderDate: activeTab.orderDate,
+          expectedDate: activeTab.orderDate,
+          status: activeTab.status || 'Đã giao hàng',
+          description: activeTab.description?.trim() || undefined,
+          subtotal,
+          discount: activeTab.discount || 0,
+          vatRate: activeTab.vatRate || 0,
+          vatAmount,
+          totalAmount: grandTotal,
+          amountPaid: activeTab.amountPaid || grandTotal,
+          details: activeValidItems.map((r) => ({
+            productId: r.productId,
+            productSku: r.productSku,
+            productName: r.productName,
+            warehouseCode: activeTab.branchCode || 'KHO-NVL',
+            unit: r.unit,
+            qty: Number(r.qty),
+            price: Number(r.price),
+            note: r.note,
+          })),
+        };
 
     try {
       const res = await fetch(`${API_BASE_URL}/outbounds`, {
@@ -601,11 +648,11 @@ export default function CreateOutboundOrderPage({
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || 'Không thể tạo phiếu xuất hàng');
+        throw new Error(errData?.message || `Không thể tạo ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`);
       }
 
       setToast({
-        message: `Đã lưu thành công phiếu xuất kho ${payload.orderNo || ''}!`,
+        message: `Đã lưu thành công ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất kho'} ${payload.orderNo || ''}!`,
         type: 'success',
       });
 
@@ -613,7 +660,7 @@ export default function CreateOutboundOrderPage({
         handleBackNavigation();
       }, 1000);
     } catch (err: any) {
-      setToast({ message: err.message || 'Lỗi khi lưu phiếu xuất hàng', type: 'error' });
+      setToast({ message: err.message || `Lỗi khi lưu ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`, type: 'error' });
     }
   };
 
@@ -708,12 +755,12 @@ export default function CreateOutboundOrderPage({
           isOpen={showScannerModal}
           onProductFound={handleBarcodeScanned}
           onClose={() => setShowScannerModal(false)}
-          title="Quét Mã Barcode Hàng Hóa Xuất Kho"
+          title={isDisposal ? "Quét Mã Barcode Hàng Hóa Xuất Hủy" : "Quét Mã Barcode Hàng Hóa Xuất Kho"}
         />
       )}
 
-      {/* Quick Customer Add Modal */}
-      {showAddCustomerModal && (
+      {/* Quick Customer Add Modal (Only for regular sales) */}
+      {!isDisposal && showAddCustomerModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 animate-[fadeIn_0.2s_ease-out]">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
@@ -789,7 +836,9 @@ export default function CreateOutboundOrderPage({
         <div className="flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
           <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
             <Package className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-base font-black tracking-tight uppercase">TẠO PHIẾU XUẤT HÀNG HÓA</h1>
+            <h1 className="text-base font-black tracking-tight uppercase">
+              {isDisposal ? (title || 'TẠO PHIẾU XUẤT HỦY HÀNG HÓA') : 'TẠO PHIẾU XUẤT HÀNG HÓA'}
+            </h1>
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar">
@@ -840,7 +889,7 @@ export default function CreateOutboundOrderPage({
               type="button"
               onClick={handleAddNewTab}
               className="inline-flex items-center gap-1 rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-50/60 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 hover:border-cyan-600 transition cursor-pointer"
-              title="Tạo thêm phiếu xuất mới (Tab tiếp theo)"
+              title="Tạo thêm phiếu mới (Tab tiếp theo)"
             >
               <Plus size={14} className="text-cyan-700" />
               <span>+ Thêm phiếu mới</span>
@@ -861,9 +910,11 @@ export default function CreateOutboundOrderPage({
       {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (Horizontal bar spanning full width across page) ═══ */}
       <div className="w-full rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md flex-shrink-0">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 items-center">
-          {/* Ngày xuất hàng */}
+          {/* Ngày xuất hàng / Ngày xuất hủy */}
           <div>
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">Ngày xuất hàng</label>
+            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">
+              {isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất hàng'}
+            </label>
             <input
               type="text"
               value={activeTab?.orderDate || ''}
@@ -875,94 +926,121 @@ export default function CreateOutboundOrderPage({
 
           {/* Mã phiếu / Lệnh */}
           <div>
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">Mã phiếu / Lệnh</label>
+            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">
+              {isDisposal ? 'Mã phiếu xuất hủy' : 'Mã phiếu / Lệnh'}
+            </label>
             <input
               type="text"
               value={activeTab?.orderNo || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderNo: e.target.value }))}
-              placeholder="TẠO TỰ ĐỘNG (PXK...)"
+              placeholder={isDisposal ? 'TẠO TỰ ĐỘNG (XH...)' : 'TẠO TỰ ĐỘNG (PXK...)'}
               className="h-10 w-full rounded-xl border-2 border-slate-300 bg-slate-50 px-3 text-sm font-extrabold text-cyan-900 uppercase outline-none focus:border-cyan-600"
             />
           </div>
 
-          {/* Chọn Khách hàng (Searchable Interactive Dropdown) */}
-          <div className="relative customer-dropdown-box">
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-xs font-black uppercase text-slate-700 flex items-center gap-1">
-                <User className="h-4 w-4 text-cyan-600" />
-                <span>Khách hàng</span>
+          {/* If Disposal: Chọn Lý do xuất hủy | If Sales: Chọn Khách hàng */}
+          {isDisposal ? (
+            <div>
+              <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
+                <FileText className="h-4 w-4 text-cyan-600" />
+                <span>Lý do xuất hủy</span>
               </label>
-              <button
-                type="button"
-                onClick={() => setShowAddCustomerModal(true)}
-                className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+              <select
+                value={disposalReasonSelect}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDisposalReasonSelect(val);
+                  updateActiveTab((t) => ({ ...t, customer: val, description: val }));
+                }}
+                className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-xs font-bold text-cyan-950 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs"
               >
-                <UserPlus size={13} />
-                <span>+ Thêm KH</span>
-              </button>
+                <option value="Hàng hết hạn sử dụng (HSD)">Hàng hết hạn sử dụng (HSD)</option>
+                <option value="Hàng hư hỏng / Bể vỡ trong quá trình lưu kho">Hàng hư hỏng / Bể vỡ trong quá trình lưu kho</option>
+                <option value="Hàng ẩm mốc / Biến chất / Lỗi bảo quản">Hàng ẩm mốc / Biến chất / Lỗi bảo quản</option>
+                <option value="Hàng lỗi nhà sản xuất (không đổi trả được)">Hàng lỗi nhà sản xuất (không đổi trả được)</option>
+                <option value="Hao hụt kiểm kê / Thanh lý tiêu hủy">Hao hụt kiểm kê / Thanh lý tiêu hủy</option>
+                <option value="Khác (Ghi chú chi tiết)">Khác (Ghi chú chi tiết)</option>
+              </select>
             </div>
-            <input
-              type="text"
-              value={
-                showCustomerDropdown
-                  ? customerSearch
-                  : activeTab?.customer || ''
-              }
-              onChange={(e) => {
-                setCustomerSearch(e.target.value);
-                setShowCustomerDropdown(true);
-              }}
-              onFocus={() => {
-                setCustomerSearch('');
-                setShowCustomerDropdown(true);
-              }}
-              onClick={() => setShowCustomerDropdown(true)}
-              placeholder="Tìm theo tên, mã KH, SĐT..."
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text"
-            />
-
-            {showCustomerDropdown && (
-              <div className="absolute left-0 top-full z-[100] mt-1 w-[400px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
-                <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-black text-slate-700 sticky top-0 z-10">
-                  <span className="w-1/3 uppercase">Mã KH</span>
-                  <span className="w-1/3 uppercase">Tên khách hàng</span>
-                  <span className="w-1/3 text-right uppercase">SĐT</span>
-                </div>
-                <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                  {filteredCustomers.length === 0 ? (
-                    <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy khách hàng</div>
-                  ) : (
-                    filteredCustomers.map((c) => (
-                      <div
-                        key={c.id}
-                        onClick={() => {
-                          updateActiveTab((tab) => ({
-                            ...tab,
-                            customer: c.name,
-                            customerId: c.id,
-                            customerPhone: c.phone || '',
-                            customerAddress: c.address || '',
-                          }));
-                          setShowCustomerDropdown(false);
-                        }}
-                        className="flex items-center px-3 py-2.5 hover:bg-cyan-50 cursor-pointer text-xs transition"
-                      >
-                        <span className="w-1/3 font-bold text-cyan-800">{c.customerCode || 'KH---'}</span>
-                        <span className="w-1/3 font-bold text-slate-800 truncate pr-1">{c.name}</span>
-                        <span className="w-1/3 text-right text-slate-500 font-semibold">{c.phone || '-'}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
+          ) : (
+            <div className="relative customer-dropdown-box">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-black uppercase text-slate-700 flex items-center gap-1">
+                  <User className="h-4 w-4 text-cyan-600" />
+                  <span>Khách hàng</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(true)}
+                  className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  <UserPlus size={13} />
+                  <span>+ Thêm KH</span>
+                </button>
               </div>
-            )}
-          </div>
+              <input
+                type="text"
+                value={
+                  showCustomerDropdown
+                    ? customerSearch
+                    : activeTab?.customer || ''
+                }
+                onChange={(e) => {
+                  setCustomerSearch(e.target.value);
+                  setShowCustomerDropdown(true);
+                }}
+                onFocus={() => {
+                  setCustomerSearch('');
+                  setShowCustomerDropdown(true);
+                }}
+                onClick={() => setShowCustomerDropdown(true)}
+                placeholder="Tìm theo tên, mã KH, SĐT..."
+                className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text"
+              />
 
-          {/* Chọn Kho xuất hàng */}
+              {showCustomerDropdown && (
+                <div className="absolute left-0 top-full z-[100] mt-1 w-[400px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
+                  <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-black text-slate-700 sticky top-0 z-10">
+                    <span className="w-1/3 uppercase">Mã KH</span>
+                    <span className="w-1/3 uppercase">Tên khách hàng</span>
+                    <span className="w-1/3 text-right uppercase">SĐT</span>
+                  </div>
+                  <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                    {filteredCustomers.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy khách hàng</div>
+                    ) : (
+                      filteredCustomers.map((c) => (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            updateActiveTab((tab) => ({
+                              ...tab,
+                              customer: c.name,
+                              customerId: c.id,
+                              customerPhone: c.phone || '',
+                              customerAddress: c.address || '',
+                            }));
+                            setShowCustomerDropdown(false);
+                          }}
+                          className="flex items-center px-3 py-2.5 hover:bg-cyan-50 cursor-pointer text-xs transition"
+                        >
+                          <span className="w-1/3 font-bold text-cyan-800">{c.customerCode || 'KH---'}</span>
+                          <span className="w-1/3 font-bold text-slate-800 truncate pr-1">{c.name}</span>
+                          <span className="w-1/3 text-right text-slate-500 font-semibold">{c.phone || '-'}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Chọn Kho xuất hàng / Kho xuất hủy */}
           <div>
             <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
               <WarehouseIcon className="h-4 w-4 text-cyan-600" />
-              <span>Kho xuất hàng</span>
+              <span>{isDisposal ? 'Kho xuất hủy' : 'Kho xuất hàng'}</span>
             </label>
             <select
               value={activeTab?.branchCode || 'KHO-TONG'}
@@ -987,9 +1065,9 @@ export default function CreateOutboundOrderPage({
         </div>
       </div>
 
-      {/* ═══ 3. MAIN 2-COLUMN BOTTOM LAYOUT (Left Product Table, Right Sleek Payment Panel) ═══ */}
+      {/* ═══ 3. MAIN 2-COLUMN BOTTOM LAYOUT (Left Product Table, Right Sleek Panel) ═══ */}
       <div className={`flex flex-col lg:flex-row gap-3 items-stretch ${isFullScreen ? 'flex-1 min-h-0' : 'items-start'}`}>
-        {/* ── LEFT COLUMN: PRODUCT TABLE (Expands to fill all remaining width) ── */}
+        {/* ── LEFT COLUMN: PRODUCT TABLE ── */}
         <div className={`flex-1 min-w-0 flex flex-col ${isFullScreen ? 'h-full' : ''}`}>
 
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
@@ -999,7 +1077,9 @@ export default function CreateOutboundOrderPage({
               <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs">
                 <Package className="h-4 w-4 text-cyan-600" />
                 <span>
-                  THÔNG TIN HÀNG HÓA XUẤT KHO ({activeValidItems.length} MẶT HÀNG - TỔNG SL: {totalQty})
+                  {isDisposal
+                    ? `THÔNG TIN HÀNG HÓA TIÊU HỦY (${activeValidItems.length} MẶT HÀNG - TỔNG SL HỦY: ${totalQty})`
+                    : `THÔNG TIN HÀNG HÓA XUẤT KHO (${activeValidItems.length} MẶT HÀNG - TỔNG SL: ${totalQty})`}
                 </span>
               </div>
 
@@ -1009,7 +1089,7 @@ export default function CreateOutboundOrderPage({
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-cyan-600" />
                   <input
                     type="text"
-                    placeholder="Gõ mã hoặc tên hàng hóa để tìm nhanh (Ví dụ: SP001, Omron)..."
+                    placeholder={isDisposal ? "Gõ mã hoặc tên hàng hóa cần hủy (Ví dụ: SP001)..." : "Gõ mã hoặc tên hàng hóa để tìm nhanh (Ví dụ: SP001, Omron)..."}
                     value={quickProductSearch}
                     onChange={(e) => {
                       setQuickProductSearch(e.target.value);
@@ -1085,13 +1165,28 @@ export default function CreateOutboundOrderPage({
                     <th className="p-2 w-10 text-center border-r border-slate-200 bg-slate-100">STT</th>
                     <th className="p-2 min-w-[240px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
                     <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
-                    <th className="p-2 w-20 text-center border-r border-slate-200 bg-slate-100">SỐ LƯỢNG</th>
-                    <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">ĐƠN GIÁ (đ)</th>
-                    <th className="p-2 min-w-[130px] whitespace-nowrap text-center border-r border-slate-200 bg-slate-100">CHIẾT KHẤU (%)</th>
-                    <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">VAT (%)</th>
-                    <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">THÀNH TIỀN</th>
-                    <th className="p-2 w-24 min-w-[80px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
-                    <th className="p-2.5 w-32 text-center bg-slate-100 min-w-[110px]">THAO TÁC</th>
+                    <th className="p-2 w-20 text-center border-r border-slate-200 bg-slate-100">
+                      {isDisposal ? 'SL HỦY' : 'SỐ LƯỢNG'}
+                    </th>
+                    <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">
+                      {isDisposal ? 'GIÁ VỐN (đ)' : 'ĐƠN GIÁ (đ)'}
+                    </th>
+                    {!isDisposal && (
+                      <>
+                        <th className="p-2 min-w-[130px] whitespace-nowrap text-center border-r border-slate-200 bg-slate-100">CHIẾT KHẤU (%)</th>
+                        <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">VAT (%)</th>
+                      </>
+                    )}
+                    <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">
+                      {isDisposal ? 'GIÁ TRỊ HỦY' : 'THÀNH TIỀN'}
+                    </th>
+                    <th className="p-2 w-36 min-w-[120px] text-center border-r border-slate-200 bg-slate-100">
+                      {isDisposal ? 'TÌNH TRẠNG / LÝ DO HỦY' : 'GHI CHÚ'}
+                    </th>
+                    {isDisposal && (
+                      <th className="p-2 w-28 min-w-[100px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
+                    )}
+                    <th className="p-2.5 w-28 text-center bg-slate-100 min-w-[100px]">THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1129,7 +1224,7 @@ export default function CreateOutboundOrderPage({
                               <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 sticky top-0 z-10">
                                 <span className="w-1/3 uppercase">Mã hàng</span>
                                 <span className="w-1/2 uppercase">Tên hàng hóa</span>
-                                <span className="w-1/4 text-right uppercase">Giá bán</span>
+                                <span className="w-1/4 text-right uppercase">Giá vốn / Giá</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
                                 {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
@@ -1200,47 +1295,63 @@ export default function CreateOutboundOrderPage({
                           />
                         </td>
 
-                        {/* CHIẾT KHẤU (%) */}
-                        <td className="p-1 border-r border-slate-200">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={row.discountPercent === 0 ? '' : row.discountPercent}
-                            onChange={(e) => updateRow(row.rowId, { discountPercent: Number(e.target.value) })}
-                            placeholder="0"
-                            className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium outline-none focus:border-cyan-500"
-                          />
-                        </td>
+                        {!isDisposal && (
+                          <>
+                            {/* CHIẾT KHẤU (%) */}
+                            <td className="p-1 border-r border-slate-200">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={row.discountPercent === 0 ? '' : row.discountPercent}
+                                onChange={(e) => updateRow(row.rowId, { discountPercent: Number(e.target.value) })}
+                                placeholder="0"
+                                className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium outline-none focus:border-cyan-500"
+                              />
+                            </td>
 
-                        {/* VAT (%) */}
-                        <td className="p-1 border-r border-slate-200">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={row.vatPercent === 0 ? '' : row.vatPercent}
-                            onChange={(e) => updateRow(row.rowId, { vatPercent: Number(e.target.value) })}
-                            placeholder="0"
-                            className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium outline-none focus:border-cyan-500"
-                          />
-                        </td>
+                            {/* VAT (%) */}
+                            <td className="p-1 border-r border-slate-200">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={row.vatPercent === 0 ? '' : row.vatPercent}
+                                onChange={(e) => updateRow(row.rowId, { vatPercent: Number(e.target.value) })}
+                                placeholder="0"
+                                className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium outline-none focus:border-cyan-500"
+                              />
+                            </td>
+                          </>
+                        )}
 
-                        {/* THÀNH TIỀN */}
+                        {/* THÀNH TIỀN / GIÁ TRỊ HỦY */}
                         <td className="p-1.5 text-right font-extrabold text-cyan-900 border-r border-slate-200 bg-cyan-50/40">
-                          {row.totalAmount.toLocaleString('vi-VN')}
+                          {(isDisposal ? (row.qty * row.price) : row.totalAmount).toLocaleString('vi-VN')}
                         </td>
 
-                        {/* GHI CHÚ */}
+                        {/* GHI CHÚ / TÌNH TRẠNG LÝ DO HỦY */}
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="text"
                             value={row.note}
                             onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
-                            placeholder="Ghi chú..."
+                            placeholder={isDisposal ? "Lý do: Hết hạn, vỡ móp, mốc ẩm..." : "Ghi chú..."}
                             className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-normal text-slate-700 outline-none focus:border-cyan-500"
                           />
                         </td>
+
+                        {isDisposal && (
+                          <td className="p-1 border-r border-slate-200">
+                            <input
+                              type="text"
+                              value={activeTab.description || ''}
+                              onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
+                              placeholder="Biên bản số..."
+                              className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-normal text-slate-700 outline-none focus:border-cyan-500 text-[11px]"
+                            />
+                          </td>
+                        )}
 
                         {/* TT (Actions) */}
                         <td className="p-1.5 text-center pr-2">
@@ -1272,190 +1383,296 @@ export default function CreateOutboundOrderPage({
           </div>
         </div>
 
-        {/* ── RIGHT COLUMN (Compact Sleek Width 310px): PAYMENT & FINANCIAL METADATA FORM ── */}
-        <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-1.5 text-cyan-800 font-extrabold text-xs">
-              <DollarSign className="h-4 w-4 text-cyan-600" />
-              <span>TỔNG CỘNG & THANH TOÁN</span>
-            </div>
-
-            {/* Nhân viên xuất kho */}
-            <div>
-              <label className="mb-1 block text-xs font-bold text-slate-700">Nhân viên xuất kho</label>
-              <select
-                value={activeTab?.employeeName || currentUserName}
-                onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
-                className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-600 cursor-pointer"
-              >
-                <option value={currentUserName}>{currentUserName}</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.fullName || u.email}>
-                    {u.fullName || u.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Sử dụng điểm tích */}
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-800 pt-0.5">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useLoyaltyPoints}
-                  onChange={(e) => setUseLoyaltyPoints(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                />
-                <span>Sử dụng điểm tích</span>
-              </label>
-              <div className="flex items-center gap-0.5">
-                <span className="flex h-5 min-w-[20px] items-center justify-center bg-yellow-400 px-1 text-xs font-black text-black border border-slate-300">0</span>
-                <span className="flex h-5 min-w-[20px] items-center justify-center bg-blue-700 px-1 text-xs font-black text-white border border-slate-300">0</span>
-              </div>
-            </div>
-
-            {/* Hình thức thanh toán Radios */}
-            <div className="space-y-1 text-xs font-semibold text-slate-800 border-t border-slate-200 pt-1.5">
-              <label className="block font-bold">Hình thức thanh toán:</label>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="paymentMethodRadio"
-                    value="Tiền mặt"
-                    checked={(activeTab?.paymentMethod || 'Tiền mặt') === 'Tiền mặt'}
-                    onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                  />
-                  <span>Tiền mặt</span>
-                </label>
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="paymentMethodRadio"
-                    value="Chuyển khoản"
-                    checked={activeTab?.paymentMethod === 'Chuyển khoản'}
-                    onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                  />
-                  <span>Chuyển khoản</span>
-                </label>
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="paymentMethodRadio"
-                    value="ATM"
-                    checked={activeTab?.paymentMethod === 'ATM'}
-                    onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                    className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                  />
-                  <span>ATM</span>
-                </label>
-              </div>
-              <select
-                value={activeTab?.paymentAccount || ''}
-                onChange={(e) => updateActiveTab((t) => ({ ...t, paymentAccount: e.target.value }))}
-                className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
-              >
-                <option value="">Chọn tài khoản-</option>
-                <option value="TK-01">Vietcombank - 1012345678 (Hà Nội)</option>
-                <option value="TK-02">Techcombank - 1903456789 (HCM)</option>
-                <option value="TK-03">MBBank - 999988887777 (Công ty)</option>
-              </select>
-            </div>
-
-            {/* ══ Light Theme Payment Summary Box ══ */}
-            <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/60 p-2.5 shadow-sm space-y-1.5 text-slate-800">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                <span>Thành tiền hàng:</span>
-                <span className="font-extrabold text-slate-900">{subtotal.toLocaleString('vi-VN')} đ</span>
+        {/* ── RIGHT COLUMN: SUMMARY & FINANCIAL / DISPOSAL FORM ── */}
+        {isDisposal ? (
+          <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-1.5 text-cyan-800 font-extrabold text-xs">
+                <FileText className="h-4 w-4 text-cyan-600" />
+                <span>TỔNG KẾT & BIÊN BẢN HỦY</span>
               </div>
 
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                <span>Chiết khấu:</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={activeTab?.discount || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, discount: Number(e.target.value) }))}
-                  placeholder="0"
-                  className="h-7 w-24 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
+              {/* Người lập phiếu / Giám sát */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Người lập phiếu / Giám sát</label>
+                <select
+                  value={activeTab?.employeeName || currentUserName}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
+                  className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-600 cursor-pointer"
+                >
+                  <option value={currentUserName}>{currentUserName}</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.fullName || u.email}>
+                      {u.fullName || u.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Phương án xử lý tiêu hủy */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Phương án xử lý tiêu hủy</label>
+                <select
+                  value={disposalMethod}
+                  onChange={(e) => setDisposalMethod(e.target.value)}
+                  className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-600 cursor-pointer"
+                >
+                  <option value="Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)">Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)</option>
+                  <option value="Bán phế liệu / Ve chai">Bán phế liệu / Ve chai</option>
+                  <option value="Thanh lý phế phẩm giảm giá">Thanh lý phế phẩm giảm giá</option>
+                  <option value="Chuyển kho cách ly xử lý sau">Chuyển kho cách ly xử lý sau</option>
+                  <option value="Khác">Khác</option>
+                </select>
+              </div>
+
+              {/* Ghi chú biên bản / Căn cứ quyết định */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Ghi chú biên bản / Căn cứ</label>
+                <textarea
+                  rows={2}
+                  value={activeTab?.description || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
+                  placeholder="Biên bản kiểm kê số..., Quyết định tiêu hủy..."
+                  className="w-full rounded-lg border-2 border-slate-200 p-2 text-xs font-medium text-slate-800 outline-none focus:border-cyan-600"
                 />
               </div>
 
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                <span>Thuế VAT (%):</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={activeTab?.vatRate || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, vatRate: Number(e.target.value) }))}
-                  placeholder="0"
-                  className="h-7 w-16 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
-                />
-              </div>
-
-              <div className="border-t border-slate-300/80 pt-1.5 flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-900">
-                  TỔNG THÀNH TOÁN:
-                </span>
-                <span className="text-sm font-black text-cyan-700 tracking-tight">
-                  {grandTotal.toLocaleString('vi-VN')} đ
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-0.5">
-                <span>Khách thanh toán:</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={activeTab?.amountPaid || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, amountPaid: Number(e.target.value) }))}
-                  placeholder={grandTotal.toString()}
-                  className="h-7 w-24 rounded bg-white px-2 text-right font-extrabold text-emerald-700 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
-                />
-              </div>
-
-              {remainingDebt > 0 && (
-                <div className="flex items-center justify-between text-xs font-bold text-red-600 pt-1 border-t border-slate-200">
-                  <span>Ghi nợ lại:</span>
-                  <span className="font-extrabold">{remainingDebt.toLocaleString('vi-VN')} đ</span>
+              {/* Summary Card */}
+              <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/70 p-3 shadow-xs space-y-2 text-slate-800">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>Số mặt hàng hủy:</span>
+                  <span className="font-extrabold text-slate-900">{activeValidItems.length} mặt hàng</span>
                 </div>
-              )}
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>Tổng số lượng hủy:</span>
+                  <span className="font-extrabold text-cyan-800">{totalQty} SP</span>
+                </div>
+                <div className="border-t border-cyan-200/80 pt-2 flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-950">
+                    TỔNG GIÁ TRỊ THIỆT HẠI:
+                  </span>
+                  <span className="text-sm font-black text-rose-600 tracking-tight">
+                    {subtotal.toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Unified Action Buttons */}
+            <div className="space-y-2.5 pt-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => handleSaveOutboundOrder(true)}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
+              >
+                <Printer size={18} strokeWidth={2.2} />
+                <span>LƯU & IN BIÊN BẢN HỦY</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveOutboundOrder(false)}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
+              >
+                <Save size={18} strokeWidth={2.2} />
+                <span>LƯU PHIẾU XUẤT HỦY</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBackNavigation}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
+              >
+                <ArrowLeft size={18} strokeWidth={2.2} />
+                <span>HỦY / QUAY LẠI</span>
+              </button>
             </div>
           </div>
+        ) : (
+          <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-1.5 text-cyan-800 font-extrabold text-xs">
+                <DollarSign className="h-4 w-4 text-cyan-600" />
+                <span>TỔNG CỘNG & THANH TOÁN</span>
+              </div>
 
-          {/* Unified Action Buttons */}
-          <div className="space-y-2.5 pt-3 flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => handleSaveOutboundOrder(true)}
-              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
-            >
-              <Printer size={18} strokeWidth={2.2} />
-              <span>LƯU & IN PHIẾU XUẤT</span>
-            </button>
+              {/* Nhân viên xuất kho */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Nhân viên xuất kho</label>
+                <select
+                  value={activeTab?.employeeName || currentUserName}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
+                  className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-600 cursor-pointer"
+                >
+                  <option value={currentUserName}>{currentUserName}</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.fullName || u.email}>
+                      {u.fullName || u.email}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => handleSaveOutboundOrder(false)}
-              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
-            >
-              <Save size={18} strokeWidth={2.2} />
-              <span>LƯU PHIẾU XUẤT HÀNG</span>
-            </button>
+              {/* Sử dụng điểm tích */}
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-800 pt-0.5">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={useLoyaltyPoints}
+                    onChange={(e) => setUseLoyaltyPoints(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                  />
+                  <span>Sử dụng điểm tích</span>
+                </label>
+                <div className="flex items-center gap-0.5">
+                  <span className="flex h-5 min-w-[20px] items-center justify-center bg-yellow-400 px-1 text-xs font-black text-black border border-slate-300">0</span>
+                  <span className="flex h-5 min-w-[20px] items-center justify-center bg-blue-700 px-1 text-xs font-black text-white border border-slate-300">0</span>
+                </div>
+              </div>
 
-            <button
-              type="button"
-              onClick={handleBackNavigation}
-              className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
-            >
-              <ArrowLeft size={18} strokeWidth={2.2} />
-              <span>HỦY / QUAY LẠI</span>
-            </button>
+              {/* Hình thức thanh toán Radios */}
+              <div className="space-y-1 text-xs font-semibold text-slate-800 border-t border-slate-200 pt-1.5">
+                <label className="block font-bold">Hình thức thanh toán:</label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentMethodRadio"
+                      value="Tiền mặt"
+                      checked={(activeTab?.paymentMethod || 'Tiền mặt') === 'Tiền mặt'}
+                      onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
+                      className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    />
+                    <span>Tiền mặt</span>
+                  </label>
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentMethodRadio"
+                      value="Chuyển khoản"
+                      checked={activeTab?.paymentMethod === 'Chuyển khoản'}
+                      onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
+                      className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    />
+                    <span>Chuyển khoản</span>
+                  </label>
+                  <label className="flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentMethodRadio"
+                      value="ATM"
+                      checked={activeTab?.paymentMethod === 'ATM'}
+                      onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
+                      className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    />
+                    <span>ATM</span>
+                  </label>
+                </div>
+                <select
+                  value={activeTab?.paymentAccount || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, paymentAccount: e.target.value }))}
+                  className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
+                >
+                  <option value="">Chọn tài khoản-</option>
+                  <option value="TK-01">Vietcombank - 1012345678 (Hà Nội)</option>
+                  <option value="TK-02">Techcombank - 1903456789 (HCM)</option>
+                  <option value="TK-03">MBBank - 999988887777 (Công ty)</option>
+                </select>
+              </div>
+
+              {/* ══ Light Theme Payment Summary Box ══ */}
+              <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/60 p-2.5 shadow-sm space-y-1.5 text-slate-800">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>Thành tiền hàng:</span>
+                  <span className="font-extrabold text-slate-900">{subtotal.toLocaleString('vi-VN')} đ</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>Chiết khấu:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={activeTab?.discount || ''}
+                    onChange={(e) => updateActiveTab((t) => ({ ...t, discount: Number(e.target.value) }))}
+                    placeholder="0"
+                    className="h-7 w-24 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>Thuế VAT (%):</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={activeTab?.vatRate || ''}
+                    onChange={(e) => updateActiveTab((t) => ({ ...t, vatRate: Number(e.target.value) }))}
+                    placeholder="0"
+                    className="h-7 w-16 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
+                  />
+                </div>
+
+                <div className="border-t border-slate-300/80 pt-1.5 flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-900">
+                    TỔNG THÀNH TOÁN:
+                  </span>
+                  <span className="text-sm font-black text-cyan-700 tracking-tight">
+                    {grandTotal.toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-0.5">
+                  <span>Khách thanh toán:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={activeTab?.amountPaid || ''}
+                    onChange={(e) => updateActiveTab((t) => ({ ...t, amountPaid: Number(e.target.value) }))}
+                    placeholder={grandTotal.toString()}
+                    className="h-7 w-24 rounded bg-white px-2 text-right font-extrabold text-emerald-700 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
+                  />
+                </div>
+
+                {remainingDebt > 0 && (
+                  <div className="flex items-center justify-between text-xs font-bold text-red-600 pt-1 border-t border-slate-200">
+                    <span>Ghi nợ lại:</span>
+                    <span className="font-extrabold">{remainingDebt.toLocaleString('vi-VN')} đ</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Unified Action Buttons */}
+            <div className="space-y-2.5 pt-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => handleSaveOutboundOrder(true)}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
+              >
+                <Printer size={18} strokeWidth={2.2} />
+                <span>LƯU & IN PHIẾU XUẤT</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveOutboundOrder(false)}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
+              >
+                <Save size={18} strokeWidth={2.2} />
+                <span>LƯU PHIẾU XUẤT HÀNG</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBackNavigation}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
+              >
+                <ArrowLeft size={18} strokeWidth={2.2} />
+                <span>HỦY / QUAY LẠI</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
