@@ -597,7 +597,7 @@ export default function AssemblyPage({ mode: initialMode = 'production' }: { mod
                         <div className="text-sm font-semibold text-slate-700">{row.productName}</div>
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center align-middle text-sm font-semibold text-slate-700">
-                        {row.lastImportDate ? new Date(row.lastImportDate).toLocaleDateString('vi-VN') : '-'}
+                        {row.lastImportDate ? new Date(row.lastImportDate).toLocaleString('vi-VN') : '-'}
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{row.warehouseCode}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black text-slate-400">{formatNumber(row.actualQty)}</td>
