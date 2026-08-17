@@ -635,6 +635,14 @@ export class InboundService {
       const unitPrice = parseNumber(item.unitPrice ?? item.price ?? (product?.price || 0));
       const targetWhCode = item.warehouseCode?.trim() || defaultWarehouseCode?.trim() || 'KHO-NVL';
 
+      const assignedStr = (item as any).locationBin || (Array.isArray((item as any).assignedBins) ? (item as any).assignedBins.join(', ') : '');
+      let noteContent = item.note ? String(item.note) : '';
+      if (assignedStr && !noteContent.includes('[Vị trí Ô:')) {
+        noteContent = noteContent
+          ? `${noteContent} [Vị trí Ô: ${assignedStr}]`
+          : `[Vị trí Ô: ${assignedStr}]`;
+      }
+
       const detail = this.detailRepo.create({
         inboundReceipt: receipt,
         product: product || undefined,
@@ -650,7 +658,7 @@ export class InboundService {
         height: Math.min(999999.99, parseNumber(item.height)),
         volume: Math.min(999999.9999, parseNumber(item.volume)),
         volumetricWeight: Math.min(999999.99, parseNumber(item.volumetricWeight)),
-        note: item.note ? String(item.note) : undefined,
+        note: noteContent || undefined,
       });
 
       savedDetails.push(await this.detailRepo.save(detail));
@@ -744,42 +752,67 @@ export class InboundService {
       let productId = detail.product?.id;
       if (!productId) continue;
 
-      const locCode = detail.warehouseCode || 'KHO-NVL';
+      const mainWhCode = detail.warehouseCode || 'KHO-NVL';
+      const noteText = detail.note || '';
 
-      // 1. Tìm balance theo kho cụ thể
-      let [balance] = await this.dataSource.query(
-        `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
-        [productId, locCode],
-      );
-
-      // 2. Nếu không tìm thấy tại kho này, lấy balance có tồn kho lớn nhất
-      if (!balance) {
-        const rows = await this.dataSource.query(
-          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
-          [productId],
-        );
-        if (rows.length > 0) {
-          balance = rows[0];
+      const specificBins: string[] = [];
+      if (noteText.includes('[Vị trí Ô:')) {
+        const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+        if (match && match[1]) {
+          match[1].split(',').forEach((c) => {
+            const trimmed = c.trim();
+            if (trimmed) specificBins.push(trimmed);
+          });
         }
       }
 
-      // 3. Nếu chưa có balance nào, tạo mới
-      if (!balance) {
-        const insertRes = await this.dataSource.query(
-          `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
+      const qty = Number(detail.receivedQty || detail.expectedQty) || 0;
+      const targetLocations = specificBins.length > 0 ? specificBins : [mainWhCode];
+      const qtyPerBin = Math.max(1, Math.floor(qty / targetLocations.length));
+
+      for (const locCode of targetLocations) {
+        let [balance] = await this.dataSource.query(
+          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
           [productId, locCode],
         );
-        balance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
+
+        if (!balance) {
+          const insertRes = await this.dataSource.query(
+            `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
+            [productId, locCode],
+          );
+          balance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
+        }
+
+        const newPhysical = Number(balance.totalPhysical) + qtyPerBin;
+        const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
+
+        await this.dataSource.query(
+          `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+          [newPhysical, newAvailable, balance.id],
+        );
       }
 
-      const qty = Number(detail.receivedQty || detail.expectedQty) || 0;
-      const newPhysical = Number(balance.totalPhysical) + qty;
-      const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
-
-      await this.dataSource.query(
-        `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
-        [newPhysical, newAvailable, balance.id],
-      );
+      // Also ensure main warehouse code balance is updated if specific bins were targeted
+      if (specificBins.length > 0 && !specificBins.includes(mainWhCode)) {
+        let [mainBalance] = await this.dataSource.query(
+          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
+          [productId, mainWhCode],
+        );
+        if (!mainBalance) {
+          const insertRes = await this.dataSource.query(
+            `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
+            [productId, mainWhCode],
+          );
+          mainBalance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
+        }
+        const mainPhysical = Number(mainBalance.totalPhysical) + qty;
+        const mainAvailable = Math.max(0, mainPhysical - Number(mainBalance.allocated));
+        await this.dataSource.query(
+          `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+          [mainPhysical, mainAvailable, mainBalance.id],
+        );
+      }
 
       const unitPrice = parseNumber(detail.unitPrice);
       const lineAmount = parseNumber(detail.totalLineAmount || (unitPrice * qty));
@@ -794,8 +827,8 @@ export class InboundService {
             productId,
             receipt.poNumber || 'PNK-SYSTEM',
             supplierName,
-            locCode,
-            `Kho ${locCode}`,
+            mainWhCode,
+            `Kho ${mainWhCode}`,
             qty,
             unitPrice,
             lineAmount,
@@ -909,9 +942,19 @@ export class InboundService {
   }
 
   private serializeDetail(detail: InboundDetail, supplierProduct?: SupplierProduct) {
+    let parsedAssignedBins: string[] = [];
+    if (detail.note && detail.note.includes('[Vị trí Ô:')) {
+      const match = detail.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+      if (match && match[1]) {
+        parsedAssignedBins = match[1].split(',').map((c) => c.trim()).filter(Boolean);
+      }
+    }
+
     return {
       id: detail.id,
       warehouseCode: detail.warehouseCode,
+      locationBin: parsedAssignedBins.join(', ') || detail.warehouseCode || '',
+      assignedBins: parsedAssignedBins,
       expectedQty: parseNumber(detail.expectedQty),
       receivedQty: parseNumber(detail.receivedQty),
       unitPrice: parseNumber(detail.unitPrice),

@@ -48,9 +48,13 @@ export class Warehouse {
   normalizeAssignmentIds() {
     (this as any).managerIds = this.parseIds(this.managerIds);
     (this as any).staffIds = this.parseIds(this.staffIds);
-    try {
-      (this as any).subWarehouses = typeof this.subWarehouses === 'string' && this.subWarehouses.trim() ? JSON.parse(this.subWarehouses) : [];
-    } catch {
+    if (typeof this.subWarehouses === 'string' && this.subWarehouses.trim()) {
+      try {
+        (this as any).subWarehouses = JSON.parse(this.subWarehouses);
+      } catch {
+        (this as any).subWarehouses = [];
+      }
+    } else if (!Array.isArray(this.subWarehouses)) {
       (this as any).subWarehouses = [];
     }
   }
@@ -60,7 +64,7 @@ export class Warehouse {
   sanitizeAssignmentIds() {
     this.managerIds = this.serializeIds(this.managerIds);
     this.staffIds = this.serializeIds(this.staffIds);
-    if (typeof (this as any).subWarehouses === 'object') {
+    if (typeof (this as any).subWarehouses === 'object' || Array.isArray((this as any).subWarehouses)) {
       this.subWarehouses = JSON.stringify((this as any).subWarehouses || []);
     }
   }

@@ -127,13 +127,24 @@ export function normalizeWarehouseRecord(
   const w = Number(warehouse.width) || 30;
   const h = Number(warehouse.height) || 12;
 
+  let rawSub = warehouse.subWarehouses;
+  if (typeof rawSub === 'string') {
+    try {
+      rawSub = JSON.parse(rawSub);
+    } catch {
+      rawSub = [];
+    }
+  }
+
   // Filter out any leftover auto-generated mock sub-warehouses from local storage cache
-  const cleanedSubWarehouses = Array.isArray(warehouse.subWarehouses)
-    ? warehouse.subWarehouses.filter((sub) => {
+  const cleanedSubWarehouses = Array.isArray(rawSub)
+    ? rawSub.filter((sub) => {
         if (!sub) return false;
         if (
           typeof sub.id === 'string' &&
-          (sub.id.startsWith('sub_def') ||
+          (sub.id.startsWith('sub-default') ||
+            sub.id.startsWith('sub-init') ||
+            sub.id.startsWith('sub_def') ||
             sub.id.startsWith('sub_wh_') ||
             sub.id.startsWith('sub_wh_default'))
         ) {
@@ -182,7 +193,8 @@ export function warehouseListEquals(a: WarehouseRecord, b: WarehouseRecord) {
     normalizedA.address === normalizedB.address &&
     normalizedA.status === normalizedB.status &&
     JSON.stringify(normalizeIds(normalizedA.managerIds)) === JSON.stringify(normalizeIds(normalizedB.managerIds)) &&
-    JSON.stringify(normalizeIds(normalizedA.staffIds)) === JSON.stringify(normalizeIds(normalizedB.staffIds))
+    JSON.stringify(normalizeIds(normalizedA.staffIds)) === JSON.stringify(normalizeIds(normalizedB.staffIds)) &&
+    JSON.stringify(normalizedA.subWarehouses || []) === JSON.stringify(normalizedB.subWarehouses || [])
   );
 }
 
@@ -263,6 +275,7 @@ export const DEFAULT_SYSTEM_WAREHOUSES: WarehouseRecord[] = [
     status: 'active',
     managerIds: [],
     staffIds: [],
+    subWarehouses: [],
   }),
   normalizeWarehouseRecord({
     id: 'wh_default_2',
@@ -272,6 +285,7 @@ export const DEFAULT_SYSTEM_WAREHOUSES: WarehouseRecord[] = [
     status: 'active',
     managerIds: [],
     staffIds: [],
+    subWarehouses: [],
   }),
 ];
 
@@ -307,9 +321,7 @@ function mergeWarehouseRecord(base: WarehouseRecord, fallback?: WarehouseRecord)
     status: normalizedBase.status || normalizedFallback?.status || 'active',
     managerIds: baseManagers.length > 0 ? baseManagers : normalizedFallback?.managerIds || [],
     staffIds: baseStaff.length > 0 ? baseStaff : normalizedFallback?.staffIds || [],
-    subWarehouses: (normalizedBase.subWarehouses && normalizedBase.subWarehouses.length > 0)
-      ? normalizedBase.subWarehouses
-      : normalizedFallback?.subWarehouses || [],
+    subWarehouses: normalizedBase.subWarehouses || [],
   };
 }
 

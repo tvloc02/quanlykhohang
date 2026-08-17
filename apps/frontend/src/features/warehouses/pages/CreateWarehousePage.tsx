@@ -62,6 +62,8 @@ import {
   type ProductSlotInput,
 } from '../utils/aiSlottingEngine';
 
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
+
 // Default generator for continuous longitudinal rack rows
 function generateDefaultRacks(
   racksCount: number,
@@ -130,29 +132,10 @@ export default function CreateWarehousePage() {
   const [width, setWidth] = useState(30);
   const [height, setHeight] = useState(12);
 
-  // Default initial zone for instant rendering without white screen
-  const initialDefaultZones: SubWarehouse[] = [
-    {
-      id: 'sub-init-1',
-      code: 'ZONE-A',
-      name: 'Phân Khu Kho Thường 1',
-      zoneType: 'AMBIENT',
-      status: 'active',
-      length: 25,
-      width: 15,
-      height: 7,
-      racksCount: 4,
-      shelvesPerRack: 5,
-      binsPerShelf: 2,
-      maxWeightPerBin: 500,
-      racks: generateDefaultRacks(4, 25, 7, 6, 5, 2),
-    },
-  ];
-
   // Subwarehouses / Zones list
-  const [subWarehouses, setSubWarehouses] = useState<SubWarehouse[]>(initialDefaultZones);
-  const [activeZoneId, setActiveZoneId] = useState<string>('sub-init-1');
-  const [activeRackId, setActiveRackId] = useState<string>('rack-1');
+  const [subWarehouses, setSubWarehouses] = useState<SubWarehouse[]>([]);
+  const [activeZoneId, setActiveZoneId] = useState<string>('');
+  const [activeRackId, setActiveRackId] = useState<string>('');
 
   // Interactive Rack Checkboxes Selection State
   const [selectedRackCodes, setSelectedRackCodes] = useState<string[]>([]);
@@ -191,6 +174,136 @@ export default function CreateWarehousePage() {
     turnoverClass: 'A',
   });
   const [aiRecommendations, setAiRecommendations] = useState<AiSlottingRecommendation[]>([]);
+
+  // Occupied Bins Inventory state (Bins that contain allocated goods)
+  const [occupiedBinsMap, setOccupiedBinsMap] = useState<Map<string, { totalPhysical: number; allocated: number; productsCount: number }>>(new Map());
+
+  // Fetch real inventory stock balance / allocated bins topology
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchOccupiedBins() {
+      try {
+        const map = new Map<string, { totalPhysical: number; allocated: number; productsCount: number }>();
+        const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
+
+        // 1. Digital twin stock balances
+        const res = await fetch(`${API_BASE_URL}/inventory/visualizer/digital-twin?days=30`, { headers });
+        if (res.ok) {
+          const cells: any[] = await res.json();
+          cells.forEach((cell) => {
+            if (cell.totalPhysical > 0 || cell.allocated > 0) {
+              map.set(cell.locationCode, {
+                totalPhysical: cell.totalPhysical || 1,
+                allocated: cell.allocated || 0,
+                productsCount: cell.productsCount || 1,
+              });
+            }
+          });
+        }
+
+        // 2. Also check purchase orders / stock-in orders for assigned bin codes in notes
+        const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null);
+        if (poRes && poRes.ok) {
+          const pos: any[] = await poRes.json();
+          pos.forEach((po) => {
+            (po.details || []).forEach((d: any) => {
+              const noteText = d.note || '';
+              if (noteText.includes('[Vị trí Ô:')) {
+                const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+                if (match && match[1]) {
+                  match[1].split(',').forEach((code: string) => {
+                    const bin = code.trim();
+                    if (bin && !map.has(bin)) {
+                      map.set(bin, {
+                        totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
+                        allocated: 0,
+                        productsCount: 1,
+                      });
+                    }
+                  });
+                }
+              }
+            });
+          });
+        }
+
+        // 3. Also check stock-in-orders endpoint
+        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
+        if (stockInRes && stockInRes.ok) {
+          const sOrders: any[] = await stockInRes.json();
+          sOrders.forEach((so) => {
+            (so.details || []).forEach((d: any) => {
+              const assigned = Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []);
+              assigned.forEach((bin: string) => {
+                if (bin && bin.length > 2 && !map.has(bin)) {
+                  map.set(bin, {
+                    totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
+                    allocated: 0,
+                    productsCount: 1,
+                  });
+                }
+              });
+              const noteText = d.note || '';
+              if (noteText.includes('[Vị trí Ô:')) {
+                const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+                if (match && match[1]) {
+                  match[1].split(',').forEach((code: string) => {
+                    const bin = code.trim();
+                    if (bin && !map.has(bin)) {
+                      map.set(bin, {
+                        totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
+                        allocated: 0,
+                        productsCount: 1,
+                      });
+                    }
+                  });
+                }
+              }
+            });
+          });
+        }
+
+        if (isMounted) setOccupiedBinsMap(map);
+      } catch (err) {
+        console.error('Could not fetch digital twin bins', err);
+      }
+    }
+    fetchOccupiedBins();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const getOccupiedInfo = (
+    fullBinCode: string,
+    zoneCode?: string,
+    rackCode?: string,
+    bayCode?: string,
+    shelfCode?: string,
+    cellCode?: string,
+  ) => {
+    if (!occupiedBinsMap || occupiedBinsMap.size === 0) return null;
+    if (occupiedBinsMap.has(fullBinCode)) return occupiedBinsMap.get(fullBinCode);
+
+    const shortCode = `${rackCode}-${shelfCode}-${cellCode}`;
+    if (occupiedBinsMap.has(shortCode)) return occupiedBinsMap.get(shortCode);
+
+    if (zoneCode) {
+      const zoneShort = `${zoneCode}-${rackCode}-${shelfCode}-${cellCode}`;
+      if (occupiedBinsMap.has(zoneShort)) return occupiedBinsMap.get(zoneShort);
+    }
+
+    for (const [key, val] of occupiedBinsMap.entries()) {
+      if (
+        key.includes(fullBinCode) ||
+        (rackCode && shelfCode && cellCode && key.includes(rackCode) && key.includes(shelfCode) && key.includes(cellCode))
+      ) {
+        return val;
+      }
+    }
+
+    return null;
+  };
 
   // Load warehouse data if Edit Mode
   useEffect(() => {
@@ -238,45 +351,9 @@ export default function CreateWarehousePage() {
         }
       }
     } else {
-      const defaultZones: SubWarehouse[] = [
-        {
-          id: `sub-${Date.now()}-1`,
-          code: 'ZONE-A',
-          name: 'Phân Khu Kho Thường 1',
-          zoneType: 'AMBIENT',
-          status: 'active',
-          length: 25,
-          width: 15,
-          height: 7,
-          racksCount: 4,
-          shelvesPerRack: 5,
-          binsPerShelf: 2,
-          maxWeightPerBin: 500,
-          racks: generateDefaultRacks(4, 25, 7, 2, 5, 2),
-        },
-        {
-          id: `sub-${Date.now()}-2`,
-          code: 'ZONE-COLD',
-          name: 'Phân Khu Kho Lạnh',
-          zoneType: 'COLD',
-          tempMin: -18,
-          tempMax: 5,
-          status: 'active',
-          length: 20,
-          width: 12,
-          height: 6,
-          racksCount: 3,
-          shelvesPerRack: 4,
-          binsPerShelf: 2,
-          maxWeightPerBin: 600,
-          racks: generateDefaultRacks(3, 20, 6, 2, 4, 2),
-        },
-      ];
-      setSubWarehouses(defaultZones);
-      setActiveZoneId(defaultZones[0].id);
-      setActiveRackId(defaultZones[0].racks![0].id);
       setCode(`KH${Math.floor(100 + Math.random() * 900)}`);
-      setName('Kho Hàng Chi Nhánh Tân Bình');
+      setName('');
+      setSubWarehouses([]);
     }
   }, [id, isEditMode]);
 
@@ -291,9 +368,7 @@ export default function CreateWarehousePage() {
   };
 
   // Ensure racks exist in activeZone
-  const activeRacks = activeZone?.racks && activeZone.racks.length > 0
-    ? activeZone.racks
-    : generateDefaultRacks(activeZone?.racksCount ?? 4, activeZone?.length || 20, activeZone?.height || 6, activeZone?.binsPerShelf ?? 2, activeZone?.shelvesPerRack ?? 5, 2);
+  const activeRacks = activeZone?.racks || [];
 
   const activeRack = activeRacks.find((r) => r.id === activeRackId) || activeRacks[0];
 
@@ -466,8 +541,12 @@ export default function CreateWarehousePage() {
         subWarehouses,
       };
 
-      await upsertWarehouseToApi(payload);
-      saveStoredWarehouses([payload]);
+      const savedWarehouse = await upsertWarehouseToApi(payload);
+      const existingWarehouses = getStoredWarehouses();
+      const updatedList = existingWarehouses.some((w) => w.id === savedWarehouse.id)
+        ? existingWarehouses.map((w) => (w.id === savedWarehouse.id ? savedWarehouse : w))
+        : [...existingWarehouses, savedWarehouse];
+      saveStoredWarehouses(updatedList);
       setSuccess('Lưu cấu hình kho hàng và phân khu kệ dọc thành công!');
       setTimeout(() => {
         navigate('/warehouses');
@@ -1087,6 +1166,23 @@ export default function CreateWarehousePage() {
                 </div>
               </div>
 
+              {/* BIN STATUS LEGEND BAR */}
+              <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                <span className="text-slate-500 uppercase tracking-wider text-[11px]">Trạng Thái Ô Kệ:</span>
+                <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
+                  <span className="h-3.5 w-3.5 rounded border border-slate-300 bg-white inline-block shadow-2xs" />
+                  Ô Trống
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-amber-900 dark:text-amber-300 font-black">
+                  <span className="h-3.5 w-3.5 rounded border-2 border-amber-500 bg-amber-400 inline-block shadow-2xs animate-pulse" />
+                  🟨 Đã Có Hàng (Đã phân bổ)
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-cyan-800 dark:text-cyan-300 font-bold">
+                  <span className="h-3.5 w-3.5 rounded border border-cyan-400 bg-cyan-100 inline-block shadow-2xs" />
+                  Tùy chỉnh tải trọng
+                </span>
+              </div>
+
               {/* VIEW CANVAS RENDER */}
               {viewMode === '3D_VIEW' ? (
                 <Warehouse3DViewer subWarehouse={activeZone} selectedRackIds={selectedRackCodes} />
@@ -1166,6 +1262,9 @@ export default function CreateWarehousePage() {
                                           const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${bayCode}-${shelfCode}-${cellCode}`;
                                           const isCustom = rack.customBins && rack.customBins[fullBinCode];
 
+                                          const occupiedInfo = getOccupiedInfo(fullBinCode, activeZone?.code, rack.rackCode, bayCode, shelfCode, cellCode);
+                                          const hasGoods = Boolean(occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0));
+
                                           return (
                                             <button
                                               key={fullBinCode}
@@ -1183,20 +1282,33 @@ export default function CreateWarehousePage() {
                                                 );
                                               }}
                                               className={`p-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-between gap-1 shadow-sm ${
-                                                isCustom
-                                                  ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200'
-                                                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 text-slate-700 dark:text-slate-200'
+                                                hasGoods
+                                                  ? 'border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/80 text-amber-950 dark:text-amber-100 shadow-md ring-2 ring-amber-300/60 font-black'
+                                                  : isCustom
+                                                    ? 'border-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 text-cyan-900 dark:text-cyan-200'
+                                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 text-slate-700 dark:text-slate-200'
                                               }`}
                                             >
-                                              <span className="text-xs font-black text-cyan-700 dark:text-cyan-300">
-                                                {binLabel}
-                                              </span>
+                                              <div className="w-full flex items-center justify-between gap-1">
+                                                <span className={`text-xs font-black ${hasGoods ? 'text-amber-900 dark:text-amber-200' : 'text-cyan-700 dark:text-cyan-300'}`}>
+                                                  {binLabel}
+                                                </span>
+                                                {hasGoods && (
+                                                  <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" title="Có hàng lưu trữ" />
+                                                )}
+                                              </div>
                                               <span className="text-[10px] font-bold text-slate-400">
                                                 Khoang {bayCode}
                                               </span>
-                                              <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-full truncate">
-                                                {isCustom ? `${isCustom.maxWeight}kg` : `${rack.defaultBinMaxWeight || 500}kg`}
-                                              </span>
+                                              {hasGoods ? (
+                                                <span className="text-[10px] font-black text-amber-950 bg-amber-300 dark:bg-amber-700 dark:text-amber-50 px-1.5 py-0.5 rounded-md w-full truncate border border-amber-400 shadow-2xs flex items-center justify-center gap-0.5">
+                                                  📦 {occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1} sp
+                                                </span>
+                                              ) : (
+                                                <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-full truncate">
+                                                  {isCustom ? `${isCustom.maxWeight}kg` : `${rack.defaultBinMaxWeight || 500}kg`}
+                                                </span>
+                                              )}
                                             </button>
                                           );
                                         });
