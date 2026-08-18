@@ -184,11 +184,31 @@ export class CreateAsnDto {
 
   @IsOptional()
   @IsNumber()
+  vatRate?: number;
+
+  @IsOptional()
+  @IsNumber()
   vatAmount?: number;
 
   @IsOptional()
   @IsNumber()
+  shippingFee?: number;
+
+  @IsOptional()
+  @IsNumber()
   amountPaid?: number;
+
+  @IsOptional()
+  @IsNumber()
+  debtAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  paymentMethod?: string;
+
+  @IsOptional()
+  @IsString()
+  paymentAccount?: string;
 
   @IsOptional()
   @ValidateNested({ each: true })

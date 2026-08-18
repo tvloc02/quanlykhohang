@@ -24,7 +24,18 @@ type SerializedPurchaseOrder = {
   creatorName?: string;
   creatorPhone?: string;
   description?: string;
+  subtotal: number;
+  discount: number;
+  vatRate: number;
+  vatAmount: number;
+  shippingFee: number;
   totalAmount: number;
+  amountPaid: number;
+  debtAmount: number;
+  paymentMethod?: string;
+  paymentAccount?: string;
+  warehouseCode?: string;
+  branchCode?: string;
   supplier?: {
     id: string;
     supplierCode?: string;
@@ -148,6 +159,16 @@ export class InboundService {
     const orderDate = dto.orderDate ? parseCustomDate(dto.orderDate) : new Date();
     const expectedDate = dto.expectedDate ? parseCustomDate(dto.expectedDate) : undefined;
 
+    const subtotalNum = parseNumber(dto.subtotal);
+    const discountNum = parseNumber(dto.discount);
+    const vatRateNum = parseNumber(dto.vatRate);
+    const vatAmountNum = parseNumber(dto.vatAmount);
+    const shippingFeeNum = parseNumber(dto.shippingFee);
+    const totalAmountNum = parseNumber(dto.totalAmount);
+    const amountPaidNum = dto.amountPaid !== undefined ? parseNumber(dto.amountPaid) : totalAmountNum;
+    const debtAmountNum = Math.max(0, totalAmountNum - amountPaidNum);
+    const whCode = dto.warehouseCode?.trim() || dto.branchCode?.trim() || 'KHO-NVL';
+
     const receipt = this.receiptRepo.create({
       poNumber,
       orderDate,
@@ -160,15 +181,41 @@ export class InboundService {
       description: dto.description?.trim() || undefined,
       supplier: supplier || undefined,
       supplierName,
-      totalAmount: parseNumber(dto.totalAmount).toFixed(2),
+      subtotal: subtotalNum.toFixed(2),
+      discount: discountNum.toFixed(2),
+      vatRate: vatRateNum.toFixed(2),
+      vatAmount: vatAmountNum.toFixed(2),
+      shippingFee: shippingFeeNum.toFixed(2),
+      totalAmount: totalAmountNum.toFixed(2),
+      amountPaid: amountPaidNum.toFixed(2),
+      debtAmount: debtAmountNum.toFixed(2),
+      paymentMethod: dto.paymentMethod?.trim() || 'Tiền mặt',
+      paymentAccount: dto.paymentAccount?.trim() || undefined,
+      warehouseCode: whCode,
+      branchCode: whCode,
     });
 
     const savedReceipt = await this.receiptRepo.save(receipt);
     const rawItems = (dto.details && dto.details.length) ? dto.details : (dto.items || []);
-    const details = await this.persistDetails(savedReceipt, rawItems, dto.warehouseCode || dto.branchCode);
+    const details = await this.persistDetails(savedReceipt, rawItems, whCode);
 
     if (details.length > 0) {
-      savedReceipt.totalAmount = details.reduce((sum, detail) => sum + (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty || detail.receivedQty)), 0).toFixed(2);
+      const computedSubtotal = details.reduce((sum, detail) => sum + parseNumber(detail.totalLineAmount || (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty || detail.receivedQty))), 0);
+      const finalSubtotal = subtotalNum > 0 ? subtotalNum : computedSubtotal;
+      const finalVatAmount = vatAmountNum > 0 ? vatAmountNum : (finalSubtotal * vatRateNum / 100);
+      const finalTotalAmount = totalAmountNum > 0 ? totalAmountNum : Math.max(0, finalSubtotal - discountNum + finalVatAmount + shippingFeeNum);
+      const finalPaidAmount = dto.amountPaid !== undefined ? amountPaidNum : finalTotalAmount;
+      const finalDebtAmount = Math.max(0, finalTotalAmount - finalPaidAmount);
+
+      savedReceipt.subtotal = finalSubtotal.toFixed(2);
+      savedReceipt.discount = discountNum.toFixed(2);
+      savedReceipt.vatRate = vatRateNum.toFixed(2);
+      savedReceipt.vatAmount = finalVatAmount.toFixed(2);
+      savedReceipt.shippingFee = shippingFeeNum.toFixed(2);
+      savedReceipt.totalAmount = finalTotalAmount.toFixed(2);
+      savedReceipt.amountPaid = finalPaidAmount.toFixed(2);
+      savedReceipt.debtAmount = finalDebtAmount.toFixed(2);
+
       await this.receiptRepo.save(savedReceipt);
       // Tăng tồn kho thực tế trong MySQL
       await this.applyInboundStockAddition(savedReceipt, details);
@@ -238,6 +285,21 @@ export class InboundService {
     if (dto.approverName !== undefined) receipt.approverName = dto.approverName ? dto.approverName.trim() : undefined;
     if (dto.creatorName !== undefined) receipt.creatorName = dto.creatorName ? dto.creatorName.trim() : undefined;
     if (dto.creatorPhone !== undefined) receipt.creatorPhone = dto.creatorPhone ? dto.creatorPhone.trim() : undefined;
+
+    if (dto.subtotal !== undefined) receipt.subtotal = parseNumber(dto.subtotal).toFixed(2);
+    if (dto.discount !== undefined) receipt.discount = parseNumber(dto.discount).toFixed(2);
+    if (dto.vatRate !== undefined) receipt.vatRate = parseNumber(dto.vatRate).toFixed(2);
+    if (dto.vatAmount !== undefined) receipt.vatAmount = parseNumber(dto.vatAmount).toFixed(2);
+    if (dto.shippingFee !== undefined) receipt.shippingFee = parseNumber(dto.shippingFee).toFixed(2);
+    if (dto.totalAmount !== undefined) receipt.totalAmount = parseNumber(dto.totalAmount).toFixed(2);
+    if (dto.amountPaid !== undefined) receipt.amountPaid = parseNumber(dto.amountPaid).toFixed(2);
+    if (dto.paymentMethod !== undefined) receipt.paymentMethod = dto.paymentMethod.trim() || receipt.paymentMethod;
+    if (dto.paymentAccount !== undefined) receipt.paymentAccount = dto.paymentAccount.trim() || receipt.paymentAccount;
+    if (dto.warehouseCode || dto.branchCode) {
+      receipt.warehouseCode = (dto.warehouseCode || dto.branchCode)?.trim();
+      receipt.branchCode = receipt.warehouseCode;
+    }
+    receipt.debtAmount = Math.max(0, parseNumber(receipt.totalAmount) - parseNumber(receipt.amountPaid)).toFixed(2);
 
     if (dto.status !== undefined) {
       receipt.status = dto.status;
@@ -759,13 +821,29 @@ export class InboundService {
   }
 
   private async recalculateTotalAmount(receiptId: string) {
+    const receipt = await this.receiptRepo.findOne({ where: { id: receiptId } });
+    if (!receipt) return;
     const details = await this.detailRepo.find({
       where: { inboundReceipt: { id: receiptId } as any },
       relations: ['inboundReceipt', 'product'],
     });
 
-    const totalAmount = details.reduce((sum, detail) => sum + parseNumber(detail.totalLineAmount || (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty))), 0);
-    await this.receiptRepo.update(receiptId, { totalAmount: totalAmount.toFixed(2) });
+    const computedSubtotal = details.reduce((sum, detail) => sum + parseNumber(detail.totalLineAmount || (parseNumber(detail.unitPrice) * parseNumber(detail.expectedQty))), 0);
+    const disc = parseNumber(receipt.discount);
+    const vatRate = parseNumber(receipt.vatRate);
+    const vatAmt = parseNumber(receipt.vatAmount) || (computedSubtotal * vatRate / 100);
+    const ship = parseNumber(receipt.shippingFee);
+    const tot = parseNumber(receipt.totalAmount) > 0 ? parseNumber(receipt.totalAmount) : Math.max(0, computedSubtotal - disc + vatAmt + ship);
+    const paid = parseNumber(receipt.amountPaid) || tot;
+    const debt = Math.max(0, tot - paid);
+
+    await this.receiptRepo.update(receiptId, {
+      subtotal: computedSubtotal.toFixed(2),
+      vatAmount: vatAmt.toFixed(2),
+      totalAmount: tot.toFixed(2),
+      amountPaid: paid.toFixed(2),
+      debtAmount: debt.toFixed(2),
+    });
   }
 
   private async applyInboundStockAddition(receipt: InboundReceipt, details: InboundDetail[]) {
@@ -814,26 +892,7 @@ export class InboundService {
         );
       }
 
-      // Also ensure main warehouse code balance is updated if specific bins were targeted
-      if (specificBins.length > 0 && !specificBins.includes(mainWhCode)) {
-        let [mainBalance] = await this.dataSource.query(
-          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
-          [productId, mainWhCode],
-        );
-        if (!mainBalance) {
-          const insertRes = await this.dataSource.query(
-            `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
-            [productId, mainWhCode],
-          );
-          mainBalance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
-        }
-        const mainPhysical = Number(mainBalance.totalPhysical) + qty;
-        const mainAvailable = Math.max(0, mainPhysical - Number(mainBalance.allocated));
-        await this.dataSource.query(
-          `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
-          [mainPhysical, mainAvailable, mainBalance.id],
-        );
-      }
+
 
       const unitPrice = parseNumber(detail.unitPrice);
       const lineAmount = parseNumber(detail.totalLineAmount || (unitPrice * qty));
@@ -933,9 +992,15 @@ export class InboundService {
         : null;
 
     const details = receipt.details || [];
-    const computedTotal = details.length > 0
-      ? details.reduce((sum, d) => sum + (parseNumber(d.unitPrice) * parseNumber(d.expectedQty)), 0)
-      : parseNumber(receipt.totalAmount);
+    const subtotal = parseNumber(receipt.subtotal) || details.reduce((sum, d) => sum + (parseNumber(d.unitPrice) * parseNumber(d.expectedQty)), 0);
+    const discount = parseNumber(receipt.discount);
+    const vatRate = parseNumber(receipt.vatRate);
+    const vatAmount = parseNumber(receipt.vatAmount) || (subtotal * vatRate / 100);
+    const shippingFee = parseNumber(receipt.shippingFee);
+    const totalAmount = parseNumber(receipt.totalAmount) || Math.max(0, subtotal - discount + vatAmount + shippingFee);
+    const amountPaid = receipt.amountPaid != null && receipt.amountPaid !== '' ? parseNumber(receipt.amountPaid) : totalAmount;
+    const debtAmount = parseNumber(receipt.debtAmount) || Math.max(0, totalAmount - amountPaid);
+    const warehouseCode = receipt.warehouseCode || receipt.branchCode || details[0]?.warehouseCode || 'KHO-NVL';
 
     const supplierProducts = receipt.supplier?.id
       ? await this.supplierProductRepo.find({ where: { supplier: { id: receipt.supplier.id } }, relations: ['product'] })
@@ -954,7 +1019,18 @@ export class InboundService {
       creatorName: receipt.creatorName,
       creatorPhone: receipt.creatorPhone,
       description: receipt.description,
-      totalAmount: computedTotal,
+      subtotal,
+      discount,
+      vatRate,
+      vatAmount,
+      shippingFee,
+      totalAmount,
+      amountPaid,
+      debtAmount,
+      paymentMethod: receipt.paymentMethod || 'Tiền mặt',
+      paymentAccount: receipt.paymentAccount || '',
+      warehouseCode,
+      branchCode: warehouseCode,
       supplier: supplierDisplay as any,
       supplierName: receipt.supplierName || receipt.supplier?.name || undefined,
       details: details.map((detail) => this.serializeDetail(detail, supplierProductByProductId.get(String(detail.product?.id)))),

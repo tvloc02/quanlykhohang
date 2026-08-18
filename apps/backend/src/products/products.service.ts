@@ -10,6 +10,54 @@ import { InboundDetail } from '../inbound/entities/inbound-detail.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
+export function calculateAggregatedStock(productBalances: any[]) {
+  if (!productBalances || productBalances.length === 0) return { totalStock: 0, availableStock: 0 };
+
+  const warehouseGroups = new Map<string, { mainPhysical: number; mainAvailable: number; binPhysical: number; binAvailable: number }>();
+
+  for (const b of productBalances) {
+    const loc = String(b.locationCode || '').trim();
+    if (!loc) continue;
+    const physical = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
+    const available = Number(b.available || 0);
+
+    const parts = loc.split(/[-_/]/);
+    const baseCode = parts[0] ? parts[0].toUpperCase() : loc.toUpperCase();
+    const isMainWhRecord = loc.toUpperCase() === baseCode;
+
+    if (!warehouseGroups.has(baseCode)) {
+      warehouseGroups.set(baseCode, { mainPhysical: 0, mainAvailable: 0, binPhysical: 0, binAvailable: 0 });
+    }
+
+    const group = warehouseGroups.get(baseCode)!;
+    if (isMainWhRecord) {
+      group.mainPhysical += physical;
+      group.mainAvailable += available;
+    } else {
+      group.binPhysical += physical;
+      group.binAvailable += available;
+    }
+  }
+
+  let totalStock = 0;
+  let availableStock = 0;
+
+  for (const [, group] of warehouseGroups) {
+    const physical = group.mainPhysical > 0 && group.binPhysical > 0
+      ? Math.max(group.mainPhysical, group.binPhysical)
+      : group.mainPhysical + group.binPhysical;
+
+    const available = group.mainAvailable > 0 && group.binAvailable > 0
+      ? Math.max(group.mainAvailable, group.binAvailable)
+      : group.mainAvailable + group.binAvailable;
+
+    totalStock += physical;
+    availableStock += available;
+  }
+
+  return { totalStock, availableStock };
+}
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -53,6 +101,8 @@ export class ProductsService {
       relations: ['product'],
     });
 
+    const { totalStock, availableStock } = calculateAggregatedStock(balances);
+
     return {
       id: product.id,
       internalSku: product.internalSku,
@@ -72,7 +122,8 @@ export class ProductsService {
         allocated: b.allocated,
         available: b.available,
       })),
-      totalStock: balances.reduce((sum, b) => sum + b.available, 0),
+      totalStock,
+      availableStock,
     };
   }
 
@@ -134,10 +185,7 @@ export class ProductsService {
 
       return products.map((product) => {
         const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
-        const totalStock = productBalances.reduce(
-          (sum, b) => sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0)),
-          0
-        );
+        const { totalStock } = calculateAggregatedStock(productBalances);
 
         const lastInbound = inboundDetails.find((d) => d.product && d.product.id === product.id);
         const lastStockInQty = lastInbound
@@ -181,7 +229,7 @@ export class ProductsService {
 
     return products.map((product) => {
       const productBalances = balances.filter((b) => b.product && b.product.id === product.id);
-      const totalStock = productBalances.reduce((sum, b) => sum + (Number(b.available) || 0), 0);
+      const { totalStock } = calculateAggregatedStock(productBalances);
       const lastInbound = inboundDetails.find((d) => d.product && d.product.id === product.id);
       const lastStockInQty = lastInbound
         ? Number(lastInbound.receivedQty || lastInbound.expectedQty || 0)
