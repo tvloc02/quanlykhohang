@@ -19,6 +19,12 @@ export class InventoryController {
     return this.service.createBalance(dto);
   }
 
+  @Post('clear-all')
+  @Roles('admin', 'manager', 'staff')
+  clearAllInventory() {
+    return this.service.clearAllInventory();
+  }
+
   @Get('balances')
   @Roles('admin', 'manager', 'staff', 'supplier')
   findAllBalances(@Req() req: any) {

@@ -13,46 +13,42 @@ import { UpdateProductDto } from './dto/update-product.dto';
 export function calculateAggregatedStock(productBalances: any[]) {
   if (!productBalances || productBalances.length === 0) return { totalStock: 0, availableStock: 0 };
 
-  const warehouseGroups = new Map<string, { mainPhysical: number; mainAvailable: number; binPhysical: number; binAvailable: number }>();
-
-  for (const b of productBalances) {
+  const mainWhBalances = productBalances.filter((b) => {
     const loc = String(b.locationCode || '').trim();
-    if (!loc) continue;
-    const physical = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
-    const available = Number(b.available || 0);
+    return loc && !loc.includes('-R0') && !loc.includes('-S0') && !loc.includes('-C') && !loc.toUpperCase().startsWith('ZONE-');
+  });
 
-    const parts = loc.split(/[-_/]/);
-    const baseCode = parts[0] ? parts[0].toUpperCase() : loc.toUpperCase();
-    const isMainWhRecord = loc.toUpperCase() === baseCode;
-
-    if (!warehouseGroups.has(baseCode)) {
-      warehouseGroups.set(baseCode, { mainPhysical: 0, mainAvailable: 0, binPhysical: 0, binAvailable: 0 });
-    }
-
-    const group = warehouseGroups.get(baseCode)!;
-    if (isMainWhRecord) {
-      group.mainPhysical += physical;
-      group.mainAvailable += available;
-    } else {
-      group.binPhysical += physical;
-      group.binAvailable += available;
-    }
-  }
+  const binBalances = productBalances.filter((b) => {
+    const loc = String(b.locationCode || '').trim();
+    return loc && (loc.includes('-R0') || loc.includes('-S0') || loc.includes('-C') || loc.toUpperCase().startsWith('ZONE-'));
+  });
 
   let totalStock = 0;
   let availableStock = 0;
 
-  for (const [, group] of warehouseGroups) {
-    const physical = group.mainPhysical > 0 && group.binPhysical > 0
-      ? Math.max(group.mainPhysical, group.binPhysical)
-      : group.mainPhysical + group.binPhysical;
+  if (mainWhBalances.length > 0) {
+    const whMap = new Map<string, { totalPhysical: number; available: number }>();
+    mainWhBalances.forEach((b) => {
+      const loc = String(b.locationCode || '').trim().toUpperCase();
+      const p = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
+      const a = Number(b.available || 0);
+      if (!whMap.has(loc)) whMap.set(loc, { totalPhysical: 0, available: 0 });
+      const cur = whMap.get(loc)!;
+      cur.totalPhysical += p;
+      cur.available += a;
+    });
 
-    const available = group.mainAvailable > 0 && group.binAvailable > 0
-      ? Math.max(group.mainAvailable, group.binAvailable)
-      : group.mainAvailable + group.binAvailable;
-
-    totalStock += physical;
-    availableStock += available;
+    for (const [, v] of whMap) {
+      totalStock += v.totalPhysical;
+      availableStock += v.available;
+    }
+  } else if (binBalances.length > 0) {
+    binBalances.forEach((b) => {
+      const p = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
+      const a = Number(b.available || 0);
+      totalStock += p;
+      availableStock += a;
+    });
   }
 
   return { totalStock, availableStock };
@@ -369,10 +365,11 @@ export class ProductsService {
     const seenKeys = new Set<string>();
 
     for (const h of explicitHistory) {
-      const key = `${h.orderCode}_${h.createdAt?.toString()}`;
-      seenKeys.add(key);
+      const orderCode = String(h.orderCode || '').trim().toUpperCase();
+      if (orderCode) seenKeys.add(orderCode);
+
       const whCode = h.warehouseCode && h.warehouseCode !== 'KHO-NVL' ? h.warehouseCode : 'KH006';
-      const whName = h.warehouseName && h.warehouseName !== 'Kho KHO-NVL' && h.warehouseName !== 'KHO-NVL'
+      const whName = h.warehouseName && h.warehouseName !== 'Kho KHO-NVL' && h.warehouseName !== 'KHO-NVL' && h.warehouseName !== 'Kho KH006'
         ? h.warehouseName
         : (whCode === 'KH006' ? 'Kho Thanh Trì' : `Kho ${whCode}`);
 
@@ -393,40 +390,40 @@ export class ProductsService {
     }
 
     for (const d of inboundDetails) {
-      const orderCode = d.inboundReceipt?.poNumber || 'PNK-ORDER';
-      const createdAt = d.inboundReceipt?.orderDate || new Date();
-      const key = `${orderCode}_${createdAt.toString()}`;
-
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key);
-        const qty = Number(d.receivedQty || d.expectedQty || 0);
-        const unitPrice = Number(d.unitPrice || 0);
-        const totalAmount = Number(d.totalLineAmount || (qty * unitPrice));
-        const statusMap: Record<string, string> = {
-          'RECEIVED': 'Đã hoàn thành',
-          'COMPLETED': 'Đã hoàn thành',
-          'APPROVED': 'Đã duyệt',
-          'DRAFT': 'Đơn nháp',
-        };
-        const rawWh = d.warehouseCode || (d.inboundReceipt as any)?.warehouseCode;
-        const whCode = rawWh && rawWh !== 'KHO-NVL' ? rawWh : 'KH006';
-        const whName = whCode === 'KH006' ? 'Kho Thanh Trì' : `Kho ${whCode}`;
-
-        combined.push({
-          id: d.id,
-          orderCode,
-          createdAt,
-          supplierName: d.inboundReceipt?.supplierName || d.inboundReceipt?.supplier?.name || 'Nhà cung cấp',
-          warehouseCode: whCode,
-          warehouseName: whName,
-          quantity: qty,
-          unitPrice,
-          totalAmount,
-          createdBy: d.inboundReceipt?.creatorName || d.inboundReceipt?.approverName || 'Quản lý kho',
-          note: d.inboundReceipt?.description || 'Phiếu nhập kho hàng hóa',
-          status: statusMap[d.inboundReceipt?.status || ''] || 'Đã hoàn thành',
-        });
+      const orderCode = String(d.inboundReceipt?.poNumber || '').trim().toUpperCase();
+      if (orderCode && seenKeys.has(orderCode)) {
+        continue;
       }
+      if (orderCode) seenKeys.add(orderCode);
+
+      const createdAt = d.inboundReceipt?.orderDate || new Date();
+      const qty = Number(d.receivedQty || d.expectedQty || 0);
+      const unitPrice = Number(d.unitPrice || 0);
+      const totalAmount = Number(d.totalLineAmount || (qty * unitPrice));
+      const statusMap: Record<string, string> = {
+        'RECEIVED': 'Đã hoàn thành',
+        'COMPLETED': 'Đã hoàn thành',
+        'APPROVED': 'Đã duyệt',
+        'DRAFT': 'Đơn nháp',
+      };
+      const rawWh = d.warehouseCode || (d.inboundReceipt as any)?.warehouseCode;
+      const whCode = rawWh && rawWh !== 'KHO-NVL' ? rawWh : 'KH006';
+      const whName = whCode === 'KH006' ? 'Kho Thanh Trì' : `Kho ${whCode}`;
+
+      combined.push({
+        id: d.id,
+        orderCode: d.inboundReceipt?.poNumber || 'PNK-ORDER',
+        createdAt,
+        supplierName: d.inboundReceipt?.supplierName || d.inboundReceipt?.supplier?.name || 'Nhà cung cấp',
+        warehouseCode: whCode,
+        warehouseName: whName,
+        quantity: qty,
+        unitPrice,
+        totalAmount,
+        createdBy: d.inboundReceipt?.creatorName || d.inboundReceipt?.approverName || 'Quản lý kho',
+        note: d.inboundReceipt?.description || 'Phiếu nhập kho hàng hóa',
+        status: statusMap[d.inboundReceipt?.status || ''] || 'Đã hoàn thành',
+      });
     }
 
     // Sort by date descending

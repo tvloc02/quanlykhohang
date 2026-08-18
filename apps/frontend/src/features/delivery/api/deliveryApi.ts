@@ -25,6 +25,11 @@ export type TransferOrder = {
   sourceWarehouse: string;
   destinationWarehouse: string;
   scheduledDate?: string | null;
+  dispatchDate?: string | null;
+  receiveDate?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  vehiclePlate?: string | null;
   status: TransferOrderStatus;
   note?: string | null;
   createdBy?: string | null;
@@ -42,6 +47,11 @@ export type CreateTransferOrderInput = {
   sourceWarehouse: string;
   destinationWarehouse: string;
   scheduledDate?: string;
+  dispatchDate?: string;
+  receiveDate?: string;
+  driverName?: string;
+  driverPhone?: string;
+  vehiclePlate?: string;
   status?: TransferOrderStatus;
   note?: string;
   createdBy?: string;

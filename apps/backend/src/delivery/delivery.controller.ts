@@ -6,8 +6,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 
 @Controller('delivery/transfer-orders')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin', 'manager', 'staff')
+@UseGuards(JwtAuthGuard)
 export class DeliveryController {
   constructor(private readonly service: DeliveryService) {}
 

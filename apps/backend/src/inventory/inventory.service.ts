@@ -40,6 +40,11 @@ export class InventoryService {
     return this.balanceRepo.save(balance);
   }
 
+  async clearAllInventory() {
+    await this.balanceRepo.clear();
+    return { success: true, message: 'Cleared all stock balances' };
+  }
+
   async findAll(user?: any) {
     const whereClause: any = {};
     if (user?.role === 'supplier' && user?.supplierId) {

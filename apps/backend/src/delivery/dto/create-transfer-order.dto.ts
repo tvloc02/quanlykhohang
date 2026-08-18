@@ -15,6 +15,11 @@ export class CreateTransferOrderDto {
   sourceWarehouse: string;
   destinationWarehouse: string;
   scheduledDate?: string;
+  dispatchDate?: string;
+  receiveDate?: string;
+  driverName?: string;
+  driverPhone?: string;
+  vehiclePlate?: string;
   status?: TransferOrderStatus;
   note?: string;
   createdBy?: string;

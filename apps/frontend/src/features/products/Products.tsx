@@ -495,35 +495,36 @@ async function handleFileUploadToCloudinary(file: File): Promise<string> {
 
 function calculateFrontendStock(balances: Array<{ locationCode: string; totalPhysical?: number; available?: number }>): number {
   if (!balances || balances.length === 0) return 0;
-  const warehouseGroups = new Map<string, { mainPhysical: number; binPhysical: number }>();
 
-  for (const b of balances) {
+  const mainWhBalances = balances.filter((b) => {
     const loc = String(b.locationCode || '').trim();
-    if (!loc) continue;
-    const physical = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
-    const parts = loc.split(/[-_/]/);
-    const baseCode = parts[0] ? parts[0].toUpperCase() : loc.toUpperCase();
-    const isMainWhRecord = loc.toUpperCase() === baseCode;
+    return loc && !loc.includes('-R0') && !loc.includes('-S0') && !loc.includes('-C') && !loc.toUpperCase().startsWith('ZONE-');
+  });
 
-    if (!warehouseGroups.has(baseCode)) {
-      warehouseGroups.set(baseCode, { mainPhysical: 0, binPhysical: 0 });
-    }
-    const group = warehouseGroups.get(baseCode)!;
-    if (isMainWhRecord) {
-      group.mainPhysical += physical;
-    } else {
-      group.binPhysical += physical;
-    }
-  }
+  const binBalances = balances.filter((b) => {
+    const loc = String(b.locationCode || '').trim();
+    return loc && (loc.includes('-R0') || loc.includes('-S0') || loc.includes('-C') || loc.toUpperCase().startsWith('ZONE-'));
+  });
 
   let total = 0;
-  for (const [, group] of warehouseGroups) {
-    if (group.mainPhysical > 0 && group.binPhysical > 0) {
-      total += Math.max(group.mainPhysical, group.binPhysical);
-    } else {
-      total += group.mainPhysical + group.binPhysical;
+  if (mainWhBalances.length > 0) {
+    const whMap = new Map<string, number>();
+    mainWhBalances.forEach((b) => {
+      const loc = String(b.locationCode || '').trim().toUpperCase();
+      const p = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
+      if (!whMap.has(loc)) whMap.set(loc, 0);
+      whMap.set(loc, whMap.get(loc)! + p);
+    });
+    for (const [, p] of whMap) {
+      total += p;
     }
+  } else if (binBalances.length > 0) {
+    binBalances.forEach((b) => {
+      const p = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
+      total += p;
+    });
   }
+
   return total;
 }
 
@@ -915,14 +916,21 @@ export default function Products() {
       const name = String(wh.name || '').trim().toLowerCase();
       const id = String(wh.id || '').trim().toLowerCase();
 
-      // 1. Sum up all balances matching this warehouse (exact or bin prefix)
+      // 1. Sum up all balances matching this warehouse (exact, prefix, or bin codes)
+      const defaultWhLower = String(product.defaultWarehouse || '').trim().toLowerCase();
       const matchedBalances = stockBalances.filter((b) => {
         const lc = String(b.locationCode || '').trim().toLowerCase();
-        return (
-          (code && (lc === code || lc.startsWith(code + '-') || lc.startsWith(code + '_') || lc.startsWith(code + '/'))) ||
-          (name && (lc === name || lc.startsWith(name + '-') || lc.startsWith(name + '_') || lc.startsWith(name + '/'))) ||
-          (id && (lc === id || lc.startsWith(id + '-') || lc.startsWith(id + '_') || lc.startsWith(id + '/')))
-        );
+        if (!lc) return false;
+        if (code && (lc === code || lc.startsWith(code + '-') || lc.startsWith(code + '_') || lc.startsWith(code + '/'))) return true;
+        if (name && (lc === name || lc.startsWith(name + '-') || lc.startsWith(name + '_') || lc.startsWith(name + '/'))) return true;
+        if (id && (lc === id || lc.startsWith(id + '-') || lc.startsWith(id + '_') || lc.startsWith(id + '/'))) return true;
+
+        // If locationCode is a standalone bin code (e.g. ZONE-A-R01-S04-C01), check if this warehouse is product's default warehouse
+        const isBinCode = lc.includes('-r0') || lc.includes('-s0') || lc.includes('-c') || lc.startsWith('zone-');
+        if (isBinCode && defaultWhLower && (code === defaultWhLower || name === defaultWhLower || id === defaultWhLower)) {
+          return true;
+        }
+        return false;
       });
 
       let stockForThisWh = 0;
