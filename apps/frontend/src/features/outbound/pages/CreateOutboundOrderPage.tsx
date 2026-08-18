@@ -23,10 +23,16 @@ import {
   Warehouse as WarehouseIcon,
   RotateCcw,
   Search,
+  Layers,
+  MapPin,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
+import { getStoredWarehouses, mergeStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
+
+
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -39,7 +45,50 @@ export interface ProductOption {
   salePrice?: number;
   wholesalePrice?: number;
   price?: number;
+  totalStock?: number;
+  totalPhysical?: number;
+  stockQty?: number;
+  stockBalances?: Array<{
+    id?: string;
+    locationCode: string;
+    totalPhysical?: number;
+    allocated?: number;
+    available?: number;
+  }>;
 }
+
+export function getProductWarehouseStock(p?: ProductOption | null, whCode?: string): number {
+  if (!p) return 0;
+  const targetCode = (whCode || '').trim().toLowerCase();
+
+  if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
+    if (targetCode) {
+      const match = p.stockBalances.find((b) => {
+        const bCode = (b.locationCode || '').trim().toLowerCase();
+        if (bCode === targetCode) return true;
+        if (
+          (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
+          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl')
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      if (match) {
+        if (match.available !== undefined && match.available !== null) {
+          return Number(match.available);
+        }
+        if (match.totalPhysical !== undefined && match.totalPhysical !== null) {
+          return Number(match.totalPhysical);
+        }
+      }
+    }
+  }
+
+  return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
+}
+
 
 export interface CustomerOption {
   id: string;
@@ -67,6 +116,9 @@ export interface FormDetailRow {
   productId: string;
   productSku: string;
   productName: string;
+  warehouseCode?: string;
+  locationBin?: string;
+  assignedBins?: string[];
   unit: string;
   qty: number;
   price: number;
@@ -77,6 +129,32 @@ export interface FormDetailRow {
   totalAmount: number;
   note: string;
 }
+
+export function getAvailableBinsForProduct(row?: FormDetailRow | null, branchCode?: string): string[] {
+  const binsSet = new Set<string>();
+
+  if (row?.locationBin) binsSet.add(row.locationBin);
+  if (Array.isArray(row?.assignedBins)) {
+    row.assignedBins.forEach((b) => b && binsSet.add(b));
+  }
+
+  const defaultBins = [
+    'Kệ A1-01',
+    'Kệ A1-02',
+    'Kệ A2-01',
+    'Kệ B1-01',
+    'Kệ B1-02',
+    'Kệ B2-01',
+    'Kệ C1-01',
+    'Kệ K01',
+    'Kệ K02',
+    'Kệ K03',
+  ];
+
+  defaultBins.forEach((b) => binsSet.add(b));
+  return Array.from(binsSet);
+}
+
 
 export interface OutboundTab {
   tabId: string;
@@ -135,12 +213,15 @@ function authHeaders() {
   };
 }
 
-function makeEmptyRow(index: number): FormDetailRow {
+function makeEmptyRow(index: number, defaultWhCode = 'KHO-TONG'): FormDetailRow {
   return {
     rowId: `row-${Date.now()}-${index}-${Math.random()}`,
     productId: '',
     productSku: '',
     productName: '',
+    warehouseCode: defaultWhCode,
+    locationBin: 'Kệ A1-01',
+    assignedBins: ['Kệ A1-01'],
     unit: 'Cái',
     qty: 0,
     price: 0,
@@ -219,15 +300,23 @@ export default function CreateOutboundOrderPage({
   const [products, setProducts] = useState<ProductOption[]>(DEFAULT_FALLBACK_PRODUCTS);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseOption[]>(() => getStoredWarehouses());
+
 
   // Toast alert
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Fullscreen state
+  // Fullscreen & Modal state
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [pickBinModalOpen, setPickBinModalOpen] = useState(false);
+  const [activePickBinRowId, setActivePickBinRowId] = useState<string | null>(null);
+
+  const openPickBinModal = (rowId?: string) => {
+    if (rowId) setActivePickBinRowId(rowId);
+    setPickBinModalOpen(true);
+  };
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '', customerCode: '' });
 
   // Dropdown & Quick Search states
@@ -341,6 +430,10 @@ export default function CreateOutboundOrderPage({
               salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
               wholesalePrice: Number(p.wholesalePrice || 0),
               price: Number(p.retailPrice || p.salePrice || p.price || 0),
+              totalStock: Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0),
+              totalPhysical: Number(p.totalPhysical ?? p.totalStock ?? 0),
+              stockQty: Number(p.stockQty ?? p.totalStock ?? 0),
+              stockBalances: Array.isArray(p.stockBalances) ? p.stockBalances : [],
             }));
             setProducts(filterOutDeletedProducts(normalized));
           } else {
@@ -359,7 +452,7 @@ export default function CreateOutboundOrderPage({
         if (whRes && whRes.ok) {
           const whData = await whRes.json();
           const list = Array.isArray(whData) ? whData : whData.data || [];
-          setWarehouses(list);
+          setWarehouses(mergeStoredWarehouses(list, getStoredWarehouses()));
         }
       } catch (err) {
         console.error('Error loading master data:', err);
@@ -614,7 +707,9 @@ export default function CreateOutboundOrderPage({
             productId: r.productId,
             productSku: r.productSku,
             productName: r.productName,
-            warehouseCode: activeTab.branchCode || 'KHO-TONG',
+            warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
+            locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || 'Kệ A1-01',
+            assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : [r.locationBin || 'Kệ A1-01'],
             unit: r.unit,
             qty: Number(r.qty),
             price: Number(r.price),
@@ -644,7 +739,9 @@ export default function CreateOutboundOrderPage({
             productId: r.productId,
             productSku: r.productSku,
             productName: r.productName,
-            warehouseCode: activeTab.branchCode || 'KHO-NVL',
+            warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-NVL',
+            locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || 'Kệ A1-01',
+            assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : [r.locationBin || 'Kệ A1-01'],
             unit: r.unit,
             qty: Number(r.qty),
             price: Number(r.price),
@@ -1055,8 +1152,18 @@ export default function CreateOutboundOrderPage({
               <span>{isDisposal ? 'Kho xuất hủy' : 'Kho xuất hàng'}</span>
             </label>
             <select
-              value={activeTab?.branchCode || 'KHO-TONG'}
-              onChange={(e) => updateActiveTab((t) => ({ ...t, branchCode: e.target.value }))}
+              value={activeTab?.branchCode || (warehouses[0]?.code || 'KHO-TONG')}
+              onChange={(e) => {
+                const newWhCode = e.target.value;
+                updateActiveTab((t) => ({
+                  ...t,
+                  branchCode: newWhCode,
+                  details: t.details.map((d) => ({
+                    ...d,
+                    warehouseCode: d.warehouseCode || newWhCode,
+                  })),
+                }));
+              }}
               className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs"
             >
               {warehouses.length > 0 ? (
@@ -1128,7 +1235,10 @@ export default function CreateOutboundOrderPage({
                             <span className="font-bold text-slate-800">{p.name}</span>
                             <span className="text-[11px] font-semibold text-slate-500">({p.unit || 'Cái'})</span>
                           </div>
-                          <div className="text-right">
+                          <div className="flex items-center gap-3">
+                            <span className={`font-bold px-1.5 py-0.5 rounded text-[11px] ${getProductWarehouseStock(p, activeTab?.branchCode) > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                              Tồn: {getProductWarehouseStock(p, activeTab?.branchCode)}
+                            </span>
                             <span className="font-extrabold text-cyan-900">{getProductPriceForMode(p).toLocaleString('vi-VN')} đ</span>
                           </div>
                         </div>
@@ -1175,7 +1285,10 @@ export default function CreateOutboundOrderPage({
                 <thead className="bg-slate-100 text-slate-800 font-extrabold border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
                   <tr>
                     <th className="p-2 w-10 text-center border-r border-slate-200 bg-slate-100">STT</th>
-                    <th className="p-2 min-w-[240px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
+                    <th className="p-2 min-w-[200px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
+                    <th className="p-2 min-w-[130px] text-center border-r border-slate-200 bg-slate-100">
+                      {isDisposal ? 'KỆ XUẤT HỦY' : 'KỆ LẤY HÀNG'}
+                    </th>
                     <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
                     <th className="p-2 w-20 text-center border-r border-slate-200 bg-slate-100">
                       {isDisposal ? 'SL HỦY' : 'SỐ LƯỢNG'}
@@ -1232,42 +1345,86 @@ export default function CreateOutboundOrderPage({
 
                           {/* Interactive Table Dropdown for this row */}
                           {activeProductDropdownRowId === row.rowId && (
-                            <div className="absolute left-0 top-full z-[100] mt-1 w-[450px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
+                            <div className="absolute left-0 top-full z-[100] mt-1 w-[480px] max-h-64 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
                               <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 sticky top-0 z-10">
-                                <span className="w-1/3 uppercase">Mã hàng</span>
-                                <span className="w-1/2 uppercase">Tên hàng hóa</span>
+                                <span className="w-1/4 uppercase">Mã hàng</span>
+                                <span className="w-1/3 uppercase">Tên hàng hóa</span>
+                                <span className="w-1/5 text-center uppercase">Tồn kho</span>
                                 <span className="w-1/4 text-right uppercase">Giá vốn / Giá</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
                                 {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
                                   <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName || row.productSku).map((p) => (
-                                    <div
-                                      key={p.id}
-                                      onClick={() => {
-                                        updateRow(row.rowId, {
-                                          productId: p.id,
-                                          productSku: p.internalSku,
-                                          productName: p.name,
-                                          unit: p.unit || 'Cái',
-                                          price: getProductPriceForMode(p),
-                                          qty: row.qty === 0 ? 1 : row.qty,
-                                        });
-                                        setActiveProductDropdownRowId(null);
-                                      }}
-                                      className="flex items-center px-3 py-2 text-xs hover:bg-cyan-50 cursor-pointer text-slate-700 transition"
-                                    >
-                                      <span className="w-1/3 font-extrabold text-cyan-800">{p.internalSku}</span>
-                                      <span className="w-1/2 font-bold text-slate-800 truncate pr-1">{p.name}</span>
-                                      <span className="w-1/4 text-right font-extrabold text-slate-900">
-                                        {getProductPriceForMode(p).toLocaleString('vi-VN')} đ
-                                      </span>
-                                    </div>
-                                  ))
+                                  getFilteredProductsForRow(row.productName || row.productSku).map((p) => {
+                                    const rowWhCode = row.warehouseCode || activeTab?.branchCode || warehouses[0]?.code || 'KHO-TONG';
+                                    const whStock = getProductWarehouseStock(p, rowWhCode);
+                                    return (
+                                      <div
+                                        key={p.id}
+                                        onClick={() => {
+                                          updateRow(row.rowId, {
+                                            productId: p.id,
+                                            productSku: p.internalSku,
+                                            productName: p.name,
+                                            unit: p.unit || 'Cái',
+                                            price: getProductPriceForMode(p),
+                                            qty: row.qty === 0 ? 1 : row.qty,
+                                            warehouseCode: rowWhCode,
+                                          });
+                                          setActiveProductDropdownRowId(null);
+                                        }}
+                                        className="flex items-center px-3 py-2 text-xs hover:bg-cyan-50 cursor-pointer text-slate-700 transition"
+                                      >
+                                        <span className="w-1/4 font-extrabold text-cyan-800">{p.internalSku}</span>
+                                        <span className="w-1/3 font-bold text-slate-800 truncate pr-1">{p.name}</span>
+                                        <span className={`w-1/5 text-center font-bold px-1.5 py-0.5 rounded text-[11px] ${whStock > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                                          Tồn: {whStock}
+                                        </span>
+                                        <span className="w-1/4 text-right font-extrabold text-slate-900">
+                                          {getProductPriceForMode(p).toLocaleString('vi-VN')} đ
+                                        </span>
+                                      </div>
+                                    );
+                                  })
                                 )}
                               </div>
                             </div>
+                          )}
+                        </td>
+
+                        {/* KỆ XUẤT HÀNG / KỆ XUẤT HỦY */}
+                        <td className="p-1.5 border-r border-slate-200 text-center">
+                          {row.assignedBins && row.assignedBins.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
+                            >
+                              <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{row.assignedBins.join(', ')}</span>
+                            </button>
+                          ) : row.locationBin ? (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
+                            >
+                              <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{row.locationBin}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-white hover:bg-cyan-50 text-cyan-700 border border-cyan-400 font-bold px-2 py-1 rounded-lg text-xs transition cursor-pointer"
+                              title="Bấm mở sơ đồ chọn vị trí kệ lấy hàng"
+                            >
+                              <MapPin className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                              <span>+ Chọn kệ lấy</span>
+                            </button>
                           )}
                         </td>
 
@@ -1686,6 +1843,23 @@ export default function CreateOutboundOrderPage({
           </div>
         )}
       </div>
+      {/* ═══ SMART SLOTTING VISUAL MAP MODAL ═══ */}
+      <SmartSlottingGridModal
+        isOpen={pickBinModalOpen}
+        onClose={() => setPickBinModalOpen(false)}
+        mode="OUTBOUND_TRANSFER"
+        warehouseCode={activeTab?.branchCode || 'KHO-TONG'}
+        items={activeTab?.details || []}
+        targetRowId={activePickBinRowId}
+        products={products}
+        onConfirmAll={(updatedRows) => {
+          updateActiveTab((t) => ({
+            ...t,
+            details: updatedRows,
+          }));
+          setToast({ message: 'Đã cập nhật vị trí kệ xuất hàng!', type: 'success' });
+        }}
+      />
     </div>
   );
 

@@ -36,7 +36,8 @@ import {
 import { deliveryApi, type TransferOrder, type TransferOrderItem } from '../api/deliveryApi';
 import InternalShippingNoteModal from '../components/InternalShippingNoteModal';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
-import { getStoredWarehouses, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
+
 
 type Toast = {
   type: 'success' | 'error';
@@ -182,7 +183,8 @@ export default function TransferRequestsPage() {
 
         if (whRes && whRes.ok) {
           const list = await whRes.json();
-          setWarehouses(Array.isArray(list) ? list : list.data || []);
+          const rawList = Array.isArray(list) ? list : list.data || [];
+          setWarehouses(mergeStoredWarehouses(rawList, getStoredWarehouses()));
         }
         if (prodRes && prodRes.ok) {
           const plist = await prodRes.json();

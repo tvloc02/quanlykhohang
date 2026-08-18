@@ -38,6 +38,7 @@ import MainLayout from '../../../shared/components/MainLayout';
 import { getStoredShippers, type Shipper } from '../services/shipperService';
 import QuickAddShipperModal from '../components/QuickAddShipperModal';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
+import { getStoredWarehouses, mergeStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -171,12 +172,12 @@ export function getProductWarehouseStock(p: ProductOption, whCode?: string): num
           return Number(match.totalPhysical);
         }
       }
-      return 0;
     }
   }
 
-  return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
+  return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
 }
+
 
 function generateTransferCode() {
   const now = new Date();
@@ -263,8 +264,9 @@ export default function CreateTransferOrderPage({
 
   // Master Data
   const [products, setProducts] = useState<ProductOption[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseOption[]>(() => getStoredWarehouses());
   const [users, setUsers] = useState<UserOption[]>([]);
+
 
   // Toast alert
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -552,7 +554,8 @@ export default function CreateTransferOrderPage({
 
         if (whRes && whRes.ok) {
           const whData = await whRes.json();
-          const list = Array.isArray(whData) ? whData : whData.data || [];
+          const rawList = Array.isArray(whData) ? whData : whData.data || [];
+          const list = mergeStoredWarehouses(rawList, getStoredWarehouses());
           setWarehouses(list);
           if (list.length > 0 && !targetEditData) {
             const firstWh = list[0]?.code || list[0]?.id || 'KH002';
@@ -570,6 +573,7 @@ export default function CreateTransferOrderPage({
             );
           }
         }
+
       } catch (err) {
         console.error('Lỗi khi tải master data phiếu điều chuyển:', err);
       }

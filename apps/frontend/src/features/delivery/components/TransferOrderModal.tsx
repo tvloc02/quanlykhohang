@@ -2,6 +2,8 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Trash2, X } from 'lucide-react';
 import { deliveryApi, type TransferOrderStatus } from '../api/deliveryApi';
+import { getStoredWarehouses, mergeStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+
 
 type TransferRequestLine = {
   id: string;
@@ -77,7 +79,8 @@ export default function TransferOrderModal({
   setToast,
   request,
 }: TransferOrderModalProps) {
-  const [warehouses, setWarehouses] = React.useState<Warehouse[]>([]);
+  const [warehouses, setWarehouses] = React.useState<Warehouse[]>(() => getStoredWarehouses());
+
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [transferNo, setTransferNo] = React.useState('');
   const [sourceWarehouse, setSourceWarehouse] = React.useState('');
@@ -142,9 +145,8 @@ export default function TransferOrderModal({
         });
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data)) {
-            setWarehouses(data);
-          }
+          const rawList = Array.isArray(data) ? data : data.data || [];
+          setWarehouses(mergeStoredWarehouses(rawList, getStoredWarehouses()));
         }
       } catch (err) {
         console.error('Lỗi tải danh sách kho', err);
