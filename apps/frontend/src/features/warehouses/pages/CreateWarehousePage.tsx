@@ -198,7 +198,7 @@ function normalizeBinKey(binCode: string): string {
         const map = new Map<string, { totalPhysical: number; allocated: number; productsCount: number }>();
         const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
 
-        // 1. Direct real stock balances from CSDL
+        // Direct real physical stock balances from CSDL (Single Source of Truth)
         const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
         if (res && res.ok) {
           const balances: any[] = await res.json();
@@ -219,51 +219,6 @@ function normalizeBinKey(binCode: string): string {
           });
         }
 
-        // 2. Completed stock-in receipts / orders
-        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
-        if (stockInRes && stockInRes.ok) {
-          const sOrders: any[] = await stockInRes.json();
-          sOrders.forEach((so) => {
-            const statusStr = String(so.status || '').toUpperCase();
-            if (['COMPLETED', 'POSTED', 'RECEIVED', 'DONE', 'APPROVED'].includes(statusStr)) {
-              (so.details || []).forEach((d: any) => {
-                const assigned = Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []);
-                assigned.forEach((bin: string) => {
-                  if (bin && bin.length > 2) {
-                    const info = {
-                      totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
-                      allocated: 0,
-                      productsCount: 1,
-                    };
-                    map.set(bin, info);
-                    const norm = normalizeBinKey(bin);
-                    if (norm) map.set(norm, info);
-                  }
-                });
-                const noteText = d.note || '';
-                if (noteText.includes('[Vị trí Ô:')) {
-                  const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                  if (match && match[1]) {
-                    match[1].split(',').forEach((code: string) => {
-                      const bin = code.trim();
-                      if (bin) {
-                        const info = {
-                          totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
-                          allocated: 0,
-                          productsCount: 1,
-                        };
-                        map.set(bin, info);
-                        const norm = normalizeBinKey(bin);
-                        if (norm) map.set(norm, info);
-                      }
-                    });
-                  }
-                }
-              });
-            }
-          });
-        }
-
         if (isMounted) setOccupiedBinsMap(map);
       } catch (err) {
         console.error('Could not fetch stock balance bins', err);
@@ -275,8 +230,17 @@ function normalizeBinKey(binCode: string): string {
     };
   }, []);
 
-  const handleClearAllGoods = () => {
+  const handleClearAllGoods = async () => {
     if (window.confirm('Bạn có chắc chắn muốn giải phóng toàn bộ ô kệ và xóa hết hàng hóa trong kho này về trạng thái KỆ TRỐNG?')) {
+      try {
+        const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
+        await fetch(`${API_BASE_URL}/inventory/clear-all`, {
+          method: 'POST',
+          headers,
+        }).catch(() => null);
+      } catch (e) {
+        console.error('Error clearing inventory balances:', e);
+      }
       setOccupiedBinsMap(new Map());
       sessionStorage.clear();
       localStorage.removeItem('cleared_warehouse_goods_global');
@@ -284,7 +248,7 @@ function normalizeBinKey(binCode: string): string {
         localStorage.removeItem(`cleared_warehouse_goods_${code}`);
       }
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
-      setSuccess('Đã xóa toàn bộ hàng hóa trong kho. Tất cả ô kệ đã trở về trạng thái KỆ TRỐNG!');
+      setSuccess('Đã xóa toàn bộ hàng hóa trong kho CSDL. Tất cả ô kệ đã trở về trạng thái KỆ TRỐNG!');
     }
   };
 

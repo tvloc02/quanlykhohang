@@ -53,23 +53,36 @@ export class DeliveryService {
     const items = normalizeItems(dto.items);
     const { itemCount, totalQuantity } = summarizeItems(items);
 
-    if (!dto.sourceWarehouse?.trim()) {
-      throw new BadRequestException('Source warehouse is required');
-    }
-    if (!dto.destinationWarehouse?.trim()) {
-      throw new BadRequestException('Destination warehouse is required');
-    }
-    if (dto.sourceWarehouse.trim() === dto.destinationWarehouse.trim()) {
-      throw new BadRequestException('Source and destination warehouses must be different');
+    const sourceWarehouse = (
+      dto.sourceWarehouse ||
+      (dto as any).sourceWarehouseCode ||
+      (dto as any).fromWarehouse ||
+      'KH006'
+    ).trim();
+
+    let destinationWarehouse = (
+      dto.destinationWarehouse ||
+      (dto as any).destinationWarehouseCode ||
+      (dto as any).toWarehouse ||
+      'KH002'
+    ).trim();
+
+    if (sourceWarehouse === destinationWarehouse) {
+      destinationWarehouse = sourceWarehouse === 'KH006' ? 'KH002' : 'KH006';
     }
 
     const entity = this.transferOrderRepo.create({
       transferNo,
       requestId: dto.requestId?.trim() || undefined,
       requestNumber: dto.requestNumber?.trim() || undefined,
-      sourceWarehouse: dto.sourceWarehouse.trim(),
-      destinationWarehouse: dto.destinationWarehouse.trim(),
+      sourceWarehouse,
+      destinationWarehouse,
       scheduledDate: parseDate(dto.scheduledDate),
+      dispatchDate: parseDate(dto.dispatchDate || dto.scheduledDate),
+      receiveDate: parseDate(dto.receiveDate),
+      driverName: dto.driverName?.trim() || undefined,
+      driverPhone: dto.driverPhone?.trim() || undefined,
+      vehiclePlate: dto.vehiclePlate?.trim() || undefined,
       status: dto.status || 'DRAFT',
       note: dto.note?.trim() || undefined,
       createdBy: dto.createdBy?.trim() || undefined,
@@ -94,11 +107,21 @@ export class DeliveryService {
       order.transferNo = dto.transferNo.trim();
     }
 
-    if (dto.requestId !== undefined) order.requestId = dto.requestId?.trim() || undefined;
-    if (dto.requestNumber !== undefined) order.requestNumber = dto.requestNumber?.trim() || undefined;
-    if (dto.sourceWarehouse !== undefined) order.sourceWarehouse = dto.sourceWarehouse.trim();
-    if (dto.destinationWarehouse !== undefined) order.destinationWarehouse = dto.destinationWarehouse.trim();
+    const rawSource = dto.sourceWarehouse || (dto as any).sourceWarehouseCode || (dto as any).fromWarehouse;
+    if (rawSource !== undefined && rawSource !== null) {
+      order.sourceWarehouse = String(rawSource).trim() || 'KH006';
+    }
+
+    const rawDest = dto.destinationWarehouse || (dto as any).destinationWarehouseCode || (dto as any).toWarehouse;
+    if (rawDest !== undefined && rawDest !== null) {
+      order.destinationWarehouse = String(rawDest).trim() || 'KH002';
+    }
     if (dto.scheduledDate !== undefined) order.scheduledDate = parseDate(dto.scheduledDate);
+    if (dto.dispatchDate !== undefined) order.dispatchDate = parseDate(dto.dispatchDate);
+    if (dto.receiveDate !== undefined) order.receiveDate = parseDate(dto.receiveDate);
+    if (dto.driverName !== undefined) order.driverName = dto.driverName.trim() || undefined;
+    if (dto.driverPhone !== undefined) order.driverPhone = dto.driverPhone.trim() || undefined;
+    if (dto.vehiclePlate !== undefined) order.vehiclePlate = dto.vehiclePlate.trim() || undefined;
     if (dto.status !== undefined) order.status = dto.status;
     if (dto.note !== undefined) order.note = dto.note.trim() || undefined;
     if (dto.createdBy !== undefined) order.createdBy = dto.createdBy.trim() || undefined;
@@ -157,6 +180,8 @@ export class DeliveryService {
     return {
       ...order,
       scheduledDate: order.scheduledDate ? order.scheduledDate.toISOString() : null,
+      dispatchDate: order.dispatchDate ? order.dispatchDate.toISOString() : null,
+      receiveDate: order.receiveDate ? order.receiveDate.toISOString() : null,
       createdAt: order.createdAt ? order.createdAt.toISOString() : null,
       updatedAt: order.updatedAt ? order.updatedAt.toISOString() : null,
       items: order.items || [],

@@ -842,7 +842,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         const occMap = new Map<string, number>();
         const headers = authHeaders();
 
-        // 1. Direct real stock_balances from CSDL
+        // Direct real stock_balances from CSDL (Single Source of Truth)
         const balRes = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
         if (balRes && balRes.ok) {
           const balances: any[] = await balRes.json();
@@ -853,43 +853,6 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
               occMap.set(lc, physical);
               const norm = normalizeBinKey(lc);
               if (norm) occMap.set(norm, physical);
-            }
-          });
-        }
-
-        // 2. Real completed / posted stock-in orders
-        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
-        if (stockInRes && stockInRes.ok) {
-          const sOrders: any[] = await stockInRes.json();
-          sOrders.forEach((so) => {
-            const statusStr = String(so.status || '').toUpperCase();
-            if (['COMPLETED', 'POSTED', 'RECEIVED', 'DONE', 'APPROVED'].includes(statusStr)) {
-              (so.details || []).forEach((d: any) => {
-                const assigned = Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []);
-                assigned.forEach((bin: string) => {
-                  if (bin && bin.length > 2) {
-                    const qty = Number(d.receivedQty || d.expectedQty || 1);
-                    occMap.set(bin, qty);
-                    const norm = normalizeBinKey(bin);
-                    if (norm) occMap.set(norm, qty);
-                  }
-                });
-                const noteText = d.note || '';
-                if (noteText.includes('[Vị trí Ô:')) {
-                  const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                  if (match && match[1]) {
-                    match[1].split(',').forEach((code: string) => {
-                      const bin = code.trim();
-                      if (bin) {
-                        const qty = Number(d.receivedQty || d.expectedQty || 1);
-                        occMap.set(bin, qty);
-                        const norm = normalizeBinKey(bin);
-                        if (norm) occMap.set(norm, qty);
-                      }
-                    });
-                  }
-                }
-              });
             }
           });
         }

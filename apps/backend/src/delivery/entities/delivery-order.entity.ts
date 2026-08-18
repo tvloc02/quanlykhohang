@@ -38,6 +38,21 @@ export class TransferOrder extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   note?: string;
 
+  @Column({ type: 'datetime', nullable: true })
+  dispatchDate?: Date;
+
+  @Column({ type: 'datetime', nullable: true })
+  receiveDate?: Date;
+
+  @Column({ length: 150, nullable: true })
+  driverName?: string;
+
+  @Column({ length: 50, nullable: true })
+  driverPhone?: string;
+
+  @Column({ length: 50, nullable: true })
+  vehiclePlate?: string;
+
   @Column({ length: 150, nullable: true })
   createdBy?: string;
 

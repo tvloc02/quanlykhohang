@@ -866,30 +866,50 @@ export class InboundService {
       }
 
       const qty = Number(detail.receivedQty || detail.expectedQty) || 0;
-      const targetLocations = specificBins.length > 0 ? specificBins : [mainWhCode];
-      const qtyPerBin = Math.max(1, Math.floor(qty / targetLocations.length));
 
-      for (const locCode of targetLocations) {
-        let [balance] = await this.dataSource.query(
+      // 1. Always record/update stock balance for main warehouse
+      if (mainWhCode) {
+        let [whBal] = await this.dataSource.query(
           `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
-          [productId, locCode],
+          [productId, mainWhCode],
         );
-
-        if (!balance) {
+        if (!whBal) {
           const insertRes = await this.dataSource.query(
             `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
-            [productId, locCode],
+            [productId, mainWhCode],
           );
-          balance = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
+          whBal = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
         }
-
-        const newPhysical = Number(balance.totalPhysical) + qtyPerBin;
-        const newAvailable = Math.max(0, newPhysical - Number(balance.allocated));
-
+        const newPhysical = Number(whBal.totalPhysical) + qty;
+        const newAvailable = Math.max(0, newPhysical - Number(whBal.allocated));
         await this.dataSource.query(
           `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
-          [newPhysical, newAvailable, balance.id],
+          [newPhysical, newAvailable, whBal.id],
         );
+      }
+
+      // 2. Also record specific bin locations if specified
+      if (specificBins.length > 0) {
+        const qtyPerBin = Math.max(1, Math.floor(qty / specificBins.length));
+        for (const locCode of specificBins) {
+          let [binBal] = await this.dataSource.query(
+            `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
+            [productId, locCode],
+          );
+          if (!binBal) {
+            const insertRes = await this.dataSource.query(
+              `INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES (?, ?, 0, 0, 0)`,
+              [productId, locCode],
+            );
+            binBal = { id: insertRes.insertId, totalPhysical: 0, allocated: 0, available: 0 };
+          }
+          const newBinPhysical = Number(binBal.totalPhysical) + qtyPerBin;
+          const newBinAvailable = Math.max(0, newBinPhysical - Number(binBal.allocated));
+          await this.dataSource.query(
+            `UPDATE stock_balances SET totalPhysical = ?, available = ? WHERE id = ?`,
+            [newBinPhysical, newBinAvailable, binBal.id],
+          );
+        }
       }
 
 
