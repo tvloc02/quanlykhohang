@@ -324,10 +324,14 @@ export default function CreateTransferOrderPage({
           destinationWarehouseCode: targetEditData.destinationWarehouse || 'KHO-CN-HCM',
           assignedStaffEmail: targetEditData.createdBy || currentStaffEmail,
           orderDate: targetEditData.scheduledDate
-            ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19)
+            ? (new Date(targetEditData.scheduledDate).toISOString().slice(0, 19))
             : formatISOWithSeconds(),
-          dispatchDate: targetEditData.dispatchDate || formatISOWithSeconds(),
-          receiveDate: targetEditData.receiveDate || formatISOWithSeconds(new Date(Date.now() + 86400000)),
+          dispatchDate: targetEditData.dispatchDate
+            ? (new Date(targetEditData.dispatchDate).toISOString().slice(0, 19))
+            : (targetEditData.scheduledDate ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19) : formatISOWithSeconds()),
+          receiveDate: targetEditData.receiveDate
+            ? (new Date(targetEditData.receiveDate).toISOString().slice(0, 19))
+            : formatISOWithSeconds(new Date(Date.now() + 86400000)),
           driverName: targetEditData.driverName || '',
           driverPhone: targetEditData.driverPhone || '',
           vehiclePlate: targetEditData.vehiclePlate || '',
