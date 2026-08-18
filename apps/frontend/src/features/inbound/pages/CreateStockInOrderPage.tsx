@@ -170,9 +170,93 @@ function formatNumberWithCommas(value: number | string | undefined | null): stri
 // Parse string formatted with commas back to number (e.g. "1,000.5" -> 1000.5)
 function parseFormattedNumber(valueStr: string): number {
   if (!valueStr) return 0;
-  const cleanStr = valueStr.replace(/,/g, '');
+  const cleanStr = String(valueStr).replace(/,/g, '');
   const num = parseFloat(cleanStr);
   return Number.isNaN(num) ? 0 : num;
+}
+
+interface FormattedNumberInputProps {
+  value: number | undefined | null;
+  disabled?: boolean;
+  onChange: (val: number) => void;
+  placeholder?: string;
+  className?: string;
+}
+
+function FormattedNumberInput({
+  value,
+  disabled,
+  onChange,
+  placeholder = '0',
+  className,
+}: FormattedNumberInputProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const [localStr, setLocalStr] = useState<string>('');
+
+  useEffect(() => {
+    if (!isFocused) {
+      if (value === undefined || value === null || value === 0) {
+        setLocalStr('');
+      } else {
+        setLocalStr(formatNumberWithCommas(value));
+      }
+    }
+  }, [value, isFocused]);
+
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    setIsFocused(true);
+    if (value === undefined || value === null || value === 0) {
+      setLocalStr('');
+    } else {
+      setLocalStr(String(value));
+    }
+    e.target.select();
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    if (!localStr.trim()) {
+      onChange(0);
+      setLocalStr('');
+      return;
+    }
+    const cleanStr = localStr.replace(/,/g, '');
+    const parsed = parseFloat(cleanStr);
+    if (Number.isNaN(parsed) || parsed === 0) {
+      onChange(0);
+      setLocalStr('');
+    } else {
+      onChange(parsed);
+      setLocalStr(formatNumberWithCommas(parsed));
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    const cleaned = raw.replace(/[^0-9.]/g, '');
+    setLocalStr(cleaned);
+
+    if (!cleaned) {
+      onChange(0);
+      return;
+    }
+
+    const parsed = parseFloat(cleaned);
+    onChange(Number.isNaN(parsed) ? 0 : parsed);
+  };
+
+  return (
+    <input
+      type="text"
+      disabled={disabled}
+      value={isFocused ? localStr : (value && value !== 0 ? formatNumberWithCommas(value) : '')}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      onChange={handleChange}
+      placeholder={placeholder}
+      className={className}
+    />
+  );
 }
 
 export interface InboundTab {
@@ -1946,6 +2030,7 @@ export default function CreateStockInOrderPage({
   const [searchParams] = useSearchParams();
   const actionParam = searchParams.get('action');
   const editId = searchParams.get('id') || searchParams.get('orderId');
+  const sourcePoIdParam = searchParams.get('sourcePurchaseOrderId') || searchParams.get('poId');
 
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
@@ -2163,24 +2248,41 @@ export default function CreateStockInOrderPage({
 
   // Hydrate order details when editId or orderId is in URL query parameters
   useEffect(() => {
-    if (!editId) return;
+    const targetId = editId || sourcePoIdParam;
+    if (!targetId) return;
 
     async function loadExistingOrder() {
       try {
         let orderData: any = null;
 
-        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${editId}`, {
-          headers: authHeaders(),
-        }).catch(() => null);
-
-        if (stockInRes && stockInRes.ok) {
-          orderData = await stockInRes.json();
-        } else {
-          const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${editId}`, {
+        if (sourcePoIdParam && !editId) {
+          const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${sourcePoIdParam}`, {
             headers: authHeaders(),
           }).catch(() => null);
           if (poRes && poRes.ok) {
             orderData = await poRes.json();
+          } else {
+            const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${sourcePoIdParam}`, {
+              headers: authHeaders(),
+            }).catch(() => null);
+            if (stockInRes && stockInRes.ok) {
+              orderData = await stockInRes.json();
+            }
+          }
+        } else {
+          const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${targetId}`, {
+            headers: authHeaders(),
+          }).catch(() => null);
+
+          if (stockInRes && stockInRes.ok) {
+            orderData = await stockInRes.json();
+          } else {
+            const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${targetId}`, {
+              headers: authHeaders(),
+            }).catch(() => null);
+            if (poRes && poRes.ok) {
+              orderData = await poRes.json();
+            }
           }
         }
 
@@ -3333,14 +3435,10 @@ export default function CreateStockInOrderPage({
 
                         {/* ĐƠN GIÁ (đ) với tự động thêm dấu phẩy ngàn */}
                         <td className="p-1 border-r border-slate-200">
-                          <input
-                            type="text"
+                          <FormattedNumberInput
                             disabled={isReadOnly}
-                            value={row.price === 0 ? '' : formatNumberWithCommas(row.price)}
-                            onChange={(e) => {
-                              const parsed = parseFormattedNumber(e.target.value);
-                              updateRow(row.rowId, { price: parsed });
-                            }}
+                            value={row.price}
+                            onChange={(parsed) => updateRow(row.rowId, { price: parsed })}
                             placeholder="0"
                             className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-black text-slate-900 outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
@@ -3734,18 +3832,10 @@ export default function CreateStockInOrderPage({
                   </button>
                 </div>
                 <div className="relative flex items-center">
-                  <input
-                    type="text"
+                  <FormattedNumberInput
                     disabled={isReadOnly}
-                    value={
-                      activeTab?.amountPaid === undefined || activeTab?.amountPaid === null
-                        ? formatNumberWithCommas(grandTotal)
-                        : formatNumberWithCommas(activeTab.amountPaid)
-                    }
-                    onChange={(e) => {
-                      const val = parseFormattedNumber(e.target.value);
-                      updateActiveTab((t) => ({ ...t, amountPaid: val }));
-                    }}
+                    value={activeTab?.amountPaid}
+                    onChange={(val) => updateActiveTab((t) => ({ ...t, amountPaid: val }))}
                     placeholder="0"
                     className="w-full h-9 pl-3 pr-7 text-right rounded-xl border-2 border-emerald-500 bg-white font-black text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed shadow-2xs"
                   />
