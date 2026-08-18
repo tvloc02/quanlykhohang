@@ -346,10 +346,21 @@ export class StockInOrdersService {
   }
 
   private async findOrderEntity(id: string) {
-    const order = await this.orderRepo.findOne({
+    let order = await this.orderRepo.findOne({
       where: { id },
       relations: ['sourcePurchaseOrder', 'sourcePurchaseOrder.supplier', 'details', 'details.product'],
     });
+
+    if (!order) {
+      order = await this.orderRepo.findOne({
+        where: [
+          { orderCode: id },
+          { sourcePurchaseOrder: { id } },
+          { sourcePurchaseOrderNo: id },
+        ],
+        relations: ['sourcePurchaseOrder', 'sourcePurchaseOrder.supplier', 'details', 'details.product'],
+      });
+    }
 
     if (!order) {
       throw new NotFoundException('Stock in order not found');
