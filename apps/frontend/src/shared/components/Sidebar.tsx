@@ -396,18 +396,23 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     const isChildActive = hasChildren && item.children?.some((c) => location.pathname === c.path);
     const isExpanded = expandedItems.has(item.path);
 
-    // SPECIAL YELLOW BUTTON FOR POS - BÁN LẺ (TRANG CHỦ)
+    // SPECIAL BUTTON FOR TRANG CHỦ
     if (item.isSpecialButton) {
+      const isActive = location.pathname === item.path;
       return (
         <Link
           key={item.path + item.id}
           to={item.path}
           className={`w-full flex items-center ${
             isOpen ? 'px-4 py-3' : 'justify-center p-3'
-          } text-sm font-black rounded-xl transition-all duration-200 bg-amber-400 hover:bg-amber-500 text-slate-900 shadow-md mb-2 cursor-pointer border-2 border-amber-300`}
+          } text-sm font-black rounded-xl transition-all duration-200 ${
+            isActive
+              ? 'bg-gradient-to-r from-cyan-600 to-cyan-700 text-white border-2 border-cyan-500 shadow-md shadow-cyan-600/20'
+              : 'bg-cyan-50/90 hover:bg-cyan-100 text-cyan-900 border-2 border-cyan-300/80 shadow-xs'
+          } mb-2 cursor-pointer`}
           title={!isOpen ? item.label : ''}
         >
-          <Icon className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 text-slate-900`} />
+          <Icon className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${isActive ? 'text-white' : 'text-cyan-700'}`} />
           {isOpen && <span className="flex-1 text-left truncate font-black tracking-wide">{item.label}</span>}
         </Link>
       );
