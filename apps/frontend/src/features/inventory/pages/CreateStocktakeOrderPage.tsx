@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner from '../../../shared/components/BarcodeScanner';
+import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -191,7 +192,7 @@ export default function CreateStocktakeOrderPage({
       }
       if (pRes && pRes.ok) {
         const pData = await pRes.json();
-        setProducts(pData);
+        setProducts(filterOutDeletedProducts(Array.isArray(pData) ? pData : pData.data || []));
       }
     } catch (err) {
       showError('Không thể tải dữ liệu danh mục');

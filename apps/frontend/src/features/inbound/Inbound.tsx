@@ -248,53 +248,7 @@ const DEFAULT_FALLBACK_SUPPLIERS: SupplierOption[] = [];
 
 const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [];
 
-const DEFAULT_FALLBACK_ORDERS: InboundReceiptOrder[] = [
-  {
-    id: 'in-1',
-    receiptNo: 'PNK_976',
-    supplier: 'Công ty TNHH Thiết bị Điện Samsung Vietnam',
-    supplierPhone: '0243999888',
-    supplierAddress: 'KCN Yên Phong, Bắc Ninh',
-    warehouseCode: 'KHO-TONG',
-    employeeName: 'Quản trị viên hệ thống',
-    orderDate: '17/08/2026',
-    status: 'completed',
-    description: 'Nhập kho linh kiện đèn LED sản xuất',
-    subtotal: 40000000,
-    discount: 1000000,
-    vatAmount: 3900000,
-    totalAmount: 42900000,
-    amountPaid: 42900000,
-    itemsCount: 2,
-    totalQty: 200,
-    details: [
-      { productId: 'p1', productSku: 'SP001', productName: 'Đèn Led Module 3 bóng Samsung', unit: 'Cái', qty: 150, price: 200000, totalLineAmount: 30000000 },
-      { productId: 'p2', productSku: 'SP002', productName: 'Cảm biến hồng ngoại kho hàng', unit: 'Cái', qty: 50, price: 200000, totalLineAmount: 10000000 },
-    ],
-  },
-  {
-    id: 'in-2',
-    receiptNo: 'PNK_975',
-    supplier: 'Nhà cung cấp Vật tư Tổng hợp Minh Anh',
-    supplierPhone: '0977112233',
-    supplierAddress: 'Quận 12, TP. Hồ Chí Minh',
-    warehouseCode: 'KHO-NVL',
-    employeeName: 'Nguyễn Văn Quản Lý',
-    orderDate: '16/08/2026',
-    status: 'completed',
-    description: 'Nhập hàng tồn đầu kỳ nguyên vật liệu đóng gói',
-    subtotal: 18500000,
-    discount: 500000,
-    vatAmount: 1800000,
-    totalAmount: 19800000,
-    amountPaid: 19800000,
-    itemsCount: 1,
-    totalQty: 100,
-    details: [
-      { productId: 'p3', productSku: 'SP003', productName: 'Bình nước giữ nhiệt inox 1.2L', unit: 'Cái', qty: 100, price: 185000, totalLineAmount: 18500000 },
-    ],
-  },
-];
+const DEFAULT_FALLBACK_ORDERS: InboundReceiptOrder[] = [];
 
 function makeEmptyRow(index: number): FormDetailRow {
   return {
@@ -985,7 +939,7 @@ export default function Inbound({
         if (openLocationOnly) {
           setShowLocationModal(true);
         } else {
-          setShowDetailModal(true);
+          setSearchParams({ action: 'view', id: ord.id });
         }
         return;
       }
@@ -997,7 +951,7 @@ export default function Inbound({
     if (openLocationOnly) {
       setShowLocationModal(true);
     } else {
-      setShowDetailModal(true);
+      setSearchParams({ action: 'view', id: ord.id });
     }
   };
 
@@ -1561,7 +1515,7 @@ export default function Inbound({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleViewDetail(ord, false);
+                                    setSearchParams({ action: 'view', id: ord.id });
                                   }}
                                   title="Xem chi tiết đơn hàng"
                                   className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"

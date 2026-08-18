@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { deliveryApi, type TransferOrder } from '../api/deliveryApi';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
+import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import MainLayout from '../../../shared/components/MainLayout';
 import { getStoredShippers, type Shipper } from '../services/shipperService';
 import QuickAddShipperModal from '../components/QuickAddShipperModal';
@@ -1087,7 +1088,7 @@ export default function CreateTransferOrderPage({
 
         if (prodRes && prodRes.ok) {
           const prodData = await prodRes.json();
-          setProducts(Array.isArray(prodData) ? prodData : prodData.data || []);
+          setProducts(filterOutDeletedProducts(Array.isArray(prodData) ? prodData : prodData.data || []));
         }
 
         if (userRes && userRes.ok) {
@@ -1255,11 +1256,9 @@ export default function CreateTransferOrderPage({
   const getFilteredProductsForRow = (rowText: string) => {
     const kw = (rowText || '').trim().toLowerCase();
     if (!kw) return products;
-    const matched = products.filter(
+    return products.filter(
       (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
     );
-    const nonMatched = products.filter((p) => !matched.includes(p));
-    return [...matched, ...nonMatched];
   };
 
   // Calculations
