@@ -38,7 +38,7 @@ import {
   getStoredCatalogCategories,
   saveStoredCatalogCategories,
 } from '../../shared/utils/catalogCategories';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, type WarehouseRecord } from '../../shared/utils/warehouseAssignments';
 import { readStoredUnits, saveStoredUnits, UnitConversion } from './UnitsPage';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 
@@ -675,6 +675,19 @@ export default function Products() {
     const deletedKeys = getActiveDeletedProductKeys();
 
     try {
+      // 1. Fetch latest warehouses from API
+      const whRes = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null);
+      if (whRes && whRes.ok) {
+        const remoteWh: WarehouseRecord[] = await whRes.json();
+        if (Array.isArray(remoteWh) && remoteWh.length > 0) {
+          const localWh = getStoredWarehouses();
+          const mergedWh = mergeStoredWarehouses(remoteWh, localWh);
+          saveStoredWarehouses(mergedWh);
+          setWarehouses(mergedWh);
+        }
+      }
+
+      // 2. Fetch latest products from API
       const response = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -845,73 +858,67 @@ export default function Products() {
     const stockBalances: Array<{ locationCode: string; totalPhysical?: number; available?: number }> =
       (product as any).stockBalances || [];
 
-    const unmatchedStockTotal = stockBalances.reduce((sum, b) => {
-      const lc = String(b.locationCode || '').trim().toLowerCase();
-      const isMatched = warehouses.some(
-        (w: any) =>
-          lc === String(w.code || '').trim().toLowerCase() ||
-          lc === String(w.name || '').trim().toLowerCase() ||
-          lc === String(w.id || '').trim().toLowerCase()
-      );
-      if (!isMatched) {
-        return sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0));
-      }
-      return sum;
-    }, 0);
+    const overallProductStock = Number(
+      (product as any).totalStock !== undefined ? (product as any).totalStock : (product.stock || 0)
+    );
 
-    warehouses.forEach((wh, idx) => {
+    let totalMappedStock = 0;
+
+    warehouses.forEach((wh) => {
       const keys = [wh.name, wh.code, wh.id].filter(Boolean) as string[];
       if (keys.length === 0) return;
 
-      let stockForThisWh: number | '' = 0;
+      const code = String(wh.code || '').trim().toLowerCase();
+      const name = String(wh.name || '').trim().toLowerCase();
+      const id = String(wh.id || '').trim().toLowerCase();
 
-      // 1. Check direct matched balance in stockBalances
-      const matchedBal = stockBalances.find((b) => {
+      // 1. Sum up all balances matching this warehouse (exact or bin prefix)
+      const matchedBalances = stockBalances.filter((b) => {
         const lc = String(b.locationCode || '').trim().toLowerCase();
         return (
-          lc === String(wh.code || '').trim().toLowerCase() ||
-          lc === String(wh.name || '').trim().toLowerCase() ||
-          lc === String(wh.id || '').trim().toLowerCase()
+          (code && (lc === code || lc.startsWith(code + '-') || lc.startsWith(code + '_') || lc.startsWith(code + '/'))) ||
+          (name && (lc === name || lc.startsWith(name + '-') || lc.startsWith(name + '_') || lc.startsWith(name + '/'))) ||
+          (id && (lc === id || lc.startsWith(id + '-') || lc.startsWith(id + '_') || lc.startsWith(id + '/')))
         );
       });
 
-      if (matchedBal) {
-        stockForThisWh = matchedBal.totalPhysical !== undefined ? matchedBal.totalPhysical : (matchedBal.available || 0);
-      } else {
-        // 2. Check direct warehouseStocks on product object if set
-        let directVal: number | undefined = undefined;
+      let stockForThisWh = 0;
+      if (matchedBalances.length > 0) {
+        stockForThisWh = matchedBalances.reduce(
+          (sum, b) => sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0)),
+          0
+        );
+      } else if (product.warehouseStocks) {
+        // 2. Fallback to direct warehouseStocks on product entity
         for (const k of keys) {
-          const stk = product.warehouseStocks ? (product.warehouseStocks as any)[k] : undefined;
+          const stk = (product.warehouseStocks as any)[k];
           if (stk !== undefined && stk !== null && stk !== '') {
-            directVal = Number(stk);
+            stockForThisWh = Number(stk) || 0;
             break;
-          }
-        }
-        if (directVal !== undefined) {
-          stockForThisWh = directVal;
-        } else {
-          // 3. Fallback: attribute unmatched/legacy stock to default warehouse or first warehouse
-          const isDefaultWh =
-            (product.defaultWarehouse &&
-              (wh.name === product.defaultWarehouse || wh.code === product.defaultWarehouse)) ||
-            ((wh as any).isDefault && !product.defaultWarehouse) ||
-            (idx === 0 && !product.defaultWarehouse && !warehouses.some((w: any) => w.isDefault));
-
-          if (isDefaultWh) {
-            if (unmatchedStockTotal > 0) {
-              stockForThisWh = unmatchedStockTotal;
-            } else if (stockBalances.length === 0 && (product.stock || 0) > 0) {
-              stockForThisWh = product.stock || 0;
-            }
           }
         }
       }
 
-      // Assign to all keys (name, code, id) so lookup by wh.name or wh.code always works
+      totalMappedStock += stockForThisWh;
       keys.forEach((k) => {
         existingStocks[k] = stockForThisWh;
       });
     });
+
+    // 3. Fallback for legacy/unmapped product stock: if total mapped is 0 but product has overall stock, assign to default warehouse
+    if (totalMappedStock === 0 && overallProductStock > 0 && warehouses.length > 0) {
+      const defaultWh = warehouses.find(
+        (w: any) =>
+          (product.defaultWarehouse && (w.name === product.defaultWarehouse || w.code === product.defaultWarehouse)) ||
+          w.isDefault
+      ) || warehouses[0];
+
+      const whKeys = [defaultWh.name, defaultWh.code, defaultWh.id].filter(Boolean) as string[];
+      whKeys.forEach((k) => {
+        existingStocks[k] = overallProductStock;
+      });
+      totalMappedStock = overallProductStock;
+    }
 
     const existingConversionUnits = (product as any).conversionUnits || [];
 
@@ -932,7 +939,7 @@ export default function Products() {
       hasConversionUnits: existingConversionUnits.length > 0,
       conversionUnits: existingConversionUnits,
       warehouseUnitStocks: (product as any).warehouseUnitStocks || {},
-      stock: product.stock,
+      stock: totalMappedStock > 0 ? totalMappedStock : overallProductStock,
       warehouseStocks: existingStocks,
       images: product.images || [],
       isVisible: product.isVisible || false,

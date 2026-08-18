@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
+import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -341,12 +342,12 @@ export default function CreateOutboundOrderPage({
               wholesalePrice: Number(p.wholesalePrice || 0),
               price: Number(p.retailPrice || p.salePrice || p.price || 0),
             }));
-            setProducts(normalized);
+            setProducts(filterOutDeletedProducts(normalized));
           } else {
-            setProducts(DEFAULT_FALLBACK_PRODUCTS);
+            setProducts(filterOutDeletedProducts(DEFAULT_FALLBACK_PRODUCTS));
           }
         } else {
-          setProducts(DEFAULT_FALLBACK_PRODUCTS);
+          setProducts(filterOutDeletedProducts(DEFAULT_FALLBACK_PRODUCTS));
         }
 
         if (userRes && userRes.ok) {
@@ -679,14 +680,12 @@ export default function CreateOutboundOrderPage({
   const getFilteredProductsForRow = (rowText: string) => {
     const kw = (rowText || '').trim().toLowerCase();
     if (!kw) return products;
-    const matched = products.filter(
+    return products.filter(
       (p) =>
         p.name.toLowerCase().includes(kw) ||
         (p.internalSku || '').toLowerCase().includes(kw) ||
         `${p.internalSku} ${p.name}`.toLowerCase().includes(kw)
     );
-    if (matched.length > 0) return matched;
-    return products;
   };
 
   const filteredQuickProducts = useMemo(() => {

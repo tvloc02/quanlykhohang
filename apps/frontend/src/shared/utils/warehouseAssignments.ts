@@ -39,6 +39,9 @@ export type SubWarehouse = {
   length: number; // mét
   width: number;  // mét
   height: number; // mét
+  rackLength?: number; // mét - Dài kệ
+  rackWidth?: number;  // mét - Rộng kệ
+  rackHeight?: number; // mét - Cao kệ
   racksCount: number; // số kệ
   shelvesPerRack: number; // số tầng mỗi kệ
   binsPerShelf?: number; // số ô/ngăn trên mỗi tầng

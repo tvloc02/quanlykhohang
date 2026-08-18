@@ -140,9 +140,13 @@ export default function Warehouse3DViewer({ subWarehouse, selectedRackIds = [] }
     // 2. Draw Continuous Longitudinal Rack Rows
     if (racksCount > 0) {
       const rowSpacing = W / (racksCount + 1);
-      const rackWidthX = Math.min(1.2, rowSpacing * 0.7); // Rộng 1.2m
-      const rackLengthZ = Math.max(L - 2, 0.5); // Dài kéo gần suốt kho
-      const zStart = 1.0;
+      const zoneRackL = subWarehouse?.rackLength ?? subWarehouse?.racks?.[0]?.length;
+      const zoneRackW = subWarehouse?.rackWidth ?? subWarehouse?.racks?.[0]?.width;
+      const zoneRackH = subWarehouse?.rackHeight ?? subWarehouse?.racks?.[0]?.height;
+
+      const rackWidthX = Math.min(zoneRackW !== undefined && zoneRackW > 0 ? zoneRackW : 1.2, Math.max(rowSpacing * 0.8, 0.4));
+      const rackLengthZ = Math.min(zoneRackL !== undefined && zoneRackL > 0 ? zoneRackL : Math.max(L - 2, 0.5), L);
+      const zStart = Math.max(0.2, (L - rackLengthZ) / 2);
       const zEnd = zStart + rackLengthZ;
 
       // Vách Ngang Input (Total horizontal partition beam levels, e.g. 5 = 1 bottom + 3 middle + 1 top roof)
@@ -150,9 +154,10 @@ export default function Warehouse3DViewer({ subWarehouse, selectedRackIds = [] }
       const shelvesCount = Math.max(1, vachNgangInput - 1); // 4 storage shelf levels
 
       // Calculate realistic rack height & shelf level Y positions starting from near ground (0.3m)
+      const specifiedRackH = zoneRackH !== undefined && zoneRackH > 0 ? zoneRackH : Math.max(H - 1, 3);
       const baseGroundY = 0.3; // Level 1 is 0.3m above ground slab
-      const shelfGap = shelvesCount > 1 ? Math.min(1.8, (H * 0.8 - baseGroundY) / shelvesCount) : 1.5;
-      const rackTopY = baseGroundY + shelvesCount * shelfGap;
+      const rackTopY = Math.min(H, baseGroundY + specifiedRackH);
+      const shelfGap = shelvesCount > 0 ? (rackTopY - baseGroundY) / shelvesCount : 1.5;
 
       // Vách Dọc Input (Total vertical partition posts, e.g. 2 = 1 start/head + 1 end/tail)
       const vachDocInput = subWarehouse?.binsPerShelf && subWarehouse.binsPerShelf > 0 ? subWarehouse.binsPerShelf : 2;

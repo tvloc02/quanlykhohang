@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -44,6 +44,7 @@ import Toast from '../../../shared/components/Toast';
 import MainLayout from '../../../shared/components/MainLayout';
 import {
   getStoredWarehouses,
+  mergeStoredWarehouses,
   saveStoredWarehouses,
   upsertWarehouseToApi,
   normalizeWarehouseRecord,
@@ -71,12 +72,15 @@ function generateDefaultRacks(
   zoneHeight = 6,
   vachDoc = 2,
   vachNgang = 5,
-  defaultBinsPerShelf = 2
+  defaultBinsPerShelf = 2,
+  rackLength?: number,
+  rackWidth?: number,
+  rackHeight?: number
 ): RackConfig[] {
   const racks: RackConfig[] = [];
-  const rackL = Math.max(zoneLength - 2, 4);
-  const rackW = 1.2;
-  const rackH = Math.max(zoneHeight - 1, 3);
+  const rackL = rackLength !== undefined && rackLength > 0 ? rackLength : Math.max(zoneLength - 2, 4);
+  const rackW = rackWidth !== undefined && rackWidth > 0 ? rackWidth : 1.2;
+  const rackH = rackHeight !== undefined && rackHeight > 0 ? rackHeight : Math.max(zoneHeight - 1, 3);
 
   // Vách Dọc vachDoc (tính cả vách đầu và vách đuôi) -> Số khoang = vachDoc - 1
   const calcBays = Math.max(1, vachDoc - 1);
@@ -182,6 +186,17 @@ export default function CreateWarehousePage() {
   useEffect(() => {
     let isMounted = true;
     async function fetchOccupiedBins() {
+      const isCleared =
+        sessionStorage.getItem(`cleared_warehouse_goods_${id || 'new'}`) === 'true' ||
+        localStorage.getItem(`cleared_warehouse_goods_${id || 'new'}`) === 'true' ||
+        (code && (sessionStorage.getItem(`cleared_warehouse_goods_${code}`) === 'true' || localStorage.getItem(`cleared_warehouse_goods_${code}`) === 'true')) ||
+        sessionStorage.getItem('cleared_warehouse_goods_global') === 'true' ||
+        localStorage.getItem('cleared_warehouse_goods_global') === 'true';
+
+      if (isCleared) {
+        if (isMounted) setOccupiedBinsMap(new Map());
+        return;
+      }
       try {
         const map = new Map<string, { totalPhysical: number; allocated: number; productsCount: number }>();
         const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
@@ -274,6 +289,22 @@ export default function CreateWarehousePage() {
     };
   }, []);
 
+  const handleClearAllGoods = () => {
+    if (window.confirm('Bạn có chắc chắn muốn giải phóng toàn bộ ô kệ và xóa hết hàng hóa trong kho này về trạng thái KỆ TRỐNG?')) {
+      setOccupiedBinsMap(new Map());
+      sessionStorage.setItem(`cleared_warehouse_goods_${id || 'new'}`, 'true');
+      localStorage.setItem(`cleared_warehouse_goods_${id || 'new'}`, 'true');
+      if (code) {
+        sessionStorage.setItem(`cleared_warehouse_goods_${code}`, 'true');
+        localStorage.setItem(`cleared_warehouse_goods_${code}`, 'true');
+      }
+      sessionStorage.setItem('cleared_warehouse_goods_global', 'true');
+      localStorage.setItem('cleared_warehouse_goods_global', 'true');
+      window.dispatchEvent(new Event('warehouse-goods-cleared'));
+      setSuccess('Đã xóa toàn bộ hàng hóa trong kho. Tất cả ô kệ đã trở về trạng thái KỆ TRỐNG!');
+    }
+  };
+
   const getOccupiedInfo = (
     fullBinCode: string,
     zoneCode?: string,
@@ -305,57 +336,104 @@ export default function CreateWarehousePage() {
     return null;
   };
 
-  // Load warehouse data if Edit Mode
+  const populateWarehouse = useCallback((target: WarehouseRecord) => {
+    const norm = normalizeWarehouseRecord(target);
+    setCode(norm.code);
+    setName(norm.name);
+    setProvince(norm.province || VIETNAM_PROVINCES[0].name);
+    setWard(norm.ward || VIETNAM_PROVINCES[0].wards[0]);
+    setDetailAddress(norm.detailAddress || norm.address);
+    setStatus(norm.status);
+    setLength(norm.length || 50);
+    setWidth(norm.width || 30);
+    setHeight(norm.height || 12);
+
+    const loadedZones = (norm.subWarehouses || []).map((z) => {
+      const vachDoc = z.binsPerShelf || (z as any).verticalPartitions || 2;
+      const vachNgang = z.shelvesPerRack || (z as any).horizontalPartitions || 5;
+      const calcBays = Math.max(1, vachDoc - 1);
+      const calcShelves = Math.max(1, vachNgang - 1);
+
+      const rL = z.rackLength !== undefined ? z.rackLength : (z.racks?.[0]?.length || Math.max((z.length || 20) - 2, 4));
+      const rW = z.rackWidth !== undefined ? z.rackWidth : (z.racks?.[0]?.width || 1.2);
+      const rH = z.rackHeight !== undefined ? z.rackHeight : (z.racks?.[0]?.height || Math.max((z.height || 6) - 1, 3));
+
+      const rks = z.racks && z.racks.length > 0
+        ? z.racks.map((r) => ({
+            ...r,
+            length: r.length || rL,
+            width: r.width || rW,
+            height: r.height || rH,
+            baysCount: calcBays,
+            columnsCount: calcBays,
+            shelvesCount: calcShelves,
+            horizontalPartitions: vachNgang,
+            verticalPartitions: vachDoc,
+            binsPerShelf: r.binsPerShelf || 2,
+          }))
+        : generateDefaultRacks(z.racksCount || 4, z.length || 20, z.height || 6, vachDoc, vachNgang, 2, rL, rW, rH);
+      return {
+        ...z,
+        rackLength: rL,
+        rackWidth: rW,
+        rackHeight: rH,
+        racks: rks
+      };
+    });
+
+    setSubWarehouses(loadedZones);
+    if (loadedZones.length > 0) {
+      setActiveZoneId(loadedZones[0].id);
+      if (loadedZones[0].racks && loadedZones[0].racks.length > 0) {
+        setActiveRackId(loadedZones[0].racks[0].id);
+      }
+    }
+  }, []);
+
+  // Load warehouse data if Edit Mode (supports F5 refresh and API sync)
   useEffect(() => {
+    let isMounted = true;
     if (isEditMode && id) {
-      const warehouses = getStoredWarehouses();
-      const target = warehouses.find((w) => w.id === id);
-      if (target) {
-        const norm = normalizeWarehouseRecord(target);
-        setCode(norm.code);
-        setName(norm.name);
-        setProvince(norm.province || VIETNAM_PROVINCES[0].name);
-        setWard(norm.ward || VIETNAM_PROVINCES[0].wards[0]);
-        setDetailAddress(norm.detailAddress || norm.address);
-        setStatus(norm.status);
-        setLength(norm.length || 50);
-        setWidth(norm.width || 30);
-        setHeight(norm.height || 12);
+      const targetId = id;
+      const localWarehouses = getStoredWarehouses();
+      const localTarget = localWarehouses.find(
+        (w) => w.id === targetId || w.code === targetId || w.id.toLowerCase() === targetId.toLowerCase()
+      );
+      if (localTarget) {
+        populateWarehouse(localTarget);
+      }
 
-        const loadedZones = (norm.subWarehouses || []).map((z) => {
-          const vachDoc = z.binsPerShelf || (z as any).verticalPartitions || 2;
-          const vachNgang = z.shelvesPerRack || (z as any).horizontalPartitions || 5;
-          const calcBays = Math.max(1, vachDoc - 1);
-          const calcShelves = Math.max(1, vachNgang - 1);
-
-          const rks = z.racks && z.racks.length > 0
-            ? z.racks.map((r) => ({
-                ...r,
-                baysCount: calcBays,
-                columnsCount: calcBays,
-                shelvesCount: calcShelves,
-                horizontalPartitions: vachNgang,
-                verticalPartitions: vachDoc,
-                binsPerShelf: r.binsPerShelf || 2,
-              }))
-            : generateDefaultRacks(z.racksCount || 4, z.length || 20, z.height || 6, vachDoc, vachNgang, 2);
-          return { ...z, racks: rks };
-        });
-
-        setSubWarehouses(loadedZones);
-        if (loadedZones.length > 0) {
-          setActiveZoneId(loadedZones[0].id);
-          if (loadedZones[0].racks && loadedZones[0].racks.length > 0) {
-            setActiveRackId(loadedZones[0].racks[0].id);
+      async function loadWarehouseFromApi() {
+        try {
+          const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
+          const res = await fetch(`${API_BASE_URL}/warehouses`, { headers }).catch(() => null);
+          if (res && res.ok) {
+            const remoteData: WarehouseRecord[] = await res.json();
+            if (Array.isArray(remoteData) && remoteData.length > 0) {
+              const merged = mergeStoredWarehouses(remoteData, localWarehouses);
+              saveStoredWarehouses(merged);
+              const matched = merged.find(
+                (w) => w.id === targetId || w.code === targetId || w.id.toLowerCase() === targetId.toLowerCase()
+              );
+              if (matched && isMounted) {
+                populateWarehouse(matched);
+              }
+            }
           }
+        } catch (err) {
+          console.error('Lỗi khi tải dữ liệu kho từ API:', err);
         }
       }
+      loadWarehouseFromApi();
     } else {
       setCode(`KH${Math.floor(100 + Math.random() * 900)}`);
       setName('');
       setSubWarehouses([]);
     }
-  }, [id, isEditMode]);
+    return () => {
+      isMounted = false;
+    };
+  }, [id, isEditMode, populateWarehouse]);
 
   // Active Zone reference
   const activeZone = subWarehouses.find((z) => z.id === activeZoneId) || subWarehouses[0];
@@ -380,20 +458,50 @@ export default function CreateWarehousePage() {
         if (z.id !== activeZone.id) return z;
 
         const nextLength = fields.length !== undefined ? fields.length : z.length;
+        const nextWidth = fields.width !== undefined ? fields.width : z.width;
         const nextHeight = fields.height !== undefined ? fields.height : z.height;
+
+        const defaultRL = Math.max(nextLength - 2, 4);
+        const defaultRW = 1.2;
+        const defaultRH = Math.max(nextHeight - 1, 3);
+
+        const nextRackLength = fields.rackLength !== undefined ? fields.rackLength : (z.rackLength ?? z.racks?.[0]?.length ?? defaultRL);
+        const nextRackWidth = fields.rackWidth !== undefined ? fields.rackWidth : (z.rackWidth ?? z.racks?.[0]?.width ?? defaultRW);
+        const nextRackHeight = fields.rackHeight !== undefined ? fields.rackHeight : (z.rackHeight ?? z.racks?.[0]?.height ?? defaultRH);
+
         const nextRacksCount = fields.racksCount !== undefined ? fields.racksCount : (z.racksCount ?? 4);
         const nextShelves = fields.shelvesPerRack !== undefined ? fields.shelvesPerRack : (z.shelvesPerRack ?? 5);
         const nextBinsPerShelf = fields.binsPerShelf !== undefined ? fields.binsPerShelf : (z.binsPerShelf ?? 2);
         const nextMaxWeight = fields.maxWeightPerBin !== undefined ? fields.maxWeightPerBin : (z.maxWeightPerBin ?? 500);
 
-        const updatedRacks = generateDefaultRacks(nextRacksCount, nextLength, nextHeight, nextBinsPerShelf, nextShelves, 2).map((r) => ({
-          ...r,
-          defaultBinMaxWeight: nextMaxWeight,
-        }));
+        const updatedRacks = generateDefaultRacks(
+          nextRacksCount,
+          nextLength,
+          nextHeight,
+          nextBinsPerShelf,
+          nextShelves,
+          2,
+          nextRackLength,
+          nextRackWidth,
+          nextRackHeight
+        ).map((r, idx) => {
+          const existing = z.racks?.[idx];
+          return {
+            ...r,
+            defaultBinMaxWeight: existing?.defaultBinMaxWeight ?? nextMaxWeight,
+            maxRackLoad: existing?.maxRackLoad ?? r.maxRackLoad,
+          };
+        });
 
         return {
           ...z,
           ...fields,
+          length: nextLength,
+          width: nextWidth,
+          height: nextHeight,
+          rackLength: nextRackLength,
+          rackWidth: nextRackWidth,
+          rackHeight: nextRackHeight,
           racksCount: nextRacksCount,
           shelvesPerRack: nextShelves,
           binsPerShelf: nextBinsPerShelf,
@@ -404,23 +512,37 @@ export default function CreateWarehousePage() {
     );
   };
 
-  // Helper: Update rack weight by ID
-  const updateRackWeightById = (rackId: string, binWeight: number, maxRackLoad?: number) => {
+  // Helper: Update rack properties by ID
+  const updateRackById = (rackId: string, fields: Partial<RackConfig>) => {
     if (!activeZone) return;
     setSubWarehouses((prev) =>
       prev.map((z) => {
         if (z.id !== activeZone.id) return z;
         const updatedRacks = (z.racks || []).map((r) => {
           if (r.id !== rackId) return r;
-          return {
-            ...r,
-            defaultBinMaxWeight: binWeight,
-            maxRackLoad: maxRackLoad !== undefined ? maxRackLoad : r.maxRackLoad,
-          };
+          const merged = { ...r, ...fields };
+          if (isAutoCalcBin && (fields.length !== undefined || fields.width !== undefined || fields.height !== undefined)) {
+            const bays = merged.baysCount || 1;
+            const shelves = merged.shelvesCount || 1;
+            const binsPerShelf = merged.binsPerShelf || 2;
+            const totalLenBins = bays * binsPerShelf;
+            merged.defaultBinLength = Math.round((merged.length * 100) / (totalLenBins || 1));
+            merged.defaultBinWidth = Math.round(merged.width * 100);
+            merged.defaultBinHeight = Math.round((merged.height * 100) / (shelves || 1));
+          }
+          return merged;
         });
         return { ...z, racks: updatedRacks };
       })
     );
+  };
+
+  // Helper: Update rack weight by ID
+  const updateRackWeightById = (rackId: string, binWeight: number, maxRackLoad?: number) => {
+    updateRackById(rackId, {
+      defaultBinMaxWeight: binWeight,
+      ...(maxRackLoad !== undefined ? { maxRackLoad } : {}),
+    });
   };
 
   // Helper: Update specific rack fields
@@ -490,6 +612,9 @@ export default function CreateWarehousePage() {
   const handleAddZone = (type: 'AMBIENT' | 'COLD' | 'THERMAL') => {
     const nextIdx = subWarehouses.length + 1;
     const typeLabel = type === 'COLD' ? 'Kho Lạnh' : type === 'THERMAL' ? 'Kho Nhiệt' : 'Kho Thường';
+    const defaultRL = 18;
+    const defaultRW = 1.2;
+    const defaultRH = 5;
     const newZone: SubWarehouse = {
       id: `sub-${Date.now()}`,
       code: `ZONE-${String.fromCharCode(64 + nextIdx)}`,
@@ -499,10 +624,13 @@ export default function CreateWarehousePage() {
       length: 20,
       width: 12,
       height: 6,
+      rackLength: defaultRL,
+      rackWidth: defaultRW,
+      rackHeight: defaultRH,
       racksCount: 3,
       shelvesPerRack: 5,
       binsPerShelf: 2,
-      racks: generateDefaultRacks(3, 20, 6, 6, 5, 2),
+      racks: generateDefaultRacks(3, 20, 6, 6, 5, 2, defaultRL, defaultRW, defaultRH),
     };
     setSubWarehouses([...subWarehouses, newZone]);
     setActiveZoneId(newZone.id);
@@ -929,77 +1057,134 @@ export default function CreateWarehousePage() {
                     </div>
                   </div>
 
-                  {/* KÍCH THƯỚC PHÂN KHU & VÁCH NGĂN */}
-                  <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Dài (m)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={activeZone.length}
-                        onChange={(e) => updateActiveZone({ length: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
-                      />
+                  {/* KÍCH THƯỚC PHÂN KHU & KÍCH THƯỚC KỆ & VÁCH NGĂN */}
+                  <div className="space-y-3 pt-1">
+                    {/* SECTION A: KÍCH THƯỚC PHÂN KHU (ZONE DIMENSIONS) */}
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
+                        1. KÍCH THƯỚC PHÂN KHU (ZONES)
+                      </span>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Dài (m)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.length}
+                            onChange={(e) => updateActiveZone({ length: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Rộng (m)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.width}
+                            onChange={(e) => updateActiveZone({ width: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Cao (m)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.height}
+                            onChange={(e) => updateActiveZone({ height: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Rộng (m)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={activeZone.width}
-                        onChange={(e) => updateActiveZone({ width: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
-                      />
+
+                    {/* SECTION B: KÍCH THƯỚC DÃY KỆ (RACK SPECIFICATIONS) */}
+                    <div className="bg-cyan-50/70 dark:bg-cyan-950/40 p-2.5 rounded-xl border border-cyan-200 dark:border-cyan-800">
+                      <span className="text-[11px] font-black text-cyan-800 dark:text-cyan-300 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
+                        2. KÍCH THƯỚC DÃY KỆ (RACKS)
+                      </span>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block font-bold text-cyan-900 dark:text-cyan-200 mb-1">Dài Kệ (m)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.rackLength ?? activeZone.racks?.[0]?.length ?? Math.max(activeZone.length - 2, 4)}
+                            onChange={(e) => updateActiveZone({ rackLength: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-cyan-900 dark:text-cyan-200 mb-1">Rộng Kệ (m)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            value={activeZone.rackWidth ?? activeZone.racks?.[0]?.width ?? 1.2}
+                            onChange={(e) => updateActiveZone({ rackWidth: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-cyan-900 dark:text-cyan-200 mb-1">Cao Kệ (m)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.rackHeight ?? activeZone.racks?.[0]?.height ?? Math.max(activeZone.height - 1, 3)}
+                            onChange={(e) => updateActiveZone({ rackHeight: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Cao (m)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={activeZone.height}
-                        onChange={(e) => updateActiveZone({ height: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Số Dãy Dọc</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={activeZone.racksCount ?? 4}
-                        onChange={(e) => updateActiveZone({ racksCount: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Vách Ngang</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={activeZone.shelvesPerRack ?? 5}
-                        onChange={(e) => updateActiveZone({ shelvesPerRack: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Vách Dọc</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={activeZone.binsPerShelf ?? 2}
-                        onChange={(e) => updateActiveZone({ binsPerShelf: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Trọng Tải Ô (kg)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={activeZone.maxWeightPerBin ?? 500}
-                        onChange={(e) => updateActiveZone({ maxWeightPerBin: parseNumInput(e.target.value) })}
-                        className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-emerald-600"
-                      />
+
+                    {/* SECTION C: CẤU TRÚC VÁCH & TẢI TRỌNG */}
+                    <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-1.5">
+                        3. CẤU TRÚC VÁCH & TẢI TRỌNG Ô
+                      </span>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div>
+                          <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Số Dãy Dọc</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.racksCount ?? 4}
+                            onChange={(e) => updateActiveZone({ racksCount: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Vách Ngang</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.shelvesPerRack ?? 5}
+                            onChange={(e) => updateActiveZone({ shelvesPerRack: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Vách Dọc</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.binsPerShelf ?? 2}
+                            onChange={(e) => updateActiveZone({ binsPerShelf: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600"
+                          />
+                        </div>
+                        <div>
+                          <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Trọng Tải Ô (kg)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={activeZone.maxWeightPerBin ?? 500}
+                            onChange={(e) => updateActiveZone({ maxWeightPerBin: parseNumInput(e.target.value) })}
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-emerald-600"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1064,31 +1249,67 @@ export default function CreateWarehousePage() {
                         </span>
                       </div>
 
-                      {/* EDITABLE WEIGHT INPUT FIELDS FOR THIS RACK ROW */}
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
-                            Tải trọng ô (kg/ô)
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={currentBinWeight}
-                            onChange={(e) => updateRackWeightById(r.id, parseNumInput(e.target.value), currentRackLoad)}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-cyan-700 text-center"
-                          />
+                      {/* EDITABLE DIMENSIONS & WEIGHT INPUT FIELDS FOR THIS RACK ROW */}
+                      <div className="space-y-2 pt-1">
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Dài Kệ (m)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={r.length}
+                              onChange={(e) => updateRackById(r.id, { length: parseNumInput(e.target.value) })}
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Rộng Kệ (m)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.1}
+                              value={r.width}
+                              onChange={(e) => updateRackById(r.id, { width: parseNumInput(e.target.value) })}
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Cao Kệ (m)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={r.height}
+                              onChange={(e) => updateRackById(r.id, { height: parseNumInput(e.target.value) })}
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
-                            Trọng tải dãy (kg)
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={currentRackLoad}
-                            onChange={(e) => updateRackWeightById(r.id, currentBinWeight, parseNumInput(e.target.value))}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-emerald-700 text-center"
-                          />
+
+                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                              Tải trọng ô (kg/ô)
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={currentBinWeight}
+                              onChange={(e) => updateRackWeightById(r.id, parseNumInput(e.target.value), currentRackLoad)}
+                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-cyan-700 text-center"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                              Trọng tải dãy (kg)
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={currentRackLoad}
+                              onChange={(e) => updateRackWeightById(r.id, currentBinWeight, parseNumInput(e.target.value))}
+                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-emerald-700 text-center"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1167,20 +1388,32 @@ export default function CreateWarehousePage() {
               </div>
 
               {/* BIN STATUS LEGEND BAR */}
-              <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                <span className="text-slate-500 uppercase tracking-wider text-[11px]">Trạng Thái Ô Kệ:</span>
-                <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
-                  <span className="h-3.5 w-3.5 rounded border border-slate-300 bg-white inline-block shadow-2xs" />
-                  Ô Trống
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-amber-900 dark:text-amber-300 font-black">
-                  <span className="h-3.5 w-3.5 rounded border-2 border-amber-500 bg-amber-400 inline-block shadow-2xs animate-pulse" />
-                  🟨 Đã Có Hàng (Đã phân bổ)
-                </span>
-                <span className="inline-flex items-center gap-1.5 text-cyan-800 dark:text-cyan-300 font-bold">
-                  <span className="h-3.5 w-3.5 rounded border border-cyan-400 bg-cyan-100 inline-block shadow-2xs" />
-                  Tùy chỉnh tải trọng
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="text-slate-500 uppercase tracking-wider text-[11px]">Trạng Thái Ô Kệ:</span>
+                  <span className="inline-flex items-center gap-1.5 text-slate-700 dark:text-slate-200">
+                    <span className="h-3.5 w-3.5 rounded border border-slate-300 bg-white inline-block shadow-2xs" />
+                    Ô Trống
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-amber-900 dark:text-amber-300 font-black">
+                    <span className="h-3.5 w-3.5 rounded border-2 border-amber-500 bg-amber-400 inline-block shadow-2xs animate-pulse" />
+                    Đã Có Hàng (Đã phân bổ)
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 text-cyan-800 dark:text-cyan-300 font-bold">
+                    <span className="h-3.5 w-3.5 rounded border border-cyan-400 bg-cyan-100 inline-block shadow-2xs" />
+                    Tùy chỉnh tải trọng
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleClearAllGoods}
+                  className="px-3 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950 dark:hover:bg-rose-900 dark:text-rose-300 font-black text-xs transition border border-rose-200 dark:border-rose-800 flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                  title="Giải phóng toàn bộ ô kệ và đưa toàn bộ kho về trạng thái kệ trống"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400" />
+                  <span>Xóa hết hàng (Về kệ trống)</span>
+                </button>
               </div>
 
               {/* VIEW CANVAS RENDER */}
@@ -1297,7 +1530,7 @@ export default function CreateWarehousePage() {
                                             </span>
                                             {hasGoods ? (
                                               <span className="text-[10px] font-black text-amber-950 bg-amber-300 dark:bg-amber-700 dark:text-amber-50 px-1.5 py-0.5 rounded-md w-full truncate border border-amber-400 shadow-2xs flex items-center justify-center gap-0.5">
-                                                📦 {occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1} sp
+                                                {occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1} sp
                                               </span>
                                             ) : (
                                               <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-full truncate">

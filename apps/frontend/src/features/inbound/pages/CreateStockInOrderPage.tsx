@@ -37,6 +37,7 @@ import {
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -787,6 +788,16 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     let isMounted = true;
     async function loadOccupied() {
       try {
+        const isCleared =
+          sessionStorage.getItem('cleared_warehouse_goods_global') === 'true' ||
+          localStorage.getItem('cleared_warehouse_goods_global') === 'true' ||
+          (warehouseCode && (sessionStorage.getItem(`cleared_warehouse_goods_${warehouseCode}`) === 'true' || localStorage.getItem(`cleared_warehouse_goods_${warehouseCode}`) === 'true'));
+
+        if (isCleared) {
+          if (isMounted) setDbOccupiedBinsMap(new Map());
+          return;
+        }
+
         const occMap = new Map<string, number>();
         const headers = authHeaders();
 
@@ -873,13 +884,6 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         if (!currentOrderAssignedBins.has(binCode)) {
           if (dbOccupiedBinsMap.has(binCode)) {
             isOccupied = true;
-          } else {
-            for (const [key] of dbOccupiedBinsMap.entries()) {
-              if (key.includes(binCode) || binCode.includes(key)) {
-                isOccupied = true;
-                break;
-              }
-            }
           }
         }
 
@@ -1951,7 +1955,7 @@ export default function CreateStockInOrderPage({
             salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
             price: Number(p.importPrice || p.purchasePrice || p.price || 0),
           }));
-          setProducts(normalized);
+          setProducts(filterOutDeletedProducts(normalized));
         }
 
         if (userRes && userRes.ok) {
@@ -2605,11 +2609,9 @@ export default function CreateStockInOrderPage({
   const getFilteredProductsForRow = (rowText: string) => {
     const kw = (rowText || '').trim().toLowerCase();
     if (!kw) return products;
-    const matched = products.filter(
+    return products.filter(
       (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
     );
-    const nonMatched = products.filter((p) => !matched.includes(p));
-    return [...matched, ...nonMatched];
   };
 
   const filteredSuppliers = useMemo(() => {
@@ -2746,7 +2748,13 @@ export default function CreateStockInOrderPage({
         <div className="flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
           <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
             <Workflow className="h-5 w-5 text-cyan-100" />
-            <h1 className="text-base font-black tracking-tight uppercase">TẠO PHIẾU NHẬP HÀNG HÓA</h1>
+            <h1 className="text-base font-black tracking-tight uppercase">
+              {isViewMode
+                ? 'XEM CHI TIẾT PHIẾU NHẬP HÀNG HÓA'
+                : actionParam === 'edit'
+                ? 'CHỈNH SỬA PHIẾU NHẬP HÀNG HÓA'
+                : 'TẠO PHIẾU NHẬP HÀNG HÓA'}
+            </h1>
           </div>
 
           <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar">
@@ -3548,11 +3556,36 @@ export default function CreateStockInOrderPage({
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-0.5">
-                <span>Trả nhà cung cấp:</span>
-                <span className="font-extrabold text-emerald-700">
-                  {((activeTab?.amountPaid !== undefined && activeTab?.amountPaid !== null) ? activeTab.amountPaid : grandTotal).toLocaleString('vi-VN')} đ
-                </span>
+              <div className="space-y-1 pt-1.5 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700">Trả nhà cung cấp:</span>
+                  <button
+                    type="button"
+                    disabled={isReadOnly}
+                    onClick={() => updateActiveTab((t) => ({ ...t, amountPaid: grandTotal }))}
+                    className="text-[10px] font-black text-cyan-700 hover:text-cyan-900 hover:underline cursor-pointer disabled:opacity-50"
+                  >
+                    Trả đủ (100%)
+                  </button>
+                </div>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    disabled={isReadOnly}
+                    value={
+                      activeTab?.amountPaid === undefined || activeTab?.amountPaid === null
+                        ? formatNumberWithCommas(grandTotal)
+                        : formatNumberWithCommas(activeTab.amountPaid)
+                    }
+                    onChange={(e) => {
+                      const val = parseFormattedNumber(e.target.value);
+                      updateActiveTab((t) => ({ ...t, amountPaid: val }));
+                    }}
+                    placeholder="0"
+                    className="w-full h-9 pl-3 pr-7 text-right rounded-xl border-2 border-emerald-500 bg-white font-black text-emerald-700 outline-none focus:ring-2 focus:ring-emerald-500/20 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed shadow-2xs"
+                  />
+                  <span className="absolute right-2.5 font-bold text-slate-500 text-xs pointer-events-none">đ</span>
+                </div>
               </div>
 
               <div className="flex items-center justify-between text-xs font-semibold pt-1 border-t border-slate-200">
