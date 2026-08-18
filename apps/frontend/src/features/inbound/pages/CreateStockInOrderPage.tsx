@@ -89,6 +89,7 @@ export interface FormDetailRow {
   vatAmount: number;
   totalAmount: number;
   weight?: number;
+  packageWeight?: number;
   weightMode?: 'per_unit' | 'total' | 'both';
   packageQty?: number;
   height?: number;
@@ -284,9 +285,14 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
   const [directHeight, setDirectHeight] = useState<number | ''>(row.height || '');
 
   // ─── MỤC 2: HÀNG HÓA THEO LÔ QUY ĐỔI / MẪU (N sản phẩm = X kg = D x R x C) ───
-  const [batchSampleWeight, setBatchSampleWeight] = useState<number | ''>(
-    row.weightMode === 'per_unit' || row.weightMode === 'both' ? (row.weight || '') : ''
-  );
+  const [batchSampleWeight, setBatchSampleWeight] = useState<number | ''>(() => {
+    if (row.packageWeight && row.packageWeight > 0) return row.packageWeight;
+    if (row.weightMode === 'per_unit' && row.weight && row.packageQty) {
+      const pkgs = Math.ceil(totalImportQty / row.packageQty);
+      return pkgs > 0 ? Number((row.weight / pkgs).toFixed(2)) : row.weight;
+    }
+    return '';
+  });
   const [batchLength, setBatchLength] = useState<number | ''>(row.length || '');
   const [batchWidth, setBatchWidth] = useState<number | ''>(row.width || '');
   const [batchHeight, setBatchHeight] = useState<number | ''>(row.height || '');
@@ -312,7 +318,7 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
   const bH = enableSection2 ? (Number(batchHeight) || 0) : 0;
 
   const bUnitWeight = bSWeight / bSQty;
-  const bTotalWeight = bUnitWeight * totalImportQty;
+  const bTotalWeight = bSWeight * totalPackages;
 
   const bSampleVol = bL * bW * bH;
   const bUnitVol = bSampleVol / bSQty;
@@ -351,6 +357,7 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
   const handleSave = () => {
     onSave(row.rowId, {
       weight: finalWeight,
+      packageWeight: enableSection2 ? (Number(batchSampleWeight) || 0) : 0,
       packageQty: bSQty,
       weightMode: enableSection1 && enableSection2 ? 'both' : enableSection2 ? 'per_unit' : 'total',
       length: finalL,
@@ -604,7 +611,12 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
             {/* Section 2 Output Badge */}
             <div className="mt-4 rounded-xl bg-slate-100 p-3 flex items-center justify-between text-xs font-bold text-slate-800">
               <span>Quy đổi cho ({totalImportQty.toLocaleString('vi-VN')} {row.unit}):</span>
-              <span className="text-cyan-900 font-black">{bTotalWeight.toFixed(2)} kg | {bTotalVol.toFixed(3)} m³</span>
+              <div className="text-right">
+                <span className="text-cyan-900 font-black block">
+                  1 Kiện = {bSWeight} kg ➔ Tổng {totalPackages} Kiện = {bTotalWeight.toFixed(2)} kg
+                </span>
+                <span className="text-[11px] text-cyan-700 font-bold">Tổng thể tích: {bTotalVol.toFixed(3)} m³</span>
+              </div>
             </div>
           </div>
 
@@ -634,12 +646,22 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
 
           <div className="grid grid-cols-3 gap-3 text-center">
             <div className="bg-white p-3 rounded-xl border-2 border-cyan-200 shadow-2xs">
-              <span className="block text-[10px] uppercase font-bold text-cyan-800 mb-0.5">Trọng lượng tổng</span>
+              <span className="block text-[10px] uppercase font-bold text-cyan-800 mb-0.5">Trọng lượng tổng ({totalImportQty.toLocaleString('vi-VN')} {row.unit})</span>
               <span className="text-base font-black text-cyan-950">{finalWeight.toFixed(2)} <span className="text-xs font-bold text-cyan-700">kg</span></span>
+              {enableSection2 && bSWeight > 0 && (
+                <span className="block text-[10px] text-cyan-700 font-black mt-0.5">
+                  ({bSWeight} kg/kiện {bSQty} {row.unit})
+                </span>
+              )}
             </div>
             <div className="bg-cyan-100/60 p-3 rounded-xl border-2 border-cyan-300 shadow-2xs">
               <span className="block text-[10px] uppercase font-bold text-cyan-900 mb-0.5">Thể tích xếp kho AI</span>
               <span className="text-base font-black text-cyan-900">{finalVolume.toFixed(3)} <span className="text-xs font-bold text-cyan-800">m³</span></span>
+              {enableSection2 && bSampleVol > 0 && (
+                <span className="block text-[10px] text-cyan-800 font-black mt-0.5">
+                  ({bSampleVol.toFixed(3)} m³/kiện {bSQty} {row.unit})
+                </span>
+              )}
             </div>
             <div className="bg-amber-50 p-3 rounded-xl border-2 border-amber-300 shadow-2xs">
               <span className="block text-[10px] uppercase font-extrabold text-amber-900 mb-0.5">TL Quy đổi Thể tích (VW)</span>
@@ -712,7 +734,10 @@ interface AiChatMessage {
   time: string;
 }
 
-function calculateEffectiveBinCapacity(item: FormDetailRow): { capacity: number; isDefault: boolean; note: string } {
+function calculateEffectiveBinCapacity(
+  item: FormDetailRow,
+  rackDim?: { rackLength?: number; binsPerShelf?: number; shelvesCount?: number; rackWidth?: number; rackHeight?: number; maxWeight?: number }
+): { capacity: number; isDefault: boolean; note: string } {
   if (item.packageQty && item.packageQty > 0) {
     return {
       capacity: item.packageQty,
@@ -721,12 +746,30 @@ function calculateEffectiveBinCapacity(item: FormDetailRow): { capacity: number;
     };
   }
 
+  // Calculate dynamic bin volume based on actual warehouse rack structure (e.g., 48m rack length / 7 bins = 6.86m long)
+  const rackLength = rackDim?.rackLength || 48; // 48m length default
+  const binsPerShelf = rackDim?.binsPerShelf || 7; // 7 bins per shelf level (8 vertical dividers)
+  const shelvesCount = rackDim?.shelvesCount || 4; // 4 levels (5 horizontal dividers)
+  const rackWidth = rackDim?.rackWidth || 1.2; // 1.2m width
+  const rackHeight = rackDim?.rackHeight || 5.0; // 5.0m height
+
+  const binLength = rackLength / binsPerShelf; // ~6.857m long
+  const binWidth = rackWidth; // 1.2m wide
+  const binHeight = rackHeight / shelvesCount; // 1.25m high
+  const binMaxVol = binLength * binWidth * binHeight; // ~10.285 m³ (10,285 liters per bin!)
+  const binMaxWeight = rackDim?.maxWeight || 400; // 400 kg per bin
+
   const qty = Number(item.qty) || 1;
   const weightPerUnit = (item.weight && item.weight > 0) ? item.weight / qty : 0;
-  const volumePerUnit = (item.volume && item.volume > 0) ? item.volume / qty : 0;
+  let volumePerUnit = (item.volume && item.volume > 0) ? item.volume / qty : 0;
 
-  const binMaxWeight = 500;
-  const binMaxVol = 0.45;
+  if (volumePerUnit === 0 && (item as any).length && (item as any).width && (item as any).height) {
+    const l = Number((item as any).length) > 10 ? Number((item as any).length) / 100 : Number((item as any).length);
+    const w = Number((item as any).width) > 10 ? Number((item as any).width) / 100 : Number((item as any).width);
+    const h = Number((item as any).height) > 10 ? Number((item as any).height) / 100 : Number((item as any).height);
+    const boxVol = l * w * h;
+    volumePerUnit = boxVol / qty;
+  }
 
   let capWeight = Infinity;
   let capVol = Infinity;
@@ -743,7 +786,7 @@ function calculateEffectiveBinCapacity(item: FormDetailRow): { capacity: number;
     return {
       capacity: physicalCap,
       isDefault: false,
-      note: `Tính từ Kích thước/Trọng lượng thực tế (${physicalCap} ${item.unit || 'Cái'}/ô)`,
+      note: `Tính từ Ô kệ 3D (${binLength.toFixed(1)}m × ${binWidth}m × ${binHeight.toFixed(2)}m = ${binMaxVol.toFixed(2)}m³) & Kích thước SP (${physicalCap.toLocaleString('vi-VN')} ${item.unit || 'Cái'}/ô)`,
     };
   }
 
@@ -763,6 +806,14 @@ interface AiSlottingChatModalProps {
   onConfirmAll: (updatedRows: FormDetailRow[]) => void;
   onSkipAi: () => void;
   isFinalSaving?: boolean;
+}
+
+function normalizeBinKey(binCode: string): string {
+  if (!binCode) return '';
+  const trimmed = binCode.trim().toUpperCase();
+  const match = trimmed.match(/(R\d+[-_]S\d+[-_]C\d+)/);
+  if (match) return match[1].replace(/_/g, '-');
+  return trimmed;
 }
 
 const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
@@ -788,45 +839,58 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     let isMounted = true;
     async function loadOccupied() {
       try {
-        const isCleared =
-          sessionStorage.getItem('cleared_warehouse_goods_global') === 'true' ||
-          localStorage.getItem('cleared_warehouse_goods_global') === 'true' ||
-          (warehouseCode && (sessionStorage.getItem(`cleared_warehouse_goods_${warehouseCode}`) === 'true' || localStorage.getItem(`cleared_warehouse_goods_${warehouseCode}`) === 'true'));
-
-        if (isCleared) {
-          if (isMounted) setDbOccupiedBinsMap(new Map());
-          return;
-        }
-
         const occMap = new Map<string, number>();
         const headers = authHeaders();
 
-        const dtRes = await fetch(`${API_BASE_URL}/inventory/visualizer/digital-twin?days=30`, { headers }).catch(() => null);
-        if (dtRes && dtRes.ok) {
-          const cells: any[] = await dtRes.json();
-          cells.forEach((c) => {
-            if (c.locationCode && (c.totalPhysical > 0 || c.allocated > 0)) {
-              occMap.set(c.locationCode, Number(c.totalPhysical || c.allocated || 1));
+        // 1. Direct real stock_balances from CSDL
+        const balRes = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
+        if (balRes && balRes.ok) {
+          const balances: any[] = await balRes.json();
+          balances.forEach((b) => {
+            const lc = String(b.locationCode || '').trim();
+            const physical = Number(b.totalPhysical || b.available || 0);
+            if (lc && physical > 0 && (lc.includes('-S0') || lc.includes('-R0') || lc.includes('-C') || lc.includes('-ZA') || lc.includes('-ZB'))) {
+              occMap.set(lc, physical);
+              const norm = normalizeBinKey(lc);
+              if (norm) occMap.set(norm, physical);
             }
           });
         }
 
-        const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null);
-        if (poRes && poRes.ok) {
-          const pos: any[] = await poRes.json();
-          pos.forEach((po) => {
-            (po.details || []).forEach((d: any) => {
-              const noteText = d.note || '';
-              if (noteText.includes('[Vị trí Ô:')) {
-                const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match && match[1]) {
-                  match[1].split(',').forEach((code: string) => {
-                    const bin = code.trim();
-                    if (bin) occMap.set(bin, Number(d.receivedQty || d.expectedQty || 1));
-                  });
+        // 2. Real completed / posted stock-in orders
+        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
+        if (stockInRes && stockInRes.ok) {
+          const sOrders: any[] = await stockInRes.json();
+          sOrders.forEach((so) => {
+            const statusStr = String(so.status || '').toUpperCase();
+            if (['COMPLETED', 'POSTED', 'RECEIVED', 'DONE', 'APPROVED'].includes(statusStr)) {
+              (so.details || []).forEach((d: any) => {
+                const assigned = Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []);
+                assigned.forEach((bin: string) => {
+                  if (bin && bin.length > 2) {
+                    const qty = Number(d.receivedQty || d.expectedQty || 1);
+                    occMap.set(bin, qty);
+                    const norm = normalizeBinKey(bin);
+                    if (norm) occMap.set(norm, qty);
+                  }
+                });
+                const noteText = d.note || '';
+                if (noteText.includes('[Vị trí Ô:')) {
+                  const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+                  if (match && match[1]) {
+                    match[1].split(',').forEach((code: string) => {
+                      const bin = code.trim();
+                      if (bin) {
+                        const qty = Number(d.receivedQty || d.expectedQty || 1);
+                        occMap.set(bin, qty);
+                        const norm = normalizeBinKey(bin);
+                        if (norm) occMap.set(norm, qty);
+                      }
+                    });
+                  }
                 }
-              }
-            });
+              });
+            }
           });
         }
 
@@ -848,6 +912,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       (it.assignedBins || []).forEach((b) => {
         if (b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')) && b !== it.warehouseCode) {
           set.add(b);
+          const norm = normalizeBinKey(b);
+          if (norm) set.add(norm);
         }
       });
       if (it.locationBin && it.locationBin !== it.warehouseCode) {
@@ -855,6 +921,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
           const trimmed = s.trim();
           if (trimmed && (trimmed.includes('-S0') || trimmed.includes('-R0') || trimmed.includes('-C'))) {
             set.add(trimmed);
+            const norm = normalizeBinKey(trimmed);
+            if (norm) set.add(norm);
           }
         });
       }
@@ -878,11 +946,12 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       return Array.from({ length: cellsCount }).map((_, idx) => {
         const cellNum = (idx + 1).toString().padStart(2, '0');
         const binCode = `${zonePrefix}-${rackId}-${floorId}-C${cellNum}`;
+        const normKey = normalizeBinKey(binCode);
 
         let isOccupied = false;
         // Bins belonging to the current order items are NOT marked as occupied by outside stock
-        if (!currentOrderAssignedBins.has(binCode)) {
-          if (dbOccupiedBinsMap.has(binCode)) {
+        if (!currentOrderAssignedBins.has(binCode) && !currentOrderAssignedBins.has(normKey)) {
+          if (dbOccupiedBinsMap.has(binCode) || dbOccupiedBinsMap.has(normKey)) {
             isOccupied = true;
           }
         }
@@ -1013,7 +1082,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     const initialMap: Record<string, string[]> = {};
     const usedBinsSet = new Set<string>();
 
-    // Pass 1: Keep already assigned bins (only if valid bin codes, not raw warehouse codes)
+    // Pass 1: Keep already assigned bins (from assignedBins, locationBin, or note)
     items.forEach((item) => {
       let validBins = (item.assignedBins || []).filter(
         (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')) && b !== item.warehouseCode
@@ -1023,16 +1092,23 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
           (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C'))
         );
       }
+      if (validBins.length === 0 && item.note) {
+        const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+        if (match) {
+          validBins = match[1].split(',').map((s) => s.trim()).filter(
+            (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C'))
+          );
+        }
+      }
       if (validBins.length > 0) {
         initialMap[item.rowId] = [...validBins];
         validBins.forEach((b) => usedBinsSet.add(b));
       }
     });
 
-    // Pass 2: Auto-assign remaining items sequentially from FREE cells without overlapping
+    // Pass 2: Auto-assign ALL remaining items sequentially from FREE cells without overlapping
     items.forEach((item) => {
-      const shouldAutoAssign = targetRowId ? item.rowId === targetRowId : true;
-      if (!initialMap[item.rowId] && shouldAutoAssign) {
+      if (!initialMap[item.rowId] || initialMap[item.rowId].length === 0) {
         const capInfo = calculateEffectiveBinCapacity(item);
         const itemPackSize = capInfo.capacity;
         const requiredCount = Math.max(1, Math.ceil((item.qty || 1) / itemPackSize));
@@ -1075,15 +1151,15 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     const lastBinName = itemSelectedBins[itemSelectedBins.length - 1] || 'ZA-R01-S04-C10';
 
     const capacityNotice = capInfo.isDefault
-      ? `\n⚠️ Chú ý: Do mặt hàng này CHƯA NHẬP Trọng lượng & Kích thước, AI đang áp dụng định mức MẶC ĐỊNH TẠM TÍNH (100 ${activeItem?.unit || 'Cái'}/ô). Hãy bấm nút [TL & KÍCH THƯỚC] ở giao diện nhập kho để AI tự động tính lại sức chứa m³/kg chính xác!`
-      : `\n✅ Sức chứa ô chứa đã được AI tính toán tự động dựa trên Kích thước & Trọng lượng thực tế của sản phẩm.`;
+      ? `\nChú ý: Do mặt hàng này CHƯA NHẬP Trọng lượng & Kích thước, AI đang áp dụng định mức MẶC ĐỊNH TẠM TÍNH (100 ${activeItem?.unit || 'Cái'}/ô). Hãy bấm nút [TL & KÍCH THƯỚC] ở giao diện nhập kho để AI tự động tính lại sức chứa m³/kg chính xác!`
+      : `\nSức chứa ô chứa đã được AI tính toán tự động dựa trên Kích thước & Trọng lượng thực tế của sản phẩm.`;
 
     const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
     setMessages([
       {
         id: 'msg-1',
         sender: 'ai',
-        text: `🤖 CHỈ DẪN SẮP XẾP KHO AI SMART WMS\n\n📦 Mặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\n📊 Thông số Sức chứa Kệ & Ô chứa:\n• Sức chứa 1 Ô chứa (Bin Capacity): Tối đa ${maxQtyPerBin} ${activeItem?.unit || 'Cái'}/ô (${capInfo.note}).\n• Sức chứa 1 Dãy kệ (Rack Capacity): 4 Tầng x 10 Ô = 40 Ô chứa (Chứa tối đa ${maxQtyPerRack.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'}/dãy kệ).${capacityNotice}\n\n💡 Chỉ dẫn Phân bổ Vị trí AI:\n• Số lượng Ô kệ cần dùng: ${totalBinsNeeded} Ô chứa (Trực thuộc ${totalRacksNeeded} Dãy kệ R01).\n• Vị trí gợi ý: Đã tự động đề xuất ${totalBinsNeeded} ô trống từ ${firstBinName} ➔ ${lastBinName} giúp di chuyển tối ưu và tránh trùng lặp với mặt hàng khác.`,
+        text: `CHỈ DẪN SẮP XẾP KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\n1. Thông số Sức chứa Kệ & Ô chứa:\n• Sức chứa 1 Ô chứa (Bin Capacity): Tối đa ${maxQtyPerBin} ${activeItem?.unit || 'Cái'}/ô (${capInfo.note}).\n• Sức chứa 1 Dãy kệ (Rack Capacity): 4 Tầng x 10 Ô = 40 Ô chứa (Chứa tối đa ${maxQtyPerRack.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'}/dãy kệ).${capacityNotice}\n\n2. Chỉ dẫn Phân bổ Vị trí AI:\n• Số lượng Ô kệ cần dùng: ${totalBinsNeeded} Ô chứa (Trực thuộc ${totalRacksNeeded} Dãy kệ R01).\n• Vị trí gợi ý: Đã tự động đề xuất ${totalBinsNeeded} ô trống từ ${firstBinName} ➔ ${lastBinName} giúp di chuyển tối ưu và tránh trùng lặp với mặt hàng khác.`,
         time: now,
       },
     ]);
@@ -1101,18 +1177,18 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
   const handleSwitchActiveItem = (rowId: string) => {
     setActiveRowId(rowId);
 
-    // Auto-suggest for this item if it has no bins assigned in selectedBinsMap yet
-    setSelectedBinsMap((prev) => {
-      if (prev[rowId] && prev[rowId].length > 0) return prev;
+    const itemToAssign = items.find((i) => i.rowId === rowId);
+    if (!itemToAssign) return;
 
-      const itemToAssign = items.find((i) => i.rowId === rowId);
-      if (!itemToAssign) return prev;
+    let targetBins = selectedBinsMap[rowId] || [];
 
+    // If item has no bins assigned in map yet, auto-assign from free cells
+    if (targetBins.length === 0) {
       const itemPackSize = calculateEffectiveBinCapacity(itemToAssign).capacity;
       const requiredCount = Math.max(1, Math.ceil((itemToAssign.qty || 1) / itemPackSize));
 
       const usedBins = new Set<string>();
-      Object.values(prev).forEach((binsArr) => {
+      Object.values(selectedBinsMap).forEach((binsArr) => {
         binsArr.forEach((b) => usedBins.add(b));
       });
 
@@ -1127,23 +1203,50 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         });
       });
 
-      const preselected = freeCells.slice(0, requiredCount);
-      if (preselected.length === 0) return prev;
+      targetBins = freeCells.slice(0, requiredCount);
+      if (targetBins.length > 0) {
+        setSelectedBinsMap((prev) => ({
+          ...prev,
+          [rowId]: targetBins,
+        }));
+      }
+    }
 
-      return {
-        ...prev,
-        [rowId]: preselected,
-      };
-    });
-
-    const itemBins = selectedBinsMap[rowId] || [];
-    if (itemBins.length > 0) {
-      const firstBin = itemBins[0];
+    if (targetBins.length > 0) {
+      const firstBin = targetBins[0];
       const matchRack = racksTopology.find((rk) => firstBin.includes(rk.rackId));
       if (matchRack) {
         setActiveRackId(matchRack.rackId);
       }
     }
+
+    // Add new AI Chat message for newly selected item
+    const itemQty = itemToAssign.qty || 0;
+    const capInfo = calculateEffectiveBinCapacity(itemToAssign);
+    const itemPackSize = capInfo.capacity;
+    const totalBinsNeeded = Math.max(1, Math.ceil(itemQty / itemPackSize));
+    const maxQtyPerBin = itemPackSize;
+    const maxQtyPerRack = 40 * maxQtyPerBin;
+    const totalRacksNeeded = Math.max(1, Math.ceil(totalBinsNeeded / 40));
+
+    const firstBinName = targetBins[0] || 'ZA-R01-S04-C01';
+    const lastBinName = targetBins[targetBins.length - 1] || firstBinName;
+
+    const capacityNotice = capInfo.isDefault
+      ? `\nChú ý: Do mặt hàng này CHƯA NHẬP Trọng lượng & Kích thước, AI đang áp dụng định mức MẶC ĐỊNH TẠM TÍNH (100 ${itemToAssign.unit || 'Cái'}/ô). Hãy bấm nút [TL & KÍCH THƯỚC] ở giao diện nhập kho để AI tự động tính lại sức chứa m³/kg chính xác!`
+      : `\nSức chứa ô chứa đã được AI tính toán tự động dựa trên Kích thước & Trọng lượng thực tế của sản phẩm.`;
+
+    const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `switch-${Date.now()}`,
+        sender: 'ai',
+        text: `CHỈ DẪN SẮP XẾP KHO AI SMART WMS CHO MẶT HÀNG MỚI\n\nMặt hàng: ${itemToAssign.productName} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${itemToAssign.unit || 'Cái'})\n\n1. Thông số Sức chứa Kệ & Ô chứa:\n• Sức chứa 1 Ô chứa (Bin Capacity): Tối đa ${maxQtyPerBin} ${itemToAssign.unit || 'Cái'}/ô (${capInfo.note}).\n• Sức chứa 1 Dãy kệ (Rack Capacity): 4 Tầng x 10 Ô = 40 Ô chứa (Chứa tối đa ${maxQtyPerRack.toLocaleString('vi-VN')} ${itemToAssign.unit || 'Cái'}/dãy kệ).${capacityNotice}\n\n2. Chỉ dẫn Phân bổ Vị trí AI:\n• Số lượng Ô kệ cần dùng: ${totalBinsNeeded} Ô chứa (Trực thuộc ${totalRacksNeeded} Dãy kệ R01).\n• Vị trí gợi ý: Đã tự động đề xuất ${totalBinsNeeded} ô trống từ ${firstBinName} ➔ ${lastBinName} giúp di chuyển tối ưu và tránh trùng lặp với mặt hàng khác.`,
+        time: now,
+      },
+    ]);
   };
 
   const handleSendMessage = (e?: React.FormEvent) => {
@@ -1162,12 +1265,109 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     setTimeout(() => {
       let aiReply = '';
       const lower = userText.toLowerCase();
-      if (lower.includes('đủ') || lower.includes('mấy ô') || lower.includes('số lượng') || lower.includes('sức chứa')) {
-        aiReply = `📦 Lô hàng ${currentItem?.productName} (${currentItem?.qty?.toLocaleString('vi-VN')} ${currentItem?.unit}):\n• Sức chứa 1 Ô: ${packSize} ${currentItem?.unit}/ô\n• Sức chứa Dãy Kệ: 4,000 ${currentItem?.unit}/dãy (40 ô)\n• Cần dùng: ${requiredCount} Ô chứa (Hiện đã chọn ${currentSelectedBins.length}/${requiredCount} ô).`;
+
+      // Extract numbers & dimensions from prompt if present
+      const batchQtyMatch = userText.match(/(\d+)\s*(?:cái|sản phẩm|sp|thùng|hộp)?\s*(?:mỗi|một|\/)?\s*(?:lô|thùng|kiện)/i)
+                         || userText.match(/bọc\s*(\d+)/i)
+                         || userText.match(/lô\s*(\d+)/i);
+      const extractedBatchQty = batchQtyMatch ? parseInt(batchQtyMatch[1], 10) : 100;
+
+      const totalQtyMatch = userText.match(/(\d+)\s*(?:sản phẩm|cái|áo|kiện)/i);
+      const targetQty = totalQtyMatch ? parseInt(totalQtyMatch[1], 10) : (currentItem?.qty || 500);
+
+      const dimCmMatches = [...userText.matchAll(/(\d+(?:[\.,]\d+)?)\s*(?:cm|m)?/gi)].map((m) => parseFloat(m[1].replace(',', '.')));
+      let lCm = 80, wCm = 50, hCm = 60;
+      if (dimCmMatches.length >= 3 && (userText.includes('cm') || userText.includes('kích thước'))) {
+        const cmFiltered = dimCmMatches.filter((n) => n > 1 && n <= 500);
+        if (cmFiltered.length >= 3) {
+          [lCm, wCm, hCm] = cmFiltered.slice(0, 3);
+        }
+      }
+
+      const lM = lCm > 10 ? lCm / 100 : lCm;
+      const wM = wCm > 10 ? wCm / 100 : wCm;
+      const hM = hCm > 10 ? hCm / 100 : hCm;
+      const batchVolM3 = Number((lM * wM * hM).toFixed(4)); // 0.8 * 0.5 * 0.6 = 0.24 m³
+
+      const rackLenMatch = userText.match(/kệ\s*dài\s*(\d+)/i) || userText.match(/dãy\s*kệ\s*(\d+)m/i);
+      const rackLen = rackLenMatch ? parseFloat(rackLenMatch[1]) : 48;
+      const binCountMatch = userText.match(/(\d+)\s*ô/i) || userText.match(/chia\s*(\d+)/i);
+      const binCount = binCountMatch ? parseInt(binCountMatch[1], 10) : 7;
+
+      const binLength = Number((rackLen / binCount).toFixed(2)); // 48 / 7 = 6.86m
+      const binWidth = 1.2;
+      const binHeight = 1.25; // 5m / 4 floors
+      const binVol = Number((binLength * binWidth * binHeight).toFixed(2)); // ~10.28 m³
+
+      const numBatches = Math.ceil(targetQty / extractedBatchQty); // 500 / 100 = 5 batches
+      const totalVolume = Number((numBatches * batchVolM3).toFixed(2)); // 5 * 0.24 = 1.2 m³
+
+      const maxRowsL = Math.max(1, Math.floor(binLength / lM)); // e.g. 6.86 / 0.8 = 8 rows
+      const maxColsW = Math.max(1, Math.floor(binWidth / wM)); // e.g. 1.2 / 0.5 = 2 cols
+      const maxTiersH = Math.max(1, Math.floor(binHeight / hM)); // e.g. 1.25 / 0.6 = 2 tiers
+      const maxBatchesPerBin = maxRowsL * maxColsW * maxTiersH; // 32 batches
+      const maxItemsPerBin = maxBatchesPerBin * extractedBatchQty; // 3,200 items
+
+      const actualRowsL = Math.min(numBatches, maxRowsL); // 5 rows
+      const actualColsW = 1;
+      const actualTiersH = 1;
+      const lengthUsed = (actualRowsL * lM).toFixed(2); // 4.00m
+      const widthUsed = (actualColsW * wM).toFixed(2); // 0.50m
+      const heightUsed = (actualTiersH * hM).toFixed(2); // 0.60m
+
+      const lenRemain = Math.max(0, binLength - actualRowsL * lM).toFixed(2); // 2.86m
+      const widRemain = Math.max(0, binWidth - actualColsW * wM).toFixed(2); // 0.70m
+      const heiRemain = Math.max(0, binHeight - actualTiersH * hM).toFixed(2); // 0.65m
+
+      const actualBinsRequired = Math.max(1, Math.ceil(targetQty / maxItemsPerBin));
+      const fillPercentage = Number(((totalVolume / binVol) * 100).toFixed(1));
+
+      if (
+        lower.includes('48m') ||
+        lower.includes('lô') ||
+        lower.includes('cm') ||
+        lower.includes('7 ô') ||
+        lower.includes('toán') ||
+        lower.includes('xếp') ||
+        lower.includes('hướng dẫn') ||
+        lower.includes('đủ') ||
+        lower.includes('mấy ô') ||
+        lower.includes('số lượng') ||
+        lower.includes('sức chứa')
+      ) {
+        aiReply = `HƯỚNG DẪN XẾP KHO THỰC TẾ 3D (SMART 3D BIN PACKING & STACKING GUIDE)\n\n1. Ma trận Kích thước Ô Kệ Kho:\n• Kích thước Ô Kệ: Dài ~${binLength}m (${Math.round(binLength * 100)}cm) x Rộng ${binWidth}m (${Math.round(binWidth * 100)}cm) x Cao ${binHeight}m (${Math.round(binHeight * 100)}cm).\n• Thể tích 1 Ô chứa: ${binVol} m³ (${(binVol * 1000).toLocaleString('vi-VN')} Lít), Tải trọng: 400 kg.\n\n2. Ma trận Xếp Hàng Hóa Vừa Khít (Sức chứa tối đa 1 Ô):\n• Quy cách Lô/Thùng: 1 Lô (${extractedBatchQty} cái) = Dài ${lCm}cm x Rộng ${wCm}cm x Cao ${hCm}cm (${batchVolM3} m³).\n• Sắp xếp theo Dài (Length): Xếp tối đa ${maxRowsL} Thùng dọc chiều dài (${maxRowsL} x ${lCm}cm = ${maxRowsL * lCm}cm, chừa khe bốc xếp).\n• Sắp xếp theo Rộng (Width): Xếp tối đa ${maxColsW} Thùng theo chiều rộng (${maxColsW} x ${wCm}cm = ${maxColsW * wCm}cm).\n• Sắp xếp theo Cao (Height): Chồng tối đa ${maxTiersH} Lớp/Tầng (${maxTiersH} x ${hCm}cm = ${maxTiersH * hCm}cm).\n-> Sức chứa vừa khít 1 Ô Kệ: ${maxRowsL} Dài x ${maxColsW} Rộng x ${maxTiersH} Cao = ${maxBatchesPerBin} Lô/Thùng (tương đương ${maxItemsPerBin.toLocaleString('vi-VN')} sản phẩm/Ô).\n\n3. HƯỚNG DẪN THỦ KHO XẾP THỰC TẾ CHO ${targetQty} SẢN PHẨM (${numBatches} LÔ HÀNG):\n1) Vị trí mâm: Đặt tại Mâm kệ tầng trệt S01 hoặc tầng S02 để thao tác luồn tay bốc xếp nhẹ nhàng nhất.\n2) Bố trí mặt sàn ô kệ (Floor Layout):\n   - Xếp 1 Hàng duy nhất sát mép vách trong bên trái: ${actualRowsL} Thùng nối tiếp dọc theo chiều dài (${actualRowsL} x ${lM}m = ${lengthUsed}m).\n   - Chiều rộng chiếm ${widthUsed}m (sát mép vách), Chiều cao chiếm ${heightUsed}m (chỉ đặt 1 tầng mâm phẳng, KHÔNG cần chồng tầng 2 để tránh nguy cơ đổ vỡ).\n3) Tận dụng diện tích dư & An toàn bốc xếp:\n   - Khoảng trống đã dùng: Chiếm ${fillPercentage}% thể tích ô kệ (${totalVolume} m³ / ${binVol} m³).\n   - Khoảng trống còn thừa trong Ô: Dài dư ${lenRemain}m, Rộng dư ${widRemain}m, Cao dư ${heiRemain}m.\n   - Khuyên dùng từ AI: Chiều dài dư ${lenRemain}m rất rộng rãi, đủ chứa thêm tới ${maxBatchesPerBin - numBatches} Lô hàng nữa (~${(maxBatchesPerBin - numBatches) * extractedBatchQty} sản phẩm) hoặc ghép chung với SKU khác mà không lo lãng phí diện tích kho!\n\nAI đã tự động tối ưu sơ đồ: Đã chọn chính xác 1 Ô chứa cho đơn hàng này!`;
+
+        // Update active item's bin assignment in selectedBinsMap without overlapping other items
+        if (currentItem) {
+          setSelectedBinsMap((prev) => {
+            const usedByOtherItems = new Set<string>();
+            Object.entries(prev).forEach(([rId, bArr]) => {
+              if (rId !== currentItem.rowId) {
+                (bArr || []).forEach((b) => usedByOtherItems.add(b));
+              }
+            });
+
+            const freeCells: string[] = [];
+            racksTopology.forEach((rk) => {
+              rk.floors.forEach((fl) => {
+                fl.cells.forEach((cl) => {
+                  if (!cl.isOccupied && !usedByOtherItems.has(cl.binCode)) {
+                    freeCells.push(cl.binCode);
+                  }
+                });
+              });
+            });
+            const chosen = freeCells.slice(0, actualBinsRequired);
+            return {
+              ...prev,
+              [currentItem.rowId]: chosen,
+            };
+          });
+        }
       } else if (lower.includes('kho lạnh') || lower.includes('nhiệt độ')) {
-        aiReply = `❄️ Bạn hãy đổi tab Dãy Kệ sang "Dãy Kệ Lạnh R03 (Khu C)" ở phía trên sơ đồ để tích chọn các ô chứa lạnh -18°C.`;
+        aiReply = `Bạn hãy đổi tab Dãy Kệ sang "Dãy Kệ Lạnh R03 (Khu C)" ở phía trên sơ đồ để tích chọn các ô chứa lạnh -18°C.`;
       } else {
-        aiReply = `🤖 Đã ghi nhận yêu cầu. Bạn có thể click trực tiếp các ô ZA-R01-S04-C01, C02... trên sơ đồ bên phải để chọn vị trí xếp kho.`;
+        aiReply = `Đã ghi nhận yêu cầu. AI đã tự động tính toán ma trận xếp kho 3D theo kích thước ô kệ. Bạn có thể chọn/bỏ chọn thêm ô trực tiếp trên sơ đồ 2D bên phải.`;
       }
 
       setMessages((prev) => [
@@ -1221,8 +1421,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border-2 border-cyan-500 w-full max-w-7xl h-[95vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-1.5 sm:p-3 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl shadow-2xl border-2 border-cyan-500 w-full max-w-[98vw] h-[97vh] flex flex-col overflow-hidden">
         
         {/* Modal Header - Master Cyan Theme */}
         <div className="bg-cyan-700 text-white px-6 py-3.5 flex items-center justify-between shadow-sm">
@@ -1251,10 +1451,10 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-12 gap-0 flex-1 overflow-hidden bg-slate-50">
           
           {/* Left Column: AI Interactive Chat */}
-          <div className="md:col-span-4 border-r border-cyan-200 bg-cyan-50/30 flex flex-col h-full">
+          <div className="md:col-span-5 lg:col-span-5 border-r border-cyan-200 bg-cyan-50/30 flex flex-col h-full overflow-hidden">
             <div className="p-3 bg-white border-b border-cyan-100 flex items-center justify-between text-xs font-black text-cyan-900 shadow-2xs">
               <span className="flex items-center gap-2">
-                <Bot className="h-5 w-5 text-cyan-600" /> Trợ lý AI Hỏi Đáp Slotting
+                <Bot className="h-5 w-5 text-cyan-600" /> Trợ lý AI Hỏi Đáp Slotting & Hướng Dẫn 3D
               </span>
               <span className="bg-cyan-100 text-cyan-900 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase border border-cyan-300">
                 Online
@@ -1291,16 +1491,16 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
               <button
                 type="button"
                 onClick={() => setInputMsg('Mặt hàng này cần mấy ô kệ và sức chứa như thế nào?')}
-                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition"
+                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
-                📦 Cần mấy ô & sức chứa?
+                Cần mấy ô & sức chứa?
               </button>
               <button
                 type="button"
                 onClick={() => setInputMsg('Chuyển sang Kho Lạnh -18°C?')}
-                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition"
+                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
-                ❄️ Chọn Kệ Lạnh R03?
+                Chọn Kệ Lạnh R03?
               </button>
             </div>
 
@@ -1323,7 +1523,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
           </div>
 
           {/* Right Column: Interactive Visual Rack Topology Grid */}
-          <div className="md:col-span-8 p-4 flex flex-col h-full overflow-hidden bg-white">
+          <div className="md:col-span-7 lg:col-span-7 p-4 flex flex-col h-full overflow-hidden bg-white">
             
             {/* 1. Item Switcher Bar */}
             <div className="mb-3 bg-cyan-50/80 p-2.5 rounded-2xl border border-cyan-200 flex items-center justify-between">
@@ -1518,17 +1718,17 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                 <button
                   type="button"
                   onClick={onSkipAi}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition cursor-pointer"
                 >
-                  {isFinalSaving ? 'Lưu phiếu nhập (Bỏ qua chọn ô)' : 'Đóng (Không thay đổi)'}
+                  {isFinalSaving ? 'Bỏ qua & Lưu phiếu' : 'Đóng'}
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmSelections}
-                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-xs font-black text-white uppercase tracking-wide shadow-md transition cursor-pointer active:scale-95 flex items-center gap-2"
+                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-xs font-black text-white uppercase tracking-wide shadow-md transition cursor-pointer active:scale-95 flex items-center gap-1.5"
                 >
                   <Sparkles className="h-4 w-4 text-cyan-100" />
-                  {isFinalSaving ? 'Xác nhận gán vị trí & Lưu phiếu nhập' : 'Xác nhận vị trí ô kệ'}
+                  {isFinalSaving ? 'Lưu phiếu nhập' : 'Lưu'}
                 </button>
               </div>
             </div>
@@ -2522,12 +2722,14 @@ export default function CreateStockInOrderPage({
       expectedDate: activeTab.orderDate,
       status: saveStatus === 'COMPLETED' ? 'RECEIVED' : saveStatus === 'READY' ? 'APPROVED' : 'DRAFT',
       description: activeTab.description?.trim() || 'Tạo phiếu nhập hàng từ nhà cung cấp',
-      totalAmount: grandTotal,
+      subtotal,
       discount: activeTab.discount || 0,
       vatRate: activeTab.vatRate || 0,
       vatAmount,
       shippingFee: activeTab.shippingFee || 0,
-      amountPaid: activeTab.amountPaid || grandTotal,
+      totalAmount: grandTotal,
+      amountPaid: activeTab.amountPaid ?? grandTotal,
+      debtAmount: Math.max(0, grandTotal - (activeTab.amountPaid ?? grandTotal)),
       paymentMethod: activeTab.paymentMethod,
       paymentAccount: activeTab.paymentAccount,
       details: activeValidItems.map((r) => ({

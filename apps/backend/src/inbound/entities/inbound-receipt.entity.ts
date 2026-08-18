@@ -42,7 +42,40 @@ export class InboundReceipt extends BaseEntity {
   description?: string;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  subtotal: string;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  discount: string;
+
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
+  vatRate: string;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  vatAmount: string;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  shippingFee: string;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
   totalAmount: string;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  amountPaid: string;
+
+  @Column({ type: 'decimal', precision: 15, scale: 2, default: 0 })
+  debtAmount: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  paymentMethod?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  paymentAccount?: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  warehouseCode?: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  branchCode?: string;
 
   @OneToMany(() => InboundDetail, (d) => d.inboundReceipt)
   details: InboundDetail[];

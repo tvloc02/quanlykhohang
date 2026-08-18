@@ -179,6 +179,14 @@ export default function CreateWarehousePage() {
   });
   const [aiRecommendations, setAiRecommendations] = useState<AiSlottingRecommendation[]>([]);
 
+function normalizeBinKey(binCode: string): string {
+  if (!binCode) return '';
+  const trimmed = binCode.trim().toUpperCase();
+  const match = trimmed.match(/(R\d+[-_]S\d+[-_]C\d+)/);
+  if (match) return match[1].replace(/_/g, '-');
+  return trimmed;
+}
+
   // Occupied Bins Inventory state (Bins that contain allocated goods)
   const [occupiedBinsMap, setOccupiedBinsMap] = useState<Map<string, { totalPhysical: number; allocated: number; productsCount: number }>>(new Map());
 
@@ -186,101 +194,79 @@ export default function CreateWarehousePage() {
   useEffect(() => {
     let isMounted = true;
     async function fetchOccupiedBins() {
-      const isCleared =
-        sessionStorage.getItem(`cleared_warehouse_goods_${id || 'new'}`) === 'true' ||
-        localStorage.getItem(`cleared_warehouse_goods_${id || 'new'}`) === 'true' ||
-        (code && (sessionStorage.getItem(`cleared_warehouse_goods_${code}`) === 'true' || localStorage.getItem(`cleared_warehouse_goods_${code}`) === 'true')) ||
-        sessionStorage.getItem('cleared_warehouse_goods_global') === 'true' ||
-        localStorage.getItem('cleared_warehouse_goods_global') === 'true';
-
-      if (isCleared) {
-        if (isMounted) setOccupiedBinsMap(new Map());
-        return;
-      }
       try {
         const map = new Map<string, { totalPhysical: number; allocated: number; productsCount: number }>();
         const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
 
-        // 1. Digital twin stock balances
-        const res = await fetch(`${API_BASE_URL}/inventory/visualizer/digital-twin?days=30`, { headers });
-        if (res.ok) {
-          const cells: any[] = await res.json();
-          cells.forEach((cell) => {
-            if (cell.totalPhysical > 0 || cell.allocated > 0) {
-              map.set(cell.locationCode, {
-                totalPhysical: cell.totalPhysical || 1,
-                allocated: cell.allocated || 0,
-                productsCount: cell.productsCount || 1,
+        // 1. Direct real stock balances from CSDL
+        const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
+        if (res && res.ok) {
+          const balances: any[] = await res.json();
+          balances.forEach((b) => {
+            const lc = String(b.locationCode || '').trim();
+            const physical = Number(b.totalPhysical || b.available || 0);
+            const allocated = Number(b.allocated || 0);
+            if (lc && (physical > 0 || allocated > 0) && (lc.includes('-S0') || lc.includes('-R0') || lc.includes('-C') || lc.includes('-ZA') || lc.includes('-ZB'))) {
+              const info = {
+                totalPhysical: physical || 1,
+                allocated,
+                productsCount: 1,
+              };
+              map.set(lc, info);
+              const norm = normalizeBinKey(lc);
+              if (norm) map.set(norm, info);
+            }
+          });
+        }
+
+        // 2. Completed stock-in receipts / orders
+        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
+        if (stockInRes && stockInRes.ok) {
+          const sOrders: any[] = await stockInRes.json();
+          sOrders.forEach((so) => {
+            const statusStr = String(so.status || '').toUpperCase();
+            if (['COMPLETED', 'POSTED', 'RECEIVED', 'DONE', 'APPROVED'].includes(statusStr)) {
+              (so.details || []).forEach((d: any) => {
+                const assigned = Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []);
+                assigned.forEach((bin: string) => {
+                  if (bin && bin.length > 2) {
+                    const info = {
+                      totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
+                      allocated: 0,
+                      productsCount: 1,
+                    };
+                    map.set(bin, info);
+                    const norm = normalizeBinKey(bin);
+                    if (norm) map.set(norm, info);
+                  }
+                });
+                const noteText = d.note || '';
+                if (noteText.includes('[Vị trí Ô:')) {
+                  const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+                  if (match && match[1]) {
+                    match[1].split(',').forEach((code: string) => {
+                      const bin = code.trim();
+                      if (bin) {
+                        const info = {
+                          totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
+                          allocated: 0,
+                          productsCount: 1,
+                        };
+                        map.set(bin, info);
+                        const norm = normalizeBinKey(bin);
+                        if (norm) map.set(norm, info);
+                      }
+                    });
+                  }
+                }
               });
             }
           });
         }
 
-        // 2. Also check purchase orders / stock-in orders for assigned bin codes in notes
-        const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null);
-        if (poRes && poRes.ok) {
-          const pos: any[] = await poRes.json();
-          pos.forEach((po) => {
-            (po.details || []).forEach((d: any) => {
-              const noteText = d.note || '';
-              if (noteText.includes('[Vị trí Ô:')) {
-                const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match && match[1]) {
-                  match[1].split(',').forEach((code: string) => {
-                    const bin = code.trim();
-                    if (bin && !map.has(bin)) {
-                      map.set(bin, {
-                        totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
-                        allocated: 0,
-                        productsCount: 1,
-                      });
-                    }
-                  });
-                }
-              }
-            });
-          });
-        }
-
-        // 3. Also check stock-in-orders endpoint
-        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
-        if (stockInRes && stockInRes.ok) {
-          const sOrders: any[] = await stockInRes.json();
-          sOrders.forEach((so) => {
-            (so.details || []).forEach((d: any) => {
-              const assigned = Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []);
-              assigned.forEach((bin: string) => {
-                if (bin && bin.length > 2 && !map.has(bin)) {
-                  map.set(bin, {
-                    totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
-                    allocated: 0,
-                    productsCount: 1,
-                  });
-                }
-              });
-              const noteText = d.note || '';
-              if (noteText.includes('[Vị trí Ô:')) {
-                const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match && match[1]) {
-                  match[1].split(',').forEach((code: string) => {
-                    const bin = code.trim();
-                    if (bin && !map.has(bin)) {
-                      map.set(bin, {
-                        totalPhysical: Number(d.receivedQty || d.expectedQty || 1),
-                        allocated: 0,
-                        productsCount: 1,
-                      });
-                    }
-                  });
-                }
-              }
-            });
-          });
-        }
-
         if (isMounted) setOccupiedBinsMap(map);
       } catch (err) {
-        console.error('Could not fetch digital twin bins', err);
+        console.error('Could not fetch stock balance bins', err);
       }
     }
     fetchOccupiedBins();
@@ -292,14 +278,11 @@ export default function CreateWarehousePage() {
   const handleClearAllGoods = () => {
     if (window.confirm('Bạn có chắc chắn muốn giải phóng toàn bộ ô kệ và xóa hết hàng hóa trong kho này về trạng thái KỆ TRỐNG?')) {
       setOccupiedBinsMap(new Map());
-      sessionStorage.setItem(`cleared_warehouse_goods_${id || 'new'}`, 'true');
-      localStorage.setItem(`cleared_warehouse_goods_${id || 'new'}`, 'true');
+      sessionStorage.clear();
+      localStorage.removeItem('cleared_warehouse_goods_global');
       if (code) {
-        sessionStorage.setItem(`cleared_warehouse_goods_${code}`, 'true');
-        localStorage.setItem(`cleared_warehouse_goods_${code}`, 'true');
+        localStorage.removeItem(`cleared_warehouse_goods_${code}`);
       }
-      sessionStorage.setItem('cleared_warehouse_goods_global', 'true');
-      localStorage.setItem('cleared_warehouse_goods_global', 'true');
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
       setSuccess('Đã xóa toàn bộ hàng hóa trong kho. Tất cả ô kệ đã trở về trạng thái KỆ TRỐNG!');
     }
@@ -316,6 +299,9 @@ export default function CreateWarehousePage() {
     if (!occupiedBinsMap || occupiedBinsMap.size === 0) return null;
     if (occupiedBinsMap.has(fullBinCode)) return occupiedBinsMap.get(fullBinCode);
 
+    const normKey = normalizeBinKey(fullBinCode);
+    if (normKey && occupiedBinsMap.has(normKey)) return occupiedBinsMap.get(normKey);
+
     const shortCode = `${rackCode}-${shelfCode}-${cellCode}`;
     if (occupiedBinsMap.has(shortCode)) return occupiedBinsMap.get(shortCode);
 
@@ -327,6 +313,7 @@ export default function CreateWarehousePage() {
     for (const [key, val] of occupiedBinsMap.entries()) {
       if (
         key.includes(fullBinCode) ||
+        (normKey && key.includes(normKey)) ||
         (rackCode && shelfCode && cellCode && key.includes(rackCode) && key.includes(shelfCode) && key.includes(cellCode))
       ) {
         return val;

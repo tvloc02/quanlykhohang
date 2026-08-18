@@ -493,8 +493,51 @@ async function handleFileUploadToCloudinary(file: File): Promise<string> {
   throw new Error(errData?.message || 'Không thể tải ảnh lên máy chủ Cloudinary. Vui lòng kiểm tra lại kết nối mạng.');
 }
 
+function calculateFrontendStock(balances: Array<{ locationCode: string; totalPhysical?: number; available?: number }>): number {
+  if (!balances || balances.length === 0) return 0;
+  const warehouseGroups = new Map<string, { mainPhysical: number; binPhysical: number }>();
+
+  for (const b of balances) {
+    const loc = String(b.locationCode || '').trim();
+    if (!loc) continue;
+    const physical = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
+    const parts = loc.split(/[-_/]/);
+    const baseCode = parts[0] ? parts[0].toUpperCase() : loc.toUpperCase();
+    const isMainWhRecord = loc.toUpperCase() === baseCode;
+
+    if (!warehouseGroups.has(baseCode)) {
+      warehouseGroups.set(baseCode, { mainPhysical: 0, binPhysical: 0 });
+    }
+    const group = warehouseGroups.get(baseCode)!;
+    if (isMainWhRecord) {
+      group.mainPhysical += physical;
+    } else {
+      group.binPhysical += physical;
+    }
+  }
+
+  let total = 0;
+  for (const [, group] of warehouseGroups) {
+    if (group.mainPhysical > 0 && group.binPhysical > 0) {
+      total += Math.max(group.mainPhysical, group.binPhysical);
+    } else {
+      total += group.mainPhysical + group.binPhysical;
+    }
+  }
+  return total;
+}
+
 function normalizeProduct(product: RawProduct & Record<string, any>): Product {
-  const stockVal = Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0));
+  const balances: Array<{ locationCode: string; totalPhysical?: number; available?: number }> =
+    (product as any).stockBalances || [];
+
+  let stockVal = 0;
+  if (balances.length > 0) {
+    stockVal = calculateFrontendStock(balances);
+  } else {
+    stockVal = Number(product.totalStock !== undefined ? product.totalStock : (product.stock || 0));
+  }
+
   const rPrice = product.retailPrice !== undefined && product.retailPrice !== '' && product.retailPrice !== null
     ? Number(product.retailPrice)
     : Number(product.price || 0);
@@ -884,10 +927,29 @@ export default function Products() {
 
       let stockForThisWh = 0;
       if (matchedBalances.length > 0) {
-        stockForThisWh = matchedBalances.reduce(
+        const mainRecs = matchedBalances.filter((b) => {
+          const lc = String(b.locationCode || '').trim().toLowerCase();
+          return lc === code || lc === name || lc === id;
+        });
+        const binRecs = matchedBalances.filter((b) => {
+          const lc = String(b.locationCode || '').trim().toLowerCase();
+          return lc !== code && lc !== name && lc !== id;
+        });
+
+        const mainPhysical = mainRecs.reduce(
           (sum, b) => sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0)),
           0
         );
+        const binPhysical = binRecs.reduce(
+          (sum, b) => sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0)),
+          0
+        );
+
+        if (mainPhysical > 0 && binPhysical > 0) {
+          stockForThisWh = Math.max(mainPhysical, binPhysical);
+        } else {
+          stockForThisWh = mainPhysical + binPhysical;
+        }
       } else if (product.warehouseStocks) {
         // 2. Fallback to direct warehouseStocks on product entity
         for (const k of keys) {
