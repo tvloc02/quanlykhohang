@@ -252,7 +252,12 @@ export default function CreateTransferOrderPage({
 }: CreateTransferOrderPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const targetEditData = editOrderData || (location.state as any)?.editOrderData;
+  const targetEditData = editOrderData || (location.state as any)?.editOrderData || (location.state as any)?.copyFromOrder;
+  const isReceiveMode = location.pathname.includes('receive-transfer-order') || (location.state as any)?.mode === 'receive' || (location.state as any)?.mode === 'inbound' || (location.state as any)?.fromRequests || false;
+  const isCopyMode = !!(location.state as any)?.copyFromOrder;
+  const targetStatus = (targetEditData?.status || '').toUpperCase();
+  const isOrderCompleted = (targetStatus === 'DELIVERED' || targetStatus === 'COMPLETED' || targetStatus === 'RECEIVED') && !isCopyMode;
+  const isReadOnly = !!(location.state as any)?.isReadOnly || isOrderCompleted;
   const currentUser = getStoredUser();
   const currentStaffEmail = currentUser?.email || '';
 
@@ -297,18 +302,35 @@ export default function CreateTransferOrderPage({
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<TransferTab[]>(() => {
     if (targetEditData) {
-      const editDetails: TransferRowItem[] = (targetEditData.items || []).map((it: any, idx: number) => ({
-        rowId: `edit-row-${it.id || idx}`,
-        productId: it.id || '',
-        productSku: it.productCode || '',
-        productName: it.productName || '',
-        unit: it.unit || 'Cái',
-        sourceWarehouseCode: targetEditData.sourceWarehouse || 'KHO-TONG',
-        qty: Number(it.quantity || 0),
-        price: Number(it.price || 0),
-        totalAmount: Number(it.quantity || 0) * Number(it.price || 0),
-        note: '',
-      }));
+      const editDetails: TransferRowItem[] = (targetEditData.items || []).map((it: any, idx: number) => {
+        const q = Number(it.quantity || it.qty || 0);
+        const p = Number(
+          it.price ||
+          it.unitPrice ||
+          it.importPrice ||
+          it.wholesalePrice ||
+          it.retailPrice ||
+          it.salePrice ||
+          it.product?.importPrice ||
+          it.product?.price ||
+          it.product?.purchasePrice ||
+          0
+        );
+        return {
+          rowId: `edit-row-${it.id || idx}`,
+          productId: it.id || it.productId || '',
+          productSku: it.productCode || it.productSku || '',
+          productName: it.productName || '',
+          unit: it.unit || 'Cái',
+          sourceWarehouseCode: targetEditData.sourceWarehouse || 'KH006',
+          qty: q,
+          price: p,
+          totalAmount: q * p,
+          locationBin: it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''),
+          assignedBins: Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []),
+          note: it.note || '',
+        };
+      });
 
       // Fill up to DEFAULT_ROWS_COUNT rows
       const padCount = Math.max(0, DEFAULT_ROWS_COUNT - editDetails.length);
@@ -387,13 +409,81 @@ export default function CreateTransferOrderPage({
     [tabs, activeTabId]
   );
 
+  // Hydrate edit order data when editing an existing order
+  useEffect(() => {
+    if (!targetEditData) return;
+
+    const editDetails: TransferRowItem[] = (targetEditData.items || []).map((it: any, idx: number) => {
+      const q = Number(it.quantity || it.qty || 0);
+      const p = Number(
+        it.price ||
+        it.unitPrice ||
+        it.importPrice ||
+        it.wholesalePrice ||
+        it.retailPrice ||
+        it.salePrice ||
+        it.product?.importPrice ||
+        it.product?.price ||
+        it.product?.purchasePrice ||
+        0
+      );
+      return {
+        rowId: `edit-row-${it.id || idx}`,
+        productId: it.id || it.productId || '',
+        productSku: it.productCode || it.productSku || '',
+        productName: it.productName || '',
+        unit: it.unit || 'Cái',
+        sourceWarehouseCode: targetEditData.sourceWarehouse || 'KH006',
+        qty: q,
+        price: p,
+        totalAmount: q * p,
+        locationBin: it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''),
+        assignedBins: Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []),
+        note: it.note || '',
+      };
+    });
+
+    const padCount = Math.max(0, DEFAULT_ROWS_COUNT - editDetails.length);
+    const paddedRows = [...editDetails, ...makeInitialRows(padCount, targetEditData.sourceWarehouse || 'KH006')];
+
+    const editTab: TransferTab = {
+      tabId: `edit-tab-${targetEditData.id}`,
+      title: targetEditData.transferNo || 'Sửa phiếu',
+      id: targetEditData.id,
+      transferNo: targetEditData.transferNo || generateTransferCode(),
+      sourceWarehouseCode: targetEditData.sourceWarehouse || 'KH006',
+      destinationWarehouseCode: targetEditData.destinationWarehouse || 'KH002',
+      assignedStaffEmail: targetEditData.createdBy || currentStaffEmail,
+      orderDate: targetEditData.scheduledDate
+        ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19)
+        : formatISOWithSeconds(),
+      dispatchDate: targetEditData.dispatchDate
+        ? new Date(targetEditData.dispatchDate).toISOString().slice(0, 19)
+        : targetEditData.scheduledDate
+        ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19)
+        : formatISOWithSeconds(),
+      receiveDate: targetEditData.receiveDate
+        ? new Date(targetEditData.receiveDate).toISOString().slice(0, 19)
+        : formatISOWithSeconds(new Date(Date.now() + 86400000)),
+      driverName: targetEditData.driverName || '',
+      driverPhone: targetEditData.driverPhone || '',
+      vehiclePlate: targetEditData.vehiclePlate || '',
+      generalNote: targetEditData.note || '',
+      status: targetEditData.status || 'DRAFT',
+      details: paddedRows,
+    };
+
+    setTabs([editTab]);
+    setActiveTabId(editTab.tabId);
+  }, [targetEditData?.id]);
+
   // Sync draft tabs to sessionStorage (when not in edit mode)
   useEffect(() => {
-    if (!editOrderData && tabs && tabs.length > 0) {
+    if (!targetEditData && tabs && tabs.length > 0) {
       sessionStorage.setItem('transfer_tabs_draft', JSON.stringify(tabs));
       sessionStorage.setItem('transfer_active_tab_id', activeTabId);
     }
-  }, [tabs, activeTabId, editOrderData]);
+  }, [tabs, activeTabId, targetEditData]);
 
   // Toast auto-hide
   useEffect(() => {
@@ -426,7 +516,33 @@ export default function CreateTransferOrderPage({
 
         if (prodRes && prodRes.ok) {
           const prodData = await prodRes.json();
-          setProducts(filterOutDeletedProducts(Array.isArray(prodData) ? prodData : prodData.data || []));
+          const loadedProducts = filterOutDeletedProducts(Array.isArray(prodData) ? prodData : prodData.data || []) as ProductOption[];
+          setProducts(loadedProducts);
+
+          // Auto-enrich unit price and totalAmount if price is 0 or missing
+          setTabs((prevTabs) =>
+            prevTabs.map((tab) => ({
+              ...tab,
+              details: tab.details.map((row) => {
+                let pPrice = row.price;
+                const matched = loadedProducts.find(
+                  (p) =>
+                    (row.productId && String(p.id) === String(row.productId)) ||
+                    (row.productSku && p.internalSku && p.internalSku.toLowerCase() === row.productSku.toLowerCase()) ||
+                    (row.productName && p.name && p.name.toLowerCase() === row.productName.toLowerCase())
+                );
+                if ((!pPrice || pPrice === 0) && matched) {
+                  pPrice = getProductPrice(matched);
+                }
+                const q = row.qty || 0;
+                return {
+                  ...row,
+                  price: pPrice,
+                  totalAmount: q * pPrice,
+                };
+              }),
+            }))
+          );
         }
 
         if (userRes && userRes.ok) {
@@ -632,8 +748,10 @@ export default function CreateTransferOrderPage({
     } catch { }
     if (onBack) {
       onBack();
+    } else if (isReceiveMode || (location.state as any)?.fromRequests) {
+      navigate('/delivery/transfer-requests');
     } else {
-      navigate('/delivery');
+      navigate('/delivery/transfer-orders');
     }
   };
 
@@ -652,7 +770,7 @@ export default function CreateTransferOrderPage({
   };
 
   // Save Transfer Handler
-  const handleSaveTransfer = async (statusSave: 'DRAFT' | 'APPROVED' | 'IN_TRANSIT') => {
+  const handleSaveTransfer = async (statusSave: 'DRAFT' | 'APPROVED' | 'IN_TRANSIT' | 'DELIVERED' | 'COMPLETED') => {
     if (!activeTab) return;
 
     if (activeValidItems.length === 0) {
@@ -675,28 +793,33 @@ export default function CreateTransferOrderPage({
       const sourceWh = (activeTab.sourceWarehouseCode || warehouses[0]?.code || warehouses[0]?.id || 'KH006').trim();
       const destWh = (activeTab.destinationWarehouseCode || warehouses[1]?.code || warehouses[1]?.id || 'KH002').trim();
 
+      const finalStatus = isReceiveMode ? 'DELIVERED' : statusSave;
+
       const payload = {
         transferNo: activeTab.transferNo,
         sourceWarehouse: sourceWh,
         sourceWarehouseCode: sourceWh,
         destinationWarehouse: destWh,
         destinationWarehouseCode: destWh,
-        scheduledDate: activeTab.orderDate,
-        dispatchDate: activeTab.dispatchDate || activeTab.orderDate,
-        receiveDate: activeTab.receiveDate,
-        driverName: activeTab.driverName,
-        driverPhone: activeTab.driverPhone,
-        vehiclePlate: activeTab.vehiclePlate,
-        status: statusSave,
-        note: activeTab.generalNote || undefined,
-        createdBy: activeTab.assignedStaffEmail || currentUser?.fullName || currentUser?.email || 'NPT_Staff',
+        scheduledDate: activeTab.dispatchDate || activeTab.orderDate || new Date().toISOString(),
+        dispatchDate: activeTab.dispatchDate || activeTab.orderDate || new Date().toISOString(),
+        receiveDate: activeTab.receiveDate || new Date(Date.now() + 86400000).toISOString(),
+        driverName: activeTab.driverName ? activeTab.driverName.trim() : undefined,
+        driverPhone: activeTab.driverPhone ? activeTab.driverPhone.trim() : undefined,
+        vehiclePlate: activeTab.vehiclePlate ? activeTab.vehiclePlate.trim() : undefined,
+        status: finalStatus as any,
+        note: activeTab.generalNote ? activeTab.generalNote.trim() : undefined,
+        createdBy: currentUser?.fullName || currentUser?.name || currentUser?.username || currentUser?.email || 'System Administrator',
         items: activeValidItems.map((it) => ({
           id: it.productId || it.rowId,
-          productCode: it.productSku || `SKU-${it.productId}`,
-          productName: it.productName || 'Sản phẩm điều chuyển',
-          unit: it.unit || 'Cái',
-          quantity: Number(it.qty),
+          productCode: it.productSku ? it.productSku.trim() : (it.productId ? `SKU-${it.productId}` : `SKU-${Math.floor(100000 + Math.random() * 900000)}`),
+          productName: it.productName ? it.productName.trim() : 'Sản phẩm điều chuyển',
+          unit: it.unit ? it.unit.trim() : 'Cái',
+          quantity: Math.max(1, Number(it.qty) || 1),
           price: Number(it.price || 0),
+          locationBin: it.locationBin ? it.locationBin.trim() : (Array.isArray(it.assignedBins) && it.assignedBins.length > 0 ? it.assignedBins.join(', ') : undefined),
+          assignedBins: Array.isArray(it.assignedBins) && it.assignedBins.length > 0 ? it.assignedBins : undefined,
+          note: it.note ? it.note.trim() : undefined,
         })),
       };
 
@@ -714,14 +837,26 @@ export default function CreateTransferOrderPage({
       } catch { }
 
       setTimeout(() => {
-        handleBackNavigation();
-      }, 1000);
+        if (isReceiveMode || (location.state as any)?.fromRequests) {
+          navigate('/delivery/transfer-requests');
+        } else {
+          navigate('/delivery/transfer-orders');
+        }
+      }, 500);
     } catch (err: any) {
-      setToast({ type: 'error', message: err?.message || 'Lỗi khi lưu phiếu xuất chuyển kho' });
+      setToast({ type: 'error', message: err?.message || 'Lỗi khi lưu phiếu điều chuyển kho' });
     } finally {
       setSaving(false);
     }
   };
+
+  const displayDetails = useMemo(() => {
+    const details = activeTab?.details || [];
+    if (isReadOnly) {
+      return details.filter((r) => r.productId || (r.productName && r.productName.trim().length > 0));
+    }
+    return details;
+  }, [activeTab?.details, isReadOnly]);
 
   const contentMarkup = (
     <div
@@ -753,7 +888,9 @@ export default function CreateTransferOrderPage({
         {/* Title Pill Badge */}
         <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
           <Truck className="h-5 w-5 text-cyan-100" />
-          <h1 className="text-base font-black tracking-tight uppercase">TẠO PHIẾU XUẤT CHUYỂN CHI NHÁNH</h1>
+          <h1 className="text-base font-black tracking-tight uppercase">
+            {isReceiveMode ? 'TẠO PHIẾU NHẬP CHUYỂN CHI NHÁNH' : 'TẠO PHIẾU XUẤT CHUYỂN CHI NHÁNH'}
+          </h1>
         </div>
 
         {/* Action Buttons at Top Right */}
@@ -764,26 +901,30 @@ export default function CreateTransferOrderPage({
             <span>{activeTab?.transferNo || 'PHIẾU MỚI'}</span>
           </div>
 
-          {/* Barcode Scanner Button */}
-          <button
-            type="button"
-            onClick={() => setShowScannerModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 px-3.5 py-1.5 text-xs font-bold text-cyan-700 transition shadow-xs cursor-pointer"
-          >
-            <ScanLine className="h-4 w-4 text-cyan-600" />
-            <span>Quét mã vạch</span>
-          </button>
+          {!isReadOnly && (
+            <>
+              {/* Barcode Scanner Button */}
+              <button
+                type="button"
+                onClick={() => setShowScannerModal(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 px-3.5 py-1.5 text-xs font-bold text-cyan-700 transition shadow-xs cursor-pointer"
+              >
+                <ScanLine className="h-4 w-4 text-cyan-600" />
+                <span>Quét mã vạch</span>
+              </button>
 
-          {/* Reset / Clear Form Button */}
-          <button
-            type="button"
-            onClick={handleClearCurrentTab}
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-amber-500 bg-white hover:bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700 transition shadow-xs cursor-pointer"
-            title="Làm mới form và xóa các dòng đã chọn"
-          >
-            <RotateCcw className="h-4 w-4 text-amber-600" />
-            <span>Làm mới phiếu</span>
-          </button>
+              {/* Reset / Clear Form Button */}
+              <button
+                type="button"
+                onClick={handleClearCurrentTab}
+                className="inline-flex items-center gap-1.5 rounded-xl border-2 border-amber-500 bg-white hover:bg-amber-50 px-3.5 py-1.5 text-xs font-bold text-amber-700 transition shadow-xs cursor-pointer"
+                title="Làm mới form và xóa các dòng đã chọn"
+              >
+                <RotateCcw className="h-4 w-4 text-amber-600" />
+                <span>Làm mới phiếu</span>
+              </button>
+            </>
+          )}
 
           {/* Fullscreen Toggle */}
           <button
@@ -817,10 +958,11 @@ export default function CreateTransferOrderPage({
             <label className="mb-1 block text-xs font-bold text-slate-700">MÃ PHIẾU / LỆNH</label>
             <input
               type="text"
+              disabled={isReadOnly}
               value={activeTab?.transferNo || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, transferNo: e.target.value }))}
               placeholder="Tạo tự động"
-              className="h-10 w-full rounded-xl border-2 border-cyan-200 bg-cyan-50/50 px-3 text-xs font-black text-cyan-900 outline-none focus:border-cyan-500 uppercase"
+              className="h-10 w-full rounded-xl border-2 border-cyan-200 bg-cyan-50/50 px-3 text-xs font-black text-cyan-900 outline-none focus:border-cyan-500 uppercase disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
             />
           </div>
 
@@ -831,9 +973,10 @@ export default function CreateTransferOrderPage({
               <span>KHO XUẤT HÀNG (KHO NGUỒN)</span>
             </label>
             <select
+              disabled={isReadOnly}
               value={activeTab?.sourceWarehouseCode || ''}
               onChange={(e) => handleSourceWarehouseChange(e.target.value)}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer"
+              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
             >
               {warehouses.length > 0 ? (
                 warehouses.map((wh) => (
@@ -858,9 +1001,10 @@ export default function CreateTransferOrderPage({
               <span>KHO NHẬP (CHI NHÁNH NHẬN)</span>
             </label>
             <select
+              disabled={isReadOnly}
               value={activeTab?.destinationWarehouseCode || ''}
               onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer"
+              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
             >
               {warehouses.length > 0 ? (
                 warehouses.map((wh) => (
@@ -885,9 +1029,10 @@ export default function CreateTransferOrderPage({
               <span>NHÂN VIÊN PHỤ TRÁCH</span>
             </label>
             <select
+              disabled={isReadOnly}
               value={activeTab?.assignedStaffEmail || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, assignedStaffEmail: e.target.value }))}
-              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500 cursor-pointer"
+              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
             >
               <option value={currentUser?.email || ''}>{currentUser?.fullName || currentUser?.email || 'Nhân viên phụ trách'}</option>
               {users.map((u) => (
@@ -910,9 +1055,10 @@ export default function CreateTransferOrderPage({
             <input
               type="datetime-local"
               step="1"
-              value={activeTab?.dispatchDate || activeTab?.orderDate || ''}
+              disabled={isReadOnly}
+              value={activeTab?.dispatchDate ? (activeTab.dispatchDate.length > 16 ? activeTab.dispatchDate.slice(0, 16) : activeTab.dispatchDate) : ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, dispatchDate: e.target.value, orderDate: e.target.value }))}
-              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-cyan-500"
+              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-cyan-500 disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
             />
           </div>
 
@@ -925,9 +1071,10 @@ export default function CreateTransferOrderPage({
             <input
               type="datetime-local"
               step="1"
-              value={activeTab?.receiveDate || ''}
+              disabled={isReadOnly}
+              value={activeTab?.receiveDate ? (activeTab.receiveDate.length > 16 ? activeTab.receiveDate.slice(0, 16) : activeTab.receiveDate) : ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, receiveDate: e.target.value }))}
-              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-cyan-500"
+              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-cyan-500 disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
             />
           </div>
 
@@ -938,50 +1085,48 @@ export default function CreateTransferOrderPage({
                 <Bike className="h-3.5 w-3.5 text-cyan-600" />
                 <span>TÀI XẾ / SHIPPER VẬN CHUYỂN</span>
               </label>
-              <button
-                type="button"
-                onClick={() => setShowQuickAddShipperModal(true)}
-                className="inline-flex items-center gap-0.5 text-[11px] font-black text-cyan-600 hover:text-cyan-800 hover:underline cursor-pointer"
-                title="Thêm nhanh tài xế / Shipper mới"
-              >
-                <Plus className="h-3 w-3" />
-                <span>Thêm</span>
-              </button>
+              {!isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => setShowQuickAddShipperModal(true)}
+                  className="inline-flex items-center gap-0.5 text-[11px] font-black text-cyan-600 hover:text-cyan-800 hover:underline cursor-pointer"
+                  title="Thêm nhanh tài xế / Shipper mới"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>Thêm tài xế mới</span>
+                </button>
+              )}
             </div>
             <div className="flex gap-1.5">
-              <select
+              <input
+                type="text"
+                list="shippers-datalist"
+                disabled={isReadOnly}
                 value={activeTab?.driverName || ''}
                 onChange={(e) => {
                   const val = e.target.value;
-                  const matched = shippers.find((s) => s.name === val);
+                  const matched = shippers.find((s) => s.name === val || `[${s.company || 'Nội bộ'}] ${s.name}` === val);
                   if (matched) {
                     updateActiveTab((t) => ({
                       ...t,
                       driverName: matched.name,
-                      driverPhone: matched.phone,
-                      vehiclePlate: matched.vehiclePlate,
+                      driverPhone: matched.phone || t.driverPhone,
+                      vehiclePlate: matched.vehiclePlate || t.vehiclePlate,
                     }));
                   } else {
                     updateActiveTab((t) => ({ ...t, driverName: val }));
                   }
                 }}
-                className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-900 outline-none transition focus:border-cyan-500 cursor-pointer"
-              >
-                <option value="">-- Chọn hoặc nhập tài xế --</option>
+                placeholder="Chọn hoặc nhập tên tài xế..."
+                className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none transition focus:border-cyan-500 disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
+              />
+              <datalist id="shippers-datalist">
                 {shippers.map((s) => (
                   <option key={s.id} value={s.name}>
-                    [{s.company || 'Nội bộ'}] {s.name} - {s.phone} ({s.vehiclePlate || 'N/A'})
+                    [{s.company || 'Nội bộ'}] {s.phone} ({s.vehiclePlate || 'N/A'})
                   </option>
                 ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setShowQuickAddShipperModal(true)}
-                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border-2 border-cyan-500 bg-cyan-600 text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
-                title="Thêm nhanh tài xế / Shipper mới vào danh sách"
-              >
-                <Plus className="h-4 w-4" />
-              </button>
+              </datalist>
             </div>
           </div>
 
@@ -993,10 +1138,11 @@ export default function CreateTransferOrderPage({
             </label>
             <input
               type="tel"
+              disabled={isReadOnly}
               value={activeTab?.driverPhone || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, driverPhone: e.target.value }))}
               placeholder="Nhập số điện thoại tài xế"
-              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none transition focus:border-cyan-500"
+              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none transition focus:border-cyan-500 disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
             />
           </div>
 
@@ -1008,10 +1154,11 @@ export default function CreateTransferOrderPage({
             </label>
             <input
               type="text"
+              disabled={isReadOnly}
               value={activeTab?.vehiclePlate || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, vehiclePlate: e.target.value }))}
               placeholder="Ví dụ: 30L-636.86"
-              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-black text-slate-900 outline-none transition focus:border-cyan-500 uppercase"
+              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-black text-slate-900 outline-none transition focus:border-cyan-500 uppercase disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
             />
           </div>
         </div>
@@ -1025,16 +1172,20 @@ export default function CreateTransferOrderPage({
           <div className="px-4 py-3 border-b border-cyan-200 bg-cyan-50/80 flex items-center justify-between">
             <div className="flex items-center gap-2 text-cyan-950 font-black text-xs uppercase tracking-wide">
               <Truck className="h-4.5 w-4.5 text-cyan-600" />
-              <span>THÔNG TIN HÀNG HÓA XUẤT CHUYỂN ({(activeTab?.details || []).length} DÒNG - TỔNG SL: {totalQty})</span>
+              <span>
+                {isReceiveMode ? 'THÔNG TIN HÀNG HÓA NHẬP CHUYỂN' : 'THÔNG TIN HÀNG HÓA XUẤT CHUYỂN'} ({displayDetails.length} DÒNG - TỔNG SL: {totalQty})
+              </span>
             </div>
-            <button
-              type="button"
-              onClick={handleAddBlankRow}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 px-3.5 py-1.5 text-xs font-black text-white shadow-sm transition cursor-pointer"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Thêm dòng mới</span>
-            </button>
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={handleAddBlankRow}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 px-3.5 py-1.5 text-xs font-black text-white shadow-sm transition cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Thêm dòng mới</span>
+              </button>
+            )}
           </div>
 
           {/* Grid Product Table (Rộng rãi, xóa cột SKU & Kho xuất) */}
@@ -1044,17 +1195,28 @@ export default function CreateTransferOrderPage({
                 <tr>
                   <th className="p-3 w-12 text-center border-r border-slate-200 bg-slate-100">STT</th>
                   <th className="p-3 min-w-[280px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
-                  <th className="p-3 min-w-[150px] text-center border-r border-slate-200 bg-slate-100">KỆ LẤY HÀNG</th>
+                  {!isReceiveMode && (
+                    <th className="p-3 min-w-[150px] text-center border-r border-slate-200 bg-slate-100">
+                      KỆ LẤY HÀNG
+                    </th>
+                  )}
                   <th className="p-3 w-24 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
-                  <th className="p-3 w-28 text-center border-r border-slate-200 bg-slate-100">SL XUẤT</th>
+                  <th className="p-3 w-28 text-center border-r border-slate-200 bg-slate-100">
+                    {isReceiveMode ? 'SL NHẬP' : 'SL XUẤT'}
+                  </th>
                   <th className="p-3 w-32 text-center border-r border-slate-200 bg-slate-100">ĐƠN GIÁ (đ)</th>
                   <th className="p-3 w-36 text-center border-r border-slate-200 bg-slate-100">THÀNH TIỀN</th>
                   <th className="p-3 min-w-[180px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
+                  {isReceiveMode && (
+                    <th className="p-3 min-w-[160px] text-center border-r border-slate-200 bg-slate-100">
+                      KỆ NHẬP HÀNG
+                    </th>
+                  )}
                   <th className="p-3 w-20 text-center bg-slate-100">TT</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {activeTab?.details.map((row, idx) => {
+                {displayDetails.map((row, idx) => {
                   const isEven = idx % 2 === 1;
                   return (
                     <tr
@@ -1070,20 +1232,21 @@ export default function CreateTransferOrderPage({
                       <td className="p-1.5 border-r border-slate-200 relative product-table-dropdown">
                         <input
                           type="text"
-                          value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
+                          disabled={isReadOnly}
+                          value={row.productName || ''}
                           onChange={(e) => {
                             const val = e.target.value;
-                            updateRow(row.rowId, { productName: val });
+                            updateRow(row.rowId, { productName: val, qty: row.qty > 0 ? row.qty : 1 });
                             setActiveProductDropdownRowId(row.rowId);
                           }}
-                          onFocus={() => setActiveProductDropdownRowId(row.rowId)}
-                          onClick={() => setActiveProductDropdownRowId(row.rowId)}
+                          onFocus={() => !isReadOnly && setActiveProductDropdownRowId(row.rowId)}
+                          onClick={() => !isReadOnly && setActiveProductDropdownRowId(row.rowId)}
                           placeholder="Chọn hoặc nhập tên hàng hóa..."
-                          className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:border-cyan-600 text-xs cursor-text"
+                          className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:border-cyan-600 text-xs disabled:bg-slate-50 disabled:text-slate-700 disabled:border-slate-200"
                         />
 
                         {/* Interactive Table Dropdown */}
-                        {activeProductDropdownRowId === row.rowId && (
+                        {activeProductDropdownRowId === row.rowId && !isReadOnly && (
                           <div className="absolute left-0 top-full z-[100] mt-1 w-[460px] max-h-60 overflow-y-auto rounded-xl border border-cyan-300 bg-white shadow-2xl flex flex-col">
                             <div className="flex bg-cyan-50 border-b border-cyan-200 px-3 py-2 text-[11px] font-black text-cyan-950 sticky top-0 z-10">
                               <span className="w-1/3 uppercase">Mã SKU</span>
@@ -1126,59 +1289,68 @@ export default function CreateTransferOrderPage({
                         )}
                       </td>
 
-                      {/* KỆ LẤY HÀNG */}
-                      <td className="p-1.5 border-r border-slate-200 text-center">
-                        {row.assignedBins && row.assignedBins.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => openPickBinModal(row.rowId)}
-                            className="inline-flex items-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
-                            title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
-                          >
-                            <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                            <span className="truncate max-w-[110px]">{row.assignedBins.join(', ')}</span>
-                          </button>
-                        ) : row.locationBin ? (
-                          <button
-                            type="button"
-                            onClick={() => openPickBinModal(row.rowId)}
-                            className="inline-flex items-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
-                            title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
-                          >
-                            <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                            <span className="truncate max-w-[110px]">{row.locationBin}</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => openPickBinModal(row.rowId)}
-                            className="inline-flex items-center gap-1 bg-white hover:bg-cyan-50 text-cyan-700 border border-cyan-400 font-bold px-2 py-1 rounded-lg text-xs transition cursor-pointer"
-                            title="Bấm mở sơ đồ chọn vị trí kệ lấy hàng xuất chuyển"
-                          >
-                            <MapPin className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                            <span>+ Chọn kệ lấy</span>
-                          </button>
-                        )}
-                      </td>
+                      {/* KỆ LẤY HÀNG (BÊN XUẤT) */}
+                      {!isReceiveMode && (
+                        <td className="p-1.5 border-r border-slate-200 text-center">
+                          {isReadOnly ? (
+                            <span className="inline-flex items-center gap-1 bg-cyan-100 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs">
+                              <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{row.assignedBins?.join(', ') || row.locationBin || '-'}</span>
+                            </span>
+                          ) : row.assignedBins && row.assignedBins.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
+                            >
+                              <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{row.assignedBins.join(', ')}</span>
+                            </button>
+                          ) : row.locationBin ? (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
+                            >
+                              <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{row.locationBin}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-white hover:bg-cyan-50 text-cyan-700 border border-cyan-400 font-bold px-2 py-1 rounded-lg text-xs transition cursor-pointer"
+                              title="Bấm mở sơ đồ chọn vị trí kệ lấy hàng xuất chuyển"
+                            >
+                              <MapPin className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                              <span>+ Chọn kệ lấy</span>
+                            </button>
+                          )}
+                        </td>
+                      )}
 
                       {/* ĐVT */}
                       <td className="p-1.5 text-center border-r border-slate-200">
                         <input
                           type="text"
+                          disabled={isReadOnly}
                           value={row.unit}
                           onChange={(e) => updateRow(row.rowId, { unit: e.target.value })}
-                          className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-600"
+                          className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-600 disabled:bg-slate-50 disabled:text-slate-700 disabled:border-slate-200"
                         />
                       </td>
 
-                      {/* SỐ LƯỢNG XUẤT */}
+                      {/* SỐ LƯỢNG */}
                       <td className="p-1.5 border-r border-slate-200">
                         <input
                           type="number"
                           min="0"
+                          disabled={isReadOnly}
                           value={row.qty || ''}
                           onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
-                          className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:border-cyan-600"
+                          className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:border-cyan-600 disabled:bg-slate-50 disabled:text-slate-700 disabled:border-slate-200"
                         />
                       </td>
 
@@ -1187,9 +1359,10 @@ export default function CreateTransferOrderPage({
                         <input
                           type="number"
                           min="0"
+                          disabled={isReadOnly}
                           value={row.price || ''}
                           onChange={(e) => updateRow(row.rowId, { price: Number(e.target.value) })}
-                          className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-600"
+                          className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-600 disabled:bg-slate-50 disabled:text-slate-700 disabled:border-slate-200"
                         />
                       </td>
 
@@ -1202,33 +1375,80 @@ export default function CreateTransferOrderPage({
                       <td className="p-1.5 border-r border-slate-200">
                         <input
                           type="text"
+                          disabled={isReadOnly}
                           value={row.note}
                           onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
                           placeholder="Ghi chú dòng..."
-                          className="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-normal text-slate-700 outline-none focus:border-cyan-600"
+                          className="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-normal text-slate-700 outline-none focus:border-cyan-600 disabled:bg-slate-50 disabled:text-slate-700 disabled:border-slate-200"
                         />
                       </td>
 
+                      {/* KỆ NHẬP HÀNG (BÊN NHẬN - NẰM BÊN CẠNH CỘT GHI CHÚ) */}
+                      {isReceiveMode && (
+                        <td className="p-1.5 border-r border-slate-200 text-center">
+                          {isReadOnly ? (
+                            <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-950 border border-emerald-300 font-extrabold px-2.5 py-1 rounded-lg text-xs shadow-2xs">
+                              <Layers className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{row.assignedBins?.join(', ') || row.locationBin || '-'}</span>
+                            </span>
+                          ) : row.assignedBins && row.assignedBins.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300 font-extrabold px-2.5 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              title="Bấm để mở sơ đồ chọn vị trí kệ cất/nhập hàng"
+                            >
+                              <Layers className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{row.assignedBins.join(', ')}</span>
+                            </button>
+                          ) : row.locationBin ? (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300 font-extrabold px-2.5 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              title="Bấm để mở sơ đồ chọn vị trí kệ cất/nhập hàng"
+                            >
+                              <Layers className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span className="truncate max-w-[110px]">{row.locationBin}</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openPickBinModal(row.rowId)}
+                              className="inline-flex items-center gap-1 bg-white hover:bg-cyan-50 text-cyan-700 border border-cyan-400 font-bold px-2.5 py-1 rounded-lg text-xs transition cursor-pointer"
+                              title="Bấm mở sơ đồ chọn vị trí kệ cất/nhập hàng"
+                            >
+                              <MapPin className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+                              <span>+ Chọn kệ nhập</span>
+                            </button>
+                          )}
+                        </td>
+                      )}
+
                       {/* TT (Actions) */}
                       <td className="p-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleDuplicateRow(idx)}
-                            className="p-1.5 text-cyan-600 hover:text-cyan-800 hover:bg-cyan-50 rounded-lg transition cursor-pointer"
-                            title="Nhân đôi dòng"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRow(row.rowId)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                            title="Xóa dòng"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+                        {isReadOnly ? (
+                          <span className="text-slate-400 font-bold">-</span>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleDuplicateRow(idx)}
+                              className="p-1.5 text-cyan-600 hover:text-cyan-800 hover:bg-cyan-50 rounded-lg transition cursor-pointer"
+                              title="Nhân đôi dòng"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRow(row.rowId)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                              title="Xóa dòng"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1261,7 +1481,7 @@ export default function CreateTransferOrderPage({
           <div className="space-y-4">
             <div className="flex items-center gap-2 border-b border-cyan-200 pb-2.5 text-cyan-950 font-black text-xs uppercase tracking-wide">
               <Package className="h-4.5 w-4.5 text-cyan-600" />
-              <span>THÔNG TIN ĐIỀU CHUYỂN NỘI BỘ</span>
+              <span>{isReceiveMode ? 'THÔNG TIN NHẬP CHUYỂN NỘI BỘ' : 'THÔNG TIN ĐIỀU CHUYỂN NỘI BỘ'}</span>
             </div>
 
             {/* Quick Route Overview - Stacked Button Pill Style */}
@@ -1285,21 +1505,22 @@ export default function CreateTransferOrderPage({
               <label className="mb-1.5 block text-xs font-bold text-slate-700">Lý do / Ghi chú điều chuyển</label>
               <textarea
                 rows={3}
+                disabled={isReadOnly}
                 value={activeTab?.generalNote || ''}
                 onChange={(e) => updateActiveTab((t) => ({ ...t, generalNote: e.target.value }))}
                 placeholder="Nhập lý do điều chuyển nội bộ (VD: Điều chuyển cân bằng tồn kho)..."
-                className="w-full p-3 rounded-xl border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs"
+                className="w-full p-3 rounded-xl border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
               />
             </div>
 
             {/* Highlight Total Card - Cyan & White Theme */}
             <div className="bg-cyan-50 border-2 border-cyan-300 rounded-2xl p-4 shadow-sm space-y-2.5 text-xs">
               <div className="flex items-center justify-between text-slate-700 font-bold">
-                <span>Số mặt hàng xuất:</span>
+                <span>{isReceiveMode ? 'Số mặt hàng nhập:' : 'Số mặt hàng xuất:'}</span>
                 <span className="font-black text-cyan-950 text-sm">{activeValidItems.length}</span>
               </div>
               <div className="flex items-center justify-between text-slate-700 font-bold">
-                <span>Tổng số lượng xuất:</span>
+                <span>{isReceiveMode ? 'Tổng số lượng nhập:' : 'Tổng số lượng xuất:'}</span>
                 <span className="font-black text-cyan-950 text-sm">{totalQty}</span>
               </div>
               <div className="flex items-center justify-between pt-2.5 border-t border-cyan-200">
@@ -1311,33 +1532,50 @@ export default function CreateTransferOrderPage({
 
           {/* Action Buttons */}
           <div className="pt-3 border-t border-slate-200 space-y-2.5">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => handleSaveTransfer('APPROVED')}
-              className="w-full py-3 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-black uppercase tracking-wide shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50 active:scale-95"
-            >
-              <Save className="h-4.5 w-4.5 text-cyan-100" />
-              <span>{activeTab?.id ? 'Lưu thay đổi phiếu' : 'Lưu Phiếu Chuyển'}</span>
-            </button>
+            {isReadOnly ? (
+              <button
+                type="button"
+                onClick={handleBackNavigation}
+                className="w-full py-3 px-4 rounded-xl border-2 border-cyan-600 bg-cyan-600 hover:bg-cyan-700 text-white font-black uppercase tracking-wide shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer active:scale-95"
+              >
+                <ArrowLeft className="h-4.5 w-4.5" />
+                <span>QUAY LẠI DANH SÁCH (CHỈ XEM)</span>
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => handleSaveTransfer(isReceiveMode ? 'DELIVERED' : 'APPROVED')}
+                  className="w-full py-3 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-black uppercase tracking-wide shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50 active:scale-95"
+                >
+                  <Save className="h-4.5 w-4.5 text-cyan-100" />
+                  <span>
+                    {activeTab?.id
+                      ? (isReceiveMode ? 'Xác nhận nhập kho & Lưu ô kệ' : 'Lưu thay đổi phiếu')
+                      : (isReceiveMode ? 'LƯU PHIẾU NHẬP CHUYỂN KHO' : 'LƯU PHIẾU CHUYỂN')}
+                  </span>
+                </button>
 
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => handleSaveTransfer('DRAFT')}
-              className="w-full py-2.5 px-4 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 text-cyan-900 font-extrabold shadow-2xs transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
-            >
-              <Save className="h-4 w-4 text-cyan-600" />
-              <span>Lưu Nháp Phiếu</span>
-            </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => handleSaveTransfer('DRAFT')}
+                  className="w-full py-2.5 px-4 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 text-cyan-900 font-extrabold shadow-2xs transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4 text-cyan-600" />
+                  <span>Lưu Nháp Phiếu</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={handleBackNavigation}
-              className="w-full py-2.5 px-4 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
-            >
-              Quay lại danh sách
-            </button>
+                <button
+                  type="button"
+                  onClick={handleBackNavigation}
+                  className="w-full py-2.5 px-4 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
+                >
+                  Quay lại danh sách
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -1369,8 +1607,8 @@ export default function CreateTransferOrderPage({
       <SmartSlottingGridModal
         isOpen={pickBinModalOpen}
         onClose={() => setPickBinModalOpen(false)}
-        mode="OUTBOUND_TRANSFER"
-        warehouseCode={activeTab?.sourceWarehouseCode || 'KHO-TONG'}
+        mode={isReceiveMode ? 'INBOUND' : 'OUTBOUND_TRANSFER'}
+        warehouseCode={isReceiveMode ? (activeTab?.destinationWarehouseCode || 'KH002') : (activeTab?.sourceWarehouseCode || 'KH006')}
         items={activeTab?.details || []}
         targetRowId={activePickBinRowId}
         products={products}
@@ -1379,7 +1617,7 @@ export default function CreateTransferOrderPage({
             ...t,
             details: updatedRows,
           }));
-          setToast({ message: 'Đã cập nhật vị trí ô kệ cho danh sách hàng xuất chuyển!', type: 'success' });
+          setToast({ message: 'Đã cập nhật vị trí ô kệ cho danh sách hàng!', type: 'success' });
         }}
       />
     </div>

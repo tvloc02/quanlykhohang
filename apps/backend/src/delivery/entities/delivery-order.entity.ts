@@ -9,6 +9,10 @@ export type TransferOrderItem = {
   productName: string;
   unit: string;
   quantity: number;
+  price?: number;
+  locationBin?: string;
+  assignedBins?: string[];
+  note?: string;
 };
 
 @Entity('transfer_orders')

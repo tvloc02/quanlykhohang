@@ -83,18 +83,43 @@ export default function InternalShippingNoteModal({
   React.useEffect(() => {
     if (!open) return;
     if (initialData) {
-      if (initialData.senderName) setSenderName(initialData.senderName);
-      if (initialData.commandNo) setCommandNo(initialData.commandNo);
-      if (initialData.sourceAddress) setSourceAddress(initialData.sourceAddress);
-      if (initialData.transporterName) setTransporterName(initialData.transporterName);
-      if (initialData.vehicle) setVehicle(initialData.vehicle);
-      if (initialData.exporterTaxCode) setExporterTaxCode(initialData.exporterTaxCode);
+      const raw = initialData as any;
+      const sWh = raw.sourceWarehouse || raw.sourceWarehouseCode || '';
+      const dWh = raw.destinationWarehouse || raw.destinationWarehouseCode || '';
+
+      const sWhLabel = sWh === 'KH006' ? 'Kho Thanh Trì (KH006)' : sWh === 'KH002' ? 'Kho Chi Nhánh HCM (KH002)' : sWh;
+      const dWhLabel = dWh === 'KH006' ? 'Kho Thanh Trì (KH006)' : dWh === 'KH002' ? 'Kho Chi Nhánh HCM (KH002)' : dWh;
+
+      setSenderName(initialData.senderName || sWhLabel || 'Kho xuất hàng');
+      setReceiverName(initialData.receiverName || dWhLabel || 'Kho nhập hàng');
+      setCommandNo(initialData.commandNo || raw.transferNo || 'TRF-2026');
+      setTransporterName(initialData.transporterName || raw.driverName || 'Chưa phân công');
+      setVehicle(initialData.vehicle || raw.vehiclePlate || 'Chưa cập nhật');
+
       if (initialData.dateStr) setDateStr(initialData.dateStr);
-      if (initialData.symbol) setSymbol(initialData.symbol);
-      if (initialData.noteNo) setNoteNo(initialData.noteNo);
-      if (initialData.receiverName) setReceiverName(initialData.receiverName);
-      if (initialData.destinationAddress) setDestinationAddress(initialData.destinationAddress);
-      if (initialData.items && initialData.items.length > 0) setItems(initialData.items);
+      else if (raw.scheduledDate || raw.dispatchDate || raw.createdAt) {
+        const d = new Date(raw.dispatchDate || raw.scheduledDate || raw.createdAt);
+        if (!Number.isNaN(d.getTime())) {
+          setDateStr(d.toLocaleDateString('vi-VN'));
+        }
+      }
+
+      if (initialData.items && initialData.items.length > 0) {
+        const mappedItems: ShippingNoteItem[] = initialData.items.map((it: any, idx: number) => {
+          const qty = Number(it.quantityExported || it.quantity || it.qty || 1);
+          const pr = Number(it.price || 0);
+          return {
+            id: it.id || String(idx + 1),
+            productName: it.productName || it.name || 'Sản phẩm điều chuyển',
+            productCode: it.productCode || it.productSku || it.internalSku || 'SKU---',
+            unit: it.unit || 'Cái',
+            quantityExported: qty,
+            quantityImported: Number(it.quantityImported || qty),
+            price: pr,
+          };
+        });
+        setItems(mappedItems);
+      }
       if (initialData.digitalSignatureCompany) setCompanySign(initialData.digitalSignatureCompany);
     }
   }, [open, initialData]);

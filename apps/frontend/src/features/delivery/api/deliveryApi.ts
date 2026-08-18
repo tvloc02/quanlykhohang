@@ -7,7 +7,7 @@ function authHeaders() {
   };
 }
 
-export type TransferOrderStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED';
+export type TransferOrderStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'IN_TRANSIT' | 'DELIVERED' | 'COMPLETED' | 'CANCELLED';
 
 export type TransferOrderItem = {
   id: string;
