@@ -681,6 +681,14 @@ function App() {
           }
         />
         <Route
+          path="/delivery/receive-transfer-order"
+          element={
+            <RoleRoute menuId="delivery-transfer-requests">
+              <CreateTransferOrderPage />
+            </RoleRoute>
+          }
+        />
+        <Route
           path="/delivery/create-transfer-request"
           element={
             <RoleRoute menuId="delivery-transfer-requests">

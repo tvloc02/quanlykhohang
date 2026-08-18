@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { X, User, Phone, Car, Building, FileText, Check, Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { X, User, Phone, Car, Building, FileText, Check, Plus, Edit3 } from 'lucide-react';
 import { saveShipper, type Shipper } from '../services/shipperService';
 
 interface QuickAddShipperModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (newShipper: Shipper) => void;
+  onSuccess: (savedShipper: Shipper) => void;
+  editShipper?: Shipper | null;
   initialName?: string;
   initialPhone?: string;
   initialVehiclePlate?: string;
@@ -15,18 +17,38 @@ export default function QuickAddShipperModal({
   isOpen,
   onClose,
   onSuccess,
+  editShipper,
   initialName = '',
   initialPhone = '',
   initialVehiclePlate = '',
 }: QuickAddShipperModalProps) {
-  const [name, setName] = useState(initialName);
-  const [phone, setPhone] = useState(initialPhone);
-  const [vehiclePlate, setVehiclePlate] = useState(initialVehiclePlate);
-  const [company, setCompany] = useState('Đội xe nội bộ');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [company, setCompany] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (editShipper) {
+      setName(editShipper.name || '');
+      setPhone(editShipper.phone || '');
+      setVehiclePlate(editShipper.vehiclePlate || '');
+      setCompany(editShipper.company || 'Đội xe nội bộ');
+      setNote(editShipper.note || '');
+    } else {
+      setName(initialName);
+      setPhone(initialPhone);
+      setVehiclePlate(initialVehiclePlate);
+      setCompany('Đội xe nội bộ');
+      setNote('');
+    }
+    setError(null);
+  }, [editShipper, initialName, initialPhone, initialVehiclePlate, isOpen]);
+
   if (!isOpen) return null;
+
+  const isEditing = Boolean(editShipper && editShipper.id);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,16 +62,17 @@ export default function QuickAddShipperModal({
     }
 
     try {
-      const newShipper = saveShipper({
+      const saved = saveShipper({
+        id: editShipper?.id,
         name: name.trim(),
         phone: phone.trim(),
         vehiclePlate: vehiclePlate.trim().toUpperCase(),
         company: company.trim(),
         note: note.trim(),
-        status: 'ACTIVE',
+        status: editShipper?.status || 'ACTIVE',
       });
 
-      onSuccess(newShipper);
+      onSuccess(saved);
       onClose();
     } catch (err) {
       console.error(err);
@@ -57,18 +80,22 @@ export default function QuickAddShipperModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500/40 bg-white shadow-2xl overflow-hidden">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="w-full max-w-md rounded-2xl border-2 border-cyan-600 bg-cyan-600 shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between bg-gradient-to-r from-cyan-600 to-cyan-700 px-5 py-4 text-white">
+        <div className="flex items-center justify-between bg-cyan-600 px-5 py-4 text-white">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20">
-              <Plus className="h-5 w-5 text-white" />
+              {isEditing ? <Edit3 className="h-5 w-5 text-white" /> : <Plus className="h-5 w-5 text-white" />}
             </div>
             <div>
-              <h3 className="font-black text-base tracking-wide">THÊM MỚI TÀI XẾ / SHIPPER</h3>
-              <p className="text-xs text-cyan-100 font-medium">Lưu thông tin vận chuyển vào hệ thống</p>
+              <h3 className="font-black text-base tracking-wide uppercase">
+                {isEditing ? 'CẬP NHẬT THÔNG TIN TÀI XẾ' : 'THÊM MỚI TÀI XẾ / SHIPPER'}
+              </h3>
+              <p className="text-xs text-cyan-100 font-medium">
+                {isEditing ? `Mã: ${editShipper?.id}` : 'Lưu thông tin vận chuyển vào hệ thống'}
+              </p>
             </div>
           </div>
           <button
@@ -81,7 +108,7 @@ export default function QuickAddShipperModal({
         </div>
 
         {/* Form Content */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-white p-5 space-y-4">
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-600">
               {error}
@@ -185,11 +212,12 @@ export default function QuickAddShipperModal({
               className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-600 bg-cyan-600 px-5 py-2 text-xs font-black text-white shadow-md hover:bg-cyan-700 transition cursor-pointer"
             >
               <Check className="h-4 w-4" />
-              <span>Lưu Shipper Mới</span>
+              <span>{isEditing ? 'Cập Nhật Thay Đổi' : 'Lưu Shipper Mới'}</span>
             </button>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -84,10 +84,7 @@ export interface AiChatMessage {
 
 const normalizeBinKey = (code: string): string => {
   if (!code) return '';
-  const upper = code.trim().toUpperCase();
-  const match = upper.match(/R\d+[-_]S\d+[-_]C\d+/);
-  if (match) return match[0];
-  return upper;
+  return code.trim().toUpperCase().replace(/_/g, '-');
 };
 
 export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemRow>({
@@ -128,15 +125,24 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         const prodMap = new Map<string, { productId: string; sku: string; productName: string; qty: number }>();
         const headers = authHeaders();
 
+        const targetWhUpper = (warehouseCode || '').trim().toUpperCase();
         const balRes = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
         if (balRes && balRes.ok) {
           const balances: any[] = await balRes.json();
           balances.forEach((b) => {
             const lc = String(b.locationCode || '').trim();
             const physical = Number(b.totalPhysical || b.available || 0);
+            const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
+
+            // ONLY include inventory balances that strictly belong to current warehouseCode
+            const belongsToWh =
+              (bWhCode && bWhCode === targetWhUpper) ||
+              (lc && lc.toUpperCase().startsWith(targetWhUpper));
+
             if (
               lc &&
               physical > 0 &&
+              belongsToWh &&
               (lc.includes('-S0') ||
                 lc.includes('-R0') ||
                 lc.includes('-C') ||
@@ -152,14 +158,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               const pName = pItem?.name || b.productName || b.product?.name || 'Hàng hóa';
               const pSku = pItem?.internalSku || (pItem as any)?.sku || b.productSku || b.product?.sku || '';
 
-              occMap.set(lc, physical);
-              prodMap.set(lc, { productId: pId, sku: pSku, productName: pName, qty: physical });
-
               const norm = normalizeBinKey(lc);
-              if (norm) {
-                occMap.set(norm, physical);
-                prodMap.set(norm, { productId: pId, sku: pSku, productName: pName, qty: physical });
-              }
+              occMap.set(norm, physical);
+              prodMap.set(norm, { productId: pId, sku: pSku, productName: pName, qty: physical });
             }
           });
         }
@@ -194,16 +195,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         let productSku = '';
         let productName = '';
 
-        if (dbOccupiedBinsMap.has(binCode)) {
-          isOccupied = true;
-          stockQty = dbOccupiedBinsMap.get(binCode) || 0;
-          const info = binProductsMap.get(binCode);
-          if (info) {
-            productId = info.productId;
-            productSku = info.sku;
-            productName = info.productName;
-          }
-        } else if (normCode && dbOccupiedBinsMap.has(normCode)) {
+        if (dbOccupiedBinsMap.has(normCode)) {
           isOccupied = true;
           stockQty = dbOccupiedBinsMap.get(normCode) || 0;
           const info = binProductsMap.get(normCode);
@@ -211,20 +203,6 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             productId = info.productId;
             productSku = info.sku;
             productName = info.productName;
-          }
-        } else {
-          for (const [key, val] of dbOccupiedBinsMap.entries()) {
-            if (key.includes(binCode) || binCode.includes(key) || (normCode && key.includes(normCode))) {
-              isOccupied = true;
-              stockQty = val;
-              const info = binProductsMap.get(key);
-              if (info) {
-                productId = info.productId;
-                productSku = info.sku;
-                productName = info.productName;
-              }
-              break;
-            }
           }
         }
 
@@ -310,6 +288,20 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           .map((s) => s.trim())
           .filter((b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')));
       }
+
+      // Convert bin prefix to current target warehouseCode in INBOUND mode
+      const targetPrefix = warehouseCode ? warehouseCode.toUpperCase() : '';
+      if (targetPrefix && validBins.length > 0) {
+        validBins = validBins.map((b) => {
+          const parts = b.split('-');
+          if (parts.length >= 4 && parts[0] !== targetPrefix) {
+            parts[0] = targetPrefix;
+            return parts.join('-');
+          }
+          return b;
+        });
+      }
+
       if (validBins.length > 0) {
         initialMap[item.rowId] = [...validBins];
         validBins.forEach((b) => usedBinsSet.add(b));
@@ -829,7 +821,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             {/* Footer Summary & Action Buttons */}
             <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
               <div className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                <span className="text-slate-500">Các Ô đang chọn xuất:</span>
+                <span className="text-slate-500">{mode === 'OUTBOUND_TRANSFER' ? 'Các Ô đang chọn xuất:' : 'Các Ô đang chọn nhập:'}</span>
                 <span className="text-cyan-900 font-black bg-cyan-100 px-2.5 py-1 rounded-lg border border-cyan-300">
                   {currentSelectedBins.length > 0 ? currentSelectedBins.join(', ') : 'Chưa chọn ô nào'}
                 </span>

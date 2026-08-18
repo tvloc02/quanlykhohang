@@ -10,70 +10,34 @@ export interface Shipper {
 }
 
 const STORAGE_KEY = 'wms_shippers';
-
-const DEFAULT_SHIPPERS: Shipper[] = [
-  {
-    id: 'SHIPPER-001',
-    name: 'Tạ Văn Thanh',
-    phone: '0987654321',
-    vehiclePlate: '30L-636.86',
-    company: 'Đội xe nội bộ Hà Nội',
-    status: 'ACTIVE',
-    note: 'Tài xế xe tải 2.5 tấn',
-    createdDate: new Date().toISOString(),
-  },
-  {
-    id: 'SHIPPER-002',
-    name: 'Nguyễn Văn Hùng',
-    phone: '0912345678',
-    vehiclePlate: '29C-123.45',
-    company: 'Giao Hàng Nhanh (GHN)',
-    status: 'ACTIVE',
-    note: 'Tài xế giao kho chi nhánh HCM',
-    createdDate: new Date().toISOString(),
-  },
-  {
-    id: 'SHIPPER-003',
-    name: 'Trần Đình Trọng',
-    phone: '0905112233',
-    vehiclePlate: '51D-987.65',
-    company: 'Viettel Post Logistics',
-    status: 'ACTIVE',
-    note: 'Đối tác xe đông lạnh',
-    createdDate: new Date().toISOString(),
-  },
-  {
-    id: 'SHIPPER-004',
-    name: 'Phạm Minh Hoàng',
-    phone: '0933445566',
-    vehiclePlate: '59F-543.21',
-    company: 'Giao Hàng Tiết Kiệm (GHTK)',
-    status: 'ACTIVE',
-    note: 'Tài xế xe bán tải',
-    createdDate: new Date().toISOString(),
-  },
-];
+const MOCK_IDS = ['SHIPPER-001', 'SHIPPER-002', 'SHIPPER-003', 'SHIPPER-004'];
 
 export function getStoredShippers(): Shipper[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_SHIPPERS));
-      return DEFAULT_SHIPPERS;
+      return [];
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_SHIPPERS;
+    if (!Array.isArray(parsed)) return [];
+    
+    // Purge any legacy mock shippers if present in localStorage
+    const cleanList = parsed.filter((s: Shipper) => !MOCK_IDS.includes(s.id));
+    if (cleanList.length !== parsed.length) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanList));
+    }
+    return cleanList;
   } catch (error) {
     console.error('Error reading shippers from localStorage:', error);
-    return DEFAULT_SHIPPERS;
+    return [];
   }
 }
 
 export function saveShipper(shipperData: Omit<Shipper, 'id'> & { id?: string }): Shipper {
   const currentList = getStoredShippers();
-  
+
   let updatedShipper: Shipper;
-  
+
   if (shipperData.id) {
     // Edit existing
     updatedShipper = {
@@ -81,7 +45,7 @@ export function saveShipper(shipperData: Omit<Shipper, 'id'> & { id?: string }):
       id: shipperData.id,
       status: shipperData.status || 'ACTIVE',
     } as Shipper;
-    
+
     const index = currentList.findIndex((s) => s.id === shipperData.id);
     if (index >= 0) {
       currentList[index] = updatedShipper;
