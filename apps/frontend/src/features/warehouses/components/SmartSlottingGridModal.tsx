@@ -744,21 +744,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           }
         });
 
-        const currentSubs = dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || [];
-        let existingPct: number | undefined;
-        currentSubs.forEach((sub: any) => {
-          (sub.racks || []).forEach((rk: any) => {
-            if (rk.customBins) {
-              const cfg = rk.customBins[binCode] || rk.customBins[shortCode] || (normKey ? rk.customBins[normKey] : null);
-              if (cfg && cfg.occupancyPct !== undefined) {
-                existingPct = Number(cfg.occupancyPct);
-              }
-            }
-          });
-        });
-
         const remaining = Math.max(0, 100 - occupiedByOthers);
-        const pctToSet = occupiedByOthers > 0 ? (remaining > 0 ? remaining : 50) : (existingPct !== undefined && existingPct > 0 ? existingPct : 100);
+        const pctToSet = occupiedByOthers > 0 ? (remaining > 0 ? remaining : 50) : 100;
         const formattedBinCode = pctToSet < 100 ? `${binCode} (${pctToSet}%)` : binCode;
         
         updateSubWarehousesTopology(binCode, shortCode, Math.min(100, occupiedByOthers + pctToSet), `Đã chứa: ${Math.min(100, occupiedByOthers + pctToSet)}%`);
@@ -1347,24 +1334,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                       const bList = selectedBinsMap[it.rowId] || [];
                       const label = `#${idx + 1} ${it.productName ? (it.productName.length > 10 ? it.productName.substring(0, 8) + '..' : it.productName) : ''}`;
                       bList.forEach((bCode) => {
-                        const currentSubs = dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || [];
-                        let pct = 100;
-                        const normKey = normalizeBinKey(bCode);
-                        const shortKey = (bCode.split('-').pop() || bCode).toUpperCase();
+                        const matchPct = bCode.match(/\((\d+)%\)/);
+                        let pct = matchPct ? Number(matchPct[1]) : 100;
 
-                        currentSubs.forEach((sub: any) => {
-                          (sub.racks || []).forEach((rk: any) => {
-                            if (rk.customBins) {
-                              const cfg = rk.customBins[bCode] || (normKey ? rk.customBins[normKey] : null) || rk.customBins[shortKey];
-                              if (cfg && cfg.occupancyPct !== undefined) {
-                                pct = Number(cfg.occupancyPct);
-                              }
-                            }
-                          });
-                        });
+                        const cleanBinCode = bCode.split('(')[0].trim();
+                        const normKey = normalizeBinKey(cleanBinCode);
+                        const shortKey = (cleanBinCode.split('-').pop() || cleanBinCode).toUpperCase();
 
                         const itemObj = { label, occupancyPct: pct };
-                        map[bCode] = itemObj;
+                        map[cleanBinCode] = itemObj;
                         if (normKey) map[normKey] = itemObj;
                         if (shortKey) map[shortKey] = itemObj;
                       });
