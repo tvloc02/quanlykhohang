@@ -36,8 +36,10 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig } from '../../../shared/utils/warehouseAssignments';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
+import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
+import { readStoredCurrencies } from '../../products/CurrenciesPage';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -47,9 +49,12 @@ export interface ProductOption {
   name: string;
   unit?: string;
   importPrice?: number;
+  wholesalePrice?: number;
+  retailPrice?: number;
   purchasePrice?: number;
   salePrice?: number;
   price?: number;
+  stock?: number;
 }
 
 export interface SupplierOption {
@@ -952,10 +957,20 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     };
   }, [isOpen]);
 
+  // Filter modal items to ONLY targetRowId if specified by user click on a specific row
+  const modalItems = useMemo(() => {
+    if (targetRowId) {
+      const single = items.filter((i) => i.rowId === targetRowId);
+      if (single.length > 0) return single;
+    }
+    return items;
+  }, [items, targetRowId]);
+
   // Set of bins already assigned to items in this order
   const currentOrderAssignedBins = useMemo(() => {
     const set = new Set<string>();
     items.forEach((it) => {
+      if (modalItems.some((m) => m.rowId === it.rowId)) return;
       (it.assignedBins || []).forEach((b) => {
         if (b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')) && b !== it.warehouseCode) {
           set.add(b);
@@ -975,94 +990,99 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       }
     });
     return set;
-  }, [items]);
+  }, [items, modalItems]);
 
   // 1. Generate Racks Visual Grid Topology dynamically for the selected warehouse
   const racksTopology: RackStructure[] = useMemo(() => {
     const whList = getStoredWarehouses();
     const currentWh = whList.find(
-      (w) => w.code === warehouseCode || w.id === warehouseCode
+      (w) => w.code === warehouseCode || w.id === warehouseCode || w.code?.toUpperCase() === warehouseCode?.toUpperCase()
     );
 
-    const createFloorCells = (
-      zonePrefix: string,
-      rackId: string,
-      floorId: string,
-      cellsCount = 10
-    ): BinCell[] => {
-      return Array.from({ length: cellsCount }).map((_, idx) => {
-        const cellNum = (idx + 1).toString().padStart(2, '0');
-        const binCode = `${zonePrefix}-${rackId}-${floorId}-C${cellNum}`;
-        const normKey = normalizeBinKey(binCode);
-
-        let isOccupied = false;
-        // Bins belonging to the current order items are NOT marked as occupied by outside stock
-        if (!currentOrderAssignedBins.has(binCode) && !currentOrderAssignedBins.has(normKey)) {
-          if (dbOccupiedBinsMap.has(binCode) || dbOccupiedBinsMap.has(normKey)) {
-            isOccupied = true;
-          }
-        }
-
-        return {
-          binCode,
-          cellCode: `Ô C${cellNum}`,
-          bayCode: `Khoang B${Math.ceil((idx + 1) / 2).toString().padStart(2, '0')}`,
-          maxWeight: 500,
-          freeVol: 450,
-          isOccupied,
-        };
-      });
-    };
-
-    // Case A: Warehouse has custom subWarehouses (Phân khu) & Racks created in /warehouses
     if (currentWh && Array.isArray(currentWh.subWarehouses) && currentWh.subWarehouses.length > 0) {
       const dynamicTopology: RackStructure[] = [];
 
       currentWh.subWarehouses.forEach((sub) => {
         const zoneCode = sub.code || 'ZONE';
         const zoneName = sub.name || `Phân khu ${zoneCode}`;
-        const racks = Array.isArray(sub.racks) && sub.racks.length > 0
+
+        const vachDoc = sub.binsPerShelf || (sub as any).verticalPartitions || 8;
+        const vachNgang = sub.shelvesPerRack || (sub as any).horizontalPartitions || 5;
+        const defaultBays = Math.max(1, vachDoc - 1);
+        const defaultShelves = Math.max(1, vachNgang - 1);
+
+        const rL = sub.rackLength !== undefined ? sub.rackLength : (sub.racks?.[0]?.length || Math.max((sub.length || 20) - 2, 4));
+        const rW = sub.rackWidth !== undefined ? sub.rackWidth : (sub.racks?.[0]?.width || 1.2);
+
+        const racks: any[] = Array.isArray(sub.racks) && sub.racks.length > 0
           ? sub.racks
-          : [
-              {
-                id: `rack_${sub.id}_1`,
-                rackCode: 'R01',
-                name: 'Dãy Kệ R01',
-                length: sub.length || 15,
-                width: 1.2,
-                height: 6,
-                shelvesCount: sub.shelvesPerRack || 4,
-                binsPerShelf: sub.binsPerShelf || 10,
-              },
-            ];
+          : Array.from({ length: sub.racksCount || 3 }).map((_, idx) => {
+              const rNum = idx + 1;
+              const rCode = `R${String(rNum).padStart(2, '0')}`;
+              return {
+                id: `rack_${sub.id}_${rNum}`,
+                rackCode: rCode,
+                name: `Dãy Kệ Dọc ${rCode}`,
+                length: rL,
+                width: rW,
+                height: sub.rackHeight || 5,
+                shelvesCount: defaultShelves,
+                baysCount: defaultBays,
+                columnsCount: defaultBays,
+                horizontalPartitions: vachNgang,
+                verticalPartitions: vachDoc,
+                binsPerShelf: defaultBays,
+                defaultBinMaxWeight: sub.maxWeightPerBin || 400,
+              };
+            });
 
         racks.forEach((rk) => {
           const rId = rk.rackCode || rk.id || 'R01';
-          const numShelves = rk.shelvesCount || (rk as any).horizontalPartitions ? (rk as any).horizontalPartitions - 1 : sub.shelvesPerRack || 4;
-          const numBins = (rk as any).verticalPartitions
-            ? (rk as any).verticalPartitions - 1
-            : rk.binsPerShelf && rk.binsPerShelf > 2
-              ? rk.binsPerShelf - 1
-              : sub.binsPerShelf && sub.binsPerShelf > 2
-                ? sub.binsPerShelf - 1
-                : 6;
+          const numShelves = rk.shelvesCount || (rk.horizontalPartitions ? rk.horizontalPartitions - 1 : defaultShelves);
+          const numBins = rk.baysCount || rk.columnsCount || (rk.verticalPartitions ? rk.verticalPartitions - 1 : defaultBays);
 
-          const floors = Array.from({ length: numShelves }).map((_, flIdx) => {
-            const floorNum = numShelves - flIdx;
-            const floorId = `S${floorNum.toString().padStart(2, '0')}`;
-            return {
-              floorId,
-              floorName: `Tầng ${floorId}`,
-              floorDesc: `Mâm kệ tầng ${floorNum}`,
-              cells: createFloorCells(zoneCode, rId, floorId, numBins),
-            };
-          });
+          const floors: ShelfFloor[] = Array.from({ length: numShelves })
+            .map((_, sIdx) => numShelves - sIdx) // Render top level down
+            .map((shelfNum) => {
+              const globalShelfIdx = calculateGlobalShelfIndex(currentWh.subWarehouses || [], sub.id, rk.id, shelfNum);
+              const shelfPrefix = getRackLetterPrefix(globalShelfIdx);
+
+              const cells: BinCell[] = Array.from({ length: numBins }).map((_, bIdx) => {
+                const cellNum = bIdx + 1;
+                const binShortCode = `${shelfPrefix}${cellNum}`;
+                const binCode = `${zoneCode}-${rId}-${binShortCode}`;
+                const normKey = normalizeBinKey(binCode);
+
+                let isOccupied = false;
+                if (!currentOrderAssignedBins.has(binCode) && !currentOrderAssignedBins.has(binShortCode) && !currentOrderAssignedBins.has(normKey)) {
+                  if (dbOccupiedBinsMap.has(binCode) || dbOccupiedBinsMap.has(binShortCode) || dbOccupiedBinsMap.has(normKey)) {
+                    isOccupied = true;
+                  }
+                }
+
+                return {
+                  binCode,
+                  cellCode: `Ô ${binShortCode}`,
+                  bayCode: `Khoang B${String(cellNum).padStart(2, '0')}`,
+                  maxWeight: rk.defaultBinMaxWeight || sub.maxWeightPerBin || 400,
+                  freeVol: 450,
+                  isOccupied,
+                };
+              });
+
+              return {
+                floorId: shelfPrefix,
+                floorName: `Tầng ${shelfPrefix}`,
+                floorDesc: `Mâm kệ ${shelfPrefix}1 - ${shelfPrefix}${numBins}`,
+                cells,
+              };
+            });
 
           dynamicTopology.push({
             rackId: rId,
             rackName: rk.name || `Dãy Kệ ${rId}`,
-            dimensions: `${rk.length || 15}m Dài × ${rk.width || 1.2}m Rộng`,
-            spec: `${numShelves} Tầng × ${numBins} Ô`,
+            dimensions: `${rk.length || rL}m Dài × ${rk.width || rW}m Rộng`,
+            spec: `${numShelves} Tầng (${numShelves + 1} Vách Ngang) × ${numBins} Ô (${numBins + 1} Vách Dọc)`,
             zoneName: `${zoneName} (${sub.zoneType === 'COLD' ? 'Kho Lạnh' : 'Kho Thường'})`,
             floors,
           });
@@ -1072,45 +1092,73 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       if (dynamicTopology.length > 0) return dynamicTopology;
     }
 
-    // Case B: Warehouse has no custom subWarehouses yet -> generate topology scoped specifically to this warehouse code
+    // Case B: Fallback if no subWarehouses defined
     const whPrefix = warehouseCode ? warehouseCode.toUpperCase() : 'KH';
+    const numShelves = 4;
+    const numBins = 7;
+
+    const buildFallbackFloors = (zonePrefix: string, rackId: string): ShelfFloor[] => {
+      return Array.from({ length: numShelves })
+        .map((_, sIdx) => numShelves - sIdx)
+        .map((shelfNum, idx) => {
+          const shelfPrefix = String.fromCharCode(68 - idx); // D, C, B, A
+          const cells: BinCell[] = Array.from({ length: numBins }).map((_, bIdx) => {
+            const cellNum = bIdx + 1;
+            const binShortCode = `${shelfPrefix}${cellNum}`;
+            const binCode = `${zonePrefix}-${rackId}-${binShortCode}`;
+            const normKey = normalizeBinKey(binCode);
+
+            let isOccupied = false;
+            if (!currentOrderAssignedBins.has(binCode) && !currentOrderAssignedBins.has(binShortCode) && !currentOrderAssignedBins.has(normKey)) {
+              if (dbOccupiedBinsMap.has(binCode) || dbOccupiedBinsMap.has(binShortCode) || dbOccupiedBinsMap.has(normKey)) {
+                isOccupied = true;
+              }
+            }
+
+            return {
+              binCode,
+              cellCode: `Ô ${binShortCode}`,
+              bayCode: `Khoang B${String(cellNum).padStart(2, '0')}`,
+              maxWeight: 400,
+              freeVol: 450,
+              isOccupied,
+            };
+          });
+
+          return {
+            floorId: shelfPrefix,
+            floorName: `Tầng ${shelfPrefix}`,
+            floorDesc: `Mâm kệ ${shelfPrefix}1 - ${shelfPrefix}${numBins}`,
+            cells,
+          };
+        });
+    };
+
     return [
       {
         rackId: 'R01',
         rackName: `Dãy Kệ R01 (${whPrefix})`,
-        dimensions: '18m Dài × 1.2m Rộng',
-        spec: '4 Tầng × 10 Ô',
+        dimensions: '48m Dài × 1.2m Rộng',
+        spec: '4 Tầng × 7 Ô',
         zoneName: `Khu A - ${currentWh?.name || whPrefix} (Kho Thường)`,
-        floors: [
-          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S04') },
-          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S03') },
-          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S02') },
-          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Tầng Trệt)', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S01') },
-        ],
+        floors: buildFallbackFloors(`${whPrefix}-ZA`, 'R01'),
       },
       {
         rackId: 'R02',
         rackName: `Dãy Kệ R02 (${whPrefix})`,
-        dimensions: '18m Dài × 1.2m Rộng',
-        spec: '4 Tầng × 10 Ô',
+        dimensions: '48m Dài × 1.2m Rộng',
+        spec: '4 Tầng × 7 Ô',
         zoneName: `Khu B - ${currentWh?.name || whPrefix} (Kho Thường)`,
-        floors: [
-          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S04') },
-          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S03') },
-          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S02') },
-          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Tầng Trệt)', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S01') },
-        ],
+        floors: buildFallbackFloors(`${whPrefix}-ZB`, 'R02'),
       },
     ];
   }, [warehouseCode, dbOccupiedBinsMap, currentOrderAssignedBins]);
 
   // 2. Initialize selections and AI chat when modal opens
   useEffect(() => {
-    if (!isOpen || !items || items.length === 0) return;
+    if (!isOpen || !modalItems || modalItems.length === 0) return;
 
-    const initialTargetId = targetRowId && items.some((i) => i.rowId === targetRowId)
-      ? targetRowId
-      : items[0].rowId;
+    const initialTargetId = modalItems[0].rowId;
 
     setActiveRowId(initialTargetId);
 
@@ -1129,32 +1177,54 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     const initialMap: Record<string, string[]> = {};
     const usedBinsSet = new Set<string>();
 
-    // Pass 1: Keep already assigned bins (from assignedBins, locationBin, or note)
-    items.forEach((item) => {
+    const extractValidBins = (item: FormDetailRow): string[] => {
       let validBins = (item.assignedBins || []).filter(
-        (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')) && b !== item.warehouseCode
+        (b) => b && b.trim() !== '' && b !== item.warehouseCode
       );
       if (validBins.length === 0 && item.locationBin && item.locationBin !== item.warehouseCode) {
         validBins = item.locationBin.split(',').map((s) => s.trim()).filter(
-          (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C'))
+          (b) => b && b.trim() !== '' && b !== item.warehouseCode
         );
       }
       if (validBins.length === 0 && item.note) {
         const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
         if (match) {
           validBins = match[1].split(',').map((s) => s.trim()).filter(
-            (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C'))
+            (b) => b && b.trim() !== '' && b !== item.warehouseCode
           );
         }
       }
+      return validBins;
+    };
+
+    // Pass 1A: Reserve bins already assigned to ALL items in the order
+    items.forEach((item) => {
+      const validBins = extractValidBins(item);
       if (validBins.length > 0) {
         initialMap[item.rowId] = [...validBins];
-        validBins.forEach((b) => usedBinsSet.add(b));
+        validBins.forEach((b) => {
+          usedBinsSet.add(b);
+          const norm = normalizeBinKey(b);
+          if (norm) usedBinsSet.add(norm);
+        });
       }
     });
 
-    // Pass 2: Auto-assign ALL remaining items sequentially from FREE cells without overlapping
-    items.forEach((item) => {
+    // Pass 1B: Ensure modalItems keep their selections
+    modalItems.forEach((item) => {
+      const validBins = extractValidBins(item);
+      if (validBins.length > 0) {
+        initialMap[item.rowId] = [...validBins];
+        validBins.forEach((b) => {
+          usedBinsSet.add(b);
+          const norm = normalizeBinKey(b);
+          if (norm) usedBinsSet.add(norm);
+        });
+      }
+    });
+
+    // Pass 2: Auto-assign remaining modalItems from FREE cells without overlapping
+    modalItems.forEach((item) => {
       if (!initialMap[item.rowId] || initialMap[item.rowId].length === 0) {
         const capInfo = calculateEffectiveBinCapacity(item);
         const itemPackSize = capInfo.capacity;
@@ -1163,9 +1233,11 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
         for (const binCode of allAvailableCells) {
           if (preselected.length >= requiredCount) break;
-          if (!usedBinsSet.has(binCode)) {
+          const norm = normalizeBinKey(binCode);
+          if (!usedBinsSet.has(binCode) && (!norm || !usedBinsSet.has(norm))) {
             preselected.push(binCode);
             usedBinsSet.add(binCode);
+            if (norm) usedBinsSet.add(norm);
           }
         }
         initialMap[item.rowId] = preselected;
@@ -1184,7 +1256,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       }
     }
 
-    const activeItem = items.find((i) => i.rowId === initialTargetId) || items[0];
+    const activeItem = modalItems.find((i) => i.rowId === initialTargetId) || modalItems[0];
     const itemQty = activeItem?.qty || 0;
     const capInfo = calculateEffectiveBinCapacity(activeItem);
     const itemPackSize = capInfo.capacity;
@@ -1210,11 +1282,11 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         time: now,
       },
     ]);
-  }, [isOpen, items, targetRowId, racksTopology]);
+  }, [isOpen, modalItems, targetRowId, racksTopology]);
 
   if (!isOpen) return null;
 
-  const currentItem = items.find((i) => i.rowId === activeRowId) || items[0];
+  const currentItem = modalItems.find((i) => i.rowId === activeRowId) || modalItems[0];
   const capInfo = calculateEffectiveBinCapacity(currentItem);
   const packSize = capInfo.capacity;
   const requiredCount = currentItem ? Math.max(1, Math.ceil((currentItem.qty || 1) / packSize)) : 1;
@@ -1224,7 +1296,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
   const handleSwitchActiveItem = (rowId: string) => {
     setActiveRowId(rowId);
 
-    const itemToAssign = items.find((i) => i.rowId === rowId);
+    const itemToAssign = modalItems.find((i) => i.rowId === rowId);
     if (!itemToAssign) return;
 
     let targetBins = selectedBinsMap[rowId] || [];
@@ -1369,7 +1441,96 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       const actualBinsRequired = Math.max(1, Math.ceil(targetQty / maxItemsPerBin));
       const fillPercentage = Number(((totalVolume / binVol) * 100).toFixed(1));
 
-      if (
+      // Parse specific requested bin numbers or specific bin codes (e.g. "1 ô", "chỉ chọn ô D1", "lưu 1 ô kệ D1")
+      const specificBinQtyMatch = userText.match(/(?:chọn|lưu|dùng|chỉ|lấy|bỏ|bớt|giảm|xuống)\s*(\d+)\s*ô/i)
+                               || userText.match(/(\d+)\s*ô\s*(?:thôi|được|đó|kệ)/i);
+      const binCodeMention = userText.match(/\b([A-Z]\d{1,2})\b/i);
+
+      let targetBinCount: number | null = specificBinQtyMatch ? parseInt(specificBinQtyMatch[1], 10) : null;
+      let requestedBinCode: string | null = binCodeMention ? binCodeMention[1].toUpperCase() : null;
+
+      if (targetBinCount !== null || requestedBinCode !== null || lower.includes('bỏ chọn') || lower.includes('xóa hết') || lower.includes('hủy chọn') || lower.includes('lưu 1 ô')) {
+        if (lower.includes('lưu 1 ô') && targetBinCount === null) {
+          targetBinCount = 1;
+        }
+
+        let newChosenBins: string[] = [];
+
+        if (lower.includes('bỏ chọn hết') || lower.includes('xóa hết') || lower.includes('hủy chọn')) {
+          newChosenBins = [];
+          aiReply = `Đã cập nhật sơ đồ: Đã bỏ chọn tất cả ô kệ cho mặt hàng "${currentItem?.productName}".`;
+        } else if (requestedBinCode) {
+          let matchedFullBinCode = '';
+          racksTopology.forEach((rk) => {
+            rk.floors.forEach((fl) => {
+              fl.cells.forEach((cl) => {
+                const shortCode = cl.cellCode.replace('Ô ', '').trim().toUpperCase();
+                if (cl.binCode.endsWith(`-${requestedBinCode}`) || cl.binCode.includes(requestedBinCode!) || shortCode === requestedBinCode) {
+                  if (!matchedFullBinCode) matchedFullBinCode = cl.binCode;
+                }
+              });
+            });
+          });
+
+          if (matchedFullBinCode) {
+            const countToTake = targetBinCount || 1;
+            const freeCells: string[] = [matchedFullBinCode];
+            const usedByOtherItems = new Set<string>();
+            Object.entries(selectedBinsMap).forEach(([rId, bArr]) => {
+              if (rId !== currentItem?.rowId) {
+                (bArr || []).forEach((b) => usedByOtherItems.add(b));
+              }
+            });
+
+            racksTopology.forEach((rk) => {
+              rk.floors.forEach((fl) => {
+                fl.cells.forEach((cl) => {
+                  if (cl.binCode !== matchedFullBinCode && !cl.isOccupied && !usedByOtherItems.has(cl.binCode)) {
+                    freeCells.push(cl.binCode);
+                  }
+                });
+              });
+            });
+
+            newChosenBins = freeCells.slice(0, countToTake);
+            aiReply = `Đã tự động cập nhật sơ đồ 2D: Đã chọn ${newChosenBins.length} ô (kết nối từ ô ${requestedBinCode}) cho mặt hàng "${currentItem?.productName}".`;
+          } else {
+            aiReply = `Đã ghi nhận yêu cầu. Không tìm thấy vị trí ô "${requestedBinCode}" trên sơ đồ kệ hiện tại. Bạn có thể click chọn trực tiếp ô trên sơ đồ 2D bên phải.`;
+          }
+        } else if (targetBinCount !== null) {
+          const usedByOtherItems = new Set<string>();
+          Object.entries(selectedBinsMap).forEach(([rId, bArr]) => {
+            if (rId !== currentItem?.rowId) {
+              (bArr || []).forEach((b) => usedByOtherItems.add(b));
+            }
+          });
+
+          const currentItemBins = selectedBinsMap[currentItem?.rowId || ''] || [];
+          if (currentItemBins.length >= targetBinCount) {
+            newChosenBins = currentItemBins.slice(0, targetBinCount);
+          } else {
+            const freeCells: string[] = [...currentItemBins];
+            racksTopology.forEach((rk) => {
+              rk.floors.forEach((fl) => {
+                fl.cells.forEach((cl) => {
+                  if (!freeCells.includes(cl.binCode) && !cl.isOccupied && !usedByOtherItems.has(cl.binCode)) {
+                    freeCells.push(cl.binCode);
+                  }
+                });
+              });
+            });
+            newChosenBins = freeCells.slice(0, targetBinCount);
+          }
+          aiReply = `Đã tự động điều chỉnh sơ đồ 2D: Đã giữ đúng ${newChosenBins.length} ô cho mặt hàng "${currentItem?.productName}".`;
+        }
+
+        if (currentItem && (newChosenBins.length > 0 || lower.includes('bỏ chọn') || lower.includes('xóa hết'))) {
+          setSelectedBinsMap((prev) => ({
+            ...prev,
+            [currentItem.rowId]: newChosenBins,
+          }));
+        }
+      } else if (
         lower.includes('48m') ||
         lower.includes('lô') ||
         lower.includes('cm') ||
@@ -1578,7 +1739,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                 <span className="text-xs font-black uppercase text-cyan-950 flex items-center gap-1.5 shrink-0">
                   <Layers className="h-4 w-4 text-cyan-600" /> Đơn hàng:
                 </span>
-                {items.map((it, idx) => {
+                {modalItems.map((it, idx) => {
                   const isActive = it.rowId === activeRowId;
                   const itemCap = calculateEffectiveBinCapacity(it).capacity;
                   const countReq = Math.max(1, Math.ceil((it.qty || 1) / itemCap));
@@ -1677,12 +1838,12 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                           <span className="text-xs font-bold text-slate-600">({floor.floorDesc})</span>
                         </div>
                         <span className="text-[11px] font-bold text-cyan-900">
-                          10 Ô / Hộc chứa hàng (Chứa tối đa 1,000 SP/Tầng)
+                          {floor.cells.length} Ô chứa hàng ({floor.cells[0]?.cellCode.replace('Ô ', '') || ''} đến {floor.cells[floor.cells.length - 1]?.cellCode.replace('Ô ', '') || ''})
                         </span>
                       </div>
 
                       {/* Interactive 2D Cells Grid */}
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
                         {floor.cells.map((cell) => {
                           const isSelected = currentSelectedBins.includes(cell.binCode);
                           const otherItemOccupying = items.find(
@@ -1879,71 +2040,86 @@ const PutawaySummaryReportModal: React.FC<PutawaySummaryReportModalProps> = ({
             </div>
           </div>
 
-          {/* Details Table: Product Putaway Statistics & Location Breakdown */}
+          {/* Details Table: Standardized Warehouse Inventory Intake Breakdown (8 Columns) */}
           <div className="rounded-2xl border-2 border-slate-200 bg-white overflow-hidden shadow-sm">
             <div className="px-4 py-3 bg-slate-100 border-b border-slate-200 flex items-center justify-between">
               <h3 className="text-xs font-black uppercase tracking-wide text-slate-800 flex items-center gap-2">
                 <Package className="h-4 w-4 text-cyan-600" />
-                Chi tiết Danh mục Hàng hóa & Vị trí Phân khu Ô kệ gán lưu kho
+                Bảng Thống Kê Danh Mục Hàng Hóa Lưu Vào Kho & Vị Trí Gán Ô Kệ
               </h3>
               <span className="text-[11px] font-bold text-cyan-800 bg-cyan-100 px-2.5 py-0.5 rounded-full border border-cyan-300">
-                Sắp xếp kho AI chuẩn hóa
+                Chuẩn hóa 8 Cột CSDL
               </span>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="bg-cyan-50 text-slate-900 font-black border-b-2 border-cyan-200 uppercase text-[11px]">
+              <table className="w-full text-center border-collapse text-xs">
+                <thead className="bg-slate-100 text-slate-900 font-bold border-b border-slate-300 uppercase text-xs">
                   <tr>
-                    <th className="p-3 w-12 text-center border-r border-cyan-200">STT</th>
-                    <th className="p-3 min-w-[200px] border-r border-cyan-200">MẶT HÀNG / SKU</th>
-                    <th className="p-3 w-28 text-center border-r border-cyan-200">SỐ LƯỢNG</th>
-                    <th className="p-3 w-36 text-center border-r border-cyan-200">TL (KG) / TT (M³)</th>
-                    <th className="p-3 min-w-[160px] border-r border-cyan-200">PHÂN KHU & DÃY KỆ</th>
-                    <th className="p-3 min-w-[180px] border-r border-cyan-200">VỊ TRÍ Ô KỆ GÁN KHO</th>
-                    <th className="p-3 w-32 text-center">TRẠNG THÁI</th>
+                    <th className="p-3 w-12 text-center border-r border-slate-300">STT</th>
+                    <th className="p-3 w-24 text-center border-r border-slate-300">MÃ KHO</th>
+                    <th className="p-3 min-w-[150px] text-center border-r border-slate-300">TÊN KHO HÀNG</th>
+                    <th className="p-3 min-w-[110px] text-center border-r border-slate-300">GIÁ NHẬP (₫)</th>
+                    <th className="p-3 min-w-[110px] text-center border-r border-slate-300">GIÁ BÁN BUÔN (₫)</th>
+                    <th className="p-3 min-w-[110px] text-center border-r border-slate-300">GIÁ BÁN LẺ (₫)</th>
+                    <th className="p-3 min-w-[140px] text-center border-r border-slate-300">TỔNG SỐ LƯỢNG</th>
+                    <th className="p-3 min-w-[160px] text-center">SỐ LƯỢNG NHẬP GẦN NHẤT</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-300">
                   {validItems.map((item, idx) => {
+                    const whCode = item.warehouseCode || warehouseCode || 'KH006';
                     const loc = formatLocationDisplay(item, idx);
+                    const impPrice = Number(item.price || 0);
+                    const wsPrice = Math.round(impPrice * 1.15);
+                    const retPrice = Math.round(impPrice * 1.30);
+
                     return (
-                      <tr key={item.rowId} className={idx % 2 === 1 ? 'bg-cyan-50/20' : 'bg-white'}>
-                        <td className="p-3 text-center font-extrabold text-slate-600 border-r border-slate-200">
+                      <tr key={item.rowId} className="hover:bg-slate-50 transition-colors border-b border-slate-300 text-slate-900 font-semibold">
+                        {/* 1. STT */}
+                        <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
                           {idx + 1}
                         </td>
-                        <td className="p-3 border-r border-slate-200 font-bold text-slate-900">
-                          <div className="font-extrabold text-cyan-900">{item.productName}</div>
-                          {item.productSku && (
-                            <span className="text-[10px] text-slate-500 font-mono">SKU: {item.productSku}</span>
-                          )}
+
+                        {/* 2. MÃ KHO (No gray background pill) */}
+                        <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 font-mono">
+                          {whCode}
                         </td>
-                        <td className="p-3 text-center border-r border-slate-200 font-black text-slate-900">
-                          {item.qty.toLocaleString('vi-VN')} {item.unit}
-                        </td>
-                        <td className="p-3 text-center border-r border-slate-200 font-bold text-slate-700">
-                          {(item.weight || 0) > 0 ? `${(item.weight || 0).toFixed(1)} kg` : '-'}
-                          {(item.volume || 0) > 0 ? ` | ${(item.volume || 0).toFixed(3)} m³` : ''}
-                        </td>
-                        <td className="p-3 border-r border-slate-200 font-bold text-slate-800">
-                          <div className="text-cyan-900 font-extrabold">{loc.zone}</div>
-                          <span className="text-[11px] text-slate-500 font-semibold">{loc.rack}</span>
-                        </td>
-                        <td className="p-3 border-r border-slate-200 font-extrabold text-emerald-800">
-                          <span className="bg-emerald-50 text-emerald-900 border border-emerald-300 px-2.5 py-1 rounded-lg inline-block">
-                            {loc.bins}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center">
-                          {loc.isAssigned ? (
-                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-1 rounded-lg border border-emerald-300 inline-flex items-center gap-1">
-                              <CheckCircle2 size={12} className="text-emerald-600" /> Đã xếp kho
+
+                        {/* 3. TÊN KHO HÀNG */}
+                        <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                          <div>{item.productName}</div>
+                          <div className="flex items-center justify-center gap-2 mt-0.5 text-[10px] font-bold text-slate-700">
+                            <span>SKU: {item.productSku || 'N/A'}</span>
+                            <span className="text-cyan-900 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-300 font-bold">
+                              📍 Ô kệ: {loc.bins}
                             </span>
-                          ) : (
-                            <span className="bg-cyan-100 text-cyan-800 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-cyan-300 inline-flex items-center gap-1">
-                              <Sparkles size={12} className="text-cyan-600" /> Gợi ý tự động
-                            </span>
-                          )}
+                          </div>
+                        </td>
+
+                        {/* 4. GIÁ NHẬP (₫) */}
+                        <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                          {impPrice > 0 ? impPrice.toLocaleString('vi-VN') : '0'}
+                        </td>
+
+                        {/* 5. GIÁ BÁN BUÔN (₫) */}
+                        <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                          {wsPrice > 0 ? wsPrice.toLocaleString('vi-VN') : '0'}
+                        </td>
+
+                        {/* 6. GIÁ BÁN LẺ (₫) */}
+                        <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                          {retPrice > 0 ? retPrice.toLocaleString('vi-VN') : '0'}
+                        </td>
+
+                        {/* 7. TỔNG SỐ LƯỢNG (Tất cả kho) */}
+                        <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                          {item.qty.toLocaleString('vi-VN')}
+                        </td>
+
+                        {/* 8. SỐ LƯỢNG SP KHO ĐÓ */}
+                        <td className="p-3 text-center font-bold text-slate-900">
+                          {item.qty.toLocaleString('vi-VN')}
                         </td>
                       </tr>
                     );
@@ -2199,9 +2375,12 @@ export default function CreateStockInOrderPage({
             name: p.name || '',
             unit: p.unit || 'Cái',
             importPrice: Number(p.importPrice || 0),
+            wholesalePrice: Number(p.wholesalePrice || 0),
+            retailPrice: Number(p.retailPrice || p.price || 0),
             purchasePrice: Number(p.importPrice || p.purchasePrice || p.price || 0),
             salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
             price: Number(p.importPrice || p.purchasePrice || p.price || 0),
+            stock: Number(p.stock || 0),
           }));
           setProducts(filterOutDeletedProducts(normalized));
         }
@@ -3091,7 +3270,7 @@ export default function CreateStockInOrderPage({
       )}
 
       {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (Horizontal bar spanning full width across page) ═══ */}
-      <div className="w-full rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md flex-shrink-0">
+      <div className="w-full rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md flex-shrink-0 space-y-3">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 items-center">
           {/* Ngày nhập hàng */}
           <div>
@@ -3171,7 +3350,7 @@ export default function CreateStockInOrderPage({
                 </div>
                 <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
                   {filteredSuppliers.length === 0 ? (
-                    <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy nhà cung cấp</div>
+                    <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy nhà cung cấp trong CSDL</div>
                   ) : (
                     filteredSuppliers.map((s) => (
                       <div
@@ -3217,7 +3396,7 @@ export default function CreateStockInOrderPage({
               <span className="truncate">
                 {warehouses.find((w) => w.code === activeTab?.warehouseCode)
                   ? `[${activeTab.warehouseCode}] ${warehouses.find((w) => w.code === activeTab.warehouseCode)?.name}`
-                  : activeTab?.warehouseCode || 'KHO-NVL'}
+                  : activeTab?.warehouseCode || (warehouses[0] ? `[${warehouses[0].code}] ${warehouses[0].name}` : 'Đang tải kho...')}
               </span>
               <ChevronDown
                 size={16}
@@ -3228,35 +3407,34 @@ export default function CreateStockInOrderPage({
             {!isReadOnly && showWarehouseDropdown && (
               <div className="absolute left-0 top-full z-[100] mt-1.5 w-full rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-[fadeIn_0.15s_ease-out]">
                 <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1">
-                  {(warehouses.length > 0
-                    ? warehouses
-                    : [
-                        { id: '1', code: 'KHO-NVL', name: 'Kho nguyên vật liệu' },
-                        { id: '2', code: 'KH006', name: 'Kho NVL Tổng hợp' },
-                        { id: '3', code: 'KH001', name: 'Kho Hàng Hóa HCM' },
-                      ]
-                  ).map((wh) => {
-                    const isSelected = wh.code === activeTab?.warehouseCode;
-                    return (
-                      <div
-                        key={wh.id || wh.code}
-                        onClick={() => {
-                          handleWarehouseChange(wh.code);
-                          setShowWarehouseDropdown(false);
-                        }}
-                        className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition cursor-pointer ${
-                          isSelected
-                            ? 'bg-cyan-600 text-white shadow-xs'
-                            : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
-                        }`}
-                      >
-                        <span>
-                          [{wh.code}] {wh.name}
-                        </span>
-                        {isSelected && <Check size={14} className="text-white" />}
-                      </div>
-                    );
-                  })}
+                  {warehouses.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-slate-400 font-bold">
+                      Đang tải thông tin kho từ CSDL...
+                    </div>
+                  ) : (
+                    warehouses.map((wh) => {
+                      const isSelected = wh.code === activeTab?.warehouseCode;
+                      return (
+                        <div
+                          key={wh.id || wh.code}
+                          onClick={() => {
+                            handleWarehouseChange(wh.code);
+                            setShowWarehouseDropdown(false);
+                          }}
+                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-cyan-600 text-white shadow-xs'
+                              : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
+                          }`}
+                        >
+                          <span>
+                            [{wh.code}] {wh.name}
+                          </span>
+                          {isSelected && <Check size={14} className="text-white" />}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}
@@ -3317,18 +3495,18 @@ export default function CreateStockInOrderPage({
             {/* Grid Product Table */}
             <div className={`overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 ${isFullscreen ? '' : 'max-h-[calc(100vh-215px)]'}`}>
               <table className="w-full text-left border-collapse text-xs min-w-[1100px]">
-                <thead className="bg-slate-100 text-slate-800 font-black border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
+                <thead className="bg-slate-100 text-slate-700 font-black border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
                   <tr>
-                    <th className="p-2.5 w-12 text-center border-r border-slate-200 bg-slate-100">STT</th>
-                    <th className="p-2.5 min-w-[220px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
-                    <th className="p-2.5 w-18 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
-                    <th className="p-2.5 w-24 text-center border-r border-slate-200 bg-slate-100">SỐ LƯỢNG</th>
-                    <th className="p-2.5 w-32 text-center border-r border-slate-200 bg-slate-100">ĐƠN GIÁ (đ)</th>
-                    <th className="p-2.5 w-16 text-center border-r border-slate-200 bg-slate-100">CK (%)</th>
-                    <th className="p-2.5 w-16 text-center border-r border-slate-200 bg-slate-100">VAT (%)</th>
-                    <th className="p-2.5 w-32 text-center border-r border-slate-200 bg-slate-100">THÀNH TIỀN</th>
-                    <th className="p-2.5 w-36 text-center border-r border-slate-200 bg-slate-100">HẠN SỬ DỤNG</th>
-                    <th className="p-2.5 min-w-[130px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
+                    <th className="p-2.5 w-12 text-center bg-slate-100">STT</th>
+                    <th className="p-2.5 min-w-[220px] text-center bg-slate-100">TÊN HÀNG HÓA</th>
+                    <th className="p-2.5 w-18 text-center bg-slate-100">ĐVT</th>
+                    <th className="p-2.5 w-24 text-center bg-slate-100">SỐ LƯỢNG</th>
+                    <th className="p-2.5 w-32 text-center bg-slate-100">ĐƠN GIÁ (đ)</th>
+                    <th className="p-2.5 w-16 text-center bg-slate-100">CK (%)</th>
+                    <th className="p-2.5 w-16 text-center bg-slate-100">VAT (%)</th>
+                    <th className="p-2.5 w-32 text-center bg-slate-100">THÀNH TIỀN</th>
+                    <th className="p-2.5 w-36 text-center bg-slate-100">HẠN SỬ DỤNG</th>
+                    <th className="p-2.5 min-w-[130px] text-center bg-slate-100">GHI CHÚ</th>
                     <th className="p-2.5 w-44 text-center bg-slate-100 min-w-[150px]">THAO TÁC</th>
                   </tr>
                 </thead>
@@ -3751,31 +3929,43 @@ export default function CreateStockInOrderPage({
                 {!isReadOnly && showAccountDropdown && (
                   <div className="absolute left-0 top-full z-[100] mt-1 w-full rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-[fadeIn_0.15s_ease-out]">
                     <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-1">
-                      {[
-                        { code: '', label: 'Chưa chọn tài khoản' },
-                        { code: 'Vietcombank - 1012345678 (Hà Nội)', label: 'Vietcombank - 1012345678 (Hà Nội)' },
-                        { code: 'Techcombank - 1903456789 (HCM)', label: 'Techcombank - 1903456789 (HCM)' },
-                        { code: 'MBBank - 999988887777 (Công ty)', label: 'MBBank - 999988887777 (Công ty)' },
-                      ].map((acc) => {
-                        const isSelected = activeTab?.paymentAccount === acc.code;
-                        return (
-                          <div
-                            key={acc.label}
-                            onClick={() => {
-                              updateActiveTab((t) => ({ ...t, paymentAccount: acc.code }));
-                              setShowAccountDropdown(false);
-                            }}
-                            className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
-                              isSelected
-                                ? 'bg-cyan-600 text-white shadow-xs'
-                                : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
-                            }`}
-                          >
-                            <span className="truncate">{acc.label}</span>
-                            {isSelected && <Check size={14} className="text-white flex-shrink-0" />}
-                          </div>
-                        );
-                      })}
+                      {(() => {
+                        const storedAccs = readStoredBankAccounts();
+                        const dynamicList = storedAccs.length > 0
+                          ? [
+                              { code: '', label: 'Chưa chọn tài khoản' },
+                              ...storedAccs.filter((a) => a.status === 'active').map((a) => ({
+                                code: `${a.name} - ${a.accountNumber} (${a.bankName})`,
+                                label: `${a.name} - ${a.accountNumber} (${a.bankName})`,
+                              })),
+                            ]
+                          : [
+                              { code: '', label: 'Chưa chọn tài khoản' },
+                              { code: 'Vietcombank - 1012345678 (Hà Nội)', label: 'Vietcombank - 1012345678 (Hà Nội)' },
+                              { code: 'Techcombank - 1903456789 (HCM)', label: 'Techcombank - 1903456789 (HCM)' },
+                              { code: 'MBBank - 999988887777 (Công ty)', label: 'MBBank - 999988887777 (Công ty)' },
+                            ];
+                        return dynamicList.map((acc) => {
+                          const isSelected = activeTab?.paymentAccount === acc.code;
+                          return (
+                            <div
+                              key={acc.label}
+                              onClick={() => {
+                                updateActiveTab((t) => ({ ...t, paymentAccount: acc.code }));
+                                setShowAccountDropdown(false);
+                              }}
+                              className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
+                                isSelected
+                                  ? 'bg-cyan-600 text-white shadow-xs'
+                                  : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
+                              }`}
+                            >
+                              <span className="truncate">{acc.label}</span>
+                              {isSelected && <Check size={14} className="text-white flex-shrink-0" />}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}
@@ -3989,68 +4179,69 @@ export default function CreateStockInOrderPage({
               </div>
 
               <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-xs">
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead className="bg-slate-100 text-xs font-black uppercase text-slate-700 border-b-2 border-slate-200">
+                <table className="w-full text-center text-xs border-collapse">
+                  <thead className="bg-slate-100 text-xs font-bold uppercase text-slate-900 border-b border-slate-300">
                     <tr>
-                      <th className="p-3 border-r border-slate-200">Kho Hàng</th>
-                      <th className="p-3 border-r border-slate-200 text-center">Vị Trí / Ô Kệ</th>
-                      <th className="p-3 border-r border-slate-200 text-right">Tồn Thực Tế</th>
-                      <th className="p-3 border-r border-slate-200 text-right">Đang Giữ</th>
-                      <th className="p-3 border-r border-slate-200 text-right">Khả Dụng</th>
-                      <th className="p-3 text-center">Trạng Thái</th>
+                      <th className="p-3 w-12 text-center border-r border-slate-300">STT</th>
+                      <th className="p-3 w-24 text-center border-r border-slate-300">MÃ KHO</th>
+                      <th className="p-3 min-w-[150px] text-center border-r border-slate-300">TÊN KHO HÀNG</th>
+                      <th className="p-3 min-w-[110px] text-center border-r border-slate-300">GIÁ NHẬP (₫)</th>
+                      <th className="p-3 min-w-[110px] text-center border-r border-slate-300">GIÁ BÁN BUÔN (₫)</th>
+                      <th className="p-3 min-w-[110px] text-center border-r border-slate-300">GIÁ BÁN LẺ (₫)</th>
+                      <th className="p-3 min-w-[130px] text-center border-r border-slate-300">TỔNG SỐ LƯỢNG</th>
+                      <th className="p-3 min-w-[150px] text-center">SỐ LƯỢNG NHẬP GẦN NHẤT</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-300">
                     {loadingStorageInfo ? (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-sm font-bold text-slate-400">
-                          Đang truy vấn thông tin kho lưu trữ...
+                        <td colSpan={8} className="p-8 text-center text-xs font-bold text-slate-900">
+                          Đang truy vấn thông tin kho lưu trữ từ CSDL...
                         </td>
                       </tr>
                     ) : storageInfoBalances.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-sm font-bold text-slate-400">
-                          Chưa có vị trí ô kệ hoặc thông tin tồn kho cho hàng hóa này.
+                        <td colSpan={8} className="p-8 text-center text-xs font-bold text-slate-900">
+                          Chưa có ghi nhận vị trí ô kệ hoặc tồn kho trong CSDL cho sản phẩm này.
                         </td>
                       </tr>
                     ) : (
                       storageInfoBalances.map((b: any, idx: number) => {
                         const avail = Number(b.available || 0);
                         const phys = Number(b.totalPhysical || avail);
-                        const alloc = Number(b.allocated || 0);
                         const loc = b.locationCode || 'KH006';
                         const whName = warehouses.find(w => w.code === loc)?.name || (loc === 'KH006' ? 'Kho Thanh Trì' : `Kho ${loc}`);
+                        const pFound = products.find(p => String(p.id) === String(storageInfoProduct?.productId));
+                        const totalProductStock = Number(pFound?.stock || 0);
+                        const impPrice = Number(pFound?.importPrice || pFound?.price || 0);
+                        const wsPrice = Number(pFound?.wholesalePrice || pFound?.price || 0);
+                        const retPrice = Number(pFound?.retailPrice || pFound?.price || 0);
 
                         return (
-                          <tr key={b.id || idx} className="hover:bg-cyan-50/50 font-medium text-slate-800 transition">
-                            <td className="p-3 border-r border-slate-100 font-extrabold text-cyan-900">
-                              {whName} ({loc})
+                          <tr key={b.id || idx} className="hover:bg-slate-50 font-bold text-slate-900 transition border-b border-slate-300">
+                            <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                              {idx + 1}
                             </td>
-                            <td className="p-3 border-r border-slate-100 text-center font-bold text-slate-700">
-                              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs text-slate-800 font-black border border-slate-200">
-                                <MapPin className="h-3.5 w-3.5 text-cyan-600" />
-                                {b.binCode || loc}
-                              </span>
+                            <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 font-mono">
+                              {loc}
                             </td>
-                            <td className="p-3 border-r border-slate-100 text-right font-black text-slate-900">
+                            <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                              {whName}
+                            </td>
+                            <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                              {impPrice > 0 ? impPrice.toLocaleString('vi-VN') : '0'}
+                            </td>
+                            <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                              {wsPrice > 0 ? wsPrice.toLocaleString('vi-VN') : '0'}
+                            </td>
+                            <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                              {retPrice > 0 ? retPrice.toLocaleString('vi-VN') : '0'}
+                            </td>
+                            <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300">
+                              {totalProductStock.toLocaleString('vi-VN')}
+                            </td>
+                            <td className="p-3 text-center font-bold text-slate-900">
                               {phys.toLocaleString('vi-VN')}
-                            </td>
-                            <td className="p-3 border-r border-slate-100 text-right font-bold text-amber-600">
-                              {alloc.toLocaleString('vi-VN')}
-                            </td>
-                            <td className="p-3 border-r border-slate-100 text-right font-black text-cyan-800">
-                              {avail.toLocaleString('vi-VN')}
-                            </td>
-                            <td className="p-3 text-center">
-                              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black border ${
-                                avail > 10
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                                  : avail > 0
-                                  ? 'bg-amber-50 text-amber-700 border-amber-300'
-                                  : 'bg-rose-50 text-rose-700 border-rose-300'
-                              }`}>
-                                {avail > 10 ? 'Sẵn sàng' : avail > 0 ? 'Sắp hết' : 'Hết hàng'}
-                              </span>
                             </td>
                           </tr>
                         );

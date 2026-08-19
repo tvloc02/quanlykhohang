@@ -76,6 +76,67 @@ function Toast({ message, type, onClose, onUndo }: { message: string; type: 'suc
   );
 }
 
+// Reusable Formatted Price/Currency Input Component with thousand separators (. / ,)
+interface FormattedPriceInputProps {
+  value: number | '' | undefined | null;
+  onChange: (val: number | '') => void;
+  readOnly?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+  className?: string;
+  required?: boolean;
+}
+
+function FormattedPriceInput({
+  value,
+  onChange,
+  readOnly,
+  disabled,
+  placeholder = '0',
+  className,
+  required,
+}: FormattedPriceInputProps) {
+  const formatVal = (v: number | '' | undefined | null): string => {
+    if (v === '' || v === undefined || v === null) return '';
+    const num = Number(v);
+    if (isNaN(num)) return '';
+    return num.toLocaleString('vi-VN');
+  };
+
+  const [displayValue, setDisplayValue] = React.useState<string>(formatVal(value));
+
+  React.useEffect(() => {
+    setDisplayValue(formatVal(value));
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawStr = e.target.value;
+    const digitsOnly = rawStr.replace(/\D/g, '');
+    if (!digitsOnly) {
+      setDisplayValue('');
+      onChange('');
+    } else {
+      const num = parseInt(digitsOnly, 10);
+      setDisplayValue(num.toLocaleString('vi-VN'));
+      onChange(num);
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={displayValue}
+      onChange={handleChange}
+      readOnly={readOnly}
+      disabled={disabled}
+      placeholder={placeholder}
+      className={className}
+      required={required}
+    />
+  );
+}
+
 // Reusable Searchable Select Component with rounded corners & search input
 type SearchableOption = {
   value: string;
@@ -1066,6 +1127,27 @@ export default function Products() {
         calculatedTotalStock += baseQ + unitQ;
       });
 
+      const priceToUse = form.retailPrice !== '' ? Number(form.retailPrice) : (form.price !== '' ? Number(form.price) : 0);
+
+      // Auto-fill per-warehouse prices into warehouseUnitStocks if not manually provided by user
+      const finalizedWarehouseUnitStocks = { ...form.warehouseUnitStocks };
+      warehouses.forEach((wh) => {
+        const whKey = wh.name || wh.code || wh.id;
+        const baseImportKey = `${whKey}_base_importPrice`;
+        const baseWholesaleKey = `${whKey}_base_wholesalePrice`;
+        const baseRetailKey = `${whKey}_base_retailPrice`;
+
+        if (finalizedWarehouseUnitStocks[baseImportKey] === undefined || finalizedWarehouseUnitStocks[baseImportKey] === '') {
+          finalizedWarehouseUnitStocks[baseImportKey] = form.importPrice !== '' ? Number(form.importPrice) : 0;
+        }
+        if (finalizedWarehouseUnitStocks[baseWholesaleKey] === undefined || finalizedWarehouseUnitStocks[baseWholesaleKey] === '') {
+          finalizedWarehouseUnitStocks[baseWholesaleKey] = form.wholesalePrice !== '' ? Number(form.wholesalePrice) : 0;
+        }
+        if (finalizedWarehouseUnitStocks[baseRetailKey] === undefined || finalizedWarehouseUnitStocks[baseRetailKey] === '') {
+          finalizedWarehouseUnitStocks[baseRetailKey] = priceToUse;
+        }
+      });
+
       const payload = {
         internalSku: finalSku,
         sku: finalSku,
@@ -1090,7 +1172,7 @@ export default function Products() {
         supplier: form.supplier.trim() || form.description.trim(),
         stock: calculatedTotalStock,
         warehouseStocks: form.warehouseStocks,
-        warehouseUnitStocks: form.warehouseUnitStocks,
+        warehouseUnitStocks: finalizedWarehouseUnitStocks,
         hasConversionUnits: form.hasConversionUnits,
         conversionUnits: form.hasConversionUnits ? form.conversionUnits : [],
         images: form.images.filter(Boolean),
@@ -1694,22 +1776,18 @@ export default function Products() {
             <div className="w-full sm:w-72">
               <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-600">Khoảng giá bán (₫)</label>
               <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  value={filterMinPrice}
-                  onChange={(e) => setFilterMinPrice(e.target.value)}
-                  className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500"
+                <FormattedPriceInput
+                  value={filterMinPrice ? Number(filterMinPrice) : ''}
+                  onChange={(val) => setFilterMinPrice(val !== '' ? String(val) : '')}
                   placeholder="Từ giá..."
+                  className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500"
                 />
                 <span className="text-slate-400 font-bold">-</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={filterMaxPrice}
-                  onChange={(e) => setFilterMaxPrice(e.target.value)}
-                  className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500"
+                <FormattedPriceInput
+                  value={filterMaxPrice ? Number(filterMaxPrice) : ''}
+                  onChange={(val) => setFilterMaxPrice(val !== '' ? String(val) : '')}
                   placeholder="Đến giá..."
+                  className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-cyan-500"
                 />
               </div>
             </div>
@@ -1768,7 +1846,7 @@ export default function Products() {
                   <th className="w-28 min-w-[130px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Hiện trên Shop</th>
                 )}
                 {isColVisible('actions') && (
-                  <th className="sticky right-0 top-0 z-30 min-w-[180px] border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.05)] whitespace-nowrap">
+                  <th className="sticky right-0 top-0 z-30 min-w-[180px] border-l-2 border-slate-300 bg-cyan-100 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-900 shadow-[-6px_0_16px_rgba(0,0,0,0.08)] whitespace-nowrap">
                     THAO TÁC
                   </th>
                 )}
@@ -1789,7 +1867,7 @@ export default function Products() {
                 </tr>
               ) : (
                 paginatedProducts.map((product, index) => (
-                  <tr key={product.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
+                  <tr key={product.id} className="group border-b border-slate-200 transition hover:bg-slate-50">
                     <td className="border-x border-slate-200 px-3 py-3 text-center">
                       <input
                         type="checkbox"
@@ -1902,42 +1980,46 @@ export default function Products() {
                     )}
 
                     {isColVisible('actions') && (
-                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 whitespace-nowrap">
+                      <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-3 text-center align-middle shadow-[-6px_0_16px_rgba(0,0,0,0.06)] group-hover:bg-slate-50 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
+                          {/* 1. Xem chi tiết (Con mắt) */}
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                            title="Thêm mới / Chi tiết"
+                            className="flex h-8 w-8 items-center justify-center rounded-[12px] border-2 border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50 hover:border-cyan-700 transition cursor-pointer shadow-xs"
+                            title="Xem chi tiết & tồn kho"
                             onClick={() => openProductModal('view', product)}
                           >
-                            <Plus size={18} strokeWidth={2.5} />
+                            <Eye size={18} strokeWidth={2.2} />
                           </button>
+                          {/* 2. Lịch sử nhập xuất kho */}
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                            title="Lịch sử đơn hàng"
+                            className="flex h-8 w-8 items-center justify-center rounded-[12px] border-2 border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50 hover:border-cyan-700 transition cursor-pointer shadow-xs"
+                            title="Lịch sử nhập xuất kho"
                             onClick={() => openHistoryModal(product)}
                           >
-                            <History size={18} strokeWidth={2.5} />
+                            <History size={18} strokeWidth={2.2} />
                           </button>
+                          {/* 3. Sửa */}
                           {canEdit && (
                             <button
                               type="button"
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                              className="flex h-8 w-8 items-center justify-center rounded-[12px] border-2 border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50 hover:border-cyan-700 transition cursor-pointer shadow-xs"
                               title="Sửa hàng hóa"
                               onClick={() => openProductModal('edit', product)}
                             >
-                              <Pencil size={18} strokeWidth={2.5} />
+                              <Pencil size={18} strokeWidth={2.2} />
                             </button>
                           )}
+                          {/* 4. Xóa */}
                           {canDelete && (
                             <button
                               type="button"
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50 hover:border-red-600 cursor-pointer"
+                              className="flex h-8 w-8 items-center justify-center rounded-[12px] border-2 border-rose-600 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-700 transition cursor-pointer shadow-xs"
                               title="Xóa hàng hóa"
                               onClick={() => openProductModal('delete', product)}
                             >
-                              <Trash2 size={18} strokeWidth={2.5} />
+                              <Trash2 size={18} strokeWidth={2.2} />
                             </button>
                           )}
                         </div>
@@ -2518,11 +2600,9 @@ export default function Products() {
                               {/* Giá nhập */}
                               <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Giá nhập (₫)</label>
-                                <input
-                                  type="number"
-                                  min="0"
+                                <FormattedPriceInput
                                   value={form.importPrice}
-                                  onChange={(e) => setForm((c) => ({ ...c, importPrice: e.target.value ? Number(e.target.value) : '' }))}
+                                  onChange={(val) => setForm((c) => ({ ...c, importPrice: val }))}
                                   readOnly={modalMode === 'view'}
                                   placeholder="0"
                                   className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
@@ -2532,11 +2612,9 @@ export default function Products() {
                               {/* Giá bán buôn */}
                               <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Giá bán buôn (₫)</label>
-                                <input
-                                  type="number"
-                                  min="0"
+                                <FormattedPriceInput
                                   value={form.wholesalePrice}
-                                  onChange={(e) => setForm((c) => ({ ...c, wholesalePrice: e.target.value ? Number(e.target.value) : '' }))}
+                                  onChange={(val) => setForm((c) => ({ ...c, wholesalePrice: val }))}
                                   readOnly={modalMode === 'view'}
                                   placeholder="0"
                                   className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
@@ -2548,12 +2626,9 @@ export default function Products() {
                                 <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
                                   Giá bán lẻ (₫) <span className="text-red-500">*</span>
                                 </label>
-                                <input
-                                  type="number"
-                                  min="0"
+                                <FormattedPriceInput
                                   value={form.retailPrice !== '' ? form.retailPrice : form.price}
-                                  onChange={(e) => {
-                                    const val = e.target.value ? Number(e.target.value) : '';
+                                  onChange={(val) => {
                                     setForm((c) => ({ ...c, retailPrice: val, price: val }));
                                   }}
                                   readOnly={modalMode === 'view'}
@@ -2569,11 +2644,9 @@ export default function Products() {
                               {/* Tiền thưởng nhân viên */}
                               <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">Tiền thưởng nhân viên (₫)</label>
-                                <input
-                                  type="number"
-                                  min="0"
+                                <FormattedPriceInput
                                   value={form.bonusAmount}
-                                  onChange={(e) => setForm((c) => ({ ...c, bonusAmount: e.target.value ? Number(e.target.value) : '' }))}
+                                  onChange={(val) => setForm((c) => ({ ...c, bonusAmount: val }))}
                                   readOnly={modalMode === 'view'}
                                   placeholder="0"
                                   className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
@@ -2743,34 +2816,31 @@ export default function Products() {
                         </div>
 
                         {/* SECTION 1: Stock Allocation Table - Per-warehouse Multi-Unit Pricing & Stock Matrix */}
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
-                          <table className="w-full text-left border-collapse text-xs">
-                            <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-xs">
+                        <div className="overflow-x-auto rounded-xl border border-slate-300 shadow-xs">
+                          <table className="w-full text-center border-collapse text-xs">
+                            <thead className="bg-slate-100 text-slate-900 font-bold border-b border-slate-300 uppercase text-xs">
                               <tr>
-                                <th className="p-3 w-10 text-center border-r border-slate-200">STT</th>
-                                <th className="p-3 w-40 border-r border-slate-200">TÊN KHO HÀNG</th>
-                                <th className="p-3 w-20 text-center border-r border-slate-200">MÃ KHO</th>
-                                <th className="p-3 w-28 border-r border-slate-200">ĐƠN VỊ TÍNH</th>
-                                <th className="p-3 w-28 text-center border-r border-slate-200 bg-slate-200/60 text-slate-800">
-                                  TỒN KHO BAN ĐẦU
-                                </th>
-                                <th className="p-3 min-w-[130px] text-center border-r border-slate-200">GIÁ NHẬP (₫)</th>
-                                <th className="p-3 min-w-[130px] text-center border-r border-slate-200">GIÁ BÁN BUÔN (₫)</th>
-                                <th className="p-3 min-w-[130px] text-center border-r border-slate-200">GIÁ BÁN LẺ (₫)</th>
-                                <th className="p-3 w-28 text-center bg-cyan-100/50 text-cyan-900">TỔNG QUY ĐỔI</th>
+                                <th className="p-3 w-12 text-center border-r border-slate-300 whitespace-nowrap">STT</th>
+                                <th className="p-3 w-24 text-center border-r border-slate-300 whitespace-nowrap">MÃ KHO</th>
+                                <th className="p-3 min-w-[150px] text-center border-r border-slate-300 whitespace-nowrap">TÊN KHO HÀNG</th>
+                                <th className="p-3 min-w-[120px] text-center border-r border-slate-300 whitespace-nowrap">GIÁ NHẬP (₫)</th>
+                                <th className="p-3 min-w-[120px] text-center border-r border-slate-300 whitespace-nowrap">GIÁ BÁN BUÔN (₫)</th>
+                                <th className="p-3 min-w-[120px] text-center border-r border-slate-300 whitespace-nowrap">GIÁ BÁN LẺ (₫)</th>
+                                <th className="p-3 min-w-[140px] text-center border-r border-slate-300 whitespace-nowrap">TỔNG SỐ LƯỢNG</th>
+                                <th className="p-3 min-w-[160px] text-center whitespace-nowrap">SỐ LƯỢNG NHẬP GẦN NHẤT</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-slate-300">
                               {warehouses.length === 0 ? (
                                 <tr>
-                                  <td colSpan={9} className="p-8 text-center text-slate-400 font-medium">
+                                  <td colSpan={8} className="p-8 text-center text-slate-900 font-bold">
                                     Chưa có kho nào được cấu hình trong hệ thống.
                                   </td>
                                 </tr>
                               ) : (
                                 warehouses.map((wh, idx) => {
                                   const whKey = wh.name || wh.code || wh.id;
-                                  const baseStockVal = form.warehouseStocks[whKey] ?? '';
+                                  const baseStockVal = form.warehouseStocks[whKey] ?? form.warehouseStocks[wh.code] ?? form.warehouseStocks[wh.id] ?? '';
 
                                   // Units list for this warehouse
                                   const warehouseUnits = [
@@ -2816,7 +2886,7 @@ export default function Products() {
                                       : []),
                                   ];
 
-                                  // Calculate warehouse converted stock total
+                                  // Calculate warehouse converted stock total (Số lượng nhập gần nhất tại kho)
                                   let whTotalQty = Number(baseStockVal) || 0;
                                   if (form.hasConversionUnits && form.conversionUnits.length > 0) {
                                     form.conversionUnits.forEach((u) => {
@@ -2828,6 +2898,8 @@ export default function Products() {
                                       whTotalQty += q * r;
                                     });
                                   }
+
+                                  const overallTotalStock = Number(form.stock) || 0;
 
                                   const updateUnitField = (key: string, val: number | '') => {
                                     setForm((c) => {
@@ -2866,143 +2938,112 @@ export default function Products() {
                                     });
                                   };
 
-                                  return warehouseUnits.map((uItem, uIdx) => (
-                                    <tr key={`${whKey}_${uItem.id}`} className="hover:bg-slate-50 transition-colors">
-                                      {/* STT */}
-                                      {uIdx === 0 && (
-                                        <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-500 border-r border-slate-200 bg-slate-50/50 align-middle">
-                                          {idx + 1}
-                                        </td>
-                                      )}
+                                  return warehouseUnits.map((uItem, uIdx) => {
+                                    const rawImport = uItem.importVal !== '' ? uItem.importVal : (uItem.defaultImport !== '' && uItem.defaultImport !== undefined ? uItem.defaultImport : '');
+                                    const rawWholesale = uItem.wholesaleVal !== '' ? uItem.wholesaleVal : (uItem.defaultWholesale !== '' && uItem.defaultWholesale !== undefined ? uItem.defaultWholesale : '');
+                                    const rawRetail = uItem.retailVal !== '' ? uItem.retailVal : (uItem.defaultRetail !== '' && uItem.defaultRetail !== undefined ? uItem.defaultRetail : '');
 
-                                      {/* TÊN KHO HÀNG */}
-                                      {uIdx === 0 && (
-                                        <td rowSpan={warehouseUnits.length} className="p-3 border-r border-slate-200 bg-slate-50/50 align-middle">
-                                          <p className="font-extrabold text-slate-800 text-xs truncate max-w-[150px]" title={wh.name}>{wh.name}</p>
-                                          {wh.address && (
-                                            <p className="text-[10px] text-slate-400 truncate max-w-[150px]" title={wh.address}>
-                                              {wh.address}
-                                            </p>
-                                          )}
-                                        </td>
-                                      )}
+                                    const displayImport = rawImport !== '' ? Number(rawImport).toLocaleString('vi-VN') : '0';
+                                    const displayWholesale = rawWholesale !== '' ? Number(rawWholesale).toLocaleString('vi-VN') : '0';
+                                    const displayRetail = rawRetail !== '' ? Number(rawRetail).toLocaleString('vi-VN') : '0';
 
-                                      {/* MÃ KHO */}
-                                      {uIdx === 0 && (
-                                        <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-600 border-r border-slate-200 bg-slate-50/50 align-middle">
-                                          {wh.code}
-                                        </td>
-                                      )}
-
-                                      {/* ĐƠN VỊ TÍNH */}
-                                      <td className="p-2.5 border-r border-slate-200">
-                                        {uItem.isBase ? (
-                                          <span className="inline-flex items-center gap-1 font-bold text-slate-800 text-xs">
-                                            <span>{uItem.unitName}</span>
-                                            <span className="text-[10px] font-semibold text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200">(Gốc)</span>
-                                          </span>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 font-bold text-emerald-800 text-xs">
-                                            <span>{uItem.unitName}</span>
-                                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">(x{uItem.rate})</span>
-                                          </span>
+                                    return (
+                                      <tr key={`${whKey}_${uItem.id}`} className="hover:bg-slate-50 transition-colors border-b border-slate-300 text-slate-900 font-semibold">
+                                        {/* STT */}
+                                        {uIdx === 0 && (
+                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 align-middle">
+                                            {idx + 1}
+                                          </td>
                                         )}
-                                      </td>
 
-                                      {/* TỒN KHO BAN ĐẦU */}
-                                      <td className="p-2 border-r border-slate-200">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={uItem.stockVal}
-                                          onChange={(e) => {
-                                            const rawVal = e.target.value;
-                                            const val = rawVal === '' ? '' : Math.max(0, Number(rawVal));
-                                            updateUnitField(uItem.stockKey, val);
-                                          }}
-                                          readOnly={modalMode === 'view'}
-                                          placeholder="0"
-                                          className={`w-full h-8 px-2 text-center rounded border font-bold text-xs outline-none transition read-only:bg-slate-50 ${uItem.isBase
-                                            ? 'border-slate-300 text-slate-800 focus:border-cyan-500'
-                                            : 'border-emerald-300 bg-emerald-50/40 text-emerald-900 focus:border-emerald-500'
-                                            }`}
-                                        />
-                                      </td>
+                                        {/* MÃ KHO (No gray background pill) */}
+                                        {uIdx === 0 && (
+                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 align-middle font-mono">
+                                            {wh.code}
+                                          </td>
+                                        )}
 
-                                      {/* GIÁ NHẬP (₫) */}
-                                      <td className="p-2 border-r border-slate-200">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={uItem.importVal}
-                                          onChange={(e) => {
-                                            const rawVal = e.target.value;
-                                            const val = rawVal === '' ? '' : Math.max(0, Number(rawVal));
-                                            updateUnitField(uItem.importKey, val);
-                                          }}
-                                          readOnly={modalMode === 'view'}
-                                          placeholder={uItem.defaultImport ? String(uItem.defaultImport) : '0'}
-                                          className="w-full h-8 px-2 text-right rounded border border-slate-300 font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500 transition read-only:bg-slate-50"
-                                        />
-                                      </td>
+                                        {/* TÊN KHO HÀNG */}
+                                        {uIdx === 0 && (
+                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 align-middle">
+                                            <p className="font-bold text-slate-900 text-xs truncate" title={wh.name}>{wh.name}</p>
+                                          </td>
+                                        )}
 
-                                      {/* GIÁ BÁN BUÔN (₫) */}
-                                      <td className="p-2 border-r border-slate-200">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={uItem.wholesaleVal}
-                                          onChange={(e) => {
-                                            const rawVal = e.target.value;
-                                            const val = rawVal === '' ? '' : Math.max(0, Number(rawVal));
-                                            updateUnitField(uItem.wholesaleKey, val);
-                                          }}
-                                          readOnly={modalMode === 'view'}
-                                          placeholder={uItem.defaultWholesale ? String(uItem.defaultWholesale) : '0'}
-                                          className="w-full h-8 px-2 text-right rounded border border-slate-300 font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500 transition read-only:bg-slate-50"
-                                        />
-                                      </td>
-
-                                      {/* GIÁ BÁN LẺ (₫) */}
-                                      <td className="p-2 border-r border-slate-200">
-                                        <input
-                                          type="number"
-                                          min="0"
-                                          value={uItem.retailVal}
-                                          onChange={(e) => {
-                                            const rawVal = e.target.value;
-                                            const val = rawVal === '' ? '' : Math.max(0, Number(rawVal));
-                                            updateUnitField(uItem.retailKey, val);
-                                          }}
-                                          readOnly={modalMode === 'view'}
-                                          placeholder={uItem.defaultRetail ? String(uItem.defaultRetail) : '0'}
-                                          className="w-full h-8 px-2 text-right rounded border border-slate-300 font-bold text-cyan-800 text-xs outline-none focus:border-cyan-500 transition read-only:bg-slate-50"
-                                        />
-                                      </td>
-
-                                      {/* TỔNG TỒN QUY ĐỔI KHO NÀY */}
-                                      {uIdx === 0 && (
-                                        <td rowSpan={warehouseUnits.length} className="p-3 text-center border-slate-200 bg-cyan-50/30 align-middle">
-                                          <span className="text-xs font-black text-cyan-900">
-                                            {whTotalQty.toLocaleString('vi-VN')} {form.unit}
-                                          </span>
+                                        {/* GIÁ NHẬP (₫) */}
+                                        <td className="p-2 text-center border-r border-slate-300">
+                                          <input
+                                            type="text"
+                                            value={displayImport}
+                                            onChange={(e) => {
+                                              const digits = e.target.value.replace(/\D/g, '');
+                                              const val = digits === '' ? '' : Number(digits);
+                                              updateUnitField(uItem.importKey, val);
+                                            }}
+                                            readOnly={modalMode === 'view'}
+                                            placeholder="0"
+                                            className="w-full h-8 px-2 text-center rounded border border-slate-300 font-bold text-slate-900 text-xs outline-none focus:border-cyan-600 transition read-only:bg-slate-50"
+                                          />
                                         </td>
-                                      )}
-                                    </tr>
-                                  ));
+
+                                        {/* GIÁ BÁN BUÔN (₫) */}
+                                        <td className="p-2 text-center border-r border-slate-300">
+                                          <input
+                                            type="text"
+                                            value={displayWholesale}
+                                            onChange={(e) => {
+                                              const digits = e.target.value.replace(/\D/g, '');
+                                              const val = digits === '' ? '' : Number(digits);
+                                              updateUnitField(uItem.wholesaleKey, val);
+                                            }}
+                                            readOnly={modalMode === 'view'}
+                                            placeholder="0"
+                                            className="w-full h-8 px-2 text-center rounded border border-slate-300 font-bold text-slate-900 text-xs outline-none focus:border-cyan-600 transition read-only:bg-slate-50"
+                                          />
+                                        </td>
+
+                                        {/* GIÁ BÁN LẺ (₫) */}
+                                        <td className="p-2 text-center border-r border-slate-300">
+                                          <input
+                                            type="text"
+                                            value={displayRetail}
+                                            onChange={(e) => {
+                                              const digits = e.target.value.replace(/\D/g, '');
+                                              const val = digits === '' ? '' : Number(digits);
+                                              updateUnitField(uItem.retailKey, val);
+                                            }}
+                                            readOnly={modalMode === 'view'}
+                                            placeholder="0"
+                                            className="w-full h-8 px-2 text-center rounded border border-slate-300 font-bold text-slate-900 text-xs outline-none focus:border-cyan-600 transition read-only:bg-slate-50"
+                                          />
+                                        </td>
+
+                                        {/* TỔNG SỐ LƯỢNG (Tất cả kho) */}
+                                        {uIdx === 0 && (
+                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 align-middle">
+                                            {whTotalQty.toLocaleString('vi-VN')}
+                                          </td>
+                                        )}
+
+                                        {/* SỐ LƯỢNG NHẬP GẦN NHẤT */}
+                                        {uIdx === 0 && (
+                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-900 align-middle">
+                                            {whTotalQty.toLocaleString('vi-VN')}
+                                          </td>
+                                        )}
+                                      </tr>
+                                    );
+                                  });
                                 })
                               )}
                             </tbody>
                             <tfoot>
-                              <tr className="bg-slate-100 border-t-2 border-slate-200 font-bold">
-                                <td colSpan={4} className="p-3 text-right text-slate-700 text-xs uppercase">
+                              <tr className="bg-slate-100 border-t border-slate-300 font-bold text-slate-900">
+                                <td colSpan={6} className="p-3 text-center font-black text-slate-900 text-xs uppercase border-r border-slate-300">
                                   TỔNG CỘNG TỒN KHO TẤT CẢ CÁC KHO:
                                 </td>
-                                <td className="p-3 text-center font-black text-cyan-900 text-sm border-r border-slate-200">
-                                  {(Number(form.stock) || 0).toLocaleString('vi-VN')} {form.unit}
-                                </td>
-                                <td colSpan={4} className="p-3 text-slate-500 font-semibold text-xs">
-                                  (Tổng số lượng được tính tự động từ các kho)
+                                <td colSpan={2} className="p-3 text-center font-black text-slate-900 text-xs">
+                                  {(Number(form.stock) || 0).toLocaleString('vi-VN')}
                                 </td>
                               </tr>
                             </tfoot>
@@ -3412,8 +3453,8 @@ export default function Products() {
 
       {/* STOCK-IN HISTORY MODAL */}
       {historyModalOpen && historyProduct && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in-50">
-          <div className="w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-4 animate-in fade-in-50">
+          <div className="w-full max-w-[92vw] max-h-[90vh] flex flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border-2 border-slate-300">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b-2 border-cyan-500 bg-cyan-700 px-6 py-4 text-white">
               <div className="flex items-center gap-3">
@@ -3421,10 +3462,10 @@ export default function Products() {
                   <History className="h-6 w-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold tracking-tight">
+                  <h3 className="text-base font-black tracking-wide uppercase whitespace-nowrap">
                     LỊCH SỬ NHẬP KHO - {historyProduct.name}
                   </h3>
-                  <p className="text-xs text-cyan-100 font-medium">
+                  <p className="text-xs text-cyan-100 font-medium whitespace-nowrap">
                     Mã SKU: <span className="font-bold text-white">{historyProduct.sku}</span> | Tồn kho hiện tại: <span className="font-bold text-yellow-300">{historyProduct.stock} {historyProduct.unit}</span>
                   </p>
                 </div>
@@ -3445,35 +3486,35 @@ export default function Products() {
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               {/* Metric Badges */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 p-3 flex items-center gap-3">
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-3 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-600 text-white font-bold">
                     {historyLogs.length}
                   </div>
                   <div>
-                    <div className="text-[11px] font-bold text-cyan-800 uppercase">Tổng số lần nhập</div>
-                    <div className="text-sm font-extrabold text-slate-800">{historyLogs.length} đợt nhập</div>
+                    <div className="text-[11px] font-bold text-cyan-900 uppercase">Tổng số lần nhập</div>
+                    <div className="text-sm font-extrabold text-slate-900">{historyLogs.length} đợt nhập</div>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 flex items-center gap-3">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white font-bold">
                     <Package className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="text-[11px] font-bold text-emerald-800 uppercase">Tổng số lượng đã nhập</div>
-                    <div className="text-sm font-extrabold text-slate-800">
+                    <div className="text-[11px] font-bold text-emerald-900 uppercase">Tổng số lượng đã nhập</div>
+                    <div className="text-sm font-extrabold text-slate-900">
                       {historyLogs.reduce((s, log) => s + (Number(log.quantity) || 0), 0).toLocaleString('vi-VN')} {historyProduct.unit}
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 flex items-center gap-3">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-bold">
                     <DollarSign className="h-5 w-5" />
                   </div>
                   <div>
-                    <div className="text-[11px] font-bold text-blue-800 uppercase">Giá nhập gần nhất</div>
-                    <div className="text-sm font-extrabold text-slate-800 font-mono">
+                    <div className="text-[11px] font-bold text-blue-900 uppercase">Giá nhập gần nhất</div>
+                    <div className="text-sm font-extrabold text-slate-900 font-mono">
                       {historyLogs.length > 0
                         ? Number(historyLogs[0].unitPrice || 0).toLocaleString('vi-VN') + ' ₫'
                         : 'Chưa có'}
@@ -3484,60 +3525,58 @@ export default function Products() {
 
               {/* History Table */}
               {loadingHistory ? (
-                <div className="py-12 text-center text-sm font-bold text-slate-500">
-                  Đang tải lịch sử nhập kho từ CSDL...
+                <div className="py-12 text-center text-sm font-bold text-slate-900">
+                  Đang truy vấn lịch sử nhập kho từ CSDL...
                 </div>
               ) : historyLogs.length === 0 ? (
-                <div className="rounded-xl border-2 border-dashed border-slate-200 py-12 text-center text-sm font-medium text-slate-500">
+                <div className="rounded-xl border-2 border-dashed border-slate-300 py-12 text-center text-sm font-bold text-slate-900">
                   Sản phẩm chưa có lịch sử nhập kho nào được lưu vết trong hệ thống.
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <div className="overflow-x-auto rounded-xl border border-slate-300">
                   <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-100 text-slate-800 font-extrabold border-b border-slate-200 uppercase text-[11px]">
+                    <thead className="bg-slate-100 text-slate-900 font-extrabold border-b border-slate-300 uppercase text-xs">
                       <tr>
-                        <th className="p-3 w-10 text-center border-r border-slate-200">STT</th>
-                        <th className="p-3 w-36 text-center border-r border-slate-200">Thời gian nhập</th>
-                        <th className="p-3 w-32 text-center border-r border-slate-200">Mã phiếu</th>
-                        <th className="p-3 min-w-[160px] border-r border-slate-200">Nhà cung cấp</th>
-                        <th className="p-3 w-28 text-center border-r border-slate-200">Kho nhập</th>
-                        <th className="p-3 w-24 text-right border-r border-slate-200">Số lượng</th>
-                        <th className="p-3 w-28 text-right border-r border-slate-200">Đơn giá (₫)</th>
-                        <th className="p-3 w-32 text-right border-r border-slate-200">Thành tiền (₫)</th>
-                        <th className="p-3 w-28 text-center">Trạng thái</th>
+                        <th className="p-3 w-12 text-center border-r border-slate-300 whitespace-nowrap">STT</th>
+                        <th className="p-3 min-w-[150px] text-center border-r border-slate-300 whitespace-nowrap">THỜI GIAN NHẬP</th>
+                        <th className="p-3 min-w-[130px] text-center border-r border-slate-300 whitespace-nowrap">MÃ PHIẾU</th>
+                        <th className="p-3 min-w-[180px] border-r border-slate-300 whitespace-nowrap">NHÀ CUNG CẤP</th>
+                        <th className="p-3 min-w-[130px] text-center border-r border-slate-300 whitespace-nowrap">KHO NHẬP</th>
+                        <th className="p-3 min-w-[120px] text-right border-r border-slate-300 whitespace-nowrap">SỐ LƯỢNG</th>
+                        <th className="p-3 min-w-[130px] text-right border-r border-slate-300 whitespace-nowrap">ĐƠN GIÁ (₫)</th>
+                        <th className="p-3 min-w-[140px] text-right border-r border-slate-300 whitespace-nowrap">THÀNH TIỀN (₫)</th>
+                        <th className="p-3 min-w-[130px] text-center whitespace-nowrap">TRẠNG THÁI</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200">
+                    <tbody className="divide-y divide-slate-300">
                       {historyLogs.map((log, idx) => (
-                        <tr key={log.id || idx} className="hover:bg-cyan-50/50 transition">
-                          <td className="p-3 text-center font-bold text-slate-500 border-r border-slate-200">
+                        <tr key={log.id || idx} className="hover:bg-slate-50 transition">
+                          <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 whitespace-nowrap">
                             {idx + 1}
                           </td>
-                          <td className="p-3 text-center font-medium text-slate-700 border-r border-slate-200">
+                          <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 whitespace-nowrap">
                             {new Date(log.createdAt).toLocaleString('vi-VN')}
                           </td>
-                          <td className="p-3 text-center font-bold text-cyan-800 border-r border-slate-200">
+                          <td className="p-3 text-center font-bold text-cyan-900 border-r border-slate-300 whitespace-nowrap font-mono">
                             {log.orderCode || 'PNK-ORD'}
                           </td>
-                          <td className="p-3 font-semibold text-slate-800 border-r border-slate-200">
+                          <td className="p-3 font-bold text-slate-900 border-r border-slate-300 whitespace-nowrap">
                             {log.supplierName || 'Nhà cung cấp chính'}
                           </td>
-                          <td className="p-3 text-center font-medium text-slate-700 border-r border-slate-200">
-                            <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
-                              {log.warehouseName || log.warehouseCode || 'SPX001'}
-                            </span>
+                          <td className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 whitespace-nowrap font-mono">
+                            {log.warehouseName || log.warehouseCode || 'SPX001'}
                           </td>
-                          <td className="p-3 text-right font-extrabold text-emerald-700 border-r border-slate-200">
+                          <td className="p-3 text-right font-bold text-emerald-800 border-r border-slate-300 whitespace-nowrap">
                             +{Number(log.quantity || 0).toLocaleString('vi-VN')} {historyProduct.unit}
                           </td>
-                          <td className="p-3 text-right font-semibold text-slate-700 font-mono border-r border-slate-200">
+                          <td className="p-3 text-right font-bold text-slate-900 font-mono border-r border-slate-300 whitespace-nowrap">
                             {Number(log.unitPrice || 0).toLocaleString('vi-VN')} ₫
                           </td>
-                          <td className="p-3 text-right font-extrabold text-cyan-900 font-mono border-r border-slate-200">
+                          <td className="p-3 text-right font-bold text-cyan-900 font-mono border-r border-slate-300 whitespace-nowrap">
                             {Number(log.totalAmount || 0).toLocaleString('vi-VN')} ₫
                           </td>
-                          <td className="p-3 text-center">
-                            <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-800">
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <span className="inline-flex rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-xs font-bold text-emerald-900">
                               {log.status || 'Đã nhập kho'}
                             </span>
                           </td>
@@ -3550,8 +3589,8 @@ export default function Products() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-3">
-              <div className="text-xs text-slate-500 font-medium">
+            <div className="flex items-center justify-between border-t border-slate-300 bg-slate-100 px-6 py-3">
+              <div className="text-xs text-slate-700 font-bold">
                 Dữ liệu lịch sử được truy xuất và lưu trữ trực tiếp từ CSDL hệ thống
               </div>
               <button
@@ -3560,7 +3599,7 @@ export default function Products() {
                   setHistoryModalOpen(false);
                   setHistoryProduct(null);
                 }}
-                className="rounded-xl border-2 border-slate-300 bg-white px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="rounded-xl border-2 border-slate-300 bg-white px-5 py-2 text-xs font-bold text-slate-900 hover:bg-slate-200 transition cursor-pointer"
               >
                 Đóng cửa sổ
               </button>

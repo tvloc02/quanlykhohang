@@ -13,6 +13,12 @@ import {
     Check,
     ChevronDown,
     History,
+    Copy,
+    RotateCcw,
+    Printer,
+    Settings,
+    Maximize2,
+    Minimize2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Toast from '../../shared/components/Toast';
@@ -161,6 +167,21 @@ export default function CategoryManagement() {
     const [search, setSearch] = React.useState('');
     const [statusFilter, setStatusFilter] = React.useState<'all' | CatalogCategoryStatus>('all');
 
+    // History stack for Undo action
+    const [historyStack, setHistoryStack] = React.useState<CatalogCategory[][]>([]);
+    const [isFullScreen, setIsFullScreen] = React.useState(false);
+    const [showColumnSettings, setShowColumnSettings] = React.useState(false);
+    const [columnVis, setColumnVis] = React.useState({
+        checkbox: true,
+        stt: true,
+        code: true,
+        name: true,
+        productCount: true,
+        description: true,
+        status: true,
+        actions: true,
+    });
+
     // Custom dropdown states
     const [isStatusOpen, setIsStatusOpen] = React.useState(false);
 
@@ -183,10 +204,8 @@ export default function CategoryManagement() {
     const [productCounts, setProductCounts] = React.useState<Record<string, number>>({});
 
     React.useEffect(() => {
-        if (categories.length > 0) {
-            saveStoredCatalogCategories(categories);
-            void syncCategoriesToBackend(categories);
-        }
+        saveStoredCatalogCategories(categories);
+        void syncCategoriesToBackend(categories);
     }, [categories]);
 
     React.useEffect(() => {
@@ -200,16 +219,14 @@ export default function CategoryManagement() {
 
                 const data = (await response.json()) as Array<Partial<CatalogCategory> & { id?: string }>;
                 const backendCategories = Array.isArray(data) ? normalizeApiCategories(data) : [];
-                if (!cancelled && backendCategories.length > 0) {
+                if (!cancelled) {
                     setCategories(backendCategories);
                     saveStoredCatalogCategories(backendCategories);
                 }
             } catch {
-                // Fall back to local storage below.
-            }
-
-            if (!cancelled) {
-                setCategories((prev) => prev.length ? prev : getStoredCatalogCategories());
+                if (!cancelled) {
+                    setCategories(getStoredCatalogCategories());
+                }
             }
         };
 
@@ -241,6 +258,57 @@ export default function CategoryManagement() {
             cancelled = true;
         };
     }, []);
+
+    const pushHistory = (currentCategories: CatalogCategory[]) => {
+        setHistoryStack((prev) => [...prev, currentCategories]);
+    };
+
+    const handleUndo = () => {
+        if (historyStack.length === 0) {
+            setError('Không có thao tác nào để hoàn tác.');
+            return;
+        }
+        const previous = historyStack[historyStack.length - 1];
+        setHistoryStack((prev) => prev.slice(0, -1));
+        setCategories(previous);
+        saveStoredCatalogCategories(previous);
+        void syncCategoriesToBackend(previous);
+        setSuccess('Đã hoàn tác thao tác vừa thực hiện.');
+    };
+
+    const handleCopySelected = () => {
+        if (selectedIds.length === 0) {
+            setError('Vui lòng chọn ít nhất 1 nhóm hàng hóa để copy.');
+            return;
+        }
+        const selectedCats = categories.filter((c) => selectedIds.includes(c.id));
+        pushHistory(categories);
+        const copiedCats: CatalogCategory[] = selectedCats.map((c, idx) => ({
+            ...c,
+            id: crypto.randomUUID(),
+            code: `${c.code}_COPY_${Date.now().toString().slice(-4)}_${idx + 1}`,
+            name: `${c.name} (Bản sao)`,
+            createdAt: new Date().toISOString(),
+        }));
+        setCategories((prev) => [...copiedCats, ...prev]);
+        setSuccess(`Đã tạo bản sao ${copiedCats.length} nhóm hàng hóa thành công.`);
+    };
+
+    const handlePrintReport = () => {
+        window.print();
+    };
+
+    const toggleBrowserFullscreen = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => null);
+            setIsFullScreen(true);
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen().catch(() => null);
+            }
+            setIsFullScreen(false);
+        }
+    };
 
     React.useEffect(() => {
         setCurrentPage(1);
@@ -446,6 +514,7 @@ export default function CategoryManagement() {
                 });
             }
 
+            pushHistory(categories);
             setCategories(nextCategories);
             const summary = { successCount, failedCount, details };
             setImportSummary(summary);
@@ -493,6 +562,7 @@ export default function CategoryManagement() {
             createdAt: selectedCategory?.createdAt || new Date().toISOString(),
         };
 
+        pushHistory(categories);
         setCategories((current) =>
             modalMode === 'edit'
                 ? current.map((category) => (category.id === payload.id ? payload : category))
@@ -502,9 +572,22 @@ export default function CategoryManagement() {
         closeModal();
     };
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
         if (!selectedCategory) return;
-        setCategories((current) => current.filter((category) => category.id !== selectedCategory.id));
+        const targetId = selectedCategory.id;
+        pushHistory(categories);
+        const updated = categories.filter((category) => category.id !== targetId);
+        setCategories(updated);
+        saveStoredCatalogCategories(updated);
+
+        try {
+            await fetch(`${API_BASE_URL}/categories/${targetId}`, {
+                method: 'DELETE',
+                headers: authHeaders(),
+            });
+        } catch {}
+
+        void syncCategoriesToBackend(updated);
         setSuccess('Đã xóa nhóm hàng hóa.');
         closeModal();
     };
@@ -555,100 +638,110 @@ export default function CategoryManagement() {
                 onChange={handleImportFile}
             />
 
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            {/* Header Banner & Action Buttons Bar (Matching Image: + Thêm mới, Copy, Xóa, Hoàn tác, In báo cáo, Export Excel, Hiển thị, Maximize) */}
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
                         <Tags className="h-5 w-5 text-cyan-100" />
                         <h1 className="text-lg font-bold tracking-tight text-white">Quản Lý Nhóm Hàng Hóa</h1>
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    {canImport && (
-                        <button
-                            type="button"
-                            onClick={openImportModal}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50 shadow-sm cursor-pointer"
-                        >
-                            <Upload className="h-4 w-4" />
-                            Import
-                        </button>
-                    )}
-                    {canExport && (
-                        <button
-                            type="button"
-                            onClick={openExportModal}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-sm font-bold text-cyan-700 transition hover:bg-cyan-50 shadow-sm cursor-pointer"
-                        >
-                            <Download className="h-4 w-4" />
-                            Xuất Excel
-                        </button>
-                    )}
+
+                {/* Toolbar Buttons Bar */}
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* 1. + Thêm mới */}
                     {canCreate && (
                         <button
                             type="button"
                             onClick={openCreateModal}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 cursor-pointer"
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-cyan-600 px-4 py-2 text-xs sm:text-sm font-extrabold text-white shadow-2xs transition hover:bg-cyan-700 active:scale-95 cursor-pointer"
                         >
                             <Plus className="h-4 w-4" />
-                            Thêm nhóm hàng hóa
+                            Thêm mới
                         </button>
                     )}
+
+                    {/* 2. Copy */}
+                    <button
+                        type="button"
+                        onClick={handleCopySelected}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                    >
+                        <Copy className="h-4 w-4 text-cyan-700" />
+                        Copy {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
+                    </button>
+
+                    {/* 3. Xóa */}
+                    {canDelete && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (selectedIds.length === 0) {
+                                    setError('Vui lòng chọn ít nhất 1 nhóm hàng hóa để xóa.');
+                                    return;
+                                }
+                                setModalMode('mass-delete');
+                            }}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                        >
+                            <Trash2 className="h-4 w-4 text-cyan-700" />
+                            Xóa {selectedIds.length > 0 ? `(${selectedIds.length})` : ''}
+                        </button>
+                    )}
+
+                    {/* 4. Hoàn tác */}
+                    <button
+                        type="button"
+                        onClick={handleUndo}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                    >
+                        <RotateCcw className="h-4 w-4 text-cyan-700" />
+                        Hoàn tác ({historyStack.length})
+                    </button>
+
+                    {/* 5. In báo cáo */}
+                    <button
+                        type="button"
+                        onClick={handlePrintReport}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                    >
+                        <Printer className="h-4 w-4 text-cyan-700" />
+                        In báo cáo
+                    </button>
+
+                    {/* 6. Export Excel */}
+                    {canExport && (
+                        <button
+                            type="button"
+                            onClick={openExportModal}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                        >
+                            <FileSpreadsheet className="h-4 w-4 text-cyan-700" />
+                            Export Excel
+                        </button>
+                    )}
+
+                    {/* 7. Hiển thị */}
+                    <button
+                        type="button"
+                        onClick={() => setShowColumnSettings(true)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                        title="Cấu hình hiển thị cột"
+                    >
+                        <Settings className="h-4 w-4 text-cyan-700" />
+                        Hiển thị
+                    </button>
+
+                    {/* 8. Maximize */}
+                    <button
+                        type="button"
+                        onClick={toggleBrowserFullscreen}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                        title="Toàn màn hình"
+                    >
+                        {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </button>
                 </div>
-            </div>
-
-            {/* Metric Summary Cards / Buttons */}
-            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-                <button
-                    type="button"
-                    onClick={() => setStatusFilter('all')}
-                    className={`flex h-[72px] items-center justify-center rounded-xl border-2 px-4 shadow-sm transition-all hover:bg-cyan-50/80 ${
-                        statusFilter === 'all'
-                            ? 'border-cyan-500 bg-cyan-100/60 text-cyan-950 font-black'
-                            : 'border-cyan-400 bg-white text-cyan-800 font-extrabold hover:border-cyan-500'
-                    }`}
-                >
-                    <span className="text-sm font-black tracking-wide uppercase">
-                        {categories.length} TỔNG NHÓM HÀNG HÓA
-                    </span>
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => setStatusFilter('active')}
-                    className={`flex h-[72px] items-center justify-center rounded-xl border-2 px-4 shadow-sm transition-all hover:bg-cyan-50/80 ${
-                        statusFilter === 'active'
-                            ? 'border-cyan-500 bg-cyan-100/60 text-cyan-950 font-black'
-                            : 'border-cyan-400 bg-white text-cyan-800 font-extrabold hover:border-cyan-500'
-                    }`}
-                >
-                    <span className="text-sm font-black tracking-wide uppercase">
-                        {categories.filter((c) => c.status === 'active').length} NHÓM HÀNG HÓA ĐANG SỬ DỤNG
-                    </span>
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => setStatusFilter('inactive')}
-                    className={`flex h-[72px] items-center justify-center rounded-xl border-2 px-4 shadow-sm transition-all hover:bg-cyan-50/80 ${
-                        statusFilter === 'inactive'
-                            ? 'border-cyan-500 bg-cyan-100/60 text-cyan-950 font-black'
-                            : 'border-cyan-400 bg-white text-cyan-800 font-extrabold hover:border-cyan-500'
-                    }`}
-                >
-                    <span className="text-sm font-black tracking-wide uppercase">
-                        {categories.filter((c) => c.status === 'inactive').length} NHÓM HÀNG HÓA NGỪNG SỬ DỤNG
-                    </span>
-                </button>
-
-                <button
-                    type="button"
-                    onClick={() => setStatusFilter('all')}
-                    className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-400 bg-white px-4 text-cyan-800 font-extrabold shadow-sm transition-all hover:bg-cyan-50/80 hover:border-cyan-500"
-                >
-                    <span className="text-sm font-black tracking-wide uppercase">
-                        {Object.values(productCounts).reduce((a, b) => a + b, 0)} SẢN PHẨM LIÊN KẾT
-                    </span>
-                </button>
             </div>
 
             <div className="mt-4 rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
@@ -721,30 +814,34 @@ export default function CategoryManagement() {
                     <table className="w-full min-w-[1120px] border-collapse bg-white">
                         <thead className="bg-cyan-50">
                         <tr className="border-b border-slate-200">
-                            <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
-                                <input
-                                    title="Chọn tất cả"
-                                    type="checkbox"
-                                    checked={paginatedCategories.length > 0 && selectedIds.length === paginatedCategories.length}
-                                    onChange={(e) => {
-                                        if (e.target.checked) {
-                                            setSelectedIds(paginatedCategories.map((c) => c.id!));
-                                        } else {
-                                            setSelectedIds([]);
-                                        }
-                                    }}
-                                    className="h-4 w-4 cursor-pointer rounded border-cyan-500 text-cyan-600 focus:ring-cyan-500"
-                                />
-                            </th>
-                            <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
-                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã nhóm hàng</th>
-                            <th className="w-56 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên nhóm hàng</th>
-                            <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số lượng SP</th>
-                            <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ghi chú</th>
-                            <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Trạng thái</th>
-                            <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
-                                THAO TÁC
-                            </th>
+                            {columnVis.checkbox && (
+                                <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
+                                    <input
+                                        title="Chọn tất cả"
+                                        type="checkbox"
+                                        checked={paginatedCategories.length > 0 && selectedIds.length === paginatedCategories.length}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setSelectedIds(paginatedCategories.map((c) => c.id!));
+                                            } else {
+                                                setSelectedIds([]);
+                                            }
+                                        }}
+                                        className="h-4 w-4 cursor-pointer rounded border-cyan-500 text-cyan-600 focus:ring-cyan-500"
+                                    />
+                                </th>
+                            )}
+                            {columnVis.stt && <th className="w-12 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>}
+                            {columnVis.code && <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Mã nhóm hàng</th>}
+                            {columnVis.name && <th className="w-56 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tên nhóm hàng</th>}
+                            {columnVis.productCount && <th className="w-40 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số lượng SP</th>}
+                            {columnVis.description && <th className="w-48 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ghi chú</th>}
+                            {columnVis.status && <th className="w-36 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Trạng thái</th>}
+                            {columnVis.actions && (
+                                <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">
+                                    THAO TÁC
+                                </th>
+                            )}
                         </tr>
                         </thead>
                         <tbody>
@@ -757,82 +854,98 @@ export default function CategoryManagement() {
                         ) : (
                             paginatedCategories.map((category, index) => (
                                 <tr key={category.id} className="group border-b border-slate-200 transition hover:bg-cyan-50/50">
-                                    <td className="border-x border-slate-200 px-3 py-4 text-center">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIds.includes(category.id!)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedIds((prev) => [...prev, category.id!]);
-                                                } else {
-                                                    setSelectedIds((prev) => prev.filter((id) => id !== category.id!));
-                                                }
-                                            }}
-                                            className="h-4 w-4 cursor-pointer rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
-                                        />
-                                    </td>
-                                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
-                                        {startIndex + index}
-                                    </td>
-                                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-800">
-                                        {category.code}
-                                    </td>
-                                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
-                                        {category.name}
-                                    </td>
-                                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold text-cyan-700">
-                                        {productCounts[category.id!] || productCounts[category.name.trim().toLowerCase()] || 0}
-                                    </td>
-                                    <td className="border-x border-slate-200 px-3 py-4 text-sm leading-6 text-slate-600">
-                                        {category.description || '-'}
-                                    </td>
-                                    <td className="border-x border-slate-200 px-3 py-4 text-center">
-                      <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${getStatusClass(category.status)}`}>
-                        {getStatusLabel(category.status)}
-                      </span>
-                                    </td>
-                                    <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50">
-                                        <div className="flex items-center justify-center gap-2">
-                                            {canCreate && (
+                                    {columnVis.checkbox && (
+                                        <td className="border-x border-slate-200 px-3 py-4 text-center">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.includes(category.id!)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedIds((prev) => [...prev, category.id!]);
+                                                    } else {
+                                                        setSelectedIds((prev) => prev.filter((id) => id !== category.id!));
+                                                    }
+                                                }}
+                                                className="h-4 w-4 cursor-pointer rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                                            />
+                                        </td>
+                                    )}
+                                    {columnVis.stt && (
+                                        <td className="border-x border-slate-200 px-3 py-4 text-center text-sm text-slate-700">
+                                            {startIndex + index}
+                                        </td>
+                                    )}
+                                    {columnVis.code && (
+                                        <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black uppercase text-slate-800">
+                                            {category.code}
+                                        </td>
+                                    )}
+                                    {columnVis.name && (
+                                        <td className="border-x border-slate-200 px-3 py-4 text-sm font-extrabold text-cyan-900">
+                                            {category.name}
+                                        </td>
+                                    )}
+                                    {columnVis.productCount && (
+                                        <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black text-cyan-800">
+                                            {productCounts[category.id!] || productCounts[category.name.trim().toLowerCase()] || 0}
+                                        </td>
+                                    )}
+                                    {columnVis.description && (
+                                        <td className="border-x border-slate-200 px-3 py-4 text-sm text-slate-600">
+                                            {category.description || '-'}
+                                        </td>
+                                    )}
+                                    {columnVis.status && (
+                                        <td className="border-x border-slate-200 px-3 py-4 text-center text-sm">
+                                            <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${getStatusClass(category.status)}`}>
+                                                {getStatusLabel(category.status)}
+                                            </span>
+                                        </td>
+                                    )}
+                                    {columnVis.actions && (
+                                        <td className="sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center group-hover:bg-cyan-50">
+                                            <div className="flex items-center justify-center gap-1.5">
+                                                {canCreate && (
+                                                    <button
+                                                        type="button"
+                                                        className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                                                        title="Thêm mới / Chi tiết"
+                                                        onClick={() => openCategoryModal('view', category)}
+                                                    >
+                                                        <Plus size={18} strokeWidth={2.5} />
+                                                    </button>
+                                                )}
                                                 <button
                                                     type="button"
                                                     className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                                                    title="Thêm mới / Chi tiết"
+                                                    title="Chi tiết nhóm hàng hóa"
                                                     onClick={() => openCategoryModal('view', category)}
                                                 >
-                                                    <Plus size={18} strokeWidth={2.5} />
+                                                    <Eye size={18} strokeWidth={2.5} />
                                                 </button>
-                                            )}
-                                            <button
-                                                type="button"
-                                                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                                                title="Chi tiết nhóm hàng hóa"
-                                                onClick={() => openCategoryModal('view', category)}
-                                            >
-                                                <History size={18} strokeWidth={2.5} />
-                                            </button>
-                                            {canEdit && (
-                                                <button
-                                                    type="button"
-                                                    className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                                                    title="Sửa nhóm hàng hóa"
-                                                    onClick={() => openCategoryModal('edit', category)}
-                                                >
-                                                    <Pencil size={18} strokeWidth={2.5} />
-                                                </button>
-                                            )}
-                                            {canDelete && (
-                                                <button
-                                                    type="button"
-                                                    className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                                                    title="Xóa nhóm hàng hóa"
-                                                    onClick={() => openCategoryModal('delete', category)}
-                                                >
-                                                    <Trash2 size={18} strokeWidth={2.5} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
+                                                {canEdit && (
+                                                    <button
+                                                        type="button"
+                                                        className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                                                        title="Sửa nhóm hàng hóa"
+                                                        onClick={() => openCategoryModal('edit', category)}
+                                                    >
+                                                        <Pencil size={18} strokeWidth={2.5} />
+                                                    </button>
+                                                )}
+                                                {canDelete && (
+                                                    <button
+                                                        type="button"
+                                                        className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                                                        title="Xóa nhóm hàng hóa"
+                                                        onClick={() => openCategoryModal('delete', category)}
+                                                    >
+                                                        <Trash2 size={18} strokeWidth={2.5} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    )}
                                 </tr>
                             ))
                         )}
@@ -1001,8 +1114,20 @@ export default function CategoryManagement() {
                                 <p className="mt-2 text-sm font-medium text-red-500">Sản phẩm đang dùng các nhóm hàng hóa này sẽ bị ảnh hưởng hoặc hiển thị lỗi.</p>
                                 <div className="mt-8 flex justify-end gap-3">
                                     <button type="button" onClick={closeModal} className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 transition hover:bg-slate-50">Hủy</button>
-                                    <button type="button" onClick={() => {
-                                        setCategories((current) => current.filter((category) => !selectedIds.includes(category.id!)));
+                                    <button type="button" onClick={async () => {
+                                        pushHistory(categories);
+                                        const updated = categories.filter((category) => !selectedIds.includes(category.id!));
+                                        setCategories(updated);
+                                        saveStoredCatalogCategories(updated);
+                                        for (const id of selectedIds) {
+                                            try {
+                                                await fetch(`${API_BASE_URL}/categories/${id}`, {
+                                                    method: 'DELETE',
+                                                    headers: authHeaders(),
+                                                });
+                                            } catch {}
+                                        }
+                                        void syncCategoriesToBackend(updated);
                                         setSelectedIds([]);
                                         setSuccess(`Đã xóa ${selectedIds.length} nhóm hàng hóa.`);
                                         closeModal();
@@ -1071,6 +1196,104 @@ export default function CategoryManagement() {
                                 </div>
                             </form>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Column Display Configuration Modal */}
+            {showColumnSettings && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm transition-all">
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="rounded-xl bg-cyan-50 p-2 text-cyan-600">
+                                    <Settings className="h-6 w-6" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-black text-slate-800">Cấu Hình Hiển Thị Cột</h2>
+                                    <p className="text-xs font-semibold text-slate-500">Bật/tắt các cột hiển thị trong bảng</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowColumnSettings(false)}
+                                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                            <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:bg-cyan-50/50 cursor-pointer">
+                                <span className="text-sm font-bold text-slate-800">STT</span>
+                                <input
+                                    type="checkbox"
+                                    checked={columnVis.stt}
+                                    onChange={(e) => setColumnVis((v) => ({ ...v, stt: e.target.checked }))}
+                                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                />
+                            </label>
+
+                            <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:bg-cyan-50/50 cursor-pointer">
+                                <span className="text-sm font-bold text-slate-800">Mã nhóm hàng</span>
+                                <input
+                                    type="checkbox"
+                                    checked={columnVis.code}
+                                    onChange={(e) => setColumnVis((v) => ({ ...v, code: e.target.checked }))}
+                                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                />
+                            </label>
+
+                            <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:bg-cyan-50/50 cursor-pointer">
+                                <span className="text-sm font-bold text-slate-800">Tên nhóm hàng</span>
+                                <input
+                                    type="checkbox"
+                                    checked={columnVis.name}
+                                    onChange={(e) => setColumnVis((v) => ({ ...v, name: e.target.checked }))}
+                                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                />
+                            </label>
+
+                            <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:bg-cyan-50/50 cursor-pointer">
+                                <span className="text-sm font-bold text-slate-800">Số lượng sản phẩm</span>
+                                <input
+                                    type="checkbox"
+                                    checked={columnVis.productCount}
+                                    onChange={(e) => setColumnVis((v) => ({ ...v, productCount: e.target.checked }))}
+                                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                />
+                            </label>
+
+                            <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:bg-cyan-50/50 cursor-pointer">
+                                <span className="text-sm font-bold text-slate-800">Ghi chú</span>
+                                <input
+                                    type="checkbox"
+                                    checked={columnVis.description}
+                                    onChange={(e) => setColumnVis((v) => ({ ...v, description: e.target.checked }))}
+                                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                />
+                            </label>
+
+                            <label className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:bg-cyan-50/50 cursor-pointer">
+                                <span className="text-sm font-bold text-slate-800">Trạng thái</span>
+                                <input
+                                    type="checkbox"
+                                    checked={columnVis.status}
+                                    onChange={(e) => setColumnVis((v) => ({ ...v, status: e.target.checked }))}
+                                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                />
+                            </label>
+                        </div>
+
+                        <div className="mt-6 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setShowColumnSettings(false)}
+                                className="rounded-xl bg-cyan-600 px-6 py-2 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 cursor-pointer"
+                            >
+                                Đóng
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

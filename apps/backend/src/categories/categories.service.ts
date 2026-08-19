@@ -2,11 +2,15 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from '../entities/category.entity';
+import { Product } from '../entities/product.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
 
 @Injectable()
 export class CategoriesService {
-  constructor(@InjectRepository(Category) private repo: Repository<Category>) {}
+  constructor(
+    @InjectRepository(Category) private repo: Repository<Category>,
+    @InjectRepository(Product) private productRepo: Repository<Product>,
+  ) {}
 
   create(dto: CreateCategoryDto) {
     const c = this.repo.create(this.normalizeCategory(dto));
@@ -53,9 +57,14 @@ export class CategoriesService {
     for (const category of existing) {
       if (!keptIds.has(String(category.id))) {
         try {
+          await this.productRepo.createQueryBuilder()
+            .update(Product)
+            .set({ category: undefined })
+            .where('categoryId = :catId', { catId: category.id })
+            .execute();
           await this.repo.delete(category.id);
-        } catch {
-          // Ignore delete if referenced by products or constraints
+        } catch (err) {
+          console.error(`Failed to delete category ${category.id}:`, err);
         }
       }
     }
@@ -64,6 +73,13 @@ export class CategoriesService {
   }
 
   async remove(id: string) {
+    try {
+      await this.productRepo.createQueryBuilder()
+        .update(Product)
+        .set({ category: undefined })
+        .where('categoryId = :catId', { catId: id })
+        .execute();
+    } catch {}
     await this.repo.delete(id);
     return { deleted: true };
   }

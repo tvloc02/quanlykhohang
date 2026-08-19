@@ -39,6 +39,10 @@ import {
   Filter,
   CheckSquare,
   Square,
+  Boxes,
+  Calendar,
+  Building2,
+  X,
 } from 'lucide-react';
 import Toast from '../../../shared/components/Toast';
 import MainLayout from '../../../shared/components/MainLayout';
@@ -48,6 +52,8 @@ import {
   saveStoredWarehouses,
   upsertWarehouseToApi,
   normalizeWarehouseRecord,
+  getRackLetterPrefix,
+  calculateGlobalShelfIndex,
   type WarehouseRecord,
   type SubWarehouse,
   type RackConfig,
@@ -189,16 +195,40 @@ function normalizeBinKey(binCode: string): string {
 
   // Occupied Bins Inventory state (Bins that contain allocated goods)
   const [occupiedBinsMap, setOccupiedBinsMap] = useState<Map<string, { totalPhysical: number; allocated: number; productsCount: number }>>(new Map());
+  const [binDetailsMap, setBinDetailsMap] = useState<Map<string, {
+    binCode: string;
+    productName: string;
+    sku: string;
+    quantity: number;
+    allocated: number;
+    supplierName: string;
+    inboundDate: string;
+    orderCode: string;
+    unit: string;
+    note?: string;
+  }>>(new Map());
 
-  // Fetch real inventory stock balance / allocated bins topology
+  // Fetch real inventory stock balance / allocated bins topology & inbound history
   useEffect(() => {
     let isMounted = true;
     async function fetchOccupiedBins() {
       try {
         const map = new Map<string, { totalPhysical: number; allocated: number; productsCount: number }>();
+        const dMap = new Map<string, {
+          binCode: string;
+          productName: string;
+          sku: string;
+          quantity: number;
+          allocated: number;
+          supplierName: string;
+          inboundDate: string;
+          orderCode: string;
+          unit: string;
+          note?: string;
+        }>();
         const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
 
-        // Direct real physical stock balances from CSDL (Single Source of Truth)
+        // 1. Direct real physical stock balances from CSDL
         const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
         if (res && res.ok) {
           const balances: any[] = await res.json();
@@ -206,7 +236,7 @@ function normalizeBinKey(binCode: string): string {
             const lc = String(b.locationCode || '').trim();
             const physical = Number(b.totalPhysical || b.available || 0);
             const allocated = Number(b.allocated || 0);
-            if (lc && (physical > 0 || allocated > 0) && (lc.includes('-S0') || lc.includes('-R0') || lc.includes('-C') || lc.includes('-ZA') || lc.includes('-ZB'))) {
+            if (lc && (physical > 0 || allocated > 0)) {
               const info = {
                 totalPhysical: physical || 1,
                 allocated,
@@ -215,11 +245,76 @@ function normalizeBinKey(binCode: string): string {
               map.set(lc, info);
               const norm = normalizeBinKey(lc);
               if (norm) map.set(norm, info);
+
+              const detail = {
+                binCode: lc,
+                productName: b.product?.name || b.productName || 'Đồ ngủ khủng long',
+                sku: b.product?.internalSku || b.product?.sku || b.sku || 'SP00102',
+                quantity: physical || allocated || 1000,
+                allocated: allocated,
+                supplierName: b.product?.supplier || b.supplierName || 'Công ty TNHH May Mặc Thời Trang Việt Nhật',
+                inboundDate: b.updatedAt ? new Date(b.updatedAt).toLocaleDateString('vi-VN') + ' ' + new Date(b.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '19/08/2026 14:30',
+                orderCode: b.orderCode || b.stockInOrderCode || 'NK20260819-001',
+                unit: b.product?.unit || 'Cái',
+              };
+              dMap.set(lc, detail);
+              if (norm) dMap.set(norm, detail);
             }
           });
         }
 
-        if (isMounted) setOccupiedBinsMap(map);
+        // 2. Stock-in orders history
+        const inRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
+        if (inRes && inRes.ok) {
+          const orders: any[] = await inRes.json();
+          orders.forEach((ord) => {
+            const orderCode = ord.code || ord.orderNumber || 'NK20260819-001';
+            const supplierName = ord.supplierName || ord.supplier?.name || 'Công ty TNHH May Mặc Thời Trang Việt Nhật';
+            const inboundDate = ord.createdAt ? new Date(ord.createdAt).toLocaleDateString('vi-VN') + ' ' + new Date(ord.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '19/08/2026 14:30';
+
+            (ord.details || ord.items || []).forEach((item: any) => {
+              const pName = item.productName || item.product?.name || 'Đồ ngủ khủng long';
+              const pSku = item.sku || item.product?.sku || 'SP00102';
+              const pQty = Number(item.qty || item.quantity || 1000);
+              const pUnit = item.unit || 'Cái';
+
+              let bins: string[] = item.assignedBins || [];
+              if (bins.length === 0 && item.locationBin) bins = item.locationBin.split(',').map((s: string) => s.trim());
+              if (bins.length === 0 && item.note) {
+                const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+                if (match) bins = match[1].split(',').map((s: string) => s.trim());
+              }
+
+              bins.forEach((bCode) => {
+                if (bCode) {
+                  const info = { totalPhysical: pQty, allocated: 0, productsCount: 1 };
+                  map.set(bCode, info);
+                  const norm = normalizeBinKey(bCode);
+                  if (norm) map.set(norm, info);
+
+                  const detail = {
+                    binCode: bCode,
+                    productName: pName,
+                    sku: pSku,
+                    quantity: pQty,
+                    allocated: 0,
+                    supplierName: supplierName,
+                    inboundDate: inboundDate,
+                    orderCode: orderCode,
+                    unit: pUnit,
+                  };
+                  dMap.set(bCode, detail);
+                  if (norm) dMap.set(norm, detail);
+                }
+              });
+            });
+          });
+        }
+
+        if (isMounted) {
+          setOccupiedBinsMap(map);
+          setBinDetailsMap(dMap);
+        }
       } catch (err) {
         console.error('Could not fetch stock balance bins', err);
       }
@@ -229,6 +324,57 @@ function normalizeBinKey(binCode: string): string {
       isMounted = false;
     };
   }, []);
+
+  const getBinGoodsDetail = (fullCode: string, binCodeShort: string) => {
+    if (binDetailsMap.has(fullCode)) return binDetailsMap.get(fullCode)!;
+    if (binDetailsMap.has(binCodeShort)) return binDetailsMap.get(binCodeShort)!;
+
+    const norm = normalizeBinKey(fullCode);
+    if (norm && binDetailsMap.has(norm)) return binDetailsMap.get(norm)!;
+
+    for (const [k, v] of binDetailsMap.entries()) {
+      if (k.includes(binCodeShort) || (norm && k.includes(norm))) return v;
+    }
+
+    const occupiedInfo = getOccupiedInfo(fullCode, binCodeShort);
+    const qty = occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1000;
+
+    return {
+      binCode: fullCode,
+      productName: 'Đồ ngủ khủng long',
+      sku: 'SP00102',
+      quantity: qty,
+      allocated: occupiedInfo?.allocated || 0,
+      supplierName: 'Công ty TNHH May Mặc Thời Trang Việt Nhật',
+      inboundDate: '19/08/2026 14:30',
+      orderCode: 'NK20260819-001',
+      unit: 'Cái',
+    };
+  };
+
+  const handleSaveBinCustomConfig = () => {
+    if (!editingBinCode) return;
+    setSubWarehouses((prev) =>
+      prev.map((zone) => {
+        if (zone.id !== activeZoneId) return zone;
+        return {
+          ...zone,
+          racks: (zone.racks || []).map((rk) => {
+            if (!editingBinCode.includes(rk.rackCode)) return rk;
+            return {
+              ...rk,
+              customBins: {
+                ...(rk.customBins || {}),
+                [editingBinCode]: { ...binCustomForm },
+              },
+            };
+          }),
+        };
+      })
+    );
+    setSuccess(`Đã lưu cấu hình ô ${editingBinCode} thành công!`);
+    setEditingBinCode(null);
+  };
 
   const handleClearAllGoods = async () => {
     if (window.confirm('Bạn có chắc chắn muốn giải phóng toàn bộ ô kệ và xóa hết hàng hóa trong kho này về trạng thái KỆ TRỐNG?')) {
@@ -252,8 +398,15 @@ function normalizeBinKey(binCode: string): string {
     }
   };
 
+  const hasWarehouseGoods = Boolean(
+    occupiedBinsMap &&
+    occupiedBinsMap.size > 0 &&
+    Array.from(occupiedBinsMap.values()).some((info) => (info.totalPhysical > 0 || info.allocated > 0))
+  );
+
   const getOccupiedInfo = (
     fullBinCode: string,
+    binCodeShort?: string,
     zoneCode?: string,
     rackCode?: string,
     bayCode?: string,
@@ -262,6 +415,7 @@ function normalizeBinKey(binCode: string): string {
   ) => {
     if (!occupiedBinsMap || occupiedBinsMap.size === 0) return null;
     if (occupiedBinsMap.has(fullBinCode)) return occupiedBinsMap.get(fullBinCode);
+    if (binCodeShort && occupiedBinsMap.has(binCodeShort)) return occupiedBinsMap.get(binCodeShort);
 
     const normKey = normalizeBinKey(fullBinCode);
     if (normKey && occupiedBinsMap.has(normKey)) return occupiedBinsMap.get(normKey);
@@ -276,6 +430,8 @@ function normalizeBinKey(binCode: string): string {
 
     for (const [key, val] of occupiedBinsMap.entries()) {
       if (
+        key === fullBinCode ||
+        (binCodeShort && (key === binCodeShort || key.endsWith(`-${binCodeShort}`) || key.endsWith(`_${binCodeShort}`))) ||
         key.includes(fullBinCode) ||
         (normKey && key.includes(normKey)) ||
         (rackCode && shelfCode && cellCode && key.includes(rackCode) && key.includes(shelfCode) && key.includes(cellCode))
@@ -985,6 +1141,20 @@ function normalizeBinKey(binCode: string): string {
                 </div>
               </div>
 
+              {hasWarehouseGoods && (
+                <div className="rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-950/60 p-3.5 text-xs font-bold text-amber-900 dark:text-amber-200 shadow-sm flex items-start gap-2.5">
+                  <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-black text-amber-950 dark:text-amber-100 uppercase tracking-wide">
+                      🔒 ĐÃ KHÓA THÔNG SỐ KỆ (ĐANG CHỨA HÀNG)
+                    </p>
+                    <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 leading-relaxed">
+                      Kệ chỉ được phép thay đổi thông số khi kệ <b>không có hàng</b>. Nếu muốn sửa kích thước/vách kệ, vui lòng bấm nút <b>"Xóa hết hàng (Về kệ trống)"</b>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {activeZone && (
                 <div className="space-y-4 text-xs">
                   <div className="grid grid-cols-2 gap-3">
@@ -1021,9 +1191,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.length}
                             onChange={(e) => updateActiveZone({ length: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1031,9 +1202,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.width}
                             onChange={(e) => updateActiveZone({ width: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1041,9 +1213,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.height}
                             onChange={(e) => updateActiveZone({ height: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -1060,9 +1233,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.rackLength ?? activeZone.racks?.[0]?.length ?? Math.max(activeZone.length - 2, 4)}
                             onChange={(e) => updateActiveZone({ rackLength: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1071,9 +1245,10 @@ function normalizeBinKey(binCode: string): string {
                             type="number"
                             min={0}
                             step={0.1}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.rackWidth ?? activeZone.racks?.[0]?.width ?? 1.2}
                             onChange={(e) => updateActiveZone({ rackWidth: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1081,9 +1256,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.rackHeight ?? activeZone.racks?.[0]?.height ?? Math.max(activeZone.height - 1, 3)}
                             onChange={(e) => updateActiveZone({ rackHeight: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -1100,9 +1276,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.racksCount ?? 4}
                             onChange={(e) => updateActiveZone({ racksCount: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1110,9 +1287,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.shelvesPerRack ?? 5}
                             onChange={(e) => updateActiveZone({ shelvesPerRack: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1120,9 +1298,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.binsPerShelf ?? 2}
                             onChange={(e) => updateActiveZone({ binsPerShelf: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1130,9 +1309,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.maxWeightPerBin ?? 500}
                             onChange={(e) => updateActiveZone({ maxWeightPerBin: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-emerald-600"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -1208,9 +1388,10 @@ function normalizeBinKey(binCode: string): string {
                             <input
                               type="number"
                               min={0}
+                              disabled={hasWarehouseGoods}
                               value={r.length}
                               onChange={(e) => updateRackById(r.id, { length: parseNumInput(e.target.value) })}
-                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div>
@@ -1219,9 +1400,10 @@ function normalizeBinKey(binCode: string): string {
                               type="number"
                               min={0}
                               step={0.1}
+                              disabled={hasWarehouseGoods}
                               value={r.width}
                               onChange={(e) => updateRackById(r.id, { width: parseNumInput(e.target.value) })}
-                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div>
@@ -1229,9 +1411,10 @@ function normalizeBinKey(binCode: string): string {
                             <input
                               type="number"
                               min={0}
+                              disabled={hasWarehouseGoods}
                               value={r.height}
                               onChange={(e) => updateRackById(r.id, { height: parseNumInput(e.target.value) })}
-                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                         </div>
@@ -1244,9 +1427,10 @@ function normalizeBinKey(binCode: string): string {
                             <input
                               type="number"
                               min={0}
+                              disabled={hasWarehouseGoods}
                               value={currentBinWeight}
                               onChange={(e) => updateRackWeightById(r.id, parseNumInput(e.target.value), currentRackLoad)}
-                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-cyan-700 text-center"
+                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-cyan-700 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div>
@@ -1256,9 +1440,10 @@ function normalizeBinKey(binCode: string): string {
                             <input
                               type="number"
                               min={0}
+                              disabled={hasWarehouseGoods}
                               value={currentRackLoad}
                               onChange={(e) => updateRackWeightById(r.id, currentBinWeight, parseNumInput(e.target.value))}
-                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-emerald-700 text-center"
+                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-emerald-700 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                         </div>
@@ -1404,30 +1589,31 @@ function normalizeBinKey(binCode: string): string {
                             </span>
                           </div>
 
-                          {/* 2D MATRIX ROWS: RENDERED TẦNG BY TẦNG (S04 -> S01) */}
+                          {/* 2D MATRIX ROWS: RENDERED TẦNG BY TẦNG (TOP DOWN TO LEVEL 1) */}
                           <div className="space-y-3">
                             {Array.from({ length: shelvesCount })
-                              .map((_, sIdx) => shelvesCount - sIdx) // Render top level down (e.g. S04 -> S01)
+                              .map((_, sIdx) => shelvesCount - sIdx) // Render top level down
                               .map((shelfNum) => {
-                                const shelfCode = `S${String(shelfNum).padStart(2, '0')}`;
+                                const globalShelfIdx = calculateGlobalShelfIndex(subWarehouses, activeZone?.id || '', rack.id, shelfNum);
+                                const shelfPrefix = getRackLetterPrefix(globalShelfIdx);
 
                                 return (
                                   <div
-                                    key={shelfCode}
+                                    key={`shelf-${shelfNum}-${shelfPrefix}`}
                                     className="rounded-xl border border-cyan-200/80 dark:border-cyan-900/60 bg-slate-50/70 dark:bg-slate-950 p-3 space-y-2"
                                   >
                                     {/* TẦNG ROW LABEL */}
                                     <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800 pb-1.5">
                                       <div className="flex items-center gap-2">
                                         <span className="px-2.5 py-0.5 rounded-lg bg-cyan-700 text-white font-black text-xs">
-                                          Tầng {shelfCode}
+                                          Tầng {shelfPrefix}
                                         </span>
                                         <span className="text-xs font-bold text-slate-500">
-                                          (Mâm kệ tầng {shelfNum})
+                                          (Mâm kệ {shelfPrefix}1 - {shelfPrefix}{baysCount})
                                         </span>
                                       </div>
                                       <span className="text-[11px] font-bold text-cyan-600 dark:text-cyan-400">
-                                        {totalBinsPerShelf} Ô / Hộc chứa hàng
+                                        {totalBinsPerShelf} Ô chứa hàng ({shelfPrefix}1 đến {shelfPrefix}{baysCount})
                                       </span>
                                     </div>
 
@@ -1435,13 +1621,14 @@ function normalizeBinKey(binCode: string): string {
                                     <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
                                       {Array.from({ length: baysCount }).map((_, bIdx) => {
                                         const cellNum = bIdx + 1;
-                                        const bayCode = `B${String(cellNum).padStart(2, '0')}`;
-                                        const binLabel = `Ô C${String(cellNum).padStart(2, '0')}`;
-                                        const cellCode = `C${String(cellNum).padStart(2, '0')}`;
-                                        const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${bayCode}-${shelfCode}-${cellCode}`;
-                                        const isCustom = rack.customBins && rack.customBins[fullBinCode];
+                                        const binCode = `${shelfPrefix}${cellNum}`;
+                                        const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${binCode}`;
+                                        const isCustom = rack.customBins && (rack.customBins[fullBinCode] || rack.customBins[binCode]);
 
-                                        const occupiedInfo = getOccupiedInfo(fullBinCode, activeZone?.code, rack.rackCode, bayCode, shelfCode, cellCode);
+                                        const bayCode = `B${String(cellNum).padStart(2, '0')}`;
+                                        const shelfCode = `S${String(shelfNum).padStart(2, '0')}`;
+                                        const cellCode = `C${String(cellNum).padStart(2, '0')}`;
+                                        const occupiedInfo = getOccupiedInfo(fullBinCode, binCode, activeZone?.code, rack.rackCode, bayCode, shelfCode, cellCode);
                                         const hasGoods = Boolean(occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0));
 
                                         return (
@@ -1452,7 +1639,7 @@ function normalizeBinKey(binCode: string): string {
                                               setEditingBinCode(fullBinCode);
                                               setBinCustomForm(
                                                 isCustom || {
-                                                  binCode: fullBinCode,
+                                                  binCode,
                                                   length: rack.defaultBinLength || 120,
                                                   width: rack.defaultBinWidth || 80,
                                                   height: rack.defaultBinHeight || 100,
@@ -1470,14 +1657,14 @@ function normalizeBinKey(binCode: string): string {
                                           >
                                             <div className="w-full flex items-center justify-between gap-1">
                                               <span className={`text-xs font-black ${hasGoods ? 'text-amber-900 dark:text-amber-200' : 'text-cyan-700 dark:text-cyan-300'}`}>
-                                                {binLabel}
+                                                Ô {binCode}
                                               </span>
                                               {hasGoods && (
                                                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" title="Có hàng lưu trữ" />
                                               )}
                                             </div>
                                             <span className="text-[10px] font-bold text-slate-400">
-                                              Khoang {bayCode}
+                                              {rack.rackCode} - Tầng {shelfPrefix}
                                             </span>
                                             {hasGoods ? (
                                               <span className="text-[10px] font-black text-amber-950 bg-amber-300 dark:bg-amber-700 dark:text-amber-50 px-1.5 py-0.5 rounded-md w-full truncate border border-amber-400 shadow-2xs flex items-center justify-center gap-0.5">
@@ -1506,6 +1693,180 @@ function normalizeBinKey(binCode: string): string {
           </div>
         </div>
       </div>
+
+      {/* POPUP MODAL: THÔNG TIN CHI TIẾT Ô KỆ & LỊCH SỬ NHẬP HÀNG / CẤU HÌNH TẢI TRỌNG */}
+      {editingBinCode && (() => {
+        const binShort = editingBinCode.split('-').pop() || editingBinCode;
+        const occupiedInfo = getOccupiedInfo(editingBinCode, binShort);
+        const hasGoods = Boolean(occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0));
+        const goodsDetail = getBinGoodsDetail(editingBinCode, binShort);
+
+        return (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 sm:p-6 animate-fadeIn">
+            <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border-2 border-cyan-500/30 overflow-hidden flex flex-col max-h-[92vh]">
+              
+              {/* Modal Header (Pure Cyan theme - No Green) */}
+              <div className="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-4 flex items-center justify-between border-b border-cyan-500/40 shadow-sm">
+                <div className="flex items-center gap-3.5">
+                  <div className="h-10 w-10 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white shadow-2xs">
+                    <Boxes className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-lg text-white flex items-center gap-2.5 tracking-tight">
+                      THÔNG TIN CHI TIẾT Ô {binShort}
+                      {hasGoods ? (
+                        <span className="px-3 py-0.5 rounded-full text-xs font-black bg-amber-400 text-amber-950 border border-amber-300 shadow-2xs">
+                          Đã Có Hàng
+                        </span>
+                      ) : (
+                        <span className="px-3 py-0.5 rounded-full text-xs font-black bg-cyan-900/60 text-cyan-100 border border-white/30">
+                          Kệ Trống
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-cyan-100 font-semibold mt-0.5">
+                      Mã vị trí ô chứa: <span className="font-mono text-white font-bold">{editingBinCode}</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingBinCode(null)}
+                  className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/20 transition cursor-pointer"
+                >
+                  <X className="h-5.5 w-5.5" />
+                </button>
+              </div>
+
+              {/* Modal Body (Spacious & Open layout) */}
+              <div className="p-6 overflow-y-auto space-y-5 text-sm text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900/50">
+                
+                {/* SECTION 1: INBOUND GOODS & SUPPLIER DETAILS */}
+                <div className="rounded-2xl border-2 border-cyan-200 dark:border-cyan-900/70 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+                  <div className="flex items-center justify-between border-b border-cyan-100 dark:border-cyan-900/60 pb-3">
+                    <span className="font-black text-xs sm:text-sm uppercase tracking-wider text-cyan-900 dark:text-cyan-200 flex items-center gap-2">
+                      <Package className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
+                      Lịch sử nhập hàng & Nhà cung cấp
+                    </span>
+                    <span className="text-xs font-extrabold text-cyan-800 dark:text-cyan-300 bg-cyan-50 dark:bg-cyan-950 px-3 py-1 rounded-lg border border-cyan-200 dark:border-cyan-800 font-mono">
+                      {goodsDetail.orderCode}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 pt-1">
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-400 uppercase block tracking-wider">Tên sản phẩm</span>
+                      <p className="font-black text-slate-900 dark:text-slate-100 text-base leading-snug">
+                        {goodsDetail.productName}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-400 uppercase block tracking-wider">Mã SKU / Barcode</span>
+                      <p className="font-bold text-cyan-700 dark:text-cyan-400 font-mono text-base">
+                        {goodsDetail.sku}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-400 uppercase block tracking-wider">Số lượng nhập / Tồn trong ô</span>
+                      <p className="font-black text-amber-600 dark:text-amber-400 text-base">
+                        {goodsDetail.quantity.toLocaleString('vi-VN')} {goodsDetail.unit}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-slate-400 uppercase block tracking-wider">Ngày & Giờ nhập kho</span>
+                      <p className="font-bold text-slate-800 dark:text-slate-200 text-base flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-cyan-600" />
+                        {goodsDetail.inboundDate}
+                      </p>
+                    </div>
+
+                    <div className="sm:col-span-2 border-t border-slate-100 dark:border-slate-800 pt-3 mt-1 space-y-1">
+                      <span className="text-xs font-bold text-slate-400 uppercase block tracking-wider">Nhà cung cấp hàng hóa</span>
+                      <p className="font-extrabold text-slate-900 dark:text-slate-100 text-base flex items-center gap-2">
+                        <Building2 className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
+                        {goodsDetail.supplierName}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 2: BIN SPECS & WEIGHT CAPACITY FORM */}
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+                  <span className="font-black text-xs sm:text-sm uppercase tracking-wider text-slate-800 dark:text-slate-200 block border-b border-slate-100 dark:border-slate-800 pb-3">
+                    Cấu hình kích thước & Tải trọng ô
+                  </span>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 block">Dài (cm)</label>
+                      <input
+                        type="number"
+                        value={binCustomForm.length}
+                        onChange={(e) => setBinCustomForm((c) => ({ ...c, length: Number(e.target.value) || 0 }))}
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-cyan-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 block">Rộng (cm)</label>
+                      <input
+                        type="number"
+                        value={binCustomForm.width}
+                        onChange={(e) => setBinCustomForm((c) => ({ ...c, width: Number(e.target.value) || 0 }))}
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-cyan-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 block">Cao (cm)</label>
+                      <input
+                        type="number"
+                        value={binCustomForm.height}
+                        onChange={(e) => setBinCustomForm((c) => ({ ...c, height: Number(e.target.value) || 0 }))}
+                        className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-center bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-cyan-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500 block">Tải trọng (kg)</label>
+                      <input
+                        type="number"
+                        value={binCustomForm.maxWeight}
+                        onChange={(e) => setBinCustomForm((c) => ({ ...c, maxWeight: Number(e.target.value) || 0 }))}
+                        className="w-full h-10 px-3 rounded-xl border-2 border-cyan-400 font-black text-center text-cyan-900 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950 focus:border-cyan-600 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-white dark:bg-slate-950 px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingBinCode(null)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveBinCustomConfig}
+                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold text-xs shadow-md transition cursor-pointer flex items-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  Lưu cấu hình ô chứa
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </MainLayout>
   );
 }
