@@ -488,7 +488,42 @@ function normalizeBinKey(binCode: string): string {
       } catch (e) {
         console.error('Error clearing inventory balances:', e);
       }
+
+      // Clear all customBins occupancy across all subWarehouses & racks
+      const cleanedZones = subWarehouses.map((z) => ({
+        ...z,
+        racks: (z.racks || []).map((rk) => ({
+          ...rk,
+          customBins: {},
+        })),
+      }));
+
+      setSubWarehouses(cleanedZones);
       setOccupiedBinsMap(new Map());
+      setBinDetailsMap(new Map());
+
+      // Save cleared subWarehouses to backend API & localStorage
+      if (id || code) {
+        const fullAddress = `${detailAddress ? detailAddress + ', ' : ''}${ward}, ${province}`;
+        const payload: WarehouseRecord = {
+          id: id || `wh_${Date.now()}`,
+          code: code.trim(),
+          name: name.trim(),
+          province,
+          ward,
+          detailAddress,
+          address: fullAddress,
+          status,
+          length,
+          width,
+          height,
+          managerIds: [],
+          staffIds: [],
+          subWarehouses: cleanedZones,
+        };
+        upsertWarehouseToApi(payload).catch((err) => console.error('Error updating warehouse reset topology:', err));
+      }
+
       localStorage.removeItem(`cleared_warehouse_goods_${code}`);
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
       setSuccess(`Đã xóa toàn bộ hàng hóa của kho [${code}]. Tất cả ô kệ thuộc kho này đã trở về trạng thái KỆ TRỐNG!`);

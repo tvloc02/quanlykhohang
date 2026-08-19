@@ -427,3 +427,79 @@ export function getUserWarehouseNames(
     .filter((w) => warehouseIds.includes(w.id))
     .map((w) => w.name);
 }
+
+const DRAFT_LOCKS_STORAGE_KEY = 'smart-wms-active-draft-locks';
+
+export interface DraftSlotLock {
+  tabId: string;
+  orderNo?: string;
+  binCode: string;
+  productName?: string;
+  occupancyPct?: number;
+  updatedAt: number;
+}
+
+export function saveActiveDraftSlotLocks(
+  tabId: string,
+  orderNo: string,
+  locks: { binCode: string; productName?: string; occupancyPct?: number }[]
+) {
+  try {
+    const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+    let allLocks: DraftSlotLock[] = raw ? JSON.parse(raw) : [];
+    // Remove previous locks for this tabId
+    allLocks = allLocks.filter((l) => l.tabId !== tabId);
+
+    const now = Date.now();
+    locks.forEach((lk) => {
+      allLocks.push({
+        tabId,
+        orderNo,
+        binCode: lk.binCode,
+        productName: lk.productName,
+        occupancyPct: lk.occupancyPct || 100,
+        updatedAt: now,
+      });
+    });
+
+    localStorage.setItem(DRAFT_LOCKS_STORAGE_KEY, JSON.stringify(allLocks));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error saving active draft slot locks:', err);
+  }
+}
+
+export function releaseActiveDraftSlotLocks(tabId: string) {
+  try {
+    const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+    if (!raw) return;
+    let allLocks: DraftSlotLock[] = JSON.parse(raw);
+    allLocks = allLocks.filter((l) => l.tabId !== tabId);
+    localStorage.setItem(DRAFT_LOCKS_STORAGE_KEY, JSON.stringify(allLocks));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error releasing draft slot locks:', err);
+  }
+}
+
+export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, { label: string; occupancyPct: number }> {
+  try {
+    const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+    if (!raw) return {};
+    const allLocks: DraftSlotLock[] = JSON.parse(raw);
+    const result: Record<string, { label: string; occupancyPct: number }> = {};
+    const now = Date.now();
+    // Exclude locks older than 2 hours to avoid stale locks
+    const validLocks = allLocks.filter((l) => now - l.updatedAt < 2 * 60 * 60 * 1000);
+
+    validLocks.forEach((l) => {
+      if (!excludeTabId || l.tabId !== excludeTabId) {
+        const label = `${l.orderNo ? `Phiếu ${l.orderNo}` : 'Phiếu khác'}${l.productName ? `: ${l.productName}` : ''}`;
+        result[l.binCode] = { label, occupancyPct: l.occupancyPct || 100 };
+      }
+    });
+    return result;
+  } catch {
+    return {};
+  }
+}

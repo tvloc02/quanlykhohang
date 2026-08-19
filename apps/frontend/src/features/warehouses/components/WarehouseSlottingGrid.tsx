@@ -52,6 +52,9 @@ export interface WarehouseSlottingGridProps {
   activeRackId?: string;
   selectedBinCodes?: string[];
   suggestedBinCodes?: string[];
+  otherItemsBinsMap?: Record<string, string>;
+  orderItems?: any[];
+  selectedBinsMap?: Record<string, string[]>;
   onSelectBin?: (binCode: string, binInfo: any) => void;
   onBinClick?: (binCode: string, customConfig: any, occupiedInfo: BinOccupiedInfo | null) => void;
   onUpdateBinCapacity?: (binCode: string, occupancyPct: number, notes?: string) => void;
@@ -230,6 +233,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   activeRackId: propRackId,
   selectedBinCodes = [],
   suggestedBinCodes = [],
+  otherItemsBinsMap = {},
+  orderItems = [],
+  selectedBinsMap = {},
   onSelectBin,
   onBinClick,
   onUpdateBinCapacity,
@@ -245,12 +251,52 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     shortCode: string;
     currentPct: number;
   } | null>(null);
-  const [inputPctVal, setInputPctVal] = useState<number>(100);
+  const [inputPctVal, setInputPctVal] = useState<number>(0);
+  const [isAddMode, setIsAddMode] = useState<boolean>(true);
+  const [editableBinItems, setEditableBinItems] = useState<Array<{ productName: string; qty: number; occupancyPct: number }>>([]);
+
+  useEffect(() => {
+    if (!editingBinConfig) return;
+    const binShortCode = editingBinConfig.shortCode;
+    const fullBinCode = editingBinConfig.binCode;
+
+    const assigned: Array<{ productName: string; qty: number; occupancyPct: number }> = [];
+
+    if (orderItems && orderItems.length > 0) {
+      orderItems.forEach((it: any, idx: number) => {
+        const rowId = it.rowId || String(idx);
+        const bList = selectedBinsMap ? selectedBinsMap[rowId] || [] : [];
+        const isAssigned = bList.includes(fullBinCode) || bList.some((b: string) => b.endsWith(binShortCode));
+
+        if (isAssigned) {
+          const isFirstItem = assigned.length === 0;
+          const initialPct = isFirstItem ? (editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : 100) : 0;
+          assigned.push({
+            productName: it.productName || `Hàng hóa #${idx + 1}`,
+            qty: it.qty && Number(it.qty) > 0 ? Number(it.qty) : 0,
+            occupancyPct: initialPct,
+          });
+        }
+      });
+    }
+
+    if (assigned.length === 0) {
+      assigned.push({
+        productName: orderItems && orderItems[0]?.productName ? orderItems[0].productName : 'Quần tây nam',
+        qty: orderItems && orderItems[0]?.qty ? Number(orderItems[0].qty) : 0,
+        occupancyPct: editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : 100,
+      });
+    }
+
+    setEditableBinItems(assigned);
+  }, [editingBinConfig, orderItems, selectedBinsMap]);
 
   const handleSaveBinPct = (binCode: string, pct: number) => {
-    const validPct = Math.min(100, Math.max(0, Number(pct) || 0));
+    const currentPct = editingBinConfig?.currentPct || 0;
+    const addedOrDirect = Math.min(100, Math.max(0, Number(pct) || 0));
+    const finalPct = isAddMode && currentPct > 0 ? Math.min(100, currentPct + addedOrDirect) : addedOrDirect;
     if (onUpdateBinCapacity) {
-      onUpdateBinCapacity(binCode, validPct);
+      onUpdateBinCapacity(binCode, finalPct);
     }
     setEditingBinConfig(null);
   };
@@ -469,25 +515,38 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           );
                           const isSelected = selectedSet.has(normFull);
                           const isSuggested = suggestedSet.has(normFull);
+                          const otherItemName = otherItemsBinsMap ? (otherItemsBinsMap[fullBinCode] || otherItemsBinsMap[binCodeShort] || otherItemsBinsMap[normFull]) : null;
                           const customConfig =
                             (activeRack.customBins as any)?.[fullBinCode] || (activeRack.customBins as any)?.[binCodeShort];
 
                           let occupancyPct = 0;
-                          if (customConfig?.occupancyPct !== undefined && customConfig?.occupancyPct !== null) {
-                            occupancyPct = Math.min(100, Math.max(0, Number(customConfig.occupancyPct)));
-                          } else if (hasGoods) {
+                          let isOtherItemFull = false;
+                          let otherOccupancyPct = 0;
+
+                          if (hasGoods) {
                             const qty = occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1;
                             const maxCap = customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500;
                             occupancyPct = Math.min(100, Math.max(30, Math.round((qty / maxCap) * 100)));
+                          } else if (isSelected) {
+                            occupancyPct = customConfig?.occupancyPct !== undefined ? Math.min(100, Math.max(0, Number(customConfig.occupancyPct))) : 100;
+                          } else if (otherItemName) {
+                            otherOccupancyPct = customConfig?.occupancyPct !== undefined ? Math.min(100, Math.max(0, Number(customConfig.occupancyPct))) : 100;
+                            occupancyPct = otherOccupancyPct;
+                            if (otherOccupancyPct >= 100) {
+                              isOtherItemFull = true;
+                            }
+                          } else {
+                            occupancyPct = 0;
                           }
 
-                          const isFull = occupancyPct >= 100;
+                          const isFull = hasGoods || isOtherItemFull || (isSelected && occupancyPct >= 100);
                           const isPartiallyOccupied = occupancyPct > 0 && occupancyPct < 100;
 
                           return (
                             <div
                               key={fullBinCode}
                               onClick={() => {
+                                if (isOtherItemFull) return;
                                 if (mode === 'select') {
                                   if (!isFull && onSelectBin) {
                                     onSelectBin(fullBinCode, {
@@ -495,7 +554,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                       shortCode: binCodeShort,
                                       zoneCode: zoneCodeStr,
                                       rackCode,
-                                      occupancyPct: occupancyPct || 100,
+                                      occupancyPct: occupancyPct,
                                       maxWeight: customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500,
                                       notes: customConfig?.notes || '',
                                     });
@@ -504,29 +563,33 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   onBinClick(fullBinCode, customConfig, occupiedInfo || null);
                                 }
                               }}
-                              className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] cursor-pointer ${
-                                isSelected
-                                  ? 'border-2 border-[#197e96] bg-white shadow-md ring-2 ring-cyan-400/40 font-black scale-[1.01]'
-                                  : isSuggested
-                                    ? 'border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-300/60 font-black'
-                                    : isFull
-                                      ? 'border-2 border-amber-500 bg-amber-100/90 dark:bg-amber-950/90 text-amber-950 dark:text-amber-100 shadow-2xs cursor-not-allowed font-black'
-                                      : isPartiallyOccupied
-                                        ? 'border-2 border-amber-300 bg-amber-50/90 text-amber-950 font-black'
-                                        : customConfig
-                                          ? 'border-cyan-400 bg-cyan-50/80 dark:bg-cyan-950/60 text-cyan-950 dark:text-cyan-200'
-                                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-500'
+                              className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] ${
+                                isOtherItemFull
+                                  ? 'border-2 border-slate-300 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-900/90 text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed select-none'
+                                  : isSelected
+                                    ? 'border-2 border-[#197e96] bg-white shadow-md ring-2 ring-cyan-400/40 font-black scale-[1.01] cursor-pointer'
+                                    : isSuggested
+                                      ? 'border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-300/60 font-black cursor-pointer'
+                                      : isFull
+                                        ? 'border-2 border-amber-500 bg-amber-100/90 dark:bg-amber-950/90 text-amber-950 dark:text-amber-100 shadow-2xs cursor-not-allowed font-black opacity-75'
+                                        : isPartiallyOccupied
+                                          ? 'border-2 border-amber-300 bg-amber-50/90 text-amber-950 font-black cursor-pointer hover:border-cyan-500'
+                                          : customConfig
+                                            ? 'border-cyan-400 bg-cyan-50/80 dark:bg-cyan-950/60 text-cyan-950 dark:text-cyan-200 cursor-pointer'
+                                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-500 cursor-pointer'
                               }`}
                             >
                               {/* Visual Occupancy Fill Overlay (Height = occupancyPct %) */}
                               {occupancyPct > 0 && (
                                 <div
                                   className={`absolute bottom-0 left-0 right-0 transition-all duration-300 pointer-events-none z-0 ${
-                                    isFull
-                                      ? 'bg-amber-400/80 dark:bg-amber-700/80'
-                                      : isSelected
-                                        ? 'bg-[#2295b1] dark:bg-[#197e96]'
-                                        : 'bg-cyan-100/90 dark:bg-cyan-900/60'
+                                    isOtherItemFull
+                                      ? 'bg-slate-300/60 dark:bg-slate-800/60'
+                                      : isFull
+                                        ? 'bg-amber-400/80 dark:bg-amber-700/80'
+                                        : isSelected
+                                          ? 'bg-[#2295b1] dark:bg-[#197e96]'
+                                          : 'bg-cyan-100/90 dark:bg-cyan-900/60'
                                   }`}
                                   style={{ height: `${occupancyPct}%` }}
                                 />
@@ -536,9 +599,11 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               <div className="w-full flex items-center justify-between gap-1 z-10">
                                 <span
                                   className={`text-xs font-black tracking-tight ${
-                                    occupancyPct >= 80 && (isSelected || isFull)
-                                      ? 'text-white drop-shadow-xs'
-                                      : 'text-cyan-950 dark:text-cyan-300'
+                                    isOtherItemFull
+                                      ? 'text-slate-400 dark:text-slate-500'
+                                      : occupancyPct >= 80 && (isSelected || isFull)
+                                        ? 'text-white drop-shadow-xs'
+                                        : 'text-cyan-950 dark:text-cyan-300'
                                   }`}
                                 >
                                   Ô {binCodeShort}
@@ -546,18 +611,20 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                                 {/* Unified Top-Right Icon Buttons */}
                                 <div className="flex items-center gap-1">
-                                  {onUpdateBinCapacity && !readOnly && (
+                                  {onUpdateBinCapacity && !readOnly && !isOtherItemFull && (
                                     <button
                                       type="button"
                                       title="Cài đặt % độ chứa hoặc Số lượng ô"
                                       onClick={(e) => {
                                         e.stopPropagation();
+                                        const curr = occupancyPct || 0;
                                         setEditingBinConfig({
                                           binCode: fullBinCode,
                                           shortCode: binCodeShort,
-                                          currentPct: occupancyPct || 100,
+                                          currentPct: curr,
                                         });
-                                        setInputPctVal(occupancyPct || 100);
+                                        setInputPctVal(curr);
+                                        setIsAddMode(false);
                                       }}
                                       className={`p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs ${
                                         isSelected
@@ -571,10 +638,11 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                                   <button
                                     type="button"
-                                    disabled={readOnly || (mode === 'select' && isFull)}
-                                    title={isSelected ? 'Đã chọn ô' : 'Bấm để chọn ô'}
+                                    disabled={readOnly || isOtherItemFull || (mode === 'select' && isFull)}
+                                    title={isOtherItemFull ? `Đã đầy 100% (${otherItemName})` : isSelected ? 'Đã chọn ô' : 'Bấm để chọn ô'}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (isOtherItemFull) return;
                                       if (mode === 'select') {
                                         if (!isFull && onSelectBin) {
                                           onSelectBin(fullBinCode, {
@@ -582,7 +650,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                             shortCode: binCodeShort,
                                             zoneCode: zoneCodeStr,
                                             rackCode,
-                                            occupancyPct: occupancyPct || 100,
+                                            occupancyPct: occupancyPct,
                                             maxWeight: customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500,
                                             notes: customConfig?.notes || '',
                                           });
@@ -591,12 +659,14 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                         onBinClick(fullBinCode, customConfig, occupiedInfo || null);
                                       }
                                     }}
-                                    className={`p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs ${
-                                      isSelected
-                                        ? 'bg-[#197e96] text-white border-[#197e96]'
-                                        : isFull
-                                          ? 'bg-amber-400 text-amber-950 border-amber-400 opacity-80 cursor-not-allowed'
-                                          : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
+                                    className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs ${
+                                      isOtherItemFull
+                                        ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
+                                        : isSelected
+                                          ? 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
+                                          : isFull
+                                            ? 'bg-amber-400 text-amber-950 border-amber-400 opacity-80 cursor-not-allowed'
+                                            : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700 cursor-pointer'
                                     }`}
                                   >
                                     {isSelected ? (
@@ -611,9 +681,11 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               {/* Shelf Subtitle */}
                               <span
                                 className={`text-[9px] font-bold block truncate z-10 ${
-                                  occupancyPct >= 50 && isSelected
-                                    ? 'text-white/90 drop-shadow-xs'
-                                    : 'text-slate-500 dark:text-slate-400'
+                                  isOtherItemFull
+                                    ? 'text-slate-400 dark:text-slate-500'
+                                    : occupancyPct >= 50 && isSelected
+                                      ? 'text-white/90 drop-shadow-xs'
+                                      : 'text-slate-500 dark:text-slate-400'
                                 }`}
                               >
                                 {rackCode} - Tầng {shelfPrefix}
@@ -623,7 +695,15 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               <div className="w-full z-10">
                                 {isSelected ? (
                                   <span className="text-[9px] font-black bg-white/90 text-[#197e96] px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-wide">
-                                    ✓ ĐÃ CHỌN ({occupancyPct || 100}%)
+                                    ✓ ĐÃ CHỌN ({occupancyPct > 0 ? occupancyPct : 100}%)
+                                  </span>
+                                ) : isOtherItemFull ? (
+                                  <span className="text-[8.5px] font-black bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    🔴 FULL (100% - {otherItemName})
+                                  </span>
+                                ) : otherItemName ? (
+                                  <span className="text-[8.5px] font-black bg-amber-200/90 text-amber-950 border border-amber-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    📌 {otherItemName} (Dư {100 - otherOccupancyPct}%)
                                   </span>
                                 ) : isSuggested ? (
                                   <span className="text-[9px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs">
@@ -639,7 +719,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   </span>
                                 ) : (
                                   <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100/90 dark:bg-slate-800/80 px-1.5 py-0.5 rounded-md w-full block truncate border border-slate-200/60">
-                                    Trống 0% ({customConfig ? `${customConfig.maxWeight}kg` : `${(activeRack as any).defaultBinMaxWeight || 500}kg`})
+                                    Ô Trống ({customConfig ? `${customConfig.maxWeight}kg` : `${(activeRack as any).defaultBinMaxWeight || 500}kg`})
                                   </span>
                                 )}
                               </div>
@@ -658,7 +738,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       {/* Mini Capacity Percentage / Quantity Configuration Dialog */}
       {editingBinConfig && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-900/60 backdrop-blur-2xs p-3 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-900 border-2 border-cyan-500 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-4">
+          <div className="bg-white dark:bg-slate-900 border-2 border-cyan-500 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-3.5">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
               <h5 className="text-xs font-black text-cyan-900 dark:text-cyan-100 flex items-center gap-2 uppercase tracking-wide">
                 <Settings className="h-4.5 w-4.5 text-cyan-600" />
@@ -673,64 +753,143 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  1. Mức độ chứa (%) của ô này:
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={inputPctVal}
-                    onChange={(e) => setInputPctVal(Math.min(100, Math.max(0, Number(e.target.value))))}
-                    placeholder="Nhập số % (Ví dụ: 50)"
-                    className="w-full h-10 px-3 pr-8 text-xs border border-slate-300 rounded-xl outline-none focus:border-cyan-600 font-bold dark:bg-slate-800 dark:text-white"
-                  />
-                  <span className="absolute right-3 top-2.5 text-xs font-black text-slate-400">%</span>
-                </div>
+            {/* Current Occupancy Status Banner */}
+            <div className="bg-cyan-50 dark:bg-cyan-950/70 p-2.5 rounded-xl border border-cyan-200/80 text-xs">
+              <div className="flex items-center justify-between font-bold text-cyan-950 dark:text-cyan-100">
+                <span>Trạng thái ô hiện tại:</span>
+                <span className="font-black text-cyan-700 dark:text-cyan-300">
+                  {editingBinConfig.currentPct}% dung tích
+                </span>
               </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  2. Hoặc Số lượng có thể lưu/chứa thêm (sản phẩm/cái):
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder="Ví dụ: 200 (Tự tính %)"
-                  onChange={(e) => {
-                    const q = Number(e.target.value);
-                    if (q > 0) {
-                      const calculatedPct = Math.min(100, Math.max(1, Math.round((q / 500) * 100)));
-                      setInputPctVal(calculatedPct);
-                    }
-                  }}
-                  className="w-full h-10 px-3 text-xs border border-slate-300 rounded-xl outline-none focus:border-cyan-600 font-bold dark:bg-slate-800 dark:text-white"
-                />
-              </div>
-
-              <p className="text-[10px] text-slate-400 font-medium italic">
-                * Nếu không nhập %, ô mặc định đạt 100% sức chứa.
+              <p className="text-[10px] text-cyan-800/80 dark:text-cyan-300/80 font-medium mt-0.5">
+                {editingBinConfig.currentPct > 0
+                  ? `Đã chứa: ${editingBinConfig.currentPct}% (Còn trống: ${100 - editingBinConfig.currentPct}%)`
+                  : 'Ô đang trống 100%'}
               </p>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+            {/* Item-by-Item Occupancy Table matching User Image 2 */}
+            <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs my-2">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead className="bg-cyan-50 dark:bg-cyan-950/60 text-cyan-950 dark:text-cyan-200 font-bold border-b border-cyan-200 dark:border-slate-700">
+                  <tr>
+                    <th className="p-2.5">Tên hàng hóa</th>
+                    <th className="p-2.5 text-right w-24">Số lượng</th>
+                    <th className="p-2.5 text-right w-24">Lưu trữ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900 font-medium">
+                  {editableBinItems.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-cyan-50/50 dark:hover:bg-slate-800/50 transition">
+                      <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">
+                        {item.productName}
+                      </td>
+                      <td className="p-2 text-right">
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.qty > 0 ? item.qty : ''}
+                          placeholder="—"
+                          onChange={(e) => {
+                            const val = Number(e.target.value) || 0;
+                            setEditableBinItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, qty: val } : it))
+                            );
+                          }}
+                          className="w-20 px-2 py-1 text-right text-xs font-bold border border-slate-300 rounded-lg outline-none focus:border-cyan-600 dark:bg-slate-800 dark:text-white"
+                        />
+                      </td>
+                      <td className="p-2 text-right">
+                        <div className="relative inline-block w-20">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                setEditableBinItems((prev) =>
+                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
+                                );
+                                return;
+                              }
+                              const parsed = parseInt(raw, 10);
+                              const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
+                              setEditableBinItems((prev) =>
+                                prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val } : it))
+                              );
+                            }}
+                            onBlur={() => {
+                              if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined || item.occupancyPct === null) {
+                                setEditableBinItems((prev) =>
+                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
+                                );
+                              }
+                            }}
+                            className="w-full px-2 py-1 pr-5 text-right text-xs font-bold border border-slate-300 rounded-lg outline-none focus:border-cyan-600 dark:bg-slate-800 dark:text-white"
+                          />
+                          <span className="absolute right-1.5 top-1 text-xs font-black text-slate-400">%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Dynamic Calculation Summary Banner */}
+            {(() => {
+              const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+              const remainingPct = Math.max(0, 100 - sumPct);
+              return (
+                <div className="bg-amber-50 dark:bg-amber-950/60 p-2 rounded-xl border border-amber-200 text-[11px] font-bold text-amber-900 dark:text-amber-200">
+                  👉 Tổng độ chứa ô ={' '}
+                  <strong className="text-cyan-700 dark:text-cyan-300 underline font-black">
+                    {sumPct}%
+                  </strong>{' '}
+                  (Còn trống {remainingPct}%)
+                </div>
+              );
+            })()}
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
               <button
                 type="button"
-                onClick={() => setEditingBinConfig(null)}
-                className="h-9 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                onClick={() => {
+                  setEditableBinItems((prev) => prev.map((it) => ({ ...it, occupancyPct: 0 })));
+                  if (onUpdateBinCapacity) {
+                    onUpdateBinCapacity(editingBinConfig.binCode, 0);
+                  }
+                  setEditingBinConfig(null);
+                }}
+                className="h-9 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-bold rounded-xl transition cursor-pointer border border-rose-200"
               >
-                Đóng
+                Reset về 0%
               </button>
-              <button
-                type="button"
-                onClick={() => handleSaveBinPct(editingBinConfig.binCode, inputPctVal)}
-                className="h-9 px-5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
-              >
-                Lưu cài đặt
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingBinConfig(null)}
+                  className="h-9 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const totalPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+                    if (onUpdateBinCapacity) {
+                      onUpdateBinCapacity(editingBinConfig.binCode, totalPct);
+                    }
+                    setEditingBinConfig(null);
+                  }}
+                  className="h-9 px-5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
+                >
+                  Lưu cài đặt
+                </button>
+              </div>
             </div>
           </div>
         </div>
