@@ -103,7 +103,9 @@ export const PrintablePurchaseOrder = React.forwardRef<HTMLDivElement, Props>(({
             {(order.details || []).map((detail: any, index: number) => {
               const expectedQty = Number(detail.expectedQty || 0);
               const price = Number(detail.unitPrice || 0);
-              const lineTotal = detail.totalLineAmount ? Number(detail.totalLineAmount) : expectedQty * price;
+              const calculatedLine = expectedQty * price;
+              const rawLineTotal = Number(detail.totalLineAmount || detail.totalAmount || 0);
+              const lineTotal = (rawLineTotal > 0 && Math.abs(rawLineTotal - calculatedLine) < 1000 && rawLineTotal < 99999999.90) ? rawLineTotal : calculatedLine;
 
               return (
                 <tr key={detail.id || index}>

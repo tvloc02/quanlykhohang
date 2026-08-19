@@ -910,6 +910,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState('');
   const [dbOccupiedBinsMap, setDbOccupiedBinsMap] = useState<Map<string, number>>(new Map());
+  const [dbBinProductsMap, setDbBinProductsMap] = useState<Map<string, { productId: string; sku: string; productName: string; qty: number }>>(new Map());
 
   // Fetch real occupied bin codes from database
   useEffect(() => {
@@ -918,6 +919,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     async function loadOccupied() {
       try {
         const occMap = new Map<string, number>();
+        const prodMap = new Map<string, { productId: string; sku: string; productName: string; qty: number }>();
         const headers = authHeaders();
 
         // Direct real stock_balances from CSDL (Single Source of Truth)
@@ -931,11 +933,24 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
               occMap.set(lc, physical);
               const norm = normalizeBinKey(lc);
               if (norm) occMap.set(norm, physical);
+
+              const p = b.product || {};
+              const pInfo = {
+                productId: String(p.id || b.productId || ''),
+                sku: String(p.internalSku || p.sku || b.productSku || ''),
+                productName: String(p.name || b.productName || 'Hàng kho'),
+                qty: physical,
+              };
+              prodMap.set(lc, pInfo);
+              if (norm) prodMap.set(norm, pInfo);
             }
           });
         }
 
-        if (isMounted) setDbOccupiedBinsMap(occMap);
+        if (isMounted) {
+          setDbOccupiedBinsMap(occMap);
+          setDbBinProductsMap(prodMap);
+        }
       } catch (err) {
         console.error('Lỗi tải dữ liệu ô kệ đã có hàng:', err);
       }
@@ -983,10 +998,10 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       currentWh,
       warehouseCode,
       dbOccupiedBinsMap,
-      undefined,
+      dbBinProductsMap,
       currentOrderAssignedBins
     );
-  }, [warehouseCode, dbOccupiedBinsMap, currentOrderAssignedBins]);
+  }, [warehouseCode, dbOccupiedBinsMap, dbBinProductsMap, currentOrderAssignedBins]);
 
   // 2. Initialize selections and AI chat when modal opens
   useEffect(() => {
@@ -1602,55 +1617,107 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                             (it) => it.rowId !== activeRowId && (selectedBinsMap[it.rowId] || []).includes(cell.binCode)
                           );
                           const isOccupiedByOther = !!otherItemOccupying;
-                          const isCellDisabled = cell.isOccupied || isOccupiedByOther;
+
+                          // Capacity calculations
+                          const activeItem = items.find((it) => it.rowId === activeRowId);
+                          const importQty = Number(activeItem?.qty || 1);
+                          const maxBinCap = calculateEffectiveBinCapacity(activeItem).capacity || 100;
+                          const currentStock = cell.stockQty || 0;
+                          const remainingFreeCap = Math.max(0, maxBinCap - currentStock);
+                          const hasEnoughCap = remainingFreeCap >= importQty;
+
+                          // Check if cell contains the same product
+                          const activeName = (activeItem?.productName || '').trim().toLowerCase();
+                          const activeSku = (activeItem?.productSku || '').trim();
+                          const activeId = String(activeItem?.productId || '').trim();
+
+                          const storedName = (cell.productName || '').trim().toLowerCase();
+                          const storedSku = (cell.productSku || '').trim();
+                          const storedId = String(cell.productId || '').trim();
+
+                          const isSameProduct = !cell.isOccupied || (
+                            (storedName && activeName && storedName === activeName) ||
+                            (storedSku && activeSku && storedSku === activeSku) ||
+                            (storedId && activeId && storedId === activeId)
+                          );
+
+                          const isFull = remainingFreeCap <= 0;
+                          const isCellDisabled = isOccupiedByOther || isFull || (cell.isOccupied && !isSameProduct);
+
+                          const isPartialOccupiedAllowed = cell.isOccupied && isSameProduct && !isFull;
 
                           return (
                             <div
                               key={cell.binCode}
                               onClick={() => !isCellDisabled && toggleBinSelection(cell.binCode)}
                               className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between ${
-                                cell.isOccupied
-                                  ? 'bg-amber-100/90 border-2 border-amber-500 text-amber-950 font-black shadow-xs opacity-90 cursor-not-allowed'
-                                  : isOccupiedByOther
-                                  ? 'bg-amber-50/70 border-amber-300 opacity-75 cursor-not-allowed'
+                                isCellDisabled
+                                  ? 'bg-amber-100/70 border border-amber-300 text-amber-950 shadow-2xs opacity-80 cursor-not-allowed'
                                   : isSelected
                                   ? 'bg-cyan-600 text-white border-2 border-cyan-700 shadow-md scale-102 cursor-pointer'
+                                  : isPartialOccupiedAllowed
+                                  ? 'bg-amber-50/90 hover:bg-cyan-50 border-2 border-amber-400 text-slate-800 shadow-2xs cursor-pointer'
                                   : 'bg-white hover:bg-cyan-50 text-slate-800 border-slate-200 hover:border-cyan-400 shadow-2xs cursor-pointer'
                               }`}
                             >
                               <div className="flex items-center justify-between mb-1">
-                                <span className={`text-xs font-black ${cell.isOccupied ? 'text-amber-950' : isSelected ? 'text-white' : isOccupiedByOther ? 'text-amber-900' : 'text-slate-900'}`}>
+                                <span className={`text-xs font-black ${isSelected ? 'text-white' : isCellDisabled ? 'text-amber-950' : 'text-slate-900'}`}>
                                   {cell.cellCode}
                                 </span>
-                                {cell.isOccupied && (
-                                  <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-md shadow-2xs">
-                                    🔒 Đã có hàng
+
+                                {/* Status Badges */}
+                                {isSelected ? (
+                                  <span className="bg-white text-cyan-900 text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-2xs">
+                                    ✓ Đã chọn (+{Math.min(remainingFreeCap, importQty)})
                                   </span>
-                                )}
-                                {isSelected && (
-                                  <span className="bg-white text-cyan-900 text-[9px] font-black px-1.5 py-0.2 rounded-md shadow-2xs">
-                                    ✓ Đã chọn
-                                  </span>
-                                )}
-                                {isOccupiedByOther && (
-                                  <span className="bg-amber-200 text-amber-950 text-[8px] font-black px-1 py-0.2 rounded-md border border-amber-400">
+                                ) : isOccupiedByOther ? (
+                                  <span className="bg-amber-200 text-amber-950 text-[8px] font-black px-1 py-0.5 rounded-md border border-amber-400">
                                     🔒 MH#{items.indexOf(otherItemOccupying) + 1}
+                                  </span>
+                                ) : isFull ? (
+                                  <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-2xs">
+                                    🔒 Đã đầy ({currentStock}/{maxBinCap})
+                                  </span>
+                                ) : cell.isOccupied && !isSameProduct ? (
+                                  <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-2xs">
+                                    🔒 Đã có hàng khác
+                                  </span>
+                                ) : isPartialOccupiedAllowed ? (
+                                  <span className="bg-amber-400 text-amber-950 text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-2xs">
+                                    ➕ Cho vào thêm ({remainingFreeCap})
+                                  </span>
+                                ) : hasEnoughCap ? (
+                                  <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[8px] font-bold px-1.5 py-0.5 rounded-md">
+                                    ✓ Đủ chứa (Còn {remainingFreeCap})
+                                  </span>
+                                ) : (
+                                  <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[8px] font-bold px-1.5 py-0.5 rounded-md">
+                                    ⚠️ Thiếu chỗ (Còn {remainingFreeCap})
                                   </span>
                                 )}
                               </div>
 
-                              <span className={`text-[10px] font-bold block mb-1.5 ${isSelected ? 'text-cyan-100' : isOccupiedByOther ? 'text-amber-800' : 'text-slate-500'}`}>
-                                {cell.bayCode}
-                              </span>
+                              {/* Details on existing goods or capacity */}
+                              <div className="my-1 text-[10px]">
+                                {cell.isOccupied ? (
+                                  <div className="line-clamp-1 font-bold text-amber-900">
+                                    📦 {cell.productName || 'Hàng kho có sẵn'}
+                                  </div>
+                                ) : (
+                                  <span className={`font-medium block ${isSelected ? 'text-cyan-100' : isOccupiedByOther ? 'text-amber-800' : 'text-slate-500'}`}>
+                                    {cell.bayCode} • Sức chứa: {maxBinCap}
+                                  </span>
+                                )}
+                              </div>
 
-                              <div className="flex items-center justify-between pt-1 border-t border-black/10">
-                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                              <div className="flex items-center justify-between pt-1 border-t border-black/10 text-[9px]">
+                                <span className={`font-black px-1.5 py-0.5 rounded ${
                                   isSelected ? 'bg-cyan-800 text-white' : isOccupiedByOther ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'
                                 }`}>
-                                  {cell.maxWeight}kg
+                                  Trống: {remainingFreeCap}/{maxBinCap}
                                 </span>
-                                <span className={`text-[9px] font-bold ${isSelected ? 'text-cyan-100' : isOccupiedByOther ? 'text-amber-900' : 'text-cyan-900'}`}>
-                                  {cell.freeVol}m³
+                                <span className={`font-bold ${isSelected ? 'text-cyan-100' : isOccupiedByOther ? 'text-amber-900' : 'text-cyan-900'}`}>
+                                  {cell.maxWeight}kg • {cell.freeVol}m³
                                 </span>
                               </div>
                             </div>
@@ -2211,7 +2278,13 @@ export default function CreateStockInOrderPage({
           const vatP = Number(d.vatPercent || 0);
           const sub = reqQty * uPrice;
           const afterDisc = sub * (1 - discP / 100);
-          const tot = Number(d.totalLineAmount || d.totalAmount || afterDisc * (1 + vatP / 100));
+          const calculatedTotalLine = Math.max(0, afterDisc * (1 + vatP / 100));
+          let tot = Number(d.totalLineAmount || d.totalAmount || calculatedTotalLine);
+
+          // Auto fix legacy capped values (e.g. 99,999,999.99) from DB
+          if (tot >= 99999999.90 || (calculatedTotalLine > 0 && Math.abs(tot - calculatedTotalLine) > 1000)) {
+            tot = calculatedTotalLine;
+          }
           const rowWhCode = d.warehouseCode || orderWhCode;
           const rawAssignedBins = Array.isArray(d.assignedBins) ? d.assignedBins : [];
           let parsedBins: string[] = rawAssignedBins.filter((b: string) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')));
@@ -2227,6 +2300,14 @@ export default function CreateStockInOrderPage({
             }
           }
 
+          let parsedExpiry = d.expiryDate ? String(d.expiryDate).split('T')[0] : '';
+          if (!parsedExpiry && d.note && typeof d.note === 'string' && d.note.includes('[HSD:')) {
+            const hsdMatch = d.note.match(/\[HSD:\s*([^\]]+)\]/);
+            if (hsdMatch && hsdMatch[1]) {
+              parsedExpiry = hsdMatch[1].trim();
+            }
+          }
+
           return {
             rowId: d.id || `row-loaded-${idx}`,
             productId: p.id || String(d.productId || ''),
@@ -2238,7 +2319,7 @@ export default function CreateStockInOrderPage({
             discountPercent: discP,
             vatPercent: vatP,
             totalAmount: tot,
-            expiryDate: d.expiryDate ? d.expiryDate.split('T')[0] : '',
+            expiryDate: parsedExpiry,
             note: d.note || '',
             weight: Number(d.weight || 0),
             length: Number(d.length || 0),
@@ -2678,7 +2759,7 @@ export default function CreateStockInOrderPage({
       return;
     }
 
-    const safeNum = (v: any, max = 99999.999) => {
+    const safeNum = (v: any, max = 999999999999.99) => {
       const n = Number(v);
       if (!Number.isFinite(n) || n < 0) return 0;
       return Math.min(n, max);
@@ -2710,26 +2791,33 @@ export default function CreateStockInOrderPage({
       debtAmount: Math.max(0, grandTotal - (activeTab.amountPaid ?? grandTotal)),
       paymentMethod: activeTab.paymentMethod,
       paymentAccount: activeTab.paymentAccount,
-      details: activeValidItems.map((r) => ({
-        productId: r.productId,
-        productSku: r.productSku,
-        productName: r.productName,
-        unit: r.unit,
-        warehouseCode: r.warehouseCode || activeTab.warehouseCode || 'KHO-NVL',
-        expectedQty: Number(r.qty),
-        receivedQty: saveStatus === 'COMPLETED' ? Number(r.qty) : 0,
-        unitPrice: Number(r.price),
-        discountPercent: safeNum(r.discountPercent),
-        vatPercent: safeNum(r.vatPercent),
-        totalAmount: safeNum(r.totalAmount, 99999999.99),
-        weight: safeNum(r.weight),
-        length: safeNum(r.length),
-        width: safeNum(r.width),
-        height: safeNum(r.height),
-        volume: safeNum(r.volume, 99999.9999),
-        volumetricWeight: safeNum(r.volumetricWeight),
-        note: r.note || '',
-      })),
+      details: activeValidItems.map((r) => {
+        let noteText = r.note || '';
+        if (r.expiryDate && !noteText.includes('[HSD:')) {
+          noteText = noteText ? `${noteText} [HSD: ${r.expiryDate}]` : `[HSD: ${r.expiryDate}]`;
+        }
+        return {
+          productId: r.productId,
+          productSku: r.productSku,
+          productName: r.productName,
+          unit: r.unit,
+          warehouseCode: r.warehouseCode || activeTab.warehouseCode || 'KHO-NVL',
+          expectedQty: Number(r.qty),
+          receivedQty: saveStatus === 'COMPLETED' ? Number(r.qty) : 0,
+          unitPrice: Number(r.price),
+          discountPercent: safeNum(r.discountPercent),
+          vatPercent: safeNum(r.vatPercent),
+          totalAmount: safeNum(r.totalAmount, 999999999999.99),
+          expiryDate: r.expiryDate || undefined,
+          weight: safeNum(r.weight),
+          length: safeNum(r.length),
+          width: safeNum(r.width),
+          height: safeNum(r.height),
+          volume: safeNum(r.volume, 99999.9999),
+          volumetricWeight: safeNum(r.volumetricWeight),
+          note: noteText,
+        };
+      }),
     };
 
     try {

@@ -102,6 +102,10 @@ export class PurchaseOrderItemDto {
 
   @IsOptional()
   @IsString()
+  expiryDate?: string;
+
+  @IsOptional()
+  @IsString()
   note?: string;
 }
 
