@@ -52,9 +52,20 @@ export class InventoryService {
           prefix: `${code}-%`,
         })
         .execute();
+
+      try {
+        await this.balanceRepo.manager.query(
+          `UPDATE stock_in_order_details SET note = NULL WHERE warehouse_code = ? OR note LIKE ?`,
+          [code, `%${code}%`]
+        );
+      } catch (e) {}
+
       return { success: true, message: `Cleared stock balances for warehouse ${code}` };
     }
     await this.balanceRepo.clear();
+    try {
+      await this.balanceRepo.manager.query(`UPDATE stock_in_order_details SET note = NULL`);
+    } catch (e) {}
     return { success: true, message: 'Cleared all stock balances' };
   }
 

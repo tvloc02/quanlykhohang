@@ -55,6 +55,7 @@ import {
   normalizeWarehouseRecord,
   getRackLetterPrefix,
   calculateGlobalShelfIndex,
+  clearAllDraftSlotLocks,
   type WarehouseRecord,
   type SubWarehouse,
   type RackConfig,
@@ -208,6 +209,19 @@ function normalizeBinKey(binCode: string): string {
     unit: string;
     note?: string;
   }>>(new Map());
+  const [binGoodsListMap, setBinGoodsListMap] = useState<Map<string, {
+    binCode: string;
+    productName: string;
+    sku: string;
+    quantity: number;
+    allocated: number;
+    supplierName: string;
+    inboundDate: string;
+    orderCode: string;
+    unit: string;
+    occupancyPct?: number;
+    note?: string;
+  }[]>>(new Map());
 
   // Fetch real inventory stock balance / allocated bins topology & inbound history
   useEffect(() => {
@@ -225,8 +239,35 @@ function normalizeBinKey(binCode: string): string {
           inboundDate: string;
           orderCode: string;
           unit: string;
+          occupancyPct?: number;
           note?: string;
         }>();
+        const dListMap = new Map<string, any[]>();
+
+        const appendDetailToList = (key: string, detail: any) => {
+          if (!key) return;
+          const norm = normalizeBinKey(key);
+          const existingKey = dListMap.has(key) ? key : (norm && dListMap.has(norm) ? norm : key);
+          const currentList = dListMap.get(existingKey) || [];
+
+          // Drop dummy balance entries if a real stock-in order entry arrives for the same product
+          const filtered = currentList.filter((x) => {
+            const isSameProduct = x.productName === detail.productName || x.sku === detail.sku;
+            const isDummyOrder = !x.orderCode || x.orderCode.startsWith('PNK-000') || x.orderCode === 'TỒN-KHO';
+            const isRealOrder = detail.orderCode && !detail.orderCode.startsWith('PNK-000') && detail.orderCode !== 'TỒN-KHO';
+            return !(isSameProduct && isDummyOrder && isRealOrder);
+          });
+
+          const isExactDuplicate = filtered.some(
+            (x) => x.orderCode === detail.orderCode && (x.sku === detail.sku || x.productName === detail.productName)
+          );
+          if (!isExactDuplicate) {
+            const updated = [...filtered, detail];
+            dListMap.set(key, updated);
+            if (norm) dListMap.set(norm, updated);
+          }
+        };
+
         const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
         const currentWhCode = code ? code.trim().toUpperCase() : '';
         const currentWhId = id ? id.toLowerCase() : '';
@@ -258,6 +299,9 @@ function normalizeBinKey(binCode: string): string {
               const norm = normalizeBinKey(lc);
               if (norm) map.set(norm, info);
 
+              const bDate = b.updatedAt || b.createdAt ? new Date(b.updatedAt || b.createdAt) : new Date();
+              const formattedBDate = bDate.toLocaleDateString('vi-VN') + ' ' + bDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
               const detail = {
                 binCode: lc,
                 productName: b.product?.name || b.productName || 'Sản phẩm tồn kho',
@@ -265,12 +309,13 @@ function normalizeBinKey(binCode: string): string {
                 quantity: physical || allocated || 1,
                 allocated: allocated,
                 supplierName: b.product?.supplier || b.supplierName || 'Nhà cung cấp',
-                inboundDate: b.updatedAt ? new Date(b.updatedAt).toLocaleDateString('vi-VN') + ' ' + new Date(b.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Hôm nay',
-                orderCode: b.orderCode || b.stockInOrderCode || 'TỒN-KHO',
-                unit: b.product?.unit || 'Cái',
+                inboundDate: formattedBDate,
+                orderCode: b.orderCode || b.stockInOrderCode || (b.id ? `PNK-${String(b.id).padStart(4, '0')}` : 'PNK-20260819-001'),
+                unit: b.product?.unit || b.unit || 'Cái',
               };
               dMap.set(lc, detail);
               if (norm) dMap.set(norm, detail);
+              appendDetailToList(lc, detail);
             }
           });
         }
@@ -285,15 +330,17 @@ function normalizeBinKey(binCode: string): string {
             if (currentWhId && oWhId && oWhId !== currentWhId) return;
             if (currentWhCode && oWhCode && oWhCode !== currentWhCode) return;
 
-            const orderCode = ord.code || ord.orderNumber || 'NK-ORDER';
-            const supplierName = ord.supplierName || ord.supplier?.name || 'Nhà cung cấp';
-            const inboundDate = ord.createdAt ? new Date(ord.createdAt).toLocaleDateString('vi-VN') + ' ' + new Date(ord.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Hôm nay';
+            const orderCode = ord.code || ord.orderCode || ord.receiptNo || ord.orderNumber || ord.poNumber || (ord.id ? `PNK-${String(ord.id).padStart(4, '0')}` : 'PNK-20260819-001');
+            const supplierName = ord.supplierName || ord.supplier?.name || ord.supplier || 'Nhà cung cấp';
+            const rawDate = ord.createdAt || ord.orderDate || ord.createdAtDate;
+            const oDate = rawDate ? new Date(rawDate) : new Date();
+            const inboundDate = oDate.toLocaleDateString('vi-VN') + ' ' + oDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
             (ord.details || ord.items || []).forEach((item: any) => {
-              const pName = item.productName || item.product?.name || 'Sản phẩm nhập kho';
-              const pSku = item.sku || item.product?.sku || 'SKU-001';
-              const pQty = Number(item.qty || item.quantity || 1);
-              const pUnit = item.unit || 'Cái';
+              const pName = item.productName || item.product?.name || item.name || 'Sản phẩm nhập kho';
+              const pSku = item.productSku || item.sku || item.product?.internalSku || item.product?.sku || item.code || 'SKU-001';
+              const pQty = Number(item.actualQty || item.requestedQty || item.expectedQty || item.qty || item.quantity || 1);
+              const pUnit = item.unit || item.product?.unit || 'Cái';
 
               let bins: string[] = item.assignedBins || [];
               if (bins.length === 0 && item.locationBin) bins = item.locationBin.split(',').map((s: string) => s.trim());
@@ -304,7 +351,19 @@ function normalizeBinKey(binCode: string): string {
 
               bins.forEach((bCode) => {
                 if (!bCode) return;
-                const cleanBCode = bCode.trim();
+                const rawBCode = bCode.trim();
+
+                const pctMatch = rawBCode.match(/^([^(]+)\s*\((?:Dư\s*)?(\d+)%\)/i);
+                let cleanBCode = rawBCode;
+                let itemPct: number | undefined = item.occupancyPct !== undefined ? Number(item.occupancyPct) : (item.occupancy !== undefined ? Number(item.occupancy) : undefined);
+
+                if (pctMatch) {
+                  cleanBCode = pctMatch[1].trim();
+                  itemPct = Number(pctMatch[2]);
+                } else if (itemPct === undefined && item.note) {
+                  const noteMatch = item.note.match(/(\d+)%/);
+                  if (noteMatch) itemPct = Number(noteMatch[1]);
+                }
 
                 // Reject bare short codes (like "D1", "D2") that lack warehouse/zone hyphenated prefixes
                 const isFullKey = cleanBCode.includes('-') || cleanBCode.length > 5;
@@ -325,9 +384,11 @@ function normalizeBinKey(binCode: string): string {
                   inboundDate: inboundDate,
                   orderCode: orderCode,
                   unit: pUnit,
+                  occupancyPct: itemPct,
                 };
                 dMap.set(cleanBCode, detail);
                 if (norm) dMap.set(norm, detail);
+                appendDetailToList(cleanBCode, detail);
               });
             });
           });
@@ -336,6 +397,7 @@ function normalizeBinKey(binCode: string): string {
         if (isMounted) {
           setOccupiedBinsMap(map);
           setBinDetailsMap(dMap);
+          setBinGoodsListMap(dListMap);
         }
       } catch (err) {
         console.error('Could not fetch stock balance bins', err);
@@ -399,6 +461,45 @@ function normalizeBinKey(binCode: string): string {
     }
 
     return null;
+  };
+
+  const getBinGoodsList = (
+    fullCode: string,
+    binCodeShort: string,
+    zoneCode?: string,
+    rackCode?: string
+  ): any[] => {
+    if (!occupiedBinsMap || occupiedBinsMap.size === 0) return [];
+
+    if (binGoodsListMap.has(fullCode)) return binGoodsListMap.get(fullCode)!;
+
+    const norm = normalizeBinKey(fullCode);
+    if (norm && binGoodsListMap.has(norm)) return binGoodsListMap.get(norm)!;
+
+    const currentWhNorm = code ? normalizeBinKey(code) : '';
+    const currentZoneNorm = zoneCode ? normalizeBinKey(zoneCode) : '';
+    const normRack = rackCode ? normalizeBinKey(rackCode) : '';
+    const normCell = normalizeBinKey(binCodeShort);
+
+    for (const [k, v] of binGoodsListMap.entries()) {
+      const normK = normalizeBinKey(k);
+      if (!normK) continue;
+      if (k === fullCode || (norm && normK === norm)) return v;
+
+      if (currentWhNorm && currentZoneNorm && normRack && normCell) {
+        if (
+          normK.includes(currentWhNorm) &&
+          normK.includes(currentZoneNorm) &&
+          normK.includes(normRack) &&
+          normK.endsWith(normCell)
+        ) {
+          return v;
+        }
+      }
+    }
+
+    const single = getBinGoodsDetail(fullCode, binCodeShort, zoneCode, rackCode);
+    return single ? [single] : [];
   };
 
   const getOccupiedInfo = (
@@ -478,10 +579,11 @@ function normalizeBinKey(binCode: string): string {
       setError('Không thể xác định mã kho hàng để xóa');
       return;
     }
-    if (window.confirm(`Bạn có chắc chắn muốn giải phóng toàn bộ ô kệ và xóa hết hàng hóa trong KHO [${code}] về trạng thái KỆ TRỐNG?\n(Lưu ý: Thao tác này CHỈ áp dụng cho kho [${code}], không ảnh hưởng các kho khác)`)) {
+    const targetCode = code.trim().toUpperCase();
+    if (window.confirm(`Bạn có chắc chắn muốn giải phóng toàn bộ ô kệ và xóa hết hàng hóa trong KHO [${targetCode}] về trạng thái KỆ TRỐNG?\n(Lưu ý: Thao tác này CHỈ áp dụng cho kho [${targetCode}], không ảnh hưởng các kho khác)`)) {
       try {
         const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
-        await fetch(`${API_BASE_URL}/inventory/clear-all?warehouseCode=${encodeURIComponent(code)}`, {
+        await fetch(`${API_BASE_URL}/inventory/clear-all?warehouseCode=${encodeURIComponent(targetCode)}`, {
           method: 'POST',
           headers,
         }).catch(() => null);
@@ -502,12 +604,15 @@ function normalizeBinKey(binCode: string): string {
       setOccupiedBinsMap(new Map());
       setBinDetailsMap(new Map());
 
+      // Persist cleared warehouse state in localStorage for persistent F5 refresh
+      localStorage.setItem(`cleared_warehouse_goods_${targetCode}`, 'true');
+
       // Save cleared subWarehouses to backend API & localStorage
       if (id || code) {
         const fullAddress = `${detailAddress ? detailAddress + ', ' : ''}${ward}, ${province}`;
         const payload: WarehouseRecord = {
           id: id || `wh_${Date.now()}`,
-          code: code.trim(),
+          code: targetCode,
           name: name.trim(),
           province,
           ward,
@@ -521,12 +626,21 @@ function normalizeBinKey(binCode: string): string {
           staffIds: [],
           subWarehouses: cleanedZones,
         };
-        upsertWarehouseToApi(payload).catch((err) => console.error('Error updating warehouse reset topology:', err));
+        try {
+          const savedWarehouse = await upsertWarehouseToApi(payload);
+          const existingWarehouses = getStoredWarehouses();
+          const updatedList = existingWarehouses.some((w) => w.id === savedWarehouse.id || w.code === savedWarehouse.code)
+            ? existingWarehouses.map((w) => (w.id === savedWarehouse.id || w.code === savedWarehouse.code ? savedWarehouse : w))
+            : [...existingWarehouses, savedWarehouse];
+          saveStoredWarehouses(updatedList);
+        } catch (err) {
+          console.error('Error updating warehouse reset topology:', err);
+        }
       }
 
-      localStorage.removeItem(`cleared_warehouse_goods_${code}`);
+      clearAllDraftSlotLocks(targetCode);
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
-      setSuccess(`Đã xóa toàn bộ hàng hóa của kho [${code}]. Tất cả ô kệ thuộc kho này đã trở về trạng thái KỆ TRỐNG!`);
+      setSuccess(`Đã xóa toàn bộ hàng hóa của kho [${targetCode}]. Tất cả ô kệ thuộc kho này đã trở về trạng thái KỆ TRỐNG!`);
     }
   };
 
@@ -1704,33 +1818,36 @@ function normalizeBinKey(binCode: string): string {
         const binShort = editingBinCode.split('-').pop() || editingBinCode;
         const occupiedInfo = getOccupiedInfo(editingBinCode, binShort, activeZone?.code, activeRackId);
         const hasGoods = Boolean(occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0));
-        const goodsDetail = getBinGoodsDetail(editingBinCode, binShort, activeZone?.code, activeRackId);
+        const goodsList = getBinGoodsList(editingBinCode, binShort, activeZone?.code, activeRackId);
+        const customConfig = (activeZone?.racks || [])
+          .flatMap((rk: any) => Object.values(rk.customBins || {}))
+          .find((cb: any) => cb.binCode === binShort || cb.binCode === editingBinCode);
 
         return (
-          <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 sm:p-6 animate-fadeIn">
-            <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border-2 border-cyan-500/30 overflow-hidden flex flex-col max-h-[92vh]">
+          <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn">
+            <div className="w-full max-w-[95vw] lg:max-w-[92vw] xl:max-w-[90vw] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border-2 border-cyan-500/30 overflow-hidden flex flex-col max-h-[94vh]">
               
-              {/* Modal Header (Pure Cyan theme - No Green) */}
+              {/* Modal Header (Pure Cyan theme) */}
               <div className="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-4 flex items-center justify-between border-b border-cyan-500/40 shadow-sm">
                 <div className="flex items-center gap-3.5">
                   <div className="h-10 w-10 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white shadow-2xs">
                     <Boxes className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="font-black text-lg text-white flex items-center gap-2.5 tracking-tight">
+                    <h3 className="font-bold text-lg text-white flex items-center gap-2.5 tracking-tight">
                       THÔNG TIN CHI TIẾT Ô {binShort}
                       {hasGoods ? (
-                        <span className="px-3 py-0.5 rounded-full text-xs font-black bg-amber-400 text-amber-950 border border-amber-300 shadow-2xs">
+                        <span className="px-3 py-0.5 rounded-full text-xs font-bold bg-amber-400 text-amber-950 border border-amber-300 shadow-2xs">
                           Đã Có Hàng
                         </span>
                       ) : (
-                        <span className="px-3 py-0.5 rounded-full text-xs font-black bg-cyan-900/60 text-cyan-100 border border-white/30">
+                        <span className="px-3 py-0.5 rounded-full text-xs font-bold bg-cyan-900/60 text-cyan-100 border border-white/30">
                           Kệ Trống
                         </span>
                       )}
                     </h3>
-                    <p className="text-xs text-cyan-100 font-semibold mt-0.5">
-                      Mã vị trí ô chứa: <span className="font-mono text-white font-bold">{editingBinCode}</span>
+                    <p className="text-xs text-cyan-100 font-medium mt-0.5">
+                      Mã vị trí ô chứa: <span className="font-mono text-white font-semibold">{editingBinCode}</span>
                     </p>
                   </div>
                 </div>
@@ -1746,114 +1863,131 @@ function normalizeBinKey(binCode: string): string {
               {/* Modal Body (Spacious & Open layout) */}
               <div className="p-6 overflow-y-auto space-y-5 text-sm text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900/50">
                 
-                {/* SECTION 1: INBOUND GOODS & SUPPLIER DETAILS */}
-                {goodsDetail ? (
-                  <div className="rounded-2xl border-2 border-amber-300 dark:border-amber-900/70 bg-amber-50/40 dark:bg-amber-950/20 p-5 space-y-4 shadow-sm">
-                    <div className="flex items-center justify-between border-b border-amber-200 dark:border-amber-900/60 pb-3">
-                      <span className="font-black text-xs sm:text-sm uppercase tracking-wider text-amber-950 dark:text-amber-200 flex items-center gap-2">
-                        <Package className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
+                {/* SECTION 1: INBOUND GOODS & SUPPLIER DETAILS TABLE */}
+                {goodsList && goodsList.length > 0 ? (
+                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                      <span className="font-semibold text-xs sm:text-sm uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                        <Package className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
                         Lịch sử nhập hàng & Nhà cung cấp
                       </span>
-                      <span className="text-xs font-extrabold text-amber-900 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-3 py-1 rounded-lg border border-amber-300 dark:border-amber-800 font-mono">
-                        {goodsDetail.orderCode}
+                      <span className="text-[11px] font-medium text-cyan-700 bg-cyan-50 dark:bg-cyan-950 dark:text-cyan-300 px-2.5 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800">
+                        {goodsList.length} lượt lưu kho
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 pt-1">
-                      <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-500 uppercase block tracking-wider">Tên sản phẩm</span>
-                        <p className="font-black text-slate-900 dark:text-slate-100 text-base leading-snug">
-                          {goodsDetail.productName}
-                        </p>
-                      </div>
+                    <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700">
+                      <table className="w-full text-center text-xs border-collapse border border-slate-300 dark:border-slate-700">
+                        <thead className="bg-cyan-100/90 dark:bg-slate-800 text-cyan-950 dark:text-cyan-200 font-extrabold text-xs uppercase tracking-wider">
+                          <tr>
+                            <th className="py-3 px-3 font-extrabold text-center w-12 border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">STT</th>
+                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Mã hàng hóa</th>
+                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Mã phiếu nhập kho</th>
+                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Tên hàng hóa</th>
+                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">ĐVT</th>
+                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Số lượng</th>
+                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Ngày nhập</th>
+                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Nhà cung cấp</th>
+                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">% chứa</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-300 dark:divide-slate-700 font-normal text-slate-700 dark:text-slate-200">
+                          {goodsList.map((item: any, index: number) => {
+                            let itemPct = item.occupancyPct;
+                            if (itemPct === undefined || itemPct === null) {
+                              if (goodsList.length === 1) {
+                                itemPct = (customConfig as any)?.occupancyPct !== undefined ? (customConfig as any).occupancyPct : 100;
+                              } else {
+                                itemPct = Math.round(100 / goodsList.length);
+                              }
+                            }
 
-                      <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-500 uppercase block tracking-wider">Mã SKU / Barcode</span>
-                        <p className="font-bold text-cyan-700 dark:text-cyan-400 font-mono text-base">
-                          {goodsDetail.sku}
-                        </p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-500 uppercase block tracking-wider">Số lượng nhập / Tồn trong ô</span>
-                        <p className="font-black text-amber-600 dark:text-amber-400 text-base">
-                          {goodsDetail.quantity.toLocaleString('vi-VN')} {goodsDetail.unit}
-                        </p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <span className="text-xs font-bold text-slate-500 uppercase block tracking-wider">Ngày & Giờ nhập kho</span>
-                        <p className="font-bold text-slate-800 dark:text-slate-200 text-base flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-cyan-600" />
-                          {goodsDetail.inboundDate}
-                        </p>
-                      </div>
-
-                      <div className="sm:col-span-2 border-t border-amber-200/60 dark:border-amber-900/60 pt-3 mt-1 space-y-1">
-                        <span className="text-xs font-bold text-slate-500 uppercase block tracking-wider">Nhà cung cấp hàng hóa</span>
-                        <p className="font-extrabold text-slate-900 dark:text-slate-100 text-base flex items-center gap-2">
-                          <Building2 className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
-                          {goodsDetail.supplierName}
-                        </p>
-                      </div>
+                            const realOrderCode = item.orderCode && item.orderCode !== 'TỒN-KHO' ? item.orderCode : (item.id ? `PNK-${String(item.id).padStart(4, '0')}` : 'PNK-20260819-001');
+                            const displaySku = item.sku || item.productSku || 'SKU-001';
+                            return (
+                              <tr key={index} className="hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors">
+                                <td className="py-2.5 px-3 text-center font-medium text-slate-500 border border-slate-300 dark:border-slate-700 whitespace-nowrap">{index + 1}</td>
+                                <td className="py-2.5 px-3 text-center font-mono font-medium text-cyan-700 dark:text-cyan-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap">{displaySku}</td>
+                                <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap">
+                                  <span className="px-2.5 py-1 rounded bg-cyan-50 dark:bg-cyan-950/80 border border-cyan-300 dark:border-cyan-800 text-cyan-950 dark:text-cyan-200 font-bold text-xs">
+                                    {realOrderCode}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-medium text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700">{item.productName}</td>
+                                <td className="py-2.5 px-3 text-center font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap">{item.unit || 'Cái'}</td>
+                                <td className="py-2.5 px-3 text-center font-bold text-amber-600 dark:text-amber-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap">
+                                  {Number(item.quantity || 1).toLocaleString('vi-VN')}
+                                </td>
+                                <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap">{item.inboundDate}</td>
+                                <td className="py-2.5 px-3 text-center font-medium text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700">{item.supplierName}</td>
+                                <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap">
+                                  <span className="px-2 py-0.5 rounded-full font-bold text-[11px] bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800">
+                                    {itemPct}%
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-cyan-200 dark:border-cyan-900/70 bg-white dark:bg-slate-900 p-5 space-y-2 shadow-sm text-center">
-                    <span className="font-black text-xs sm:text-sm uppercase tracking-wider text-cyan-900 dark:text-cyan-200 flex items-center justify-center gap-2">
+                    <span className="font-bold text-xs sm:text-sm uppercase tracking-wider text-cyan-900 dark:text-cyan-200 flex items-center justify-center gap-2">
                       <Boxes className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
                       Trạng Thái Vị Trí Ô Kệ
                     </span>
-                    <p className="text-xs font-extrabold text-slate-500 py-1">
+                    <p className="text-xs font-medium text-slate-500 py-1">
                       KỆ TRỐNG - Ô chứa này hiện tại chưa có hàng hóa lưu trữ trong CSDL.
                     </p>
                   </div>
                 )}
 
                 {/* SECTION 2: BIN SPECS & WEIGHT CAPACITY FORM */}
-                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
-                  <span className="font-black text-xs sm:text-sm uppercase tracking-wider text-slate-800 dark:text-slate-200 block border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="rounded-2xl border border-cyan-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+                  <span className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-cyan-950 dark:text-cyan-200 block border-b border-slate-200 dark:border-slate-800 pb-3">
                     Cấu hình kích thước & Tải trọng ô
                   </span>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 block">Dài (cm)</label>
+                      <label className="text-xs font-extrabold text-cyan-950 dark:text-cyan-200 block">Dài (cm)</label>
                       <input
                         type="number"
-                        value={binCustomForm.length}
+                        value={binCustomForm.length !== undefined && binCustomForm.length !== null && binCustomForm.length > 0 ? binCustomForm.length : ((customConfig as any)?.length || 120)}
                         onChange={(e) => setBinCustomForm((c) => ({ ...c, length: Number(e.target.value) || 0 }))}
-                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-cyan-500 outline-none"
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-cyan-500 outline-none shadow-xs"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 block">Rộng (cm)</label>
+                      <label className="text-xs font-extrabold text-cyan-950 dark:text-cyan-200 block">Rộng (cm)</label>
                       <input
                         type="number"
-                        value={binCustomForm.width}
+                        value={binCustomForm.width !== undefined && binCustomForm.width !== null && binCustomForm.width > 0 ? binCustomForm.width : ((customConfig as any)?.width || 80)}
                         onChange={(e) => setBinCustomForm((c) => ({ ...c, width: Number(e.target.value) || 0 }))}
-                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-cyan-500 outline-none"
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-cyan-500 outline-none shadow-xs"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 block">Cao (cm)</label>
+                      <label className="text-xs font-extrabold text-cyan-950 dark:text-cyan-200 block">Cao (cm)</label>
                       <input
                         type="number"
-                        value={binCustomForm.height}
+                        value={binCustomForm.height !== undefined && binCustomForm.height !== null && binCustomForm.height > 0 ? binCustomForm.height : ((customConfig as any)?.height || 100)}
                         onChange={(e) => setBinCustomForm((c) => ({ ...c, height: Number(e.target.value) || 0 }))}
-                        className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-center bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:border-cyan-500 outline-none"
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-cyan-500 outline-none shadow-xs"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 block">Tải trọng (kg)</label>
+                      <label className="text-xs font-extrabold text-cyan-950 dark:text-cyan-200 block">Tải trọng (kg)</label>
                       <input
                         type="number"
-                        value={binCustomForm.maxWeight}
+                        value={binCustomForm.maxWeight !== undefined && binCustomForm.maxWeight !== null && binCustomForm.maxWeight > 0 ? binCustomForm.maxWeight : ((customConfig as any)?.maxWeight || 500)}
                         onChange={(e) => setBinCustomForm((c) => ({ ...c, maxWeight: Number(e.target.value) || 0 }))}
-                        className="w-full h-10 px-3 rounded-xl border-2 border-cyan-400 font-black text-center text-cyan-900 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950 focus:border-cyan-600 outline-none"
+                        className="w-full h-10 px-3 rounded-xl border-2 border-cyan-400 font-black text-center text-cyan-950 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950 focus:border-cyan-600 outline-none shadow-xs"
                       />
                     </div>
                   </div>
