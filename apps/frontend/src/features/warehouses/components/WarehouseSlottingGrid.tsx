@@ -52,7 +52,7 @@ export interface WarehouseSlottingGridProps {
   activeRackId?: string;
   selectedBinCodes?: string[];
   suggestedBinCodes?: string[];
-  otherItemsBinsMap?: Record<string, string>;
+  otherItemsBinsMap?: Record<string, string | { label: string; occupancyPct?: number }>;
   orderItems?: any[];
   selectedBinsMap?: Record<string, string[]>;
   onSelectBin?: (binCode: string, binInfo: any) => void;
@@ -64,9 +64,8 @@ export interface WarehouseSlottingGridProps {
 
 export function normalizeBinKey(code: string): string {
   if (!code) return '';
-  return code
-    .toString()
-    .trim()
+  const cleanCode = code.toString().split('(')[0].trim();
+  return cleanCode
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
 }
@@ -88,6 +87,10 @@ export async function fetchWarehouseOccupiedBins(
     const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
     const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
     const currentWhId = warehouseId ? warehouseId.toLowerCase() : '';
+
+    if (currentWhCode && localStorage.getItem(`cleared_warehouse_goods_${currentWhCode}`) === 'true') {
+      return { occupiedMap: map, detailsMap: dMap };
+    }
 
     // 1. Fetch real physical inventory balances from CSDL
     const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
@@ -147,11 +150,14 @@ export async function fetchWarehouseOccupiedBins(
       });
     }
 
-    // 2. Fetch stock-in orders history
+    // 2. Fetch stock-in orders history (ONLY unconfirmed DRAFT/PENDING orders - completed stock is tracked via inventory balances)
     const inRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
     if (inRes && inRes.ok) {
       const orders: any[] = await inRes.json();
       orders.forEach((ord) => {
+        const isPendingDraft = ord.status === 'DRAFT' || ord.status === 'PENDING' || ord.status === 'IN_PROGRESS';
+        if (!isPendingDraft) return;
+
         const oWhId = String(ord.warehouseId || ord.warehouse?.id || '').toLowerCase();
         const oWhCode = String(ord.warehouseCode || ord.warehouse?.code || '').trim().toUpperCase();
 
@@ -253,37 +259,56 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   } | null>(null);
   const [inputPctVal, setInputPctVal] = useState<number>(0);
   const [isAddMode, setIsAddMode] = useState<boolean>(true);
-  const [editableBinItems, setEditableBinItems] = useState<Array<{ productName: string; qty: number; occupancyPct: number }>>([]);
+  const [editableBinItems, setEditableBinItems] = useState<Array<{ rowId?: string; productName: string; qty: number; occupancyPct: number }>>([]);
 
   useEffect(() => {
     if (!editingBinConfig) return;
     const binShortCode = editingBinConfig.shortCode;
     const fullBinCode = editingBinConfig.binCode;
+    const normTarget = normalizeBinKey(fullBinCode);
 
-    const assigned: Array<{ productName: string; qty: number; occupancyPct: number }> = [];
+    const assigned: Array<{ rowId: string; productName: string; qty: number; occupancyPct: number }> = [];
 
     if (orderItems && orderItems.length > 0) {
+      let allocatedSoFar = 0;
+
       orderItems.forEach((it: any, idx: number) => {
         const rowId = it.rowId || String(idx);
         const bList = selectedBinsMap ? selectedBinsMap[rowId] || [] : [];
-        const isAssigned = bList.includes(fullBinCode) || bList.some((b: string) => b.endsWith(binShortCode));
 
-        if (isAssigned) {
-          const isFirstItem = assigned.length === 0;
-          const initialPct = isFirstItem ? (editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : 100) : 0;
+        const matchedBinStr = bList.find((b: string) => {
+          const normB = normalizeBinKey(b);
+          return normB === normTarget || b.startsWith(fullBinCode) || b.endsWith(binShortCode);
+        });
+
+        if (matchedBinStr) {
+          let itemPct = 0;
+          const match = matchedBinStr.match(/\((\d+)%\)/);
+          if (match) {
+            itemPct = Number(match[1]);
+          } else {
+            itemPct = Math.max(0, 100 - allocatedSoFar);
+          }
+
+          itemPct = Math.min(100, Math.max(0, itemPct));
+          allocatedSoFar += itemPct;
+
           assigned.push({
+            rowId,
             productName: it.productName || `Hàng hóa #${idx + 1}`,
             qty: it.qty && Number(it.qty) > 0 ? Number(it.qty) : 0,
-            occupancyPct: initialPct,
+            occupancyPct: itemPct,
           });
         }
       });
     }
 
     if (assigned.length === 0) {
+      const firstItem = orderItems && orderItems.length > 0 ? orderItems[0] : null;
       assigned.push({
-        productName: orderItems && orderItems[0]?.productName ? orderItems[0].productName : 'Quần tây nam',
-        qty: orderItems && orderItems[0]?.qty ? Number(orderItems[0].qty) : 0,
+        rowId: firstItem?.rowId || 'row-0',
+        productName: firstItem?.productName || 'Quần tây nam',
+        qty: firstItem?.qty && Number(firstItem.qty) > 0 ? Number(firstItem.qty) : 0,
         occupancyPct: editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : 100,
       });
     }
@@ -515,9 +540,34 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           );
                           const isSelected = selectedSet.has(normFull);
                           const isSuggested = suggestedSet.has(normFull);
-                          const otherItemName = otherItemsBinsMap ? (otherItemsBinsMap[fullBinCode] || otherItemsBinsMap[binCodeShort] || otherItemsBinsMap[normFull]) : null;
-                          const customConfig =
-                            (activeRack.customBins as any)?.[fullBinCode] || (activeRack.customBins as any)?.[binCodeShort];
+                          const rawOtherEntry = otherItemsBinsMap
+                            ? otherItemsBinsMap[fullBinCode] || otherItemsBinsMap[binCodeShort] || otherItemsBinsMap[normFull]
+                            : null;
+
+                          let otherItemName: string | null = null;
+                          let otherItemPctFromLock: number | undefined = undefined;
+
+                          if (typeof rawOtherEntry === 'string') {
+                            otherItemName = rawOtherEntry;
+                          } else if (rawOtherEntry && typeof rawOtherEntry === 'object') {
+                            otherItemName = rawOtherEntry.label;
+                            otherItemPctFromLock = rawOtherEntry.occupancyPct;
+                          }
+
+                          const rawCustomConfig =
+                            (activeRack.customBins as any)?.[fullBinCode] ||
+                            (activeRack.customBins as any)?.[binCodeShort] ||
+                            (normFull ? (activeRack.customBins as any)?.[normFull] : null);
+                          const customConfig = rawCustomConfig && Number(rawCustomConfig.occupancyPct || 0) > 0 ? rawCustomConfig : null;
+
+                          const matchingSelectedCode = selectedBinCodes.find((s) => normalizeBinKey(s) === normFull);
+                          let embeddedPct: number | undefined;
+                          if (matchingSelectedCode) {
+                            const match = matchingSelectedCode.match(/\((\d+)%\)/);
+                            if (match) embeddedPct = Number(match[1]);
+                          }
+
+                          const customPct = customConfig?.occupancyPct !== undefined && customConfig?.occupancyPct !== null ? Number(customConfig.occupancyPct) : undefined;
 
                           let occupancyPct = 0;
                           let isOtherItemFull = false;
@@ -526,11 +576,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           if (hasGoods) {
                             const qty = occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1;
                             const maxCap = customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500;
-                            occupancyPct = Math.min(100, Math.max(30, Math.round((qty / maxCap) * 100)));
+                            const calculatedFromQty = Math.min(100, Math.max(10, Math.round((qty / maxCap) * 100)));
+                            occupancyPct = customPct !== undefined
+                              ? customPct
+                              : (embeddedPct !== undefined ? embeddedPct : calculatedFromQty);
                           } else if (isSelected) {
-                            occupancyPct = customConfig?.occupancyPct !== undefined ? Math.min(100, Math.max(0, Number(customConfig.occupancyPct))) : 100;
+                            occupancyPct = embeddedPct !== undefined
+                              ? embeddedPct
+                              : (customPct !== undefined ? customPct : 100);
                           } else if (otherItemName) {
-                            otherOccupancyPct = customConfig?.occupancyPct !== undefined ? Math.min(100, Math.max(0, Number(customConfig.occupancyPct))) : 100;
+                            otherOccupancyPct = otherItemPctFromLock !== undefined ? Number(otherItemPctFromLock) : (customPct !== undefined ? customPct : 100);
                             occupancyPct = otherOccupancyPct;
                             if (otherOccupancyPct >= 100) {
                               isOtherItemFull = true;
@@ -539,7 +594,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             occupancyPct = 0;
                           }
 
-                          const isFull = hasGoods || isOtherItemFull || (isSelected && occupancyPct >= 100);
+                          const isFull = (hasGoods && occupancyPct >= 100) || isOtherItemFull || (isSelected && occupancyPct >= 100);
                           const isPartiallyOccupied = occupancyPct > 0 && occupancyPct < 100;
 
                           return (
@@ -548,7 +603,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               onClick={() => {
                                 if (isOtherItemFull) return;
                                 if (mode === 'select') {
-                                  if (!isFull && onSelectBin) {
+                                  if (onSelectBin) {
                                     onSelectBin(fullBinCode, {
                                       binCode: fullBinCode,
                                       shortCode: binCodeShort,
@@ -567,16 +622,14 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                 isOtherItemFull
                                   ? 'border-2 border-slate-300 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-900/90 text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed select-none'
                                   : isSelected
-                                    ? 'border-2 border-[#197e96] bg-white shadow-md ring-2 ring-cyan-400/40 font-black scale-[1.01] cursor-pointer'
+                                    ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/80 shadow-md ring-2 ring-cyan-400/40 font-black scale-[1.01] cursor-pointer'
                                     : isSuggested
                                       ? 'border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-300/60 font-black cursor-pointer'
-                                      : isFull
-                                        ? 'border-2 border-amber-500 bg-amber-100/90 dark:bg-amber-950/90 text-amber-950 dark:text-amber-100 shadow-2xs cursor-not-allowed font-black opacity-75'
+                                      : isFull || hasGoods
+                                        ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs cursor-pointer font-black'
                                         : isPartiallyOccupied
-                                          ? 'border-2 border-amber-300 bg-amber-50/90 text-amber-950 font-black cursor-pointer hover:border-cyan-500'
-                                          : customConfig
-                                            ? 'border-cyan-400 bg-cyan-50/80 dark:bg-cyan-950/60 text-cyan-950 dark:text-cyan-200 cursor-pointer'
-                                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-500 cursor-pointer'
+                                          ? 'border-2 border-cyan-500 bg-cyan-50/90 text-cyan-950 font-black cursor-pointer hover:border-cyan-600'
+                                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-500 cursor-pointer'
                               }`}
                             >
                               {/* Visual Occupancy Fill Overlay (Height = occupancyPct %) */}
@@ -585,11 +638,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   className={`absolute bottom-0 left-0 right-0 transition-all duration-300 pointer-events-none z-0 ${
                                     isOtherItemFull
                                       ? 'bg-slate-300/60 dark:bg-slate-800/60'
-                                      : isFull
-                                        ? 'bg-amber-400/80 dark:bg-amber-700/80'
-                                        : isSelected
-                                          ? 'bg-[#2295b1] dark:bg-[#197e96]'
-                                          : 'bg-cyan-100/90 dark:bg-cyan-900/60'
+                                      : (isSelected || isFull || hasGoods || isPartiallyOccupied)
+                                        ? 'bg-[#197e96]/30 dark:bg-[#197e96]/50'
+                                        : 'bg-cyan-100/90 dark:bg-cyan-900/60'
                                   }`}
                                   style={{ height: `${occupancyPct}%` }}
                                 />
@@ -602,7 +653,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                     isOtherItemFull
                                       ? 'text-slate-400 dark:text-slate-500'
                                       : occupancyPct >= 80 && (isSelected || isFull)
-                                        ? 'text-white drop-shadow-xs'
+                                        ? 'text-cyan-950 dark:text-cyan-100 drop-shadow-xs'
                                         : 'text-cyan-950 dark:text-cyan-300'
                                   }`}
                                 >
@@ -628,7 +679,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                       }}
                                       className={`p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs ${
                                         isSelected
-                                          ? 'bg-white hover:bg-cyan-50 text-[#197e96] border-slate-200'
+                                          ? 'bg-white hover:bg-cyan-50 text-[#197e96] border-cyan-200'
                                           : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
                                       }`}
                                     >
@@ -665,7 +716,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                         : isSelected
                                           ? 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
                                           : isFull
-                                            ? 'bg-amber-400 text-amber-950 border-amber-400 opacity-80 cursor-not-allowed'
+                                            ? 'bg-cyan-700 text-white border-cyan-700 opacity-90 cursor-pointer'
                                             : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700 cursor-pointer'
                                     }`}
                                   >
@@ -683,9 +734,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                 className={`text-[9px] font-bold block truncate z-10 ${
                                   isOtherItemFull
                                     ? 'text-slate-400 dark:text-slate-500'
-                                    : occupancyPct >= 50 && isSelected
-                                      ? 'text-white/90 drop-shadow-xs'
-                                      : 'text-slate-500 dark:text-slate-400'
+                                    : 'text-cyan-900/80 dark:text-cyan-300'
                                 }`}
                               >
                                 {rackCode} - Tầng {shelfPrefix}
@@ -694,28 +743,28 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               {/* Bottom Status Pill */}
                               <div className="w-full z-10">
                                 {isSelected ? (
-                                  <span className="text-[9px] font-black bg-white/90 text-[#197e96] px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-wide">
-                                    ✓ ĐÃ CHỌN ({occupancyPct > 0 ? occupancyPct : 100}%)
+                                  <span className="text-[9px] font-black bg-[#197e96] text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-wide">
+                                    CHỌN ({occupancyPct > 0 ? occupancyPct : 100}%)
                                   </span>
                                 ) : isOtherItemFull ? (
                                   <span className="text-[8.5px] font-black bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    🔴 FULL (100% - {otherItemName})
+                                    FULL (100% - {otherItemName})
                                   </span>
                                 ) : otherItemName ? (
-                                  <span className="text-[8.5px] font-black bg-amber-200/90 text-amber-950 border border-amber-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    📌 {otherItemName} (Dư {100 - otherOccupancyPct}%)
+                                  <span className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    {otherItemName} (Dư {100 - otherOccupancyPct}%)
                                   </span>
                                 ) : isSuggested ? (
                                   <span className="text-[9px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    ★ GỢI Ý AI
+                                    GỢI Ý AI
                                   </span>
-                                ) : isFull ? (
-                                  <span className="text-[9px] font-black bg-amber-400 text-amber-950 dark:bg-amber-800 dark:text-amber-50 px-1 py-0.5 rounded-md w-full block truncate">
-                                    🔴 ĐÃ ĐẦY 100%
+                                ) : (hasGoods || isFull) && occupancyPct >= 100 ? (
+                                  <span className="text-[9px] font-black bg-[#197e96] text-white px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    ĐÃ XẾP (100% - FULL)
                                   </span>
-                                ) : isPartiallyOccupied ? (
-                                  <span className="text-[8.5px] font-black bg-amber-200/90 text-amber-950 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    {occupancyPct}% (Dư {100 - occupancyPct}%)
+                                ) : isPartiallyOccupied || (hasGoods && occupancyPct < 100) ? (
+                                  <span className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    ĐÃ XẾP ({occupancyPct}%)
                                   </span>
                                 ) : (
                                   <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100/90 dark:bg-slate-800/80 px-1.5 py-0.5 rounded-md w-full block truncate border border-slate-200/60">
@@ -768,10 +817,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               </p>
             </div>
 
-            {/* Item-by-Item Occupancy Table matching User Image 2 */}
-            <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs my-2">
+            {/* Item-by-Item Occupancy Table with Scrollbar */}
+            <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs my-2 custom-scrollbar">
               <table className="w-full text-xs text-left border-collapse">
-                <thead className="bg-cyan-50 dark:bg-cyan-950/60 text-cyan-950 dark:text-cyan-200 font-bold border-b border-cyan-200 dark:border-slate-700">
+                <thead className="sticky top-0 z-10 bg-cyan-50 dark:bg-cyan-950 text-cyan-950 dark:text-cyan-200 font-bold border-b border-cyan-200 dark:border-slate-700 shadow-2xs">
                   <tr>
                     <th className="p-2.5">Tên hàng hóa</th>
                     <th className="p-2.5 text-right w-24">Số lượng</th>
@@ -838,17 +887,64 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               </table>
             </div>
 
+            {/* Progressive Item Addition Button when Capacity Remains */}
+            {(() => {
+              const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+              const remainingPct = Math.max(0, 100 - sumPct);
+
+              const assignedRowIds = new Set(editableBinItems.map((it) => it.rowId));
+              const availableUnassigned = (orderItems || []).filter((it: any, idx: number) => !assignedRowIds.has(it.rowId || String(idx)));
+
+              if (remainingPct > 0 && availableUnassigned.length > 0) {
+                return (
+                  <div className="mb-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextItem = availableUnassigned[0];
+                        const nextRowId = nextItem.rowId || String(orderItems.indexOf(nextItem));
+                        setEditableBinItems((prev) => [
+                          ...prev,
+                          {
+                            rowId: nextRowId,
+                            productName: nextItem.productName || `Mặt hàng #${prev.length + 1}`,
+                            qty: nextItem.qty && Number(nextItem.qty) > 0 ? Number(nextItem.qty) : 0,
+                            occupancyPct: remainingPct,
+                          },
+                        ]);
+                      }}
+                      className="text-[11px] font-bold text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/60 border border-cyan-300 dark:border-cyan-800 px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                    >
+                      + Thêm hàng hóa tiếp theo vào ô này ({remainingPct}% còn trống)
+                    </button>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {/* Dynamic Calculation Summary Banner */}
             {(() => {
               const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
               const remainingPct = Math.max(0, 100 - sumPct);
+              const isOverCap = sumPct > 100;
               return (
-                <div className="bg-amber-50 dark:bg-amber-950/60 p-2 rounded-xl border border-amber-200 text-[11px] font-bold text-amber-900 dark:text-amber-200">
-                  👉 Tổng độ chứa ô ={' '}
-                  <strong className="text-cyan-700 dark:text-cyan-300 underline font-black">
+                <div
+                  className={`p-2 rounded-xl border text-[11px] font-bold ${
+                    isOverCap
+                      ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 text-rose-900 dark:text-rose-200'
+                      : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 text-amber-900 dark:text-amber-200'
+                  }`}
+                >
+                  Tổng độ chứa ô ={' '}
+                  <strong
+                    className={`underline font-black ${
+                      isOverCap ? 'text-rose-700 dark:text-rose-300' : 'text-cyan-700 dark:text-cyan-300'
+                    }`}
+                  >
                     {sumPct}%
                   </strong>{' '}
-                  (Còn trống {remainingPct}%)
+                  {isOverCap ? `(CẢNH BÁO: VƯỢT QUÁ SỨC CHỨA O ${sumPct - 100}%!)` : `(Còn trống ${remainingPct}%)`}
                 </div>
               );
             })()}
@@ -879,10 +975,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const totalPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-                    if (onUpdateBinCapacity) {
-                      onUpdateBinCapacity(editingBinConfig.binCode, totalPct);
+                    const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+                    if (sumPct > 100) {
+                      alert(`Tổng % độ chứa (${sumPct}%) vượt quá 100%! Vui lòng điều chỉnh lại cho tổng các sản phẩm <= 100%.`);
+                      return;
                     }
+                    editableBinItems.forEach((item) => {
+                      if (item.rowId && onUpdateBinCapacity) {
+                        (onUpdateBinCapacity as any)(editingBinConfig.binCode, Number(item.occupancyPct) || 0, undefined, item.rowId);
+                      }
+                    });
                     setEditingBinConfig(null);
                   }}
                   className="h-9 px-5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"

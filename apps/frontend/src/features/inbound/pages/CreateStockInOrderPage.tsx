@@ -930,6 +930,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       try {
         const occMap = new Map<string, number>();
         const headers = authHeaders();
+        const targetWhUpper = (warehouseCode || '').trim().toUpperCase();
 
         // Direct real stock_balances from CSDL (Single Source of Truth)
         const balRes = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
@@ -938,7 +939,14 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
           balances.forEach((b) => {
             const lc = String(b.locationCode || '').trim();
             const physical = Number(b.totalPhysical || b.available || 0);
-            if (lc && physical > 0 && (lc.includes('-S0') || lc.includes('-R0') || lc.includes('-C') || lc.includes('-ZA') || lc.includes('-ZB'))) {
+            const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
+
+            const belongsToWh =
+              !targetWhUpper ||
+              (bWhCode && bWhCode === targetWhUpper) ||
+              (lc && lc.toUpperCase().startsWith(targetWhUpper));
+
+            if (lc && physical > 0 && belongsToWh) {
               occMap.set(lc, physical);
               const norm = normalizeBinKey(lc);
               if (norm) occMap.set(norm, physical);
@@ -952,10 +960,17 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
       }
     }
     loadOccupied();
+
+    const handleCleared = () => {
+      loadOccupied();
+    };
+    window.addEventListener('warehouse-goods-cleared', handleCleared);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('warehouse-goods-cleared', handleCleared);
     };
-  }, [isOpen]);
+  }, [isOpen, warehouseCode]);
 
   // Filter modal items to ONLY targetRowId if specified by user click on a specific row
   const modalItems = useMemo(() => {
@@ -2474,16 +2489,16 @@ export default function CreateStockInOrderPage({
           const tot = Number(d.totalLineAmount || d.totalAmount || afterDisc * (1 + vatP / 100));
           const rowWhCode = d.warehouseCode || orderWhCode;
           const rawAssignedBins = Array.isArray(d.assignedBins) ? d.assignedBins : [];
-          let parsedBins: string[] = rawAssignedBins.filter((b: string) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')));
+          let parsedBins: string[] = rawAssignedBins.filter((b: string) => b && b.length > 2 && b !== rowWhCode);
 
           if (parsedBins.length === 0 && d.locationBin && typeof d.locationBin === 'string' && d.locationBin !== rowWhCode) {
-            parsedBins = d.locationBin.split(',').map((b: string) => b.trim()).filter((b: string) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')));
+            parsedBins = d.locationBin.split(',').map((b: string) => b.trim()).filter((b: string) => b && b.length > 2 && b !== rowWhCode);
           }
 
           if (parsedBins.length === 0 && d.note && typeof d.note === 'string' && d.note.includes('[Vị trí Ô:')) {
             const match = d.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
             if (match && match[1]) {
-              parsedBins = match[1].split(',').map((b: string) => b.trim()).filter((b: string) => b && b.length > 2);
+              parsedBins = match[1].split(',').map((b: string) => b.trim()).filter((b: string) => b && b.length > 2 && b !== rowWhCode);
             }
           }
 

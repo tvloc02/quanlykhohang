@@ -503,3 +503,21 @@ export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, {
     return {};
   }
 }
+
+export function clearAllDraftSlotLocks(warehouseCode?: string) {
+  try {
+    if (!warehouseCode) {
+      localStorage.removeItem(DRAFT_LOCKS_STORAGE_KEY);
+    } else {
+      const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+      if (!raw) return;
+      let allLocks: DraftSlotLock[] = JSON.parse(raw);
+      const whUpper = warehouseCode.trim().toUpperCase();
+      allLocks = allLocks.filter((l) => !l.binCode.toUpperCase().startsWith(whUpper));
+      localStorage.setItem(DRAFT_LOCKS_STORAGE_KEY, JSON.stringify(allLocks));
+    }
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error clearing draft slot locks:', err);
+  }
+}
