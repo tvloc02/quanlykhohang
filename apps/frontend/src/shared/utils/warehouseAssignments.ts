@@ -404,3 +404,205 @@ export function getUserWarehouseNames(
     .filter((w) => warehouseIds.includes(w.id))
     .map((w) => w.name);
 }
+
+export interface BinCell {
+  binCode: string;
+  cellCode: string;
+  bayCode: string;
+  maxWeight: number;
+  freeVol: number;
+  isOccupied?: boolean;
+  stockQty?: number;
+  productId?: string;
+  productSku?: string;
+  productName?: string;
+}
+
+export interface ShelfFloor {
+  floorId: string;
+  floorName: string;
+  floorDesc: string;
+  cells: BinCell[];
+}
+
+export interface RackStructure {
+  rackId: string;
+  rackName: string;
+  dimensions: string;
+  spec: string;
+  zoneName: string;
+  floors: ShelfFloor[];
+}
+
+const normalizeBinKey = (code: string): string => {
+  if (!code) return '';
+  return code.trim().toUpperCase().replace(/_/g, '-');
+};
+
+export function buildWarehouseRackTopology(
+  warehouse: WarehouseRecord | null | undefined,
+  warehouseCode: string,
+  dbOccupiedBinsMap: Map<string, number> = new Map(),
+  binProductsMap?: Map<string, { productId: string; sku: string; productName: string; qty: number }>,
+  currentOrderAssignedBins: Set<string> = new Set(),
+): RackStructure[] {
+  const whPrefix = warehouseCode ? warehouseCode.trim().toUpperCase() : 'KHO';
+  const whName = warehouse?.name || whPrefix;
+
+  const createFloorCells = (
+    zonePrefix: string,
+    rackId: string,
+    floorId: string,
+    cellsCount = 10
+  ): BinCell[] => {
+    return Array.from({ length: cellsCount }).map((_, idx) => {
+      const cellNum = (idx + 1).toString().padStart(2, '0');
+      const binCode = `${zonePrefix}-${rackId}-${floorId}-C${cellNum}`;
+      const normCode = normalizeBinKey(binCode);
+
+      let isOccupied = false;
+      let stockQty = 0;
+      let productId = '';
+      let productSku = '';
+      let productName = '';
+
+      if (!currentOrderAssignedBins.has(binCode) && !currentOrderAssignedBins.has(normCode)) {
+        if (dbOccupiedBinsMap.has(normCode) || dbOccupiedBinsMap.has(binCode)) {
+          isOccupied = true;
+          stockQty = dbOccupiedBinsMap.get(normCode) || dbOccupiedBinsMap.get(binCode) || 0;
+          const info = binProductsMap?.get(normCode) || binProductsMap?.get(binCode);
+          if (info) {
+            productId = info.productId;
+            productSku = info.sku;
+            productName = info.productName;
+          }
+        }
+      }
+
+      return {
+        binCode,
+        cellCode: `Ô C${cellNum}`,
+        bayCode: `Khoang B${Math.ceil((idx + 1) / 2).toString().padStart(2, '0')}`,
+        maxWeight: 500,
+        freeVol: 450,
+        isOccupied,
+        stockQty,
+        productId,
+        productSku,
+        productName,
+      };
+    });
+  };
+
+  // Case A: Warehouse has custom subWarehouses (Phân khu)
+  const activeSubs = (warehouse?.subWarehouses || []).filter((s) => s && s.status !== 'inactive');
+  if (activeSubs.length > 0) {
+    const topology: RackStructure[] = [];
+
+    activeSubs.forEach((sub, zIdx) => {
+      const zoneCode = (sub.code || `ZONE-${String.fromCharCode(65 + zIdx)}`).trim().toUpperCase();
+      const zoneName = sub.name || `Phân Khu ${zoneCode}`;
+      const zoneTypeLabel =
+        sub.zoneType === 'COLD' ? 'Kho Lạnh' : sub.zoneType === 'THERMAL' ? 'Kho Điều Hòa' : 'Kho Thường';
+
+      let racksList: Array<{
+        rackCode: string;
+        name?: string;
+        shelvesCount?: number;
+        binsPerShelf?: number;
+        length?: number;
+        width?: number;
+      }> = [];
+
+      if (Array.isArray(sub.racks) && sub.racks.length > 0) {
+        racksList = sub.racks.map((rk) => ({
+          rackCode: rk.rackCode || rk.id || 'R01',
+          name: rk.name,
+          shelvesCount:
+            rk.shelvesCount ||
+            ((rk as any).horizontalPartitions ? (rk as any).horizontalPartitions - 1 : sub.shelvesPerRack || 4),
+          binsPerShelf: (rk as any).verticalPartitions
+            ? (rk as any).verticalPartitions - 1
+            : rk.binsPerShelf && rk.binsPerShelf > 2
+              ? rk.binsPerShelf - 1
+              : sub.binsPerShelf || 10,
+          length: rk.length || sub.rackLength || 18,
+          width: rk.width || sub.rackWidth || 1.2,
+        }));
+      } else {
+        const racksCount = sub.racksCount && sub.racksCount > 0 ? sub.racksCount : 1;
+        for (let r = 1; r <= racksCount; r++) {
+          const rCode = `R${String(r).padStart(2, '0')}`;
+          racksList.push({
+            rackCode: rCode,
+            name: `Dãy Kệ ${rCode} (${zoneName})`,
+            shelvesCount: sub.shelvesPerRack || 4,
+            binsPerShelf: sub.binsPerShelf || 10,
+            length: sub.rackLength || 18,
+            width: sub.rackWidth || 1.2,
+          });
+        }
+      }
+
+      racksList.forEach((rk) => {
+        const rId = rk.rackCode.toUpperCase();
+        const numShelves = rk.shelvesCount || 4;
+        const numBins = rk.binsPerShelf || 10;
+
+        const floors = Array.from({ length: numShelves }).map((_, flIdx) => {
+          const floorNum = numShelves - flIdx;
+          const floorId = `S${floorNum.toString().padStart(2, '0')}`;
+          return {
+            floorId,
+            floorName: `Tầng ${floorId}`,
+            floorDesc: `Mâm kệ tầng ${floorNum}`,
+            cells: createFloorCells(zoneCode, rId, floorId, numBins),
+          };
+        });
+
+        topology.push({
+          rackId: rId,
+          rackName: rk.name || `Dãy Kệ ${rId} (${zoneName})`,
+          dimensions: `${rk.length || 18}m Dài × ${rk.width || 1.2}m Rộng`,
+          spec: `${numShelves} Tầng × ${numBins} Ô`,
+          zoneName: `${zoneName} (${zoneTypeLabel})`,
+          floors,
+        });
+      });
+    });
+
+    if (topology.length > 0) return topology;
+  }
+
+  // Case B: Warehouse has no custom subWarehouses configured
+  // Generate 2 standard racks (R01, R02) in 1 default zone (Khu A) for this warehouse
+  return [
+    {
+      rackId: 'R01',
+      rackName: `Dãy Kệ R01 (${whPrefix})`,
+      dimensions: '18m Dài × 1.2m Rộng',
+      spec: '4 Tầng × 10 Ô',
+      zoneName: `Khu A - ${whName} (Kho Thường)`,
+      floors: [
+        { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S04', 10) },
+        { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S03', 10) },
+        { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S02', 10) },
+        { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Tầng Trệt)', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S01', 10) },
+      ],
+    },
+    {
+      rackId: 'R02',
+      rackName: `Dãy Kệ R02 (${whPrefix})`,
+      dimensions: '18m Dài × 1.2m Rộng',
+      spec: '4 Tầng × 10 Ô',
+      zoneName: `Khu B - ${whName} (Kho Thường)`,
+      floors: [
+        { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S04', 10) },
+        { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S03', 10) },
+        { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S02', 10) },
+        { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Tầng Trệt)', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S01', 10) },
+      ],
+    },
+  ];
+}
+
