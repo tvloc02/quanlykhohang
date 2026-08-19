@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Printer, FileSpreadsheet, RefreshCw, Search, FileText, Calendar, Filter } from 'lucide-react';
+import { Printer, FileSpreadsheet, RefreshCw, Search, FileText, Calendar } from 'lucide-react';
 import { reportsApi } from '../api/reportsApi';
 
 interface Props {
@@ -15,7 +15,7 @@ export default function GenericReportPage({
   title,
   description,
   reportType = 'sales-detail',
-  badgeColor = 'bg-cyan-600 border-cyan-500',
+  badgeColor = 'bg-cyan-600',
 }: Props) {
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -46,23 +46,44 @@ export default function GenericReportPage({
     loadData();
   }, [reportType, startDate, endDate]);
 
-  // Filtered Rows
+  // Filtered & Flattened Rows
   const rows = useMemo(() => {
     if (!Array.isArray(data)) return [];
-    if (!search.trim()) return data;
+
+    let flatList: any[] = [];
+    if (data.length > 0 && Array.isArray(data[0]?.items)) {
+      data.forEach((group: any) => {
+        const groupName = group.groupName || group.categoryName || 'Khác';
+        (group.items || []).forEach((item: any) => {
+          flatList.push({
+            groupName,
+            ...item,
+          });
+        });
+      });
+    } else {
+      flatList = data;
+    }
+
+    if (!search.trim()) return flatList;
     const q = search.trim().toLowerCase();
-    return data.filter((item: any) =>
-      Object.values(item).some((val) => String(val || '').toLowerCase().includes(q))
+    return flatList.filter((item: any) =>
+      Object.values(item).some((val) => {
+        if (typeof val === 'object' && val !== null) {
+          return JSON.stringify(val).toLowerCase().includes(q);
+        }
+        return String(val || '').toLowerCase().includes(q);
+      })
     );
   }, [data, search]);
 
   const handleExportExcel = () => {
     if (!Array.isArray(rows) || rows.length === 0) return;
     const sample = rows[0];
-    const keys = Object.keys(sample).filter((k) => k !== 'id');
+    const keys = Object.keys(sample).filter((k) => k !== 'id' && typeof sample[k] !== 'object');
     const header = ['STT', ...keys].join(',');
     const csvRows = rows.map((r, idx) =>
-      [idx + 1, ...keys.map((k) => `"${String(r[k] || '').replace(/"/g, '""')}"`)].join(',')
+      [idx + 1, ...keys.map((k) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`)].join(',')
     );
     const csvContent = '\uFEFF' + [header, ...csvRows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -74,89 +95,118 @@ export default function GenericReportPage({
     URL.revokeObjectURL(url);
   };
 
+  const renderCellValue = (key: string, val: any) => {
+    if (val === null || val === undefined) return '-';
+    if (typeof val === 'number') {
+      if (
+        key.toLowerCase().includes('qty') ||
+        key.toLowerCase().includes('stock') ||
+        key.toLowerCase().includes('orders') ||
+        key.toLowerCase().includes('receipts') ||
+        key.toLowerCase().includes('count')
+      ) {
+        return fmt(val);
+      }
+      return `${fmt(val)} đ`;
+    }
+    if (typeof val === 'boolean') {
+      return val ? 'Có' : 'Không';
+    }
+    if (typeof val === 'object') {
+      if (Array.isArray(val)) {
+        return `${val.length} mục`;
+      }
+      return val.name || val.title || val.code || val.groupName || JSON.stringify(val);
+    }
+    return String(val);
+  };
+
   return (
-    <div className="space-y-6 pb-12">
-      {/* HEADER TITLE */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className={`inline-flex items-center gap-2.5 rounded-xl border-2 ${badgeColor} px-4 py-2 text-white shadow-sm`}>
+    <div className="space-y-4 pb-12 animate-in fade-in duration-200">
+      {/* ═══ HEADER TITLE - CYAN ONLY FOR TITLE BADGE ═══ */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
             <FileText className="h-5 w-5 text-white" />
-            <h1 className="text-base font-black tracking-tight uppercase">{title}</h1>
+            <h1 className="text-xl font-extrabold tracking-tight uppercase">{title}</h1>
           </div>
-          <p className="mt-1 text-xs font-semibold text-slate-500">{description}</p>
         </div>
 
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-600 bg-white px-4 py-2 text-xs font-bold text-cyan-700 shadow-sm hover:bg-cyan-50 transition cursor-pointer"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin text-cyan-600' : 'text-cyan-700'} />
-          Làm mới dữ liệu
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin text-slate-600' : 'text-slate-600'} />
+            Làm mới
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+          >
+            <Printer size={14} className="text-slate-600" />
+            In báo cáo
+          </button>
+          <button
+            onClick={handleExportExcel}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+          >
+            <FileSpreadsheet size={14} className="text-slate-600" />
+            Export Excel
+          </button>
+        </div>
       </div>
 
-      {/* FILTER CONTROL PANEL */}
-      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-pink-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-pink-700 transition cursor-pointer"
-            >
-              <Printer size={15} />
-              In báo cáo
-            </button>
-            <button
-              onClick={handleExportExcel}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition cursor-pointer"
-            >
-              <FileSpreadsheet size={15} />
-              Export Excel
-            </button>
-
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-              <Calendar size={14} className="text-cyan-600" />
-              <span>Từ:</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500"
-              />
-              <span>Đến:</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500"
-              />
-            </div>
-          </div>
-
-          <div className="relative min-w-[240px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      {/* ═══ FILTER CONTROL PANEL - CLEAN WHITE ═══ */}
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative flex-1 min-w-[300px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm kiếm báo cáo..."
-              className="h-9 w-full rounded-xl border-2 border-slate-200 bg-white pl-9 pr-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500 shadow-2xs"
+              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
             />
+          </div>
+
+          <div className="inline-flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-slate-600 shrink-0" />
+              <span className="text-xs font-extrabold uppercase text-slate-800 tracking-wide">Thời gian:</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-600">Từ</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 transition cursor-pointer"
+              />
+              <span className="text-xs font-bold text-slate-600">Đến</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 transition cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* REPORT CONTENT TABLE / DATA DISPLAY */}
+      {/* ═══ REPORT CONTENT TABLE / DATA DISPLAY ═══ */}
       <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
         {loading ? (
           <div className="py-16 text-center text-xs font-bold text-slate-500">
-            <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin text-cyan-600" />
+            <RefreshCw className="mx-auto mb-2 h-6 w-6 animate-spin text-slate-600" />
             Đang truy vấn dữ liệu từ CSDL...
           </div>
         ) : error ? (
-          <div className="py-12 text-center text-xs font-bold text-red-600">{error}</div>
-        ) : reportType === 'fund-balance' ? (
+          <div className="py-12 text-center text-xs font-bold text-rose-600">{error}</div>
+        ) : reportType === 'fund-balance' && data && typeof data === 'object' && !Array.isArray(data) ? (
           /* Fund Balance Special Summary View */
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -172,20 +222,20 @@ export default function GenericReportPage({
                 <p className="text-xs font-bold text-rose-700">Tổng chi (Nhập hàng)</p>
                 <p className="text-lg font-black text-rose-700">-{fmt(data.totalExpense)} đ</p>
               </div>
-              <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50 p-4">
-                <p className="text-xs font-bold text-cyan-800">Tồn quỹ cuối kỳ</p>
-                <p className="text-lg font-black text-cyan-800">{fmt(data.closingBalance)} đ</p>
+              <div className="rounded-xl border-2 border-slate-300 bg-slate-100 p-4">
+                <p className="text-xs font-bold text-slate-800">Tồn quỹ cuối kỳ</p>
+                <p className="text-lg font-black text-slate-900">{fmt(data.closingBalance)} đ</p>
               </div>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <h4 className="text-xs font-black uppercase text-slate-700 mb-3">Phân bổ tồn quỹ</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50">
+                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50">
                   <span className="text-xs font-bold text-slate-600">Tiền mặt tại quỹ:</span>
                   <span className="text-sm font-black text-slate-900">{fmt(data.cashBalance)} đ</span>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50">
+                <div className="flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50">
                   <span className="text-xs font-bold text-slate-600">Tiền gửi ngân hàng:</span>
                   <span className="text-sm font-black text-slate-900">{fmt(data.bankBalance)} đ</span>
                 </div>
@@ -197,16 +247,17 @@ export default function GenericReportPage({
             Không tìm thấy bản ghi dữ liệu báo cáo nào trong CSDL cho kỳ này
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full border-collapse text-left text-xs">
-              <thead className="bg-cyan-50 text-slate-800 font-extrabold uppercase border-b-2 border-slate-200">
+              <thead className="bg-cyan-600 text-white font-extrabold uppercase border-b-2 border-cyan-700 sticky top-0 z-10">
                 <tr>
-                  <th className="w-12 px-3 py-3.5 text-center border-r border-slate-200">STT</th>
-                  {Object.keys(rows[0])
-                    .filter((k) => k !== 'id')
+                  <th className="w-12 px-3 py-3.5 text-center border-r border-cyan-500/50">STT</th>
+                  {Object.keys(rows[0] || {})
+                    .filter((k) => k !== 'id' && typeof (rows[0] || {})[k] !== 'object')
                     .map((key) => (
-                      <th key={key} className="px-4 py-3.5 border-r border-slate-200 capitalize whitespace-nowrap">
-                        {key === 'code' ? 'Mã đối tượng' :
+                      <th key={key} className="px-4 py-3.5 border-r border-cyan-500/50 capitalize whitespace-nowrap">
+                        {key === 'groupName' ? 'Nhóm sản phẩm' :
+                         key === 'code' ? 'Mã đối tượng' :
                          key === 'name' ? 'Tên đối tượng' :
                          key === 'phone' ? 'Điện thoại' :
                          key === 'address' ? 'Địa chỉ' :
@@ -221,7 +272,7 @@ export default function GenericReportPage({
                          key === 'partner' ? 'Đối tác' :
                          key === 'description' ? 'Ghi chú' :
                          key === 'amount' ? 'Số tiền' :
-                         key === 'productSku' ? 'Mã sản phẩm' :
+                         key === 'productSku' || key === 'sku' ? 'Mã sản phẩm' :
                          key === 'productName' ? 'Tên sản phẩm' :
                          key === 'unit' ? 'ĐVT' :
                          key === 'initialStock' ? 'Tồn đầu kỳ' :
@@ -241,12 +292,12 @@ export default function GenericReportPage({
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white font-medium text-slate-700">
                 {rows.map((row: any, idx: number) => (
-                  <tr key={row.id || idx} className="hover:bg-cyan-50/50 transition">
+                  <tr key={row.id || idx} className="hover:bg-slate-50 transition">
                     <td className="px-3 py-3 text-center border-r border-slate-200 font-bold text-slate-500">
                       {idx + 1}
                     </td>
-                    {Object.keys(row)
-                      .filter((k) => k !== 'id')
+                    {Object.keys(row || {})
+                      .filter((k) => k !== 'id' && typeof (row || {})[k] !== 'object')
                       .map((key) => {
                         const val = row[key];
                         const isNum = typeof val === 'number';
@@ -257,7 +308,7 @@ export default function GenericReportPage({
                               isNum ? 'text-right font-bold text-slate-900' : ''
                             } ${key === 'type' && val === 'THU' ? 'text-emerald-700 font-black' : key === 'type' && val === 'CHI' ? 'text-rose-700 font-black' : ''}`}
                           >
-                            {isNum ? (key.toLowerCase().includes('qty') || key.toLowerCase().includes('stock') || key.toLowerCase().includes('orders') || key.toLowerCase().includes('receipts') ? val : `${fmt(val)} đ`) : (val || '-')}
+                            {renderCellValue(key, val)}
                           </td>
                         );
                       })}

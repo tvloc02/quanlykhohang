@@ -868,6 +868,19 @@ function App() {
             </RoleRoute>
           }
         />
+        <Route path="/reports/inventory summary" element={<Navigate to="/reports/inventory-summary" replace />} />
+        <Route path="/reports/inventory_summary" element={<Navigate to="/reports/inventory-summary" replace />} />
+        <Route path="/reports/inventory base unit" element={<Navigate to="/reports/inventory-base-unit" replace />} />
+        <Route path="/reports/inventory_base_unit" element={<Navigate to="/reports/inventory-base-unit" replace />} />
+        <Route path="/reports/customer debt" element={<Navigate to="/reports/customer-debt" replace />} />
+        <Route path="/reports/supplier debt" element={<Navigate to="/reports/supplier-debt" replace />} />
+        <Route path="/reports/fund balance" element={<Navigate to="/reports/fund-balance" replace />} />
+        <Route path="/reports/stock card" element={<Navigate to="/reports/stock-card" replace />} />
+        <Route path="/reports/sales detail" element={<Navigate to="/reports/sales-detail" replace />} />
+        <Route path="/reports/sales by staff" element={<Navigate to="/reports/sales-by-staff" replace />} />
+        <Route path="/reports/bill profit" element={<Navigate to="/reports/bill-profit" replace />} />
+        <Route path="/reports/category profit" element={<Navigate to="/reports/category-profit" replace />} />
+        <Route path="/reports/customer profit" element={<Navigate to="/reports/customer-profit" replace />} />
         <Route
           path="/reports/customer-debt"
           element={
