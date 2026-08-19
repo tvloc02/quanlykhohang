@@ -74,38 +74,64 @@ export function getProductWarehouseStock(p: ProductOption, whCode: string): numb
   if (!p) return 0;
 
   const targetCode = (whCode || '').trim().toLowerCase();
-
-  // 1. Check stockBalances if array exists
-  if (Array.isArray(p.stockBalances)) {
-    const match = p.stockBalances.find((b) => {
-      const bCode = (b.locationCode || '').trim().toLowerCase();
-      if (bCode === targetCode) return true;
-      // Handle aliases for KH006 / Kho Thanh Trì / KHO-NVL
-      if (
-        (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
-        (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl')
-      ) {
-        return true;
-      }
-      return false;
-    });
-
-    if (match) {
-      if (match.totalPhysical !== undefined && match.totalPhysical !== null) {
-        return Number(match.totalPhysical);
-      }
-      if (match.available !== undefined && match.available !== null) {
-        return Number(match.available);
-      }
-    }
-
-    // If stockBalances array exists, but target warehouse was not found in it, quantity in target warehouse is 0!
-    return 0;
+  if (!targetCode) {
+    return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
   }
 
-  // 2. Fallback ONLY if stockBalances array is not present on product object and no warehouse code is passed
-  if (!whCode) {
-    return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
+  // 1. Check stockBalances if present
+  if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
+    let sum = 0;
+    let found = false;
+
+    p.stockBalances.forEach((b: any) => {
+      const bCode = (b.locationCode || '').trim().toLowerCase();
+      if (!bCode) return;
+
+      const matches =
+        bCode === targetCode ||
+        bCode.startsWith(targetCode + '-') ||
+        bCode.startsWith(targetCode + '_') ||
+        bCode.startsWith(targetCode + '/') ||
+        ((targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
+          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl' || bCode.startsWith('kho-nvl-')));
+
+      if (matches) {
+        found = true;
+        const qty = b.totalPhysical !== undefined && b.totalPhysical !== null ? Number(b.totalPhysical) : Number(b.available || 0);
+        sum += qty;
+      }
+    });
+
+    if (found) return sum;
+  }
+
+  // 2. Check warehouseStocks object if present on product entity
+  if (p.warehouseStocks && typeof p.warehouseStocks === 'object') {
+    for (const [k, v] of Object.entries(p.warehouseStocks)) {
+      const kLower = k.trim().toLowerCase();
+      if (
+        kLower === targetCode ||
+        kLower.startsWith(targetCode + '-') ||
+        kLower.startsWith(targetCode + '_') ||
+        ((targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
+          (kLower === 'kh006' || kLower === 'kho thanh trì' || kLower === 'kho-nvl'))
+      ) {
+        const val = Number(v);
+        if (!isNaN(val)) return val;
+      }
+    }
+  }
+
+  // 3. Fallback: If product has overall stock and target warehouse is default, return overall stock
+  const overallStock = Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
+  const isDefaultWh =
+    !p.defaultWarehouse ||
+    p.defaultWarehouse.trim().toLowerCase() === targetCode ||
+    targetCode === 'kh001' ||
+    targetCode === 'kho tổng (hà nội)';
+
+  if (overallStock > 0 && isDefaultWh) {
+    return overallStock;
   }
 
   return 0;
