@@ -20,6 +20,7 @@ import {
   Plus,
   Trash2,
   AlertCircle,
+  Save,
 } from 'lucide-react';
 
 export interface DocTemplateItem {
@@ -40,7 +41,42 @@ export interface DocTemplateItem {
   sellerName?: string;
 }
 
-const INITIAL_TRANSFER_TEMPLATES: DocTemplateItem[] = [];
+const INITIAL_TRANSFER_TEMPLATES: DocTemplateItem[] = [
+  {
+    id: 'tpl-tr-001',
+    templateCode: 'PDC-001',
+    serialSymbol: '6C25NTU',
+    cqtStatus: 'APPROVED',
+    status: 'ACTIVE',
+    invoiceType: 'MAIN',
+    appliedWarehouse: 'Tất cả các kho',
+    createdDate: '23/02/2025',
+    fileName: 'Mau_Phieu_Dieu_Chuyen_Hang_Hoa_Noi_Bo.docx',
+    fileSize: '48.5 KB',
+    companyName: 'CÔNG TY TNHH ĐÀO TẠO THIÊN ỨNG',
+    companyTaxCode: '0110329220',
+    companyAddress: 'Nhà lô B11, số 9A, ngõ 181 đường Xuân Thủy, Phường Dịch Vọng Hậu, Quận Cầu Giấy, Hà Nội',
+    invoiceTitle: 'PHIẾU ĐIỀU CHUYỂN HÀNG HÓA NỘI BỘ',
+    sellerName: 'System Administrator',
+  },
+  {
+    id: 'tpl-tr-002',
+    templateCode: 'PDC-002',
+    serialSymbol: '6C25NTU-02',
+    cqtStatus: 'APPROVED',
+    status: 'ACTIVE',
+    invoiceType: 'SUB',
+    appliedWarehouse: 'Kho Chi Nhánh HCM',
+    createdDate: '18/08/2026',
+    fileName: 'Mau_Phieu_Luan_Chuyen_Noi_Bo_Chi_Nhanh.docx',
+    fileSize: '45.0 KB',
+    companyName: 'CÔNG TY TNHH ĐÀO TẠO THIÊN ỨNG',
+    companyTaxCode: '0110329220',
+    companyAddress: 'Nhà lô B11, số 9A, ngõ 181 đường Xuân Thủy, Phường Dịch Vọng Hậu, Quận Cầu Giấy, Hà Nội',
+    invoiceTitle: 'PHIẾU LUÂN CHUYỂN NỘI BỘ CHI NHÁNH',
+    sellerName: 'System Administrator',
+  },
+];
 
 export default function TransferDocPage() {
   const [docs, setDocs] = useState<TransferDoc[]>([]);
@@ -255,29 +291,29 @@ export default function TransferDocPage() {
 
       {/* Header Design Aligned with Personnel Layout */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white p-2 shadow-sm">
           <button
             type="button"
             onClick={() => setActiveTab('LIST')}
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
               activeTab === 'LIST'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-white text-cyan-700 hover:bg-cyan-50'
+                ? 'bg-cyan-600 text-white shadow-sm font-black'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            <List className="h-4.5 w-4.5" />
+            <List className="h-4 w-4" />
             Danh sách phiếu điều chuyển
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('TEMPLATE')}
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
               activeTab === 'TEMPLATE'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-white text-cyan-700 hover:bg-cyan-50'
+                ? 'bg-cyan-600 text-white shadow-sm font-black'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            <FileSpreadsheet className="h-4.5 w-4.5" />
+            <FileSpreadsheet className="h-4 w-4" />
             Mẫu phiếu điều chuyển
           </button>
         </div>
@@ -875,90 +911,214 @@ export default function TransferDocPage() {
         </div>
       )}
 
-      {/* Preview Template Printable A4 Canvas Modal */}
+      {/* Official Printable A4 Canvas Modal for Transfer Order Invoice Template */}
       {previewTemplateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8">
-            <div className="flex items-center justify-between bg-cyan-700 px-6 py-4 text-white print:hidden">
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="h-5 w-5" />
-                <h3 className="font-bold text-base">Xem Mẫu Phiếu Điều Chuyển: {previewTemplateModal.templateCode} ({previewTemplateModal.serialSymbol})</h3>
-              </div>
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/80 p-3 sm:p-6 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white">
+          <div className="flex w-full max-w-5xl max-h-[96vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:max-h-none print:shadow-none print:w-full print:rounded-none">
+            {/* Modal Top Bar */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-cyan-600 px-6 py-4 text-white print:hidden">
               <div className="flex items-center gap-3">
+                <FileCheck className="h-6 w-6 text-cyan-200" />
+                <div>
+                  <h2 className="text-lg font-bold">Phiếu Điều Chuyển Hàng Hóa Nội Bộ</h2>
+                  <p className="text-xs text-cyan-100">Mẫu in phiếu điều chuyển hàng hóa giữa các kho ({previewTemplateModal.templateCode})</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-cyan-800 shadow-xs hover:bg-cyan-50 transition"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/30 cursor-pointer"
                 >
                   <Printer className="h-4 w-4" />
-                  In Thử Mẫu
+                  In phiếu
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewTemplateModal(null)}
-                  className="rounded-xl p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition"
+                  className="rounded-xl p-2 text-white/80 transition hover:bg-white/20 hover:text-white cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            <div className="p-8 md:p-12 font-serif text-slate-900 space-y-6">
-              <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1">
-                <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase">{previewTemplateModal.invoiceTitle}</h2>
-                <p className="text-xs font-bold text-slate-700">{previewTemplateModal.companyName}</p>
+            {/* Document Content Box */}
+            <div className="overflow-y-auto p-6 sm:p-10 text-slate-900 bg-white print:p-4 font-sans text-base leading-relaxed">
+              <div className="max-w-4xl mx-auto border-4 border-cyan-500/80 p-6 sm:p-8 rounded-lg shadow-inner print:border-2 print:border-black font-sans">
+                
+                {/* Header Right */}
+                <div className="text-right font-sans font-bold text-slate-800 text-sm mb-4">
+                  Mẫu phiếu điều chuyển
+                </div>
+
+                {/* Exporter Info */}
+                <div className="space-y-1 text-sm font-sans mb-6">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Tên đơn vị gửi hàng:</span>
+                    <span className="font-bold text-slate-900 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      {previewTemplateModal.companyName || 'Kho xuất hàng'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Theo lệnh điều động số</span>
+                    <span className="font-bold text-slate-900 border-b border-dashed border-slate-300 w-44 text-center font-sans text-base">
+                      12/LDD-PXC202601
+                    </span>
+                    <span className="font-semibold text-slate-700">về việc vận chuyển điều chuyển hàng hóa</span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700 shrink-0">Địa chỉ kho gửi (kho đi):</span>
+                    <span className="font-medium text-slate-800 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      {previewTemplateModal.companyAddress || 'Nhà số B11, số 9A, ngõ 181 đường Xuân Thủy, Phường Dịch Vọng Hậu, Quận Cầu Giấy, Hà Nội'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Tên người vận chuyển:</span>
+                    <span className="font-medium text-slate-800 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      Chưa phân công
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Phương tiện vận chuyển:</span>
+                    <span className="font-medium text-slate-800 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      Chưa cập nhật
+                    </span>
+                  </div>
+                </div>
+
+                {/* Main Title */}
+                <div className="text-center my-6 font-sans">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wider uppercase text-slate-900 font-sans">
+                    {previewTemplateModal.invoiceTitle || 'PHIẾU ĐIỀU CHUYỂN HÀNG HÓA NỘI BỘ'}
+                  </h1>
+                  <div className="flex items-center justify-between text-sm italic mt-2 px-4 font-sans">
+                    <div className="flex-1 text-center">
+                      <span>Ngày </span>
+                      <span className="not-italic font-bold text-slate-800 border-b border-dashed border-slate-300 px-4 inline-block font-sans">
+                        {previewTemplateModal.createdDate || '23/02/2025'}
+                      </span>
+                    </div>
+                    <div className="text-right not-italic font-sans text-xs font-semibold text-slate-700 space-y-0.5">
+                      <div>Ký hiệu: <span className="font-bold border-b border-dashed border-slate-300 px-2">{previewTemplateModal.serialSymbol || '6C25NTU'}</span></div>
+                      <div>Số: <span className="font-bold text-cyan-700 border-b border-dashed border-slate-300 px-2">25</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Receiver Info */}
+                <div className="space-y-1 text-sm font-sans mb-6">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Tên người nhận hàng:</span>
+                    <span className="font-bold text-slate-900 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      {previewTemplateModal.sellerName || 'System Administrator'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700 shrink-0">Địa điểm kho nhận (kho đến):</span>
+                    <span className="font-medium text-slate-800 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      Số nhà 1, ngách 327/6 phố Vũ Tông Phan, Phường Khương Đình, Quận Thanh Xuân, Thành phố Hà Nội
+                    </span>
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto my-6 font-sans">
+                  <table className="w-full border-2 border-slate-900 text-center text-sm font-sans border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/80 text-slate-900 font-bold border-b-2 border-slate-900">
+                        <th rowSpan={2} className="border border-slate-900 px-2 py-2.5 w-12">STT</th>
+                        <th rowSpan={2} className="border border-slate-900 px-3 py-2.5 text-left">
+                          Tên nhãn hiệu, quy cách, phẩm chất vật tư (sản phẩm, hàng hóa)
+                        </th>
+                        <th rowSpan={2} className="border border-slate-900 px-2 py-2.5 w-24">Mã số</th>
+                        <th rowSpan={2} className="border border-slate-900 px-2 py-2.5 w-20">Đơn vị tính</th>
+                        <th colSpan={2} className="border border-slate-900 px-2 py-1">Số lượng</th>
+                        <th rowSpan={2} className="border border-slate-900 px-3 py-2.5 w-28">Đơn giá</th>
+                        <th rowSpan={2} className="border border-slate-900 px-3 py-2.5 w-32">Thành tiền</th>
+                      </tr>
+                      <tr className="bg-slate-100/80 text-slate-900 font-bold border-b-2 border-slate-900">
+                        <th className="border border-slate-900 px-2 py-1.5 w-16">Thực xuất</th>
+                        <th className="border border-slate-900 px-2 py-1.5 w-16">Thực nhập</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-slate-800 font-sans">
+                        <td className="border border-slate-900 px-2 py-2 font-sans text-xs font-semibold">01</td>
+                        <td className="border border-slate-900 px-3 py-2 text-left font-bold text-slate-900 font-sans">Áo khoác gió</td>
+                        <td className="border border-slate-900 px-2 py-2 font-sans font-semibold text-slate-700">HH820235</td>
+                        <td className="border border-slate-900 px-2 py-2 text-slate-800 font-sans">Cái</td>
+                        <td className="border border-slate-900 px-2 py-2 font-sans font-bold text-slate-900">500</td>
+                        <td className="border border-slate-900 px-2 py-2 font-sans font-bold text-slate-900">500</td>
+                        <td className="border border-slate-900 px-3 py-2 text-right font-sans">10.000.000</td>
+                        <td className="border border-slate-900 px-3 py-2 text-right font-sans font-bold">5.000.000.000</td>
+                      </tr>
+                      {/* Total Row */}
+                      <tr className="font-sans font-extrabold text-slate-900 bg-slate-50">
+                        <td colSpan={7} className="border border-slate-900 px-4 py-2.5 text-right uppercase tracking-wider text-sm">
+                          TỔNG CỘNG:
+                        </td>
+                        <td className="border border-slate-900 px-3 py-2.5 text-right text-base text-cyan-900 font-extrabold">
+                          5.000.000.000
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Digital Signature */}
+                <div className="mt-8 text-center font-sans space-y-2">
+                  <div className="font-extrabold text-slate-900 uppercase tracking-widest text-base">
+                    THỦ TRƯỞNG ĐƠN VỊ
+                  </div>
+                  <div className="text-xs italic text-slate-500">(Chữ ký số)</div>
+                  
+                  <div className="inline-flex flex-col items-center justify-center border-2 border-emerald-500 bg-emerald-50/50 p-4 rounded-xl mt-4 shadow-sm">
+                    <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                      <span>Đã được ký điện tử bởi</span>
+                    </div>
+                    <div className="font-black text-slate-900 text-center uppercase tracking-wider text-sm mt-1">
+                      {previewTemplateModal.companyName || 'CÔNG TY TNHH ĐÀO TẠO THIÊN ỨNG'}
+                    </div>
+                    <div className="text-xs font-semibold text-emerald-700 mt-1">
+                      Ngày: {previewTemplateModal.createdDate || '23/02/2025'}
+                    </div>
+                  </div>
+                </div>
+
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4 text-xs font-medium text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <span className="font-bold text-slate-900">Mẫu Số:</span> <span className="font-mono font-bold text-cyan-700">{previewTemplateModal.templateCode}</span>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-900">Kí Hiệu Phiếu:</span> <span className="font-mono font-bold text-cyan-700">{previewTemplateModal.serialSymbol}</span>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-900">Số Phiếu:</span> <span className="font-mono font-bold text-cyan-700">&#123;&#123;transferNo&#125;&#125;</span>
-                </div>
-                <div>
-                  <span className="font-bold text-slate-900">Trạng Thái CQT:</span>{' '}
-                  <span className="font-bold text-emerald-700">
-                    {previewTemplateModal.cqtStatus === 'APPROVED' ? 'Đã duyệt CQT' : 'Chưa nộp'}
-                  </span>
-                </div>
+            {/* Modal Bottom Actions */}
+            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4 print:hidden">
+              <div className="text-xs font-medium text-slate-500">
+                Mẫu phiếu điều chuyển hàng hóa nội bộ giữa các chi nhánh / kho
               </div>
-
-              <table className="w-full border-2 border-slate-900 text-center text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 font-bold border-b-2 border-slate-900">
-                    <th className="border border-slate-900 p-2 w-12">STT</th>
-                    <th className="border border-slate-900 p-2 text-left">Tên vật tư điều chuyển</th>
-                    <th className="border border-slate-900 p-2 w-16">ĐVT</th>
-                    <th className="border border-slate-900 p-2 w-20">Số lượng</th>
-                    <th className="border border-slate-900 p-2 w-28">Đơn giá</th>
-                    <th className="border border-slate-900 p-2 w-32">Thành tiền</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="border border-slate-900 p-2 font-bold">1</td>
-                    <td className="border border-slate-900 p-2 text-left font-mono text-cyan-700">&#123;&#123;productName_1&#125;&#125;</td>
-                    <td className="border border-slate-900 p-2 font-mono text-cyan-700">&#123;&#123;unit_1&#125;&#125;</td>
-                    <td className="border border-slate-900 p-2 font-mono text-cyan-700">&#123;&#123;quantity_1&#125;&#125;</td>
-                    <td className="border border-slate-900 p-2 text-right font-mono text-cyan-700">&#123;&#123;unitPrice_1&#125;&#125;</td>
-                    <td className="border border-slate-900 p-2 text-right font-mono text-cyan-700">&#123;&#123;total_1&#125;&#125;</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div className="grid grid-cols-2 gap-4 text-center text-xs pt-8">
-                <div className="space-y-12">
-                  <p className="font-bold uppercase">NGƯỜI LẬP PHIẾU</p>
-                  <p className="text-slate-400 font-italic">(Ký, ghi rõ họ tên)</p>
-                </div>
-                <div className="space-y-12">
-                  <p className="font-bold uppercase">XÁC NHẬN KHO ĐÍCH</p>
-                  <p className="font-bold text-cyan-800">{previewTemplateModal.sellerName || 'Nguyễn Văn Quản Lý'}</p>
-                </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPreviewTemplateModal(null)}
+                  className="rounded-xl border-2 border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 cursor-pointer"
+                >
+                  Hủy / Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="rounded-xl border-2 border-cyan-500 bg-white px-5 py-2.5 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 flex items-center gap-2 cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" />
+                  In phiếu điều chuyển
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewTemplateModal(null)}
+                  className="rounded-xl border-2 border-cyan-500 bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 flex items-center gap-2 cursor-pointer"
+                >
+                  <Save className="h-4 w-4" />
+                  Lưu phiếu điều chuyển
+                </button>
               </div>
             </div>
           </div>
@@ -967,79 +1127,219 @@ export default function TransferDocPage() {
 
       {/* Transfer Printable Detail Modal */}
       {previewDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto">
-          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8">
-            <div className="flex items-center justify-between bg-cyan-700 px-6 py-4 text-white print:hidden">
-              <div className="flex items-center gap-2">
-                <Truck className="h-5 w-5" />
-                <h3 className="font-bold text-base">Chi Tiết Phiếu Điều Chuyển: {previewDoc.transferNo}</h3>
-              </div>
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/80 p-3 sm:p-6 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white">
+          <div className="flex w-full max-w-5xl max-h-[96vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:max-h-none print:shadow-none print:w-full print:rounded-none">
+            {/* Modal Top Bar */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-cyan-600 px-6 py-4 text-white print:hidden">
               <div className="flex items-center gap-3">
+                <FileCheck className="h-6 w-6 text-cyan-200" />
+                <div>
+                  <h2 className="text-lg font-bold">Phiếu Điều Chuyển Hàng Hóa Nội Bộ</h2>
+                  <p className="text-xs text-cyan-100">Chi tiết phiếu điều chuyển: {previewDoc.transferNo}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-bold text-cyan-800 shadow-xs hover:bg-cyan-50 transition"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/20 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/30 cursor-pointer"
                 >
                   <Printer className="h-4 w-4" />
-                  In Phiếu Điều Chuyển
+                  In phiếu
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewDoc(null)}
-                  className="rounded-xl p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition"
+                  className="rounded-xl p-2 text-white/80 transition hover:bg-white/20 hover:text-white cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            <div className="p-8 font-serif text-slate-900 print:p-0 space-y-6">
-              <div className="text-center border-b-2 border-slate-900 pb-4">
-                <h1 className="text-2xl font-black uppercase tracking-wide text-slate-900">PHIẾU ĐIỀU CHUYỂN KHO NỘI BỘ</h1>
-                <p className="text-xs font-semibold text-slate-600 mt-1">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
-              </div>
+            {/* Document Content Box */}
+            <div className="overflow-y-auto p-6 sm:p-10 text-slate-900 bg-white print:p-4 font-sans text-base leading-relaxed">
+              <div className="max-w-4xl mx-auto border-4 border-cyan-500/80 p-6 sm:p-8 rounded-lg shadow-inner print:border-2 print:border-black font-sans">
+                
+                {/* Header Right */}
+                <div className="text-right font-sans font-bold text-slate-800 text-sm mb-4">
+                  Mẫu phiếu điều chuyển
+                </div>
 
-              <div className="grid grid-cols-2 gap-4 text-xs sm:text-sm mb-6 border-b border-dashed border-slate-300 pb-4">
-                <div><span className="font-semibold text-slate-700">Số phiếu điều chuyển:</span> <span className="font-bold text-cyan-800">{previewDoc.transferNo}</span></div>
-                <div><span className="font-semibold text-slate-700">Ngày điều chuyển:</span> <span className="font-bold text-slate-900">{previewDoc.createdDate || (previewDoc as any).transferredDate || ''}</span></div>
-                <div><span className="font-semibold text-slate-700">Kho xuất (Nguồn):</span> <span className="font-bold text-slate-900">{previewDoc.sourceWarehouse || (previewDoc as any).fromWarehouse || ''}</span></div>
-                <div><span className="font-semibold text-slate-700">Kho nhập (Đích):</span> <span className="font-bold text-slate-900">{previewDoc.destinationWarehouse || (previewDoc as any).toWarehouse || ''}</span></div>
-              </div>
+                {/* Exporter Info */}
+                <div className="space-y-1 text-sm font-sans mb-6">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Tên đơn vị gửi hàng:</span>
+                    <span className="font-bold text-slate-900 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      {previewDoc.sourceWarehouse || (previewDoc as any).fromWarehouse || 'Kho xuất hàng'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Theo lệnh điều động số</span>
+                    <span className="font-bold text-slate-900 border-b border-dashed border-slate-300 w-44 text-center font-sans text-base">
+                      {previewDoc.transferNo || '12/LDD-PXC202601'}
+                    </span>
+                    <span className="font-semibold text-slate-700">về việc vận chuyển điều chuyển hàng hóa</span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700 shrink-0">Địa chỉ kho gửi (kho đi):</span>
+                    <span className="font-medium text-slate-800 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      Nhà số B11, số 9A, ngõ 181 đường Xuân Thủy, Phường Dịch Vọng Hậu, Quận Cầu Giấy, Hà Nội
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Tên người vận chuyển:</span>
+                    <span className="font-medium text-slate-800 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      {(previewDoc as any).driverName || 'Chưa phân công'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Phương tiện vận chuyển:</span>
+                    <span className="font-medium text-slate-800 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      {(previewDoc as any).vehiclePlate || 'Chưa cập nhật'}
+                    </span>
+                  </div>
+                </div>
 
-              <table className="w-full border-2 border-slate-900 text-center text-xs sm:text-sm border-collapse mb-6">
-                <thead>
-                  <tr className="bg-slate-100 font-bold border-b-2 border-slate-900">
-                    <th className="border border-slate-900 p-2 w-12">STT</th>
-                    <th className="border border-slate-900 p-2 text-left">Tên vật tư sản phẩm</th>
-                    <th className="border border-slate-900 p-2 w-16">ĐVT</th>
-                    <th className="border border-slate-900 p-2 w-20">Số lượng</th>
-                    <th className="border border-slate-900 p-2 w-28">Đơn giá</th>
-                    <th className="border border-slate-900 p-2 w-32">Thành tiền</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewDoc.items.map((item, idx) => {
-                    const qty = item.quantityExported || (item as any).quantity || 0;
-                    const pr = item.price || (item as any).unitPrice || 0;
-                    return (
-                      <tr key={item.id || idx} className="border-b border-slate-800">
-                        <td className="border border-slate-900 p-2 font-bold">{idx + 1}</td>
-                        <td className="border border-slate-900 p-2 text-left font-bold text-slate-900">{item.productName}</td>
-                        <td className="border border-slate-900 p-2">{item.unit}</td>
-                        <td className="border border-slate-900 p-2 font-bold text-slate-900">{qty}</td>
-                        <td className="border border-slate-900 p-2 text-right">{formatMoney(pr)}</td>
-                        <td className="border border-slate-900 p-2 text-right font-bold">{formatMoney(pr * qty)}</td>
+                {/* Main Title */}
+                <div className="text-center my-6 font-sans">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wider uppercase text-slate-900 font-sans">
+                    PHIẾU ĐIỀU CHUYỂN HÀNG HÓA NỘI BỘ
+                  </h1>
+                  <div className="flex items-center justify-between text-sm italic mt-2 px-4 font-sans">
+                    <div className="flex-1 text-center">
+                      <span>Ngày </span>
+                      <span className="not-italic font-bold text-slate-800 border-b border-dashed border-slate-300 px-4 inline-block font-sans">
+                        {previewDoc.createdDate || (previewDoc as any).transferredDate || '23/02/2025'}
+                      </span>
+                    </div>
+                    <div className="text-right not-italic font-sans text-xs font-semibold text-slate-700 space-y-0.5">
+                      <div>Ký hiệu: <span className="font-bold border-b border-dashed border-slate-300 px-2">6C25NTU</span></div>
+                      <div>Số: <span className="font-bold text-cyan-700 border-b border-dashed border-slate-300 px-2">{previewDoc.transferNo ? previewDoc.transferNo.replace(/[^0-9]/g, '') || '25' : '25'}</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Receiver Info */}
+                <div className="space-y-1 text-sm font-sans mb-6">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700">Tên người nhận hàng:</span>
+                    <span className="font-bold text-slate-900 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      {previewDoc.destinationWarehouse || (previewDoc as any).toWarehouse || 'System Administrator'}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-slate-700 shrink-0">Địa điểm kho nhận (kho đến):</span>
+                    <span className="font-medium text-slate-800 border-b border-dashed border-slate-300 flex-1 font-sans text-base">
+                      Số nhà 1, ngách 327/6 phố Vũ Tông Phan, Phường Khương Đình, Quận Thanh Xuân, Thành phố Hà Nội
+                    </span>
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto my-6 font-sans">
+                  <table className="w-full border-2 border-slate-900 text-center text-sm font-sans border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/80 text-slate-900 font-bold border-b-2 border-slate-900">
+                        <th rowSpan={2} className="border border-slate-900 px-2 py-2.5 w-12">STT</th>
+                        <th rowSpan={2} className="border border-slate-900 px-3 py-2.5 text-left">
+                          Tên nhãn hiệu, quy cách, phẩm chất vật tư (sản phẩm, hàng hóa)
+                        </th>
+                        <th rowSpan={2} className="border border-slate-900 px-2 py-2.5 w-24">Mã số</th>
+                        <th rowSpan={2} className="border border-slate-900 px-2 py-2.5 w-20">Đơn vị tính</th>
+                        <th colSpan={2} className="border border-slate-900 px-2 py-1">Số lượng</th>
+                        <th rowSpan={2} className="border border-slate-900 px-3 py-2.5 w-28">Đơn giá</th>
+                        <th rowSpan={2} className="border border-slate-900 px-3 py-2.5 w-32">Thành tiền</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      <tr className="bg-slate-100/80 text-slate-900 font-bold border-b-2 border-slate-900">
+                        <th className="border border-slate-900 px-2 py-1.5 w-16">Thực xuất</th>
+                        <th className="border border-slate-900 px-2 py-1.5 w-16">Thực nhập</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewDoc.items.map((item, idx) => {
+                        const qtyExp = item.quantityExported || (item as any).quantity || 0;
+                        const qtyImp = (item as any).quantityImported || qtyExp;
+                        const pr = item.price || (item as any).unitPrice || 0;
+                        return (
+                          <tr key={item.id || idx} className="border-b border-slate-800 font-sans">
+                            <td className="border border-slate-900 px-2 py-2 font-sans text-xs font-semibold">{String(idx + 1).padStart(2, '0')}</td>
+                            <td className="border border-slate-900 px-3 py-2 text-left font-bold text-slate-900 font-sans">{item.productName}</td>
+                            <td className="border border-slate-900 px-2 py-2 font-sans font-semibold text-slate-700">{item.productCode}</td>
+                            <td className="border border-slate-900 px-2 py-2 text-slate-800 font-sans">{item.unit || 'Cái'}</td>
+                            <td className="border border-slate-900 px-2 py-2 font-sans font-bold text-slate-900">{qtyExp}</td>
+                            <td className="border border-slate-900 px-2 py-2 font-sans font-bold text-slate-900">{qtyImp}</td>
+                            <td className="border border-slate-900 px-3 py-2 text-right font-sans">{formatMoney(pr)}</td>
+                            <td className="border border-slate-900 px-3 py-2 text-right font-sans font-bold">{formatMoney(pr * qtyExp)}</td>
+                          </tr>
+                        );
+                      })}
+                      {/* Total Row */}
+                      <tr className="font-sans font-extrabold text-slate-900 bg-slate-50">
+                        <td colSpan={7} className="border border-slate-900 px-4 py-2.5 text-right uppercase tracking-wider text-sm">
+                          TỔNG CỘNG:
+                        </td>
+                        <td className="border border-slate-900 px-3 py-2.5 text-right text-base text-cyan-900 font-extrabold">
+                          {formatMoney(previewDoc.items.reduce((s, i) => s + (i.price || (i as any).unitPrice || 0) * (i.quantityExported || (i as any).quantity || 0), 0))}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
 
-              <div className="flex justify-between items-center text-xs sm:text-sm border-t border-slate-900 pt-3">
-                <span className="font-bold">Người lập phiếu: Nguyễn Văn Quản Lý</span>
-                <span className="font-black text-cyan-800 text-base">
-                  Tổng giá trị luân chuyển: {formatMoney(previewDoc.items.reduce((s, i) => s + (i.price || (i as any).unitPrice || 0) * (i.quantityExported || (i as any).quantity || 0), 0))} ₫
-                </span>
+                {/* Digital Signature */}
+                <div className="mt-8 text-center font-sans space-y-2">
+                  <div className="font-extrabold text-slate-900 uppercase tracking-widest text-base">
+                    THỦ TRƯỞNG ĐƠN VỊ
+                  </div>
+                  <div className="text-xs italic text-slate-500">(Chữ ký số)</div>
+                  
+                  <div className="inline-flex flex-col items-center justify-center border-2 border-emerald-500 bg-emerald-50/50 p-4 rounded-xl mt-4 shadow-sm">
+                    <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
+                      <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                      <span>Đã được ký điện tử bởi</span>
+                    </div>
+                    <div className="font-black text-slate-900 text-center uppercase tracking-wider text-sm mt-1">
+                      CÔNG TY TNHH ĐÀO TẠO THIÊN ỨNG
+                    </div>
+                    <div className="text-xs font-semibold text-emerald-700 mt-1">
+                      Ngày: {previewDoc.createdDate || (previewDoc as any).transferredDate || '23/02/2025'}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Modal Bottom Actions */}
+            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4 print:hidden">
+              <div className="text-xs font-medium text-slate-500">
+                Mẫu phiếu điều chuyển hàng hóa nội bộ giữa các chi nhánh / kho
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPreviewDoc(null)}
+                  className="rounded-xl border-2 border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 cursor-pointer"
+                >
+                  Hủy / Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="rounded-xl border-2 border-cyan-500 bg-white px-5 py-2.5 text-sm font-bold text-cyan-600 shadow-sm transition hover:bg-cyan-50 flex items-center gap-2 cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" />
+                  In phiếu điều chuyển
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewDoc(null)}
+                  className="rounded-xl border-2 border-cyan-500 bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 flex items-center gap-2 cursor-pointer"
+                >
+                  <Save className="h-4 w-4" />
+                  Lưu phiếu điều chuyển
+                </button>
               </div>
             </div>
           </div>

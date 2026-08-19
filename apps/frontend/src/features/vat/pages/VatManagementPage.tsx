@@ -11,52 +11,56 @@ export default function VatManagementPage() {
   return (
     <div className="space-y-4 pb-12">
       {/* CONDENSED TAB CAROUSEL FOR VAT & DOCUMENTS */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white p-2 shadow-sm">
+      <div className="flex flex-wrap items-center gap-2.5">
         <button
+          type="button"
           onClick={() => setActiveTab('sales-invoice')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
+          className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all cursor-pointer ${
             activeTab === 'sales-invoice'
-              ? 'bg-cyan-600 text-white shadow-sm font-black'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              ? 'bg-cyan-600 text-white shadow-md'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <FileText size={15} />
+          <FileText size={18} />
           Hóa đơn bán hàng / VAT Điện tử
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('stock-in')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
+          className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all cursor-pointer ${
             activeTab === 'stock-in'
-              ? 'bg-cyan-600 text-white shadow-sm font-black'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              ? 'bg-cyan-600 text-white shadow-md'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <ArrowDownRight size={15} />
+          <ArrowDownRight size={18} />
           Chứng từ Phiếu nhập kho
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('stock-out')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
+          className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all cursor-pointer ${
             activeTab === 'stock-out'
-              ? 'bg-cyan-600 text-white shadow-sm font-black'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              ? 'bg-cyan-600 text-white shadow-md'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <ArrowUpRight size={15} />
+          <ArrowUpRight size={18} />
           Chứng từ Phiếu xuất kho
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('transfer')}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
+          className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all cursor-pointer ${
             activeTab === 'transfer'
-              ? 'bg-cyan-600 text-white shadow-sm font-black'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              ? 'bg-cyan-600 text-white shadow-md'
+              : 'bg-white text-cyan-700 hover:bg-cyan-50'
           }`}
         >
-          <ArrowLeftRight size={15} />
+          <ArrowLeftRight size={18} />
           Chứng từ Phiếu điều chuyển
         </button>
       </div>

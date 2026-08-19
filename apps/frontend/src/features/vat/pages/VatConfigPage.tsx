@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  Eye,
+  EyeOff,
   Building2,
   Settings,
   Save,
@@ -77,6 +79,7 @@ export function saveStoredVatConfig(config: VatConfigData) {
 export default function VatConfigPage() {
   const [formData, setFormData] = useState<VatConfigData>(readStoredVatConfig);
   const [saving, setSaving] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
@@ -324,13 +327,23 @@ export default function VatConfigPage() {
                     <Lock size={16} className="text-emerald-600" />
                     Tài khoản API (User/Pass)
                   </label>
-                  <input
-                    type="password"
-                    value={formData.userPass}
-                    onChange={(e) => setFormData({ ...formData, userPass: e.target.value })}
-                    className="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-900 outline-none transition focus:border-cyan-600 focus:bg-white focus:ring-4 focus:ring-cyan-500/10"
-                    placeholder="Mật khẩu kết nối Viettel S-Invoice..."
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.userPass}
+                      onChange={(e) => setFormData({ ...formData, userPass: e.target.value })}
+                      className="w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-900 outline-none transition focus:border-cyan-600 focus:bg-white focus:ring-4 focus:ring-cyan-500/10 pr-12"
+                      placeholder="Mật khẩu kết nối Viettel S-Invoice..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                      title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
