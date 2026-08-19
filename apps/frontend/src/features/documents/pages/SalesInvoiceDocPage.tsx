@@ -46,7 +46,42 @@ export interface InvoiceTemplateItem {
   templateContentText?: string;
 }
 
-const INITIAL_TEMPLATES: InvoiceTemplateItem[] = [];
+const INITIAL_TEMPLATES: InvoiceTemplateItem[] = [
+  {
+    id: 'tpl-inv-001',
+    templateCode: 'HD-001',
+    serialSymbol: 'C26MAA',
+    cqtStatus: 'APPROVED',
+    status: 'ACTIVE',
+    invoiceType: 'MAIN',
+    appliedWarehouse: 'Tất cả các kho',
+    createdDate: '19/08/2026',
+    fileName: 'Mau_Hoa_Don_GTGT_Dien_Tu_Chuan.docx',
+    fileSize: '52.4 KB',
+    companyName: 'CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS',
+    companyTaxCode: '0316889988',
+    companyAddress: 'Tầng 8, Tòa nhà Innovation, Quận 1, TP. Hồ Chí Minh',
+    invoiceTitle: 'HÓA ĐƠN GIÁ TRỊ GIA TĂNG (VAT)',
+    sellerName: 'Nguyễn Văn Quản Lý',
+  },
+  {
+    id: 'tpl-inv-002',
+    templateCode: 'HD-002',
+    serialSymbol: 'C26MBB',
+    cqtStatus: 'APPROVED',
+    status: 'ACTIVE',
+    invoiceType: 'SUB',
+    appliedWarehouse: 'Kho Tổng TP.HCM',
+    createdDate: '15/08/2026',
+    fileName: 'Mau_Hoa_Don_Ban_Hang_Chiet_Khau.docx',
+    fileSize: '46.8 KB',
+    companyName: 'CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS',
+    companyTaxCode: '0316889988',
+    companyAddress: 'Tầng 8, Tòa nhà Innovation, Quận 1, TP. Hồ Chí Minh',
+    invoiceTitle: 'HÓA ĐƠN BÁN HÀNG BÁN BUÔN',
+    sellerName: 'Trần Thị Kế Toán',
+  },
+];
 
 export default function SalesInvoiceDocPage() {
   const [invoices, setInvoices] = useState<SalesInvoiceDoc[]>([]);
@@ -482,29 +517,29 @@ export default function SalesInvoiceDocPage() {
 
       {/* Header Design Aligned with Personnel Layout */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white p-2 shadow-sm">
           <button
             type="button"
             onClick={() => setActiveTab('LIST')}
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
               activeTab === 'LIST'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-white text-cyan-700 hover:bg-cyan-50'
+                ? 'bg-cyan-600 text-white shadow-sm font-black'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            <List className="h-4.5 w-4.5" />
+            <List className="h-4 w-4" />
             Danh sách hóa đơn bán hàng
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('TEMPLATE')}
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
               activeTab === 'TEMPLATE'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-white text-cyan-700 hover:bg-cyan-50'
+                ? 'bg-cyan-600 text-white shadow-sm font-black'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            <FileSpreadsheet className="h-4.5 w-4.5" />
+            <FileSpreadsheet className="h-4 w-4" />
             Mẫu hóa đơn bán hàng
           </button>
         </div>

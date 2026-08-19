@@ -253,52 +253,12 @@ export default function StockInDocPage() {
         className="hidden"
       />
 
-      {/* Header Design Aligned with Personnel Layout */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => setActiveTab('LIST')}
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
-              activeTab === 'LIST'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-white text-cyan-700 hover:bg-cyan-50'
-            }`}
-          >
-            <List className="h-4.5 w-4.5" />
-            Danh sách phiếu nhập kho
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('TEMPLATE')}
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
-              activeTab === 'TEMPLATE'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-white text-cyan-700 hover:bg-cyan-50'
-            }`}
-          >
-            <FileSpreadsheet className="h-4.5 w-4.5" />
-            Mẫu phiếu nhập kho
-          </button>
+      {/* Header for Stock In (No Template tab as Stock In does not use invoices) */}
+      <div className="flex items-center justify-between">
+        <div className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-black text-white shadow-sm">
+          <List className="h-4 w-4" />
+          Danh sách phiếu nhập kho
         </div>
-
-        {activeTab === 'TEMPLATE' && (
-          <button
-            type="button"
-            onClick={() => {
-              setNewTemplateForm({
-                templateCode: `PNK/00${templates.length + 1}`,
-                appliedWarehouse: 'Kho Tổng TP.HCM',
-                fileName: '',
-              });
-              setShowAddTemplateModal(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 shrink-0"
-          >
-            <Plus className="h-4 w-4" />
-            Thêm mới mẫu
-          </button>
-        )}
       </div>
 
       {activeTab === 'LIST' ? (

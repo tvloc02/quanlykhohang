@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowLeft, BarChart3, CheckCircle2, Lock, Mail, Package, ShieldCheck, X, Zap } from 'lucide-react';
+import { AlertCircle, ArrowLeft, BarChart3, CheckCircle2, Eye, EyeOff, Lock, Mail, Package, ShieldCheck, X, Zap } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -27,6 +27,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
   const [toast, setToast] = React.useState<Toast | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [googleReady, setGoogleReady] = React.useState(false);
@@ -363,13 +364,21 @@ export default function Login() {
                   <input
                     id="login-password"
                     name="password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-colors"
+                    className="w-full pl-12 pr-12 py-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-colors"
                     placeholder="Nhập mật khẩu của bạn"
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
               </div>
 

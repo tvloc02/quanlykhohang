@@ -40,7 +40,42 @@ export interface DocTemplateItem {
   sellerName?: string;
 }
 
-const INITIAL_STOCK_OUT_TEMPLATES: DocTemplateItem[] = [];
+const INITIAL_STOCK_OUT_TEMPLATES: DocTemplateItem[] = [
+  {
+    id: 'tpl-out-001',
+    templateCode: 'PXK-001',
+    serialSymbol: 'C26XK',
+    cqtStatus: 'APPROVED',
+    status: 'ACTIVE',
+    invoiceType: 'MAIN',
+    appliedWarehouse: 'Tất cả các kho',
+    createdDate: '19/08/2026',
+    fileName: 'Mau_Phieu_Xuat_Kho_Chuan.docx',
+    fileSize: '42.1 KB',
+    companyName: 'CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS',
+    companyTaxCode: '0316889988',
+    companyAddress: 'Tầng 8, Tòa nhà Innovation, Quận 1, TP. Hồ Chí Minh',
+    invoiceTitle: 'PHIẾU XUẤT KHO THÀNH PHẨM & HÀNG HÓA',
+    sellerName: 'Nguyễn Văn Quản Lý',
+  },
+  {
+    id: 'tpl-out-002',
+    templateCode: 'PXK-002',
+    serialSymbol: 'C26XK-SUB',
+    cqtStatus: 'APPROVED',
+    status: 'ACTIVE',
+    invoiceType: 'SUB',
+    appliedWarehouse: 'Kho Miền Bắc',
+    createdDate: '14/08/2026',
+    fileName: 'Mau_Phieu_Xuat_Kho_Noi_Bo.docx',
+    fileSize: '39.5 KB',
+    companyName: 'CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS',
+    companyTaxCode: '0316889988',
+    companyAddress: 'Tầng 8, Tòa nhà Innovation, Quận 1, TP. Hồ Chí Minh',
+    invoiceTitle: 'PHIẾU XUẤT KHO KIÊM VẬN CHUYỂN',
+    sellerName: 'Phạm Văn Thủ Kho',
+  },
+];
 
 export default function StockOutDocPage() {
   const [docs, setDocs] = useState<StockOutDoc[]>([]);
@@ -259,29 +294,29 @@ export default function StockOutDocPage() {
 
       {/* Header Design Aligned with Personnel Layout */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-slate-200 bg-white p-2 shadow-sm">
           <button
             type="button"
             onClick={() => setActiveTab('LIST')}
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
               activeTab === 'LIST'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-white text-cyan-700 hover:bg-cyan-50'
+                ? 'bg-cyan-600 text-white shadow-sm font-black'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            <List className="h-4.5 w-4.5" />
+            <List className="h-4 w-4" />
             Danh sách phiếu xuất kho
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('TEMPLATE')}
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-cyan-500 px-4 py-2.5 text-sm font-extrabold transition-all ${
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
               activeTab === 'TEMPLATE'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-white text-cyan-700 hover:bg-cyan-50'
+                ? 'bg-cyan-600 text-white shadow-sm font-black'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            <FileSpreadsheet className="h-4.5 w-4.5" />
+            <FileSpreadsheet className="h-4 w-4" />
             Mẫu phiếu xuất kho
           </button>
         </div>
