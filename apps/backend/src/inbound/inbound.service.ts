@@ -741,6 +741,7 @@ export class InboundService {
         height: Math.min(999999.99, parseNumber(item.height)),
         volume: Math.min(999999.9999, parseNumber(item.volume)),
         volumetricWeight: Math.min(999999.99, parseNumber(item.volumetricWeight)),
+        expiryDate: item.expiryDate || undefined,
         note: noteContent || undefined,
       });
 
