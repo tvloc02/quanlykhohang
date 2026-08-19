@@ -590,6 +590,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             if (otherOccupancyPct >= 100) {
                               isOtherItemFull = true;
                             }
+                          } else if (customPct !== undefined && customPct > 0) {
+                            occupancyPct = customPct;
                           } else {
                             occupancyPct = 0;
                           }
