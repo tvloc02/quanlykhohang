@@ -40,7 +40,20 @@ export class InventoryService {
     return this.balanceRepo.save(balance);
   }
 
-  async clearAllInventory() {
+  async clearAllInventory(warehouseCode?: string) {
+    if (warehouseCode && warehouseCode.trim()) {
+      const code = warehouseCode.trim();
+      await this.balanceRepo
+        .createQueryBuilder()
+        .delete()
+        .from(StockBalance)
+        .where('locationCode = :code OR locationCode LIKE :prefix', {
+          code,
+          prefix: `${code}-%`,
+        })
+        .execute();
+      return { success: true, message: `Cleared stock balances for warehouse ${code}` };
+    }
     await this.balanceRepo.clear();
     return { success: true, message: 'Cleared all stock balances' };
   }

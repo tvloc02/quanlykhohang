@@ -178,23 +178,7 @@ export function normalizeWarehouseRecord(
     }
   }
 
-  // Filter out any leftover auto-generated mock sub-warehouses from local storage cache
-  const cleanedSubWarehouses = Array.isArray(rawSub)
-    ? rawSub.filter((sub) => {
-        if (!sub) return false;
-        if (
-          typeof sub.id === 'string' &&
-          (sub.id.startsWith('sub-default') ||
-            sub.id.startsWith('sub-init') ||
-            sub.id.startsWith('sub_def') ||
-            sub.id.startsWith('sub_wh_') ||
-            sub.id.startsWith('sub_wh_default'))
-        ) {
-          return false;
-        }
-        return true;
-      })
-    : [];
+  const cleanedSubWarehouses = Array.isArray(rawSub) ? rawSub : [];
 
   return {
     id: String(warehouse.id),

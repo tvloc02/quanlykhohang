@@ -24,6 +24,7 @@ import {
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner from '../../../shared/components/BarcodeScanner';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
+import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -719,117 +720,27 @@ export default function CreateStocktakeOrderPage({
         </div>
       )}
 
-      {/* Rack & Bin Locator Modal (Modal Xem vị trí Dãy kệ & Ô kệ trong phân khu) */}
-      {rackModalData && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
-              <div className="flex items-center gap-2">
-                <LayoutGrid className="h-5 w-5 text-cyan-600" />
-                <h3 className="text-sm font-black uppercase text-slate-800 tracking-wide">
-                  VỊ TRÍ DÃY KỆ & Ô KỆ TRONG PHÂN KHU
-                </h3>
-              </div>
-              <button
-                onClick={() => setRackModalData(null)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="mb-4 rounded-xl border border-cyan-200 bg-cyan-50/60 p-3.5 space-y-1.5 text-xs">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-extrabold text-slate-700">Mã hàng: </span>
-                  <span className="font-black text-cyan-800">{rackModalData.product.internalSku}</span>
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-700">Tên sản phẩm: </span>
-                  <span className="font-bold text-slate-900">{rackModalData.product.name}</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between pt-1 border-t border-cyan-200/60">
-                <div>
-                  <span className="font-extrabold text-slate-700">Kho kiểm kê: </span>
-                  <span className="font-bold text-cyan-900">[{locationCode}]</span>
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-700">Phân khu: </span>
-                  <span className="font-black text-emerald-700">
-                    {rackModalData.zone.zoneName}
-                  </span>
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-700">Tồn thực đếm: </span>
-                  <span className="font-black text-cyan-900 font-mono text-sm">
-                    {rackModalData.zone.countedQty.toLocaleString('vi-VN')} {rackModalData.product.unit || 'Cái'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Grid of Racks / Shelves / Bins */}
-            <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar p-1">
-              {[
-                {
-                  rackCode: 'Dãy Kệ R01',
-                  type: 'Kệ Thép Tải Trọng Cao',
-                  floors: [
-                    { floor: 'Tầng S04 (Tầng 4)', bin: 'Ô C01 - Khoang B01', qty: Math.ceil(rackModalData.zone.countedQty * 0.6) },
-                    { floor: 'Tầng S03 (Tầng 3)', bin: 'Ô C02 - Khoang B01', qty: Math.floor(rackModalData.zone.countedQty * 0.4) },
-                  ],
-                },
-                {
-                  rackCode: 'Dãy Kệ R02',
-                  type: 'Kệ Selective Racking',
-                  floors: [
-                    { floor: 'Tầng S02 (Tầng 2)', bin: 'Ô C05 - Khoang B02', qty: Math.floor(rackModalData.zone.countedQty * 0.0) },
-                  ],
-                },
-              ].map((rack, rIdx) => (
-                <div key={rIdx} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
-                    <span className="font-extrabold text-slate-800 text-xs flex items-center gap-1.5">
-                      <Layers className="h-4 w-4 text-cyan-600" />
-                      {rack.rackCode} — <span className="text-slate-500 font-medium">{rack.type}</span>
-                    </span>
-                    <span className="text-[11px] font-bold text-cyan-700 bg-cyan-100/80 px-2 py-0.5 rounded-md">
-                      {rack.floors.reduce((s, f) => s + f.qty, 0).toLocaleString('vi-VN')} SP
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {rack.floors.map((fl, fIdx) => (
-                      <div key={fIdx} className="flex items-center justify-between rounded-lg bg-white p-2 border border-slate-200 shadow-2xs text-xs">
-                        <div>
-                          <p className="font-bold text-slate-800">{fl.floor}</p>
-                          <p className="text-[11px] font-semibold text-slate-500">{fl.bin}</p>
-                        </div>
-                        <span className="font-black text-emerald-700 font-mono text-xs bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
-                          {fl.qty.toLocaleString('vi-VN')}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-5 flex items-center justify-between border-t border-slate-200 pt-3">
-              <p className="text-xs text-slate-500 font-medium italic">
-                * Vị trí lưu trữ được đồng bộ trực tiếp từ sơ đồ kệ WMS
-              </p>
-              <button
-                type="button"
-                onClick={() => setRackModalData(null)}
-                className="rounded-xl bg-cyan-700 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-cyan-800 transition cursor-pointer"
-              >
-                Xác nhận / Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Rack & Bin Locator Modal (SmartSlottingGridModal) */}
+      <SmartSlottingGridModal
+        isOpen={!!rackModalData}
+        onClose={() => setRackModalData(null)}
+        mode="OUTBOUND_TRANSFER"
+        warehouseCode={locationCode || 'KH006'}
+        items={items.map((it) => ({
+          rowId: String(it.product.id),
+          productId: String(it.product.id),
+          productSku: it.product.internalSku,
+          productName: it.product.name,
+          unit: it.product.unit || 'Cái',
+          qty: it.zones.reduce((s, z) => s + (z.countedQty || 0), 0),
+          warehouseCode: locationCode || 'KH006',
+        }))}
+        targetRowId={rackModalData ? String(rackModalData.product.id) : null}
+        products={products}
+        onConfirmAll={() => {
+          setRackModalData(null);
+        }}
+      />
 
       {/* ═══ 1. TOP HEADER BAR ═══ */}
       <div className="flex items-center justify-between">
