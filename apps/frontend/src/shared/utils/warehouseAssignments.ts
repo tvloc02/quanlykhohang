@@ -27,6 +27,45 @@ export type RackConfig = {
   customBins?: Record<string, CustomBinConfig>; // Chi tiết ô tùy chỉnh
 };
 
+export function getRackLetterPrefix(index: number): string {
+  let prefix = '';
+  let n = index;
+  while (n >= 0) {
+    prefix = String.fromCharCode((n % 26) + 65) + prefix;
+    n = Math.floor(n / 26) - 1;
+  }
+  return prefix;
+}
+
+export function calculateGlobalShelfIndex(
+  subWarehouses: SubWarehouse[],
+  targetZoneId: string,
+  targetRackId: string,
+  shelfNum: number // 1 for bottom shelf Tầng 1
+): number {
+  let globalIndex = 0;
+  for (const zone of subWarehouses || []) {
+    const racks = zone.racks || [];
+    if (zone.id === targetZoneId) {
+      for (const rack of racks) {
+        if (rack.id === targetRackId) {
+          globalIndex += Math.max(0, shelfNum - 1);
+          return globalIndex;
+        }
+        const shelves = rack.shelvesCount || zone.shelvesPerRack || 5;
+        globalIndex += Math.max(1, shelves);
+      }
+      break;
+    } else {
+      for (const rack of racks) {
+        const shelves = rack.shelvesCount || zone.shelvesPerRack || 5;
+        globalIndex += Math.max(1, shelves);
+      }
+    }
+  }
+  return globalIndex;
+}
+
 export type SubWarehouse = {
   id: string;
   code: string;

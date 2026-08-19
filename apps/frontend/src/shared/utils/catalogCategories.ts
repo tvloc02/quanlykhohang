@@ -45,72 +45,20 @@ export function getCatalogCategoryTypeLabel(type: CatalogCategoryType) {
   return CATALOG_CATEGORY_TYPES.find((item) => item.value === type)?.label || type;
 }
 
-export const DEFAULT_CATALOG_CATEGORIES: CatalogCategory[] = [
-  {
-    id: 'cat_default_1',
-    type: 'item-group',
-    code: 'NH001',
-    name: 'Quần tây',
-    description: 'Nhóm sản phẩm thời trang Quần tây',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'cat_default_2',
-    type: 'item-group',
-    code: 'NH002',
-    name: 'Đồ ngủ đông',
-    description: 'Nhóm sản phẩm Đồ ngủ đông',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'cat_default_3',
-    type: 'item-group',
-    code: 'NH003',
-    name: 'Áo khoác gió',
-    description: 'Nhóm sản phẩm Áo khoác gió',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'cat_default_4',
-    type: 'item-group',
-    code: 'NH004',
-    name: 'Hàng hóa chung',
-    description: 'Nhóm sản phẩm hàng hóa chung',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'cat_default_5',
-    type: 'unit',
-    code: 'DVT01',
-    name: 'Cái',
-    description: 'Đơn vị tính Cái',
-    status: 'active',
-    createdAt: new Date().toISOString(),
-  },
-];
+export const DEFAULT_CATALOG_CATEGORIES: CatalogCategory[] = [];
 
 export function getStoredCatalogCategories(): CatalogCategory[] {
   try {
     const rawData = localStorage.getItem(CATALOG_CATEGORY_STORAGE_KEY);
     if (rawData) {
       const parsedData = JSON.parse(rawData);
-      if (Array.isArray(parsedData) && parsedData.length > 0) {
-        // Ensure at least one item-group exists
-        const hasItemGroup = parsedData.some((c) => c.type === 'item-group' && c.status === 'active');
-        if (hasItemGroup) return parsedData;
-        const merged = [...parsedData, ...DEFAULT_CATALOG_CATEGORIES];
-        saveStoredCatalogCategories(merged);
-        return merged;
+      if (Array.isArray(parsedData)) {
+        return parsedData;
       }
     }
   } catch {}
 
-  saveStoredCatalogCategories(DEFAULT_CATALOG_CATEGORIES);
-  return DEFAULT_CATALOG_CATEGORIES;
+  return [];
 }
 
 export function saveStoredCatalogCategories(categories: CatalogCategory[]) {
@@ -119,7 +67,6 @@ export function saveStoredCatalogCategories(categories: CatalogCategory[]) {
 }
 
 export function getActiveItemGroupCategories(categories = getStoredCatalogCategories()) {
-  const active = categories.filter((category) => category.type === 'item-group' && category.status === 'active');
-  if (active.length > 0) return active;
-  return DEFAULT_CATALOG_CATEGORIES.filter((category) => category.type === 'item-group');
+  return categories.filter((category) => category.type === 'item-group' && category.status === 'active');
 }
+

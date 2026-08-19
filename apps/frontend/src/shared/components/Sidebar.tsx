@@ -202,11 +202,8 @@ const menuItems: MenuItem[] = [
       { id: 'suppliers', icon: Contact, label: 'Nhà cung cấp', path: '/suppliers' },
       { id: 'warehouses', icon: Store, label: 'Kho hàng', path: '/warehouses' },
       { id: 'units', icon: Scale, label: 'Đơn vị quy đổi', path: '/units' },
-      { id: 'currency', icon: DollarSign, label: 'Ngoại tệ', path: '/settings' },
-      { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/settings' },
-      { id: 'receipt-expense-types', icon: Terminal, label: 'Nội dung thu chi', path: '/reports' },
-      { id: 'customer-groups', icon: Users, label: 'Nhóm KH/NCC', path: '/customers' },
-      { id: 'price-lists', icon: Tag, label: 'Bảng giá', path: '/products/main' },
+      { id: 'currency', icon: DollarSign, label: 'Ngoại tệ', path: '/currencies' },
+      { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/bank-accounts' },
     ],
   },
   // 8. Chăm sóc Khách hàng

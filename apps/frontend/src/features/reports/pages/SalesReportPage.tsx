@@ -70,20 +70,7 @@ interface SalesGroupItem {
   orders: any[];
 }
 
-const DEMO_FALLBACK_SALES: SalesGroupItem[] = [
-  { id: '1', dateOrName: '2026-07-24', salesOrderCount: 2, revenue: 2000000, discount: 50000, vatAmount: 180000, returnOrderCount: 0, returnAmount: 0, netRevenue: 2000000, orders: [] },
-  { id: '2', dateOrName: '2026-07-28', salesOrderCount: 1, revenue: 1000000, discount: 20000, vatAmount: 90000, returnOrderCount: 0, returnAmount: 0, netRevenue: 1000000, orders: [] },
-  { id: '3', dateOrName: '2026-07-29', salesOrderCount: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrderCount: 0, returnAmount: 0, netRevenue: 0, orders: [] },
-  { id: '4', dateOrName: '2026-08-01', salesOrderCount: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrderCount: 0, returnAmount: 0, netRevenue: 0, orders: [] },
-  { id: '5', dateOrName: '2026-08-05', salesOrderCount: 1, revenue: 1000000, discount: 0, vatAmount: 100000, returnOrderCount: 0, returnAmount: 0, netRevenue: 1000000, orders: [] },
-  { id: '6', dateOrName: '2026-08-06', salesOrderCount: 2, revenue: 2000000, discount: 100000, vatAmount: 190000, returnOrderCount: 0, returnAmount: 0, netRevenue: 2000000, orders: [] },
-  { id: '7', dateOrName: '2026-08-07', salesOrderCount: 5, revenue: 5000000, discount: 200000, vatAmount: 480000, returnOrderCount: 0, returnAmount: 0, netRevenue: 5000000, orders: [] },
-  { id: '8', dateOrName: '2026-08-09', salesOrderCount: 12, revenue: 12000000, discount: 500000, vatAmount: 1150000, returnOrderCount: 0, returnAmount: 0, netRevenue: 12000000, orders: [] },
-  { id: '9', dateOrName: '2026-08-10', salesOrderCount: 1, revenue: 1000000, discount: 0, vatAmount: 100000, returnOrderCount: 0, returnAmount: 0, netRevenue: 1000000, orders: [] },
-  { id: '10', dateOrName: '2026-08-12', salesOrderCount: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrderCount: 0, returnAmount: 0, netRevenue: 0, orders: [] },
-  { id: '11', dateOrName: '2026-08-15', salesOrderCount: 19, revenue: 19000000, discount: 800000, vatAmount: 1820000, returnOrderCount: 2, returnAmount: 2000000, netRevenue: 18000000, orders: [] },
-  { id: '12', dateOrName: '2026-08-18', salesOrderCount: 6, revenue: 6000000, discount: 200000, vatAmount: 580000, returnOrderCount: 1, returnAmount: 1000000, netRevenue: 5000000, orders: [] },
-];
+
 
 function buildChartTimeline(
   rawGroupedItems: SalesGroupItem[],
@@ -340,7 +327,7 @@ export default function SalesReportPage() {
           items.sort((a, b) => b.netRevenue - a.netRevenue);
         }
 
-        setData(items.length > 0 ? items : DEMO_FALLBACK_SALES);
+        setData(items);
       } else if (apiSummary.length > 0) {
         setData(
           apiSummary.map((item: any, idx: number) => ({
@@ -357,11 +344,11 @@ export default function SalesReportPage() {
           }))
         );
       } else {
-        setData(DEMO_FALLBACK_SALES);
+        setData([]);
       }
     } catch (err: any) {
       setError(err?.message || 'Không thể kết nối dữ liệu báo cáo bán hàng');
-      setData(DEMO_FALLBACK_SALES);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -403,8 +390,8 @@ export default function SalesReportPage() {
 
   // Build full timeline for Chart mode
   const chartItems = useMemo(() => {
-    const base = filteredData.length > 0 ? filteredData : DEMO_FALLBACK_SALES;
-    return buildChartTimeline(base, startDate, endDate, chartTimeGroup);
+    if (filteredData.length === 0) return [];
+    return buildChartTimeline(filteredData, startDate, endDate, chartTimeGroup);
   }, [filteredData, startDate, endDate, chartTimeGroup]);
 
   // FULL-BLEED EDGE-TO-EDGE DUAL Y-AXIS GRAPHIC
