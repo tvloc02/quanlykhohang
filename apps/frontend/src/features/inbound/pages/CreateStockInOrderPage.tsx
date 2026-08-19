@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, buildWarehouseRackTopology } from '../../../shared/utils/warehouseAssignments';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
@@ -105,52 +105,38 @@ export interface FormDetailRow {
 }
 
 export function formatLocationDisplay(row: { note?: string; assignedBins?: string[]; locationBin?: string }, idx: number) {
+  let binsArr: string[] = [];
   if (row.assignedBins && row.assignedBins.length > 0) {
-    const first = row.assignedBins[0];
-    const isCold = first.startsWith('ZC') || first.includes('R03');
-    const rackName = first.includes('R02') ? 'Dãy Kệ R02' : first.includes('R03') ? 'Dãy Kệ R03' : 'Dãy Kệ R01';
-    return {
-      zone: isCold ? 'Khu C (Kho Lạnh -18°C)' : 'Khu A (Kho Thường)',
-      rack: rackName,
-      bins: row.assignedBins.map((b) => b.split('-').pop() || b).join(', '),
-      full: row.assignedBins.join(', '),
-      isAssigned: true,
-    };
-  }
-  if (row.locationBin && row.locationBin.trim()) {
-    const binsArr = row.locationBin.split(',').map((s) => s.trim());
-    const first = binsArr[0];
-    const isCold = first.startsWith('ZC') || first.includes('R03');
-    const rackName = first.includes('R02') ? 'Dãy Kệ R02' : first.includes('R03') ? 'Dãy Kệ R03' : 'Dãy Kệ R01';
-    return {
-      zone: isCold ? 'Khu C (Kho Lạnh -18°C)' : 'Khu A (Kho Thường)',
-      rack: rackName,
-      bins: binsArr.map((b) => b.split('-').pop() || b).join(', '),
-      full: row.locationBin,
-      isAssigned: true,
-    };
-  }
-  if (row.note && row.note.includes('Vị trí Ô:')) {
+    binsArr = row.assignedBins;
+  } else if (row.locationBin && row.locationBin.trim()) {
+    binsArr = row.locationBin.split(',').map((s) => s.trim()).filter(Boolean);
+  } else if (row.note && row.note.includes('Vị trí Ô:')) {
     const match = row.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
     if (match && match[1]) {
-      const binsStr = match[1];
-      const binsArr = binsStr.split(',').map((s) => s.trim());
-      const first = binsArr[0];
-      const isCold = first.startsWith('ZC') || first.includes('R03');
-      const rackName = first.includes('R02') ? 'Dãy Kệ R02' : first.includes('R03') ? 'Dãy Kệ R03' : 'Dãy Kệ R01';
-      return {
-        zone: isCold ? 'Khu C (Kho Lạnh -18°C)' : 'Khu A (Kho Thường)',
-        rack: rackName,
-        bins: binsArr.map((b) => b.split('-').pop() || b).join(', '),
-        full: binsStr,
-        isAssigned: true,
-      };
+      binsArr = match[1].split(',').map((s) => s.trim()).filter(Boolean);
     }
   }
+
+  if (binsArr.length > 0) {
+    const first = binsArr[0];
+    const parts = first.split('-');
+    const zoneCode = parts[0] || 'ZONE';
+    const rackCode = parts[1] || 'R01';
+    const isCold = first.startsWith('ZC') || first.toUpperCase().includes('COLD') || first.includes('LẠNH');
+
+    return {
+      zone: isCold ? `Phân Khu ${zoneCode} (Kho Lạnh)` : `Phân Khu ${zoneCode}`,
+      rack: `Dãy Kệ ${rackCode}`,
+      bins: binsArr.map((b) => b.split('-').pop() || b).join(', '),
+      full: binsArr.join(', '),
+      isAssigned: true,
+    };
+  }
+
   const rackId = idx % 2 === 0 ? 'R01' : 'R02';
   const binNum = ((idx % 10) + 1).toString().padStart(2, '0');
   return {
-    zone: 'Khu A (Kho Thường)',
+    zone: 'Phân Khu ZA',
     rack: `Dãy Kệ ${rackId}`,
     bins: `Tầng S04 - Ô C${binNum}`,
     full: `ZA-${rackId}-S04-C${binNum}`,
@@ -819,9 +805,17 @@ interface AiChatMessage {
 }
 
 function calculateEffectiveBinCapacity(
-  item: FormDetailRow,
+  item?: FormDetailRow | null,
   rackDim?: { rackLength?: number; binsPerShelf?: number; shelvesCount?: number; rackWidth?: number; rackHeight?: number; maxWeight?: number }
 ): { capacity: number; isDefault: boolean; note: string } {
+  if (!item) {
+    return {
+      capacity: 100,
+      isDefault: true,
+      note: 'Mặc định tạm tính (100 Cái/ô)',
+    };
+  }
+
   if (item.packageQty && item.packageQty > 0) {
     return {
       capacity: item.packageQty,
@@ -979,129 +973,19 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
   // 1. Generate Racks Visual Grid Topology dynamically for the selected warehouse
   const racksTopology: RackStructure[] = useMemo(() => {
+    const codeUpper = (warehouseCode || '').trim().toUpperCase();
     const whList = getStoredWarehouses();
     const currentWh = whList.find(
-      (w) => w.code === warehouseCode || w.id === warehouseCode
+      (w) => String(w.code || '').trim().toUpperCase() === codeUpper || w.id === warehouseCode
     );
 
-    const createFloorCells = (
-      zonePrefix: string,
-      rackId: string,
-      floorId: string,
-      cellsCount = 10
-    ): BinCell[] => {
-      return Array.from({ length: cellsCount }).map((_, idx) => {
-        const cellNum = (idx + 1).toString().padStart(2, '0');
-        const binCode = `${zonePrefix}-${rackId}-${floorId}-C${cellNum}`;
-        const normKey = normalizeBinKey(binCode);
-
-        let isOccupied = false;
-        // Bins belonging to the current order items are NOT marked as occupied by outside stock
-        if (!currentOrderAssignedBins.has(binCode) && !currentOrderAssignedBins.has(normKey)) {
-          if (dbOccupiedBinsMap.has(binCode) || dbOccupiedBinsMap.has(normKey)) {
-            isOccupied = true;
-          }
-        }
-
-        return {
-          binCode,
-          cellCode: `Ô C${cellNum}`,
-          bayCode: `Khoang B${Math.ceil((idx + 1) / 2).toString().padStart(2, '0')}`,
-          maxWeight: 500,
-          freeVol: 450,
-          isOccupied,
-        };
-      });
-    };
-
-    // Case A: Warehouse has custom subWarehouses (Phân khu) & Racks created in /warehouses
-    if (currentWh && Array.isArray(currentWh.subWarehouses) && currentWh.subWarehouses.length > 0) {
-      const dynamicTopology: RackStructure[] = [];
-
-      currentWh.subWarehouses.forEach((sub) => {
-        const zoneCode = sub.code || 'ZONE';
-        const zoneName = sub.name || `Phân khu ${zoneCode}`;
-        const racks = Array.isArray(sub.racks) && sub.racks.length > 0
-          ? sub.racks
-          : [
-              {
-                id: `rack_${sub.id}_1`,
-                rackCode: 'R01',
-                name: 'Dãy Kệ R01',
-                length: sub.length || 15,
-                width: 1.2,
-                height: 6,
-                shelvesCount: sub.shelvesPerRack || 4,
-                binsPerShelf: sub.binsPerShelf || 10,
-              },
-            ];
-
-        racks.forEach((rk) => {
-          const rId = rk.rackCode || rk.id || 'R01';
-          const numShelves = rk.shelvesCount || (rk as any).horizontalPartitions ? (rk as any).horizontalPartitions - 1 : sub.shelvesPerRack || 4;
-          const numBins = (rk as any).verticalPartitions
-            ? (rk as any).verticalPartitions - 1
-            : rk.binsPerShelf && rk.binsPerShelf > 2
-              ? rk.binsPerShelf - 1
-              : sub.binsPerShelf && sub.binsPerShelf > 2
-                ? sub.binsPerShelf - 1
-                : 6;
-
-          const floors = Array.from({ length: numShelves }).map((_, flIdx) => {
-            const floorNum = numShelves - flIdx;
-            const floorId = `S${floorNum.toString().padStart(2, '0')}`;
-            return {
-              floorId,
-              floorName: `Tầng ${floorId}`,
-              floorDesc: `Mâm kệ tầng ${floorNum}`,
-              cells: createFloorCells(zoneCode, rId, floorId, numBins),
-            };
-          });
-
-          dynamicTopology.push({
-            rackId: rId,
-            rackName: rk.name || `Dãy Kệ ${rId}`,
-            dimensions: `${rk.length || 15}m Dài × ${rk.width || 1.2}m Rộng`,
-            spec: `${numShelves} Tầng × ${numBins} Ô`,
-            zoneName: `${zoneName} (${sub.zoneType === 'COLD' ? 'Kho Lạnh' : 'Kho Thường'})`,
-            floors,
-          });
-        });
-      });
-
-      if (dynamicTopology.length > 0) return dynamicTopology;
-    }
-
-    // Case B: Warehouse has no custom subWarehouses yet -> generate topology scoped specifically to this warehouse code
-    const whPrefix = warehouseCode ? warehouseCode.toUpperCase() : 'KH';
-    return [
-      {
-        rackId: 'R01',
-        rackName: `Dãy Kệ R01 (${whPrefix})`,
-        dimensions: '18m Dài × 1.2m Rộng',
-        spec: '4 Tầng × 10 Ô',
-        zoneName: `Khu A - ${currentWh?.name || whPrefix} (Kho Thường)`,
-        floors: [
-          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S04') },
-          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S03') },
-          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S02') },
-          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Tầng Trệt)', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S01') },
-        ],
-      },
-      {
-        rackId: 'R02',
-        rackName: `Dãy Kệ R02 (${whPrefix})`,
-        dimensions: '18m Dài × 1.2m Rộng',
-        spec: '4 Tầng × 10 Ô',
-        zoneName: `Khu B - ${currentWh?.name || whPrefix} (Kho Thường)`,
-        floors: [
-          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S04') },
-          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S03') },
-          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S02') },
-          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Tầng Trệt)', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S01') },
-        ],
-      },
-    ];
+    return buildWarehouseRackTopology(
+      currentWh,
+      warehouseCode,
+      dbOccupiedBinsMap,
+      undefined,
+      currentOrderAssignedBins
+    );
   }, [warehouseCode, dbOccupiedBinsMap, currentOrderAssignedBins]);
 
   // 2. Initialize selections and AI chat when modal opens
@@ -1214,12 +1098,41 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentItem = items.find((i) => i.rowId === activeRowId) || items[0];
+  if (!items || items.length === 0) {
+    return (
+      <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div className="bg-white rounded-3xl p-6 shadow-xl text-center space-y-4 max-w-md border-2 border-cyan-500">
+          <p className="text-sm font-bold text-slate-800">
+            Vui lòng chọn hoặc thêm ít nhất 1 sản phẩm trước khi mở Sơ đồ Ô Kệ Kho.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl font-bold transition shadow-sm cursor-pointer"
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentItem = (items && items.length > 0) ? (items.find((i) => i.rowId === activeRowId) || items[0]) : null;
   const capInfo = calculateEffectiveBinCapacity(currentItem);
   const packSize = capInfo.capacity;
   const requiredCount = currentItem ? Math.max(1, Math.ceil((currentItem.qty || 1) / packSize)) : 1;
   const currentSelectedBins = selectedBinsMap[currentItem?.rowId || ''] || [];
-  const currentRack = racksTopology.find((r) => r.rackId === activeRackId) || racksTopology[0];
+  const defaultRackFallback: RackStructure = {
+    rackId: 'R01',
+    rackName: 'Dãy Kệ R01',
+    dimensions: '18m Dài × 1.2m Rộng',
+    spec: '4 Tầng × 10 Ô',
+    zoneName: 'Phân Khu Kho',
+    floors: [],
+  };
+  const currentRack = (racksTopology && racksTopology.length > 0)
+    ? (racksTopology.find((r) => r.rackId === activeRackId) || racksTopology[0])
+    : defaultRackFallback;
 
   const handleSwitchActiveItem = (rowId: string) => {
     setActiveRowId(rowId);
@@ -1634,7 +1547,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    {rk.rackId} ({rk.zoneName.split(' ')[0]} {rk.zoneName.split(' ')[1]})
+                    {rk.rackName}
                   </button>
                 ))}
               </div>

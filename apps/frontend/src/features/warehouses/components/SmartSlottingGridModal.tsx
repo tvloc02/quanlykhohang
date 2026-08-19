@@ -11,6 +11,15 @@ import {
   Lock,
   ShieldAlert,
 } from 'lucide-react';
+import {
+  buildWarehouseRackTopology,
+  getStoredWarehouses,
+  mergeStoredWarehouses,
+  WarehouseRecord,
+  BinCell,
+  ShelfFloor,
+  RackStructure,
+} from '../../../shared/utils/warehouseAssignments';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
 
@@ -46,34 +55,7 @@ export interface SmartSlottingGridModalProps<T extends SlottingItemRow = Slottin
   onConfirmAll: (updatedRows: T[]) => void;
 }
 
-export interface BinCell {
-  binCode: string;
-  cellCode: string;
-  bayCode: string;
-  maxWeight: number;
-  freeVol: number;
-  isOccupied?: boolean;
-  stockQty?: number;
-  productId?: string;
-  productSku?: string;
-  productName?: string;
-}
-
-export interface ShelfFloor {
-  floorId: string;
-  floorName: string;
-  floorDesc: string;
-  cells: BinCell[];
-}
-
-export interface RackStructure {
-  rackId: string;
-  rackName: string;
-  dimensions: string;
-  spec: string;
-  zoneName: string;
-  floors: ShelfFloor[];
-}
+export type { BinCell, ShelfFloor, RackStructure };
 
 export interface AiChatMessage {
   id: string;
@@ -99,6 +81,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 }: SmartSlottingGridModalProps<T>) {
   const [activeRowId, setActiveRowId] = useState<string>('');
   const [activeRackId, setActiveRackId] = useState<string>('R01');
+  const [currentWarehouse, setCurrentWarehouse] = useState<WarehouseRecord | null>(null);
   const [selectedBinsMap, setSelectedBinsMap] = useState<Record<string, string[]>>({});
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState('');
@@ -114,6 +97,42 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     const timer = setTimeout(() => setWarningMessage(null), 4000);
     return () => clearTimeout(timer);
   }, [warningMessage]);
+
+  // Dynamically load warehouse structure
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+
+    async function fetchWhStructure() {
+      try {
+        const stored = getStoredWarehouses();
+        const codeUpper = (warehouseCode || '').trim().toUpperCase();
+        let matched = stored.find((w) => w.code.toUpperCase() === codeUpper || w.id === warehouseCode);
+
+        const res = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null);
+        if (res && res.ok) {
+          const apiList: any[] = await res.json();
+          const merged = mergeStoredWarehouses(apiList, stored);
+          const found = merged.find((w) => w.code.toUpperCase() === codeUpper || w.id === warehouseCode);
+          if (found && isMounted) {
+            setCurrentWarehouse(found);
+            return;
+          }
+        }
+
+        if (matched && isMounted) {
+          setCurrentWarehouse(matched);
+        }
+      } catch (err) {
+        console.error('Lỗi tải cấu hình kho:', err);
+      }
+    }
+
+    fetchWhStructure();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, warehouseCode]);
 
   // Fetch real occupied bin codes & product balance mapping directly from CSDL
   useEffect(() => {
@@ -177,92 +196,27 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     return () => {
       isMounted = false;
     };
-  }, [isOpen, products]);
+  }, [isOpen, products, warehouseCode]);
 
-  // Generate Rack Topology dynamically for the warehouse
+  // Generate Rack Topology dynamically for the selected warehouse
   const racksTopology: RackStructure[] = useMemo(() => {
-    const whPrefix = warehouseCode ? warehouseCode.toUpperCase() : 'KHO';
+    return buildWarehouseRackTopology(
+      currentWarehouse,
+      warehouseCode,
+      dbOccupiedBinsMap,
+      binProductsMap
+    );
+  }, [currentWarehouse, warehouseCode, dbOccupiedBinsMap, binProductsMap]);
 
-    const createFloorCells = (zonePrefix: string, rackId: string, floorId: string, cellsCount = 10): BinCell[] => {
-      return Array.from({ length: cellsCount }).map((_, idx) => {
-        const cellNum = (idx + 1).toString().padStart(2, '0');
-        const binCode = `${zonePrefix}-${rackId}-${floorId}-C${cellNum}`;
-        const normCode = normalizeBinKey(binCode);
+  // Ensure activeRackId points to a valid rack in racksTopology
+  useEffect(() => {
+    if (racksTopology && racksTopology.length > 0) {
+      if (!racksTopology.some((r) => r.rackId === activeRackId)) {
+        setActiveRackId(racksTopology[0].rackId);
+      }
+    }
+  }, [racksTopology, activeRackId]);
 
-        let isOccupied = false;
-        let stockQty = 0;
-        let productId = '';
-        let productSku = '';
-        let productName = '';
-
-        if (dbOccupiedBinsMap.has(normCode)) {
-          isOccupied = true;
-          stockQty = dbOccupiedBinsMap.get(normCode) || 0;
-          const info = binProductsMap.get(normCode);
-          if (info) {
-            productId = info.productId;
-            productSku = info.sku;
-            productName = info.productName;
-          }
-        }
-
-        return {
-          binCode,
-          cellCode: `Ô C${cellNum}`,
-          bayCode: `Khoang B${cellNum}`,
-          maxWeight: 500,
-          freeVol: 450,
-          isOccupied,
-          stockQty,
-          productId,
-          productSku,
-          productName,
-        };
-      });
-    };
-
-    return [
-      {
-        rackId: 'R01',
-        rackName: `Dãy Kệ R01 (${whPrefix})`,
-        dimensions: '18m Dài × 1.2m Rộng',
-        spec: '4 Tầng × 10 Ô',
-        zoneName: `Khu A - Kho ${whPrefix}`,
-        floors: [
-          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S04') },
-          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S03') },
-          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S02') },
-          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Trệt)', cells: createFloorCells(`${whPrefix}-ZA`, 'R01', 'S01') },
-        ],
-      },
-      {
-        rackId: 'R02',
-        rackName: `Dãy Kệ R02 (${whPrefix})`,
-        dimensions: '18m Dài × 1.2m Rộng',
-        spec: '4 Tầng × 10 Ô',
-        zoneName: `Khu B - Kho ${whPrefix}`,
-        floors: [
-          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S04') },
-          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S03') },
-          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S02') },
-          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Trệt)', cells: createFloorCells(`${whPrefix}-ZB`, 'R02', 'S01') },
-        ],
-      },
-      {
-        rackId: 'R03',
-        rackName: `Dãy Kệ R03 (${whPrefix} - Kệ Lạnh)`,
-        dimensions: '18m Dài × 1.2m Rộng',
-        spec: '4 Tầng × 10 Ô',
-        zoneName: `Khu C - Kho Lạnh -18°C`,
-        floors: [
-          { floorId: 'S04', floorName: 'Tầng S04', floorDesc: 'Mâm kệ tầng 4', cells: createFloorCells(`${whPrefix}-ZC`, 'R03', 'S04') },
-          { floorId: 'S03', floorName: 'Tầng S03', floorDesc: 'Mâm kệ tầng 3', cells: createFloorCells(`${whPrefix}-ZC`, 'R03', 'S03') },
-          { floorId: 'S02', floorName: 'Tầng S02', floorDesc: 'Mâm kệ tầng 2', cells: createFloorCells(`${whPrefix}-ZC`, 'R03', 'S02') },
-          { floorId: 'S01', floorName: 'Tầng S01', floorDesc: 'Mâm kệ tầng 1 (Trệt)', cells: createFloorCells(`${whPrefix}-ZC`, 'R03', 'S01') },
-        ],
-      },
-    ];
-  }, [warehouseCode, dbOccupiedBinsMap, binProductsMap]);
 
   // Active item & rack initialization
   useEffect(() => {
@@ -394,10 +348,39 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
   if (!isOpen) return null;
 
-  const currentItem = items.find((i) => i.rowId === activeRowId) || items[0];
+  if (!items || items.length === 0) {
+    return (
+      <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div className="bg-white rounded-3xl p-6 shadow-xl text-center space-y-4 max-w-md border-2 border-cyan-500">
+          <p className="text-sm font-bold text-slate-800">
+            Vui lòng chọn hoặc thêm ít nhất 1 sản phẩm trước khi mở Sơ đồ Ô Kệ Kho.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl font-bold transition shadow-sm cursor-pointer"
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentItem = (items && items.length > 0) ? (items.find((i) => i.rowId === activeRowId) || items[0]) : null;
   const requiredCount = currentItem ? Math.max(1, Math.ceil((currentItem.qty || 1) / 100)) : 1;
   const currentSelectedBins = selectedBinsMap[currentItem?.rowId || ''] || [];
-  const currentRack = racksTopology.find((r) => r.rackId === activeRackId) || racksTopology[0];
+  const defaultRackFallback: RackStructure = {
+    rackId: 'R01',
+    rackName: 'Dãy Kệ R01',
+    dimensions: '18m Dài × 1.2m Rộng',
+    spec: '4 Tầng × 10 Ô',
+    zoneName: 'Phân Khu Kho',
+    floors: [],
+  };
+  const currentRack = (racksTopology && racksTopology.length > 0)
+    ? (racksTopology.find((r) => r.rackId === activeRackId) || racksTopology[0])
+    : defaultRackFallback;
 
   const isBinMatchingActiveItem = (cell: BinCell): boolean => {
     if (!currentItem) return false;
