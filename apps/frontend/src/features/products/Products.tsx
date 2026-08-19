@@ -493,6 +493,24 @@ async function handleFileUploadToCloudinary(file: File): Promise<string> {
   throw new Error(errData?.message || 'Không thể tải ảnh lên máy chủ Cloudinary. Vui lòng kiểm tra lại kết nối mạng.');
 }
 
+export function normalizeWhCanonicalKey(rawLoc: string): string {
+  const s = String(rawLoc || '').trim().toUpperCase();
+  if (!s) return 'UNKNOWN';
+
+  if (s === 'KH001' || s.includes('TỔNG (HÀ NỘI)') || s.includes('TONG (HA NOI)') || s === 'WH_DEFAULT_1') return 'KH001';
+  if (s === 'KH002' || s.includes('CHI NHÁNH HCM') || s.includes('CHI NHANH HCM') || s === 'WH_DEFAULT_2') return 'KH002';
+  if (s === 'KHO-TONG' || s.includes('SPX EXPRESS') || s === 'WH_DEFAULT_3') return 'KHO-TONG';
+  if (s === 'KHO-HN' || s.includes('TRUNG TÂM HÀ NỘI') || s.includes('TRUNG TAM HA NOI') || s === 'WH_DEFAULT_4') return 'KHO-HN';
+  if (s === 'KHO-BD' || s.includes('NGUYÊN VẬT LIỆU') || s.includes('NGUYEN VAT LIEU') || s === 'WH_DEFAULT_5') return 'KHO-BD';
+  if (s === 'KHO-CUCHI' || s.includes('LẠNH CỦ CHI') || s.includes('LANH CU CHI') || s === 'WH_DEFAULT_6') return 'KHO-CUCHI';
+  if (s === 'KH006' || s.includes('THANH TRÌ') || s.includes('KHO-NVL')) return 'KH006';
+
+  const match = s.match(/(KH\d+|KHO-[A-Z0-9]+)/);
+  if (match) return match[1];
+
+  return s;
+}
+
 function calculateFrontendStock(balances: Array<{ locationCode: string; totalPhysical?: number; available?: number }>): number {
   if (!balances || balances.length === 0) return 0;
 
@@ -510,11 +528,16 @@ function calculateFrontendStock(balances: Array<{ locationCode: string; totalPhy
   if (mainWhBalances.length > 0) {
     const whMap = new Map<string, number>();
     mainWhBalances.forEach((b) => {
-      const loc = String(b.locationCode || '').trim().toUpperCase();
+      const canonicalKey = normalizeWhCanonicalKey(b.locationCode);
       const p = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
-      if (!whMap.has(loc)) whMap.set(loc, 0);
-      whMap.set(loc, whMap.get(loc)! + p);
+
+      if (!whMap.has(canonicalKey)) {
+        whMap.set(canonicalKey, p);
+      } else {
+        whMap.set(canonicalKey, Math.max(whMap.get(canonicalKey)!, p));
+      }
     });
+
     for (const [, p] of whMap) {
       total += p;
     }
@@ -819,15 +842,29 @@ export default function Products() {
   const locationOptions = catalogCategories.filter(
     (category) => category.type === 'storage-position' && category.status === 'active',
   );
-  const productCategoryOptions = [
+  const existingProductCatNames = Array.from(
+    new Set(products.map((p) => (typeof p.category === 'string' ? p.category : p.category?.name)).filter(Boolean) as string[])
+  );
+
+  const rawCategoryOptionsList = [
     ...categoryOptions.map((category) => ({
       value: category.name,
-      label: `${category.code} - ${category.name}`,
+      label: category.code ? `${category.code} - ${category.name}` : category.name,
     })),
-    ...(form.category && !categoryOptions.some((category) => category.name === form.category)
-      ? [{ value: form.category, label: form.category }]
-      : []),
+    ...existingProductCatNames.map((catName) => ({
+      value: catName,
+      label: catName,
+    })),
+    ...(form.category ? [{ value: form.category, label: form.category }] : []),
   ];
+
+  const catMap = new Map<string, { value: string; label: string }>();
+  rawCategoryOptionsList.forEach((c) => {
+    if (c.value && !catMap.has(c.value)) {
+      catMap.set(c.value, c);
+    }
+  });
+  const productCategoryOptions = Array.from(catMap.values());
   const storedUnits = readStoredUnits();
   const rawUnitOptionsList = [
     ...unitOptions.map((unit) => ({ value: unit.name, label: unit.code ? `${unit.code} - ${unit.name}` : unit.name })),
@@ -944,10 +981,20 @@ export default function Products() {
           return lc !== code && lc !== name && lc !== id;
         });
 
-        const mainPhysical = mainRecs.reduce(
-          (sum, b) => sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0)),
-          0
-        );
+        // Deduplicate main warehouse records to prevent multiplying if duplicate entries exist in DB
+        let mainPhysical = 0;
+        if (mainRecs.length > 0) {
+          const primaryMatch =
+            (code ? mainRecs.find((b) => String(b.locationCode || '').trim().toLowerCase() === code) : null) ||
+            (id ? mainRecs.find((b) => String(b.locationCode || '').trim().toLowerCase() === id) : null) ||
+            (name ? mainRecs.find((b) => String(b.locationCode || '').trim().toLowerCase() === name) : null) ||
+            mainRecs[0];
+
+          mainPhysical = primaryMatch.totalPhysical !== undefined
+            ? Number(primaryMatch.totalPhysical)
+            : Number(primaryMatch.available || 0);
+        }
+
         const binPhysical = binRecs.reduce(
           (sum, b) => sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0)),
           0
@@ -1052,9 +1099,11 @@ export default function Products() {
 
       const foundCategory = categoryOptions.find(c => c.name === categoryToUse);
       let calculatedTotalStock = 0;
+      const fullWarehouseStocks: Record<string, number> = { ...(form.warehouseStocks as any) };
+
       warehouses.forEach((wh) => {
         const whKey = wh.name || wh.code || wh.id;
-        const baseQ = Number(form.warehouseStocks[whKey]) || 0;
+        const baseQ = Number(form.warehouseStocks[whKey] ?? form.warehouseStocks[wh.code] ?? form.warehouseStocks[wh.id] ?? 0);
         let unitQ = 0;
         if (form.hasConversionUnits && form.conversionUnits.length > 0) {
           form.conversionUnits.forEach((u) => {
@@ -1063,7 +1112,12 @@ export default function Products() {
             unitQ += q * rate;
           });
         }
-        calculatedTotalStock += baseQ + unitQ;
+        const totalWhQty = baseQ + unitQ;
+        calculatedTotalStock += totalWhQty;
+
+        if (wh.code) fullWarehouseStocks[wh.code] = totalWhQty;
+        if (wh.name) fullWarehouseStocks[wh.name] = totalWhQty;
+        if (wh.id) fullWarehouseStocks[wh.id] = totalWhQty;
       });
 
       const payload = {
@@ -1089,7 +1143,7 @@ export default function Products() {
         managementType: form.managementType.trim(),
         supplier: form.supplier.trim() || form.description.trim(),
         stock: calculatedTotalStock,
-        warehouseStocks: form.warehouseStocks,
+        warehouseStocks: fullWarehouseStocks,
         warehouseUnitStocks: form.warehouseUnitStocks,
         hasConversionUnits: form.hasConversionUnits,
         conversionUnits: form.hasConversionUnits ? form.conversionUnits : [],
@@ -1111,9 +1165,45 @@ export default function Products() {
       }
 
       const resData = await response.json().catch(() => ({}));
+      const prodId = isEdit && selectedProduct ? selectedProduct.id : String(resData.id || safeUUID());
+
+      // Sync initial stock per warehouse to backend /api/inventory/balances (Single primary locationCode per warehouse)
+      if (prodId) {
+        const syncPromises = warehouses.map(async (wh) => {
+          const whKey = wh.name || wh.code || wh.id;
+          const baseQ = Number(form.warehouseStocks[whKey] ?? form.warehouseStocks[wh.code] ?? form.warehouseStocks[wh.id] ?? 0);
+          let unitQ = 0;
+          if (form.hasConversionUnits && form.conversionUnits.length > 0) {
+            form.conversionUnits.forEach((u) => {
+              const q = Number(form.warehouseUnitStocks[`${whKey}_${u.id}`]) || 0;
+              const rate = Number(u.conversionRate) || 1;
+              unitQ += q * rate;
+            });
+          }
+          const totalWhQty = baseQ + unitQ;
+
+          // Sync ONLY to primary warehouse code (or id/name fallback if code missing)
+          const primaryLocCode = wh.code || wh.id || wh.name;
+          if (primaryLocCode) {
+            await fetch(`${API_BASE_URL}/inventory/balances`, {
+              method: 'POST',
+              headers: authHeaders(),
+              body: JSON.stringify({
+                productId: prodId,
+                locationCode: primaryLocCode,
+                totalPhysical: totalWhQty,
+                allocated: 0,
+              }),
+            }).catch(() => null);
+          }
+        });
+
+        await Promise.all(syncPromises).catch(() => null);
+      }
+
       const savedProduct = normalizeProduct({
         ...payload,
-        id: isEdit && selectedProduct ? selectedProduct.id : String(resData.id || safeUUID()),
+        id: prodId,
       });
 
       setProducts((prev) => {

@@ -19,20 +19,47 @@ export class InventoryService {
     const product = await this.productRepo.findOneBy({ id: dto.productId });
     if (!product) throw new NotFoundException('Product not found');
 
-    const existing = await this.balanceRepo.findOne({
-      where: { product: { id: dto.productId }, locationCode: dto.locationCode },
+    const canonicalLoc = dto.locationCode.trim();
+
+    // Find all balances for this product to clean up duplicate alias records (e.g., KH002 vs Kho Chi Nhánh HCM)
+    const allBalances = await this.balanceRepo.find({
+      where: { product: { id: dto.productId } },
       relations: ['product'],
     });
-    if (existing) {
-      existing.totalPhysical = dto.totalPhysical;
-      existing.allocated = dto.allocated || existing.allocated;
-      existing.available = Math.max(existing.totalPhysical - existing.allocated, 0);
-      return this.balanceRepo.save(existing);
+
+    const isMatchLoc = (loc: string) => {
+      const a = (loc || '').trim().toLowerCase();
+      const b = (canonicalLoc || '').trim().toLowerCase();
+      if (a === b) return true;
+      if ((b === 'kh002' || b.includes('chi nhánh hcm')) && (a === 'kh002' || a.includes('chi nhánh hcm') || a === 'wh_default_2')) return true;
+      if ((b === 'kh001' || b.includes('tổng (hà nội)')) && (a === 'kh001' || a.includes('tổng (hà nội)') || a === 'wh_default_1')) return true;
+      if ((b === 'kho-tong' || b.includes('spx express')) && (a === 'kho-tong' || a.includes('spx express') || a === 'wh_default_3')) return true;
+      if ((b === 'kho-hn' || b.includes('trung tâm hà nội')) && (a === 'kho-hn' || a.includes('trung tâm hà nội') || a === 'wh_default_4')) return true;
+      if ((b === 'kho-bd' || b.includes('nguyên vật liệu')) && (a === 'kho-bd' || a.includes('nguyên vật liệu') || a === 'wh_default_5')) return true;
+      if ((b === 'kho-cuchi' || b.includes('lạnh củ chi')) && (a === 'kho-cuchi' || a.includes('lạnh củ chi') || a === 'wh_default_6')) return true;
+      return false;
+    };
+
+    const matchingBalances = allBalances.filter((b) => isMatchLoc(b.locationCode));
+
+    if (matchingBalances.length > 0) {
+      const primary = matchingBalances[0];
+      primary.locationCode = canonicalLoc;
+      primary.totalPhysical = dto.totalPhysical;
+      primary.allocated = dto.allocated || 0;
+      primary.available = Math.max(dto.totalPhysical - primary.allocated, 0);
+
+      // Clean up secondary duplicate alias rows from DB
+      for (let i = 1; i < matchingBalances.length; i++) {
+        await this.balanceRepo.remove(matchingBalances[i]).catch(() => null);
+      }
+
+      return this.balanceRepo.save(primary);
     }
 
     const balance = this.balanceRepo.create({
       product,
-      locationCode: dto.locationCode,
+      locationCode: canonicalLoc,
       totalPhysical: dto.totalPhysical,
       allocated: dto.allocated || 0,
       available: Math.max(dto.totalPhysical - (dto.allocated || 0), 0),

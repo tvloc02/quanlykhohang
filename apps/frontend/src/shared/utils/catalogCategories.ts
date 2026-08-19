@@ -84,6 +84,42 @@ export const DEFAULT_CATALOG_CATEGORIES: CatalogCategory[] = [
   },
   {
     id: 'cat_default_5',
+    type: 'item-group',
+    code: 'NH005',
+    name: 'Điện tử & Công nghệ',
+    description: 'Nhóm thiết bị điện tử, điện thoại, máy tính, phụ kiện công nghệ',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat_default_6',
+    type: 'item-group',
+    code: 'NH006',
+    name: 'Gia dụng & Thiết bị',
+    description: 'Nhóm đồ gia dụng, máy móc thiết bị gia đình',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat_default_7',
+    type: 'item-group',
+    code: 'NH007',
+    name: 'Linh kiện & Phụ kiện',
+    description: 'Nhóm linh kiện thay thế, phụ kiện vật tư',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat_default_8',
+    type: 'item-group',
+    code: 'NH008',
+    name: 'Thực phẩm & Đồ uống',
+    description: 'Nhóm thực phẩm, đồ uống đóng gói',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cat_default_9',
     type: 'unit',
     code: 'DVT01',
     name: 'Cái',
@@ -99,12 +135,19 @@ export function getStoredCatalogCategories(): CatalogCategory[] {
     if (rawData) {
       const parsedData = JSON.parse(rawData);
       if (Array.isArray(parsedData) && parsedData.length > 0) {
-        // Ensure at least one item-group exists
-        const hasItemGroup = parsedData.some((c) => c.type === 'item-group' && c.status === 'active');
-        if (hasItemGroup) return parsedData;
-        const merged = [...parsedData, ...DEFAULT_CATALOG_CATEGORIES];
-        saveStoredCatalogCategories(merged);
-        return merged;
+        // Merge missing default categories into parsedData
+        let updated = false;
+        const existingNames = new Set(parsedData.map((c: any) => (c.name || '').trim().toLowerCase()));
+        DEFAULT_CATALOG_CATEGORIES.forEach((defCat) => {
+          if (!existingNames.has(defCat.name.trim().toLowerCase())) {
+            parsedData.push(defCat);
+            updated = true;
+          }
+        });
+        if (updated) {
+          saveStoredCatalogCategories(parsedData);
+        }
+        return parsedData;
       }
     }
   } catch {}

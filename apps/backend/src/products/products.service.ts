@@ -10,6 +10,24 @@ import { InboundDetail } from '../inbound/entities/inbound-detail.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
+export function normalizeWhCanonicalKey(rawLoc: string): string {
+  const s = String(rawLoc || '').trim().toUpperCase();
+  if (!s) return 'UNKNOWN';
+
+  if (s === 'KH001' || s.includes('TỔNG (HÀ NỘI)') || s.includes('TONG (HA NOI)') || s === 'WH_DEFAULT_1') return 'KH001';
+  if (s === 'KH002' || s.includes('CHI NHÁNH HCM') || s.includes('CHI NHANH HCM') || s === 'WH_DEFAULT_2') return 'KH002';
+  if (s === 'KHO-TONG' || s.includes('SPX EXPRESS') || s === 'WH_DEFAULT_3') return 'KHO-TONG';
+  if (s === 'KHO-HN' || s.includes('TRUNG TÂM HÀ NỘI') || s.includes('TRUNG TAM HA NOI') || s === 'WH_DEFAULT_4') return 'KHO-HN';
+  if (s === 'KHO-BD' || s.includes('NGUYÊN VẬT LIỆU') || s.includes('NGUYEN VAT LIEU') || s === 'WH_DEFAULT_5') return 'KHO-BD';
+  if (s === 'KHO-CUCHI' || s.includes('LẠNH CỦ CHI') || s.includes('LANH CU CHI') || s === 'WH_DEFAULT_6') return 'KHO-CUCHI';
+  if (s === 'KH006' || s.includes('THANH TRÌ') || s.includes('KHO-NVL')) return 'KH006';
+
+  const match = s.match(/(KH\d+|KHO-[A-Z0-9]+)/);
+  if (match) return match[1];
+
+  return s;
+}
+
 export function calculateAggregatedStock(productBalances: any[]) {
   if (!productBalances || productBalances.length === 0) return { totalStock: 0, availableStock: 0 };
 
@@ -29,13 +47,17 @@ export function calculateAggregatedStock(productBalances: any[]) {
   if (mainWhBalances.length > 0) {
     const whMap = new Map<string, { totalPhysical: number; available: number }>();
     mainWhBalances.forEach((b) => {
-      const loc = String(b.locationCode || '').trim().toUpperCase();
+      const canonicalKey = normalizeWhCanonicalKey(b.locationCode);
       const p = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
       const a = Number(b.available || 0);
-      if (!whMap.has(loc)) whMap.set(loc, { totalPhysical: 0, available: 0 });
-      const cur = whMap.get(loc)!;
-      cur.totalPhysical += p;
-      cur.available += a;
+
+      if (!whMap.has(canonicalKey)) {
+        whMap.set(canonicalKey, { totalPhysical: p, available: a });
+      } else {
+        const cur = whMap.get(canonicalKey)!;
+        cur.totalPhysical = Math.max(cur.totalPhysical, p);
+        cur.available = Math.max(cur.available, a);
+      }
     });
 
     for (const [, v] of whMap) {
