@@ -8,10 +8,10 @@ import {
   DollarSign,
   TrendingUp,
   BarChart3,
-  Filter,
   CheckCircle,
   Users,
   Building2,
+  RefreshCw,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -41,7 +41,7 @@ export default function CustomerProfitReportPage() {
   const [reportData, setReportData] = useState<CustomerProfitItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters matching screenshot 2
+  // Filters
   const [selectedBranch, setSelectedBranch] = useState('ALL');
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
@@ -51,7 +51,7 @@ export default function CustomerProfitReportPage() {
   const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Pagination states matching Personnel.tsx
+  // Pagination states
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -63,7 +63,6 @@ export default function CustomerProfitReportPage() {
     setTimeout(() => setToastMessage(''), 3500);
   };
 
-  // Fetch real outbound sales orders & customer info from system API
   const fetchCustomerProfitReport = async () => {
     setLoading(true);
     try {
@@ -77,7 +76,6 @@ export default function CustomerProfitReportPage() {
       if (outboundRes && outboundRes.ok) {
         const outbounds = await outboundRes.json();
         if (Array.isArray(outbounds)) {
-          // Group sales by customer
           const customerStats = new Map<
             string,
             { branch: string; code: string; name: string; region: string; revenue: number; totalCost: number }
@@ -88,7 +86,6 @@ export default function CustomerProfitReportPage() {
             const branch = order.warehouseName || order.branch || 'Kho Tổng';
             const custCode = order.customerCode || 'KH_' + custName.slice(0, 4).toUpperCase();
 
-            // Line totals
             let lineRev = 0;
             let lineCost = 0;
             if (Array.isArray(order.details) && order.details.length > 0) {
@@ -121,7 +118,7 @@ export default function CustomerProfitReportPage() {
           });
 
           let sttCounter = 1;
-          customerStats.forEach((val, key) => {
+          customerStats.forEach((val) => {
             const profit = val.revenue - val.totalCost;
             const profitMargin = val.revenue > 0 ? (profit / val.revenue) * 100 : 0;
 
@@ -171,7 +168,6 @@ export default function CustomerProfitReportPage() {
     });
   }, [reportData, selectedBranch, searchQuery]);
 
-  // Group by branch for display matching screenshot 2
   const groupedDataByBranch = useMemo(() => {
     const map = new Map<string, CustomerProfitItem[]>();
     filteredData.forEach((item) => {
@@ -188,7 +184,6 @@ export default function CustomerProfitReportPage() {
   const totalProfitSum = filteredData.reduce((sum, i) => sum + i.profit, 0);
   const overallMargin = totalRevenue > 0 ? (totalProfitSum / totalRevenue) * 100 : 0;
 
-  // Pagination calculations matching Personnel.tsx
   const totalItems = filteredData.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
@@ -215,18 +210,17 @@ export default function CustomerProfitReportPage() {
   };
 
   return (
-    <div className="space-y-6 pb-12 text-slate-800">
-      {/* TOAST NOTIFICATION MATCHING PERSONNEL.TSX */}
+    <div className="space-y-4 pb-12 animate-in fade-in duration-200 text-slate-800">
       {toastMessage &&
         createPortal(
-          <div className="fixed top-6 right-6 z-[9999] flex items-center gap-3 rounded-2xl bg-emerald-50/95 text-emerald-800 border border-emerald-200 px-5 py-3.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-4">
-            <CheckCircle className="h-5 w-5 text-emerald-600" />
+          <div className="fixed top-6 right-6 z-[9999] flex items-center gap-3 rounded-2xl bg-slate-900 text-white px-5 py-3.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-top-4">
+            <CheckCircle className="h-5 w-5 text-emerald-400" />
             <p className="text-sm font-extrabold">{toastMessage}</p>
           </div>,
           document.body
         )}
 
-      {/* HEADER MATCHING PERSONNEL.TSX PILL BADGE DESIGN */}
+      {/* ═══ TOP HEADER - CYAN ONLY FOR TITLE BADGE ═══ */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
@@ -237,39 +231,48 @@ export default function CustomerProfitReportPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2.5">
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={fetchCustomerProfitReport}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+            Làm mới
+          </button>
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-fuchsia-600 px-4 py-2 text-xs font-black text-white shadow-md transition hover:bg-fuchsia-700 active:scale-95 cursor-pointer uppercase"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
           >
-            <Printer size={15} />
-            Print
+            <Printer size={15} className="text-slate-600" />
+            In báo cáo
           </button>
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white shadow-md transition hover:bg-emerald-700 active:scale-95 cursor-pointer uppercase"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
           >
-            <FileSpreadsheet size={15} />
-            Excel
+            <FileSpreadsheet size={15} className="text-slate-600" />
+            Export Excel
           </button>
         </div>
       </div>
 
-      {/* 3 STAT OVERVIEW CARDS MATCHING PERSONNEL.TSX */}
+      {/* ═══ 3 STAT OVERVIEW CARDS - CLEAN WHITE ═══ */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
+        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase">TỔNG DOANH THU KHÁCH HÀNG</p>
-            <p className="text-lg font-black text-cyan-700">{totalRevenue.toLocaleString('vi-VN')} đ</p>
+            <p className="text-lg font-black text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</p>
           </div>
-          <div className="rounded-xl bg-cyan-100 p-2 text-cyan-700">
+          <div className="rounded-xl bg-slate-100 p-2 text-slate-700">
             <DollarSign size={22} />
           </div>
         </div>
 
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
+        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase">TỔNG VỐN HÀNG XUẤT KHÁCH HÀNG</p>
             <p className="text-lg font-black text-slate-700">{totalCostSum.toLocaleString('vi-VN')} đ</p>
@@ -279,20 +282,20 @@ export default function CustomerProfitReportPage() {
           </div>
         </div>
 
-        <div className="flex h-[72px] items-center justify-between rounded-xl border-2 border-cyan-500 bg-white px-5 shadow-sm transition hover:bg-cyan-50">
+        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase">TỔNG LỢI NHUẬN KHÁCH HÀNG</p>
-            <p className={`text-lg font-black ${totalProfitSum >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+            <p className={`text-lg font-black ${totalProfitSum >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
               {totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)
             </p>
           </div>
-          <div className={`rounded-xl p-2 ${totalProfitSum >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+          <div className={`rounded-xl p-2 ${totalProfitSum >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
             <TrendingUp size={22} />
           </div>
         </div>
       </div>
 
-      {/* FILTER & CONTROL TOOLBAR MATCHING SCREENSHOT 2 & PERSONNEL.TSX */}
+      {/* ═══ FILTER & CONTROL TOOLBAR - CLEAN WHITE ═══ */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm text-xs font-bold">
         {/* Left Filters */}
         <div className="flex flex-wrap items-center gap-3">
@@ -301,7 +304,7 @@ export default function CustomerProfitReportPage() {
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="rounded-xl border-2 border-cyan-500 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer min-w-[150px]"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[150px]"
             >
               <option value="ALL">Tất cả chi nhánh</option>
               {branchOptions.filter((b) => b !== 'ALL').map((br) => (
@@ -318,7 +321,7 @@ export default function CustomerProfitReportPage() {
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              className="rounded-xl border-2 border-cyan-500 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
             />
           </div>
 
@@ -328,60 +331,52 @@ export default function CustomerProfitReportPage() {
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="rounded-xl border-2 border-cyan-500 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none"
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
             />
           </div>
-
-          <button
-            onClick={fetchCustomerProfitReport}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer font-black"
-          >
-            <Filter size={14} />
-            Xem báo cáo
-          </button>
         </div>
 
         {/* Right Search Input */}
         <div className="relative w-full lg:w-64">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-500" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Tìm mã KH, tên KH..."
-            className="h-9 w-full rounded-xl border-2 border-cyan-500 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none transition focus:ring-4 focus:ring-cyan-500/10"
+            className="h-9 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-xs font-bold text-slate-700 outline-none transition focus:border-cyan-600"
           />
         </div>
       </div>
 
-      {/* PERSONNEL HIGH-DENSITY TABLE MATCHING PERSONNEL.TSX & SCREENSHOT 2 */}
-      <div className="overflow-hidden rounded-xl border-2 border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+      {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE ═══ */}
+      <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full border-collapse text-left">
-            <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
-              <tr className="border-b-2 border-slate-200">
-                <th className="border-r border-slate-200 px-3 py-4 text-center text-xs font-extrabold uppercase text-slate-800 w-14 whitespace-nowrap">
+            <thead className="bg-slate-100 sticky top-0 z-20 shadow-xs border-b-2 border-slate-200">
+              <tr>
+                <th className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 w-14 whitespace-nowrap">
                   No.
                 </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[140px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[140px] whitespace-nowrap">
                   Khu vực
                 </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[130px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[130px] whitespace-nowrap">
                   Mã KH
                 </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[220px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[220px] whitespace-nowrap">
                   Tên Khách hàng
                 </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
                   Doanh thu
                 </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
                   Tổng vốn
                 </th>
-                <th className="border-r border-slate-200 px-4 py-4 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
                   Lợi nhuận
                 </th>
-                <th className="px-4 py-4 text-right text-xs font-extrabold uppercase text-slate-800 w-32 whitespace-nowrap">
+                <th className="px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 w-32 whitespace-nowrap">
                   % Lợi nhuận
                 </th>
               </tr>
@@ -407,10 +402,10 @@ export default function CustomerProfitReportPage() {
 
                   return (
                     <React.Fragment key={branchName}>
-                      {/* BRANCH SECTION HEADER MATCHING SCREENSHOT 2 */}
-                      <tr className="bg-slate-100/90 font-black text-cyan-900 border-t-2 border-slate-300">
+                      {/* BRANCH SECTION HEADER */}
+                      <tr className="bg-slate-100/90 font-black text-slate-900 border-t-2 border-slate-300">
                         <td colSpan={8} className="px-4 py-2.5 font-black uppercase text-xs tracking-wider flex items-center gap-2">
-                          <Building2 size={15} className="text-cyan-600" />
+                          <Building2 size={15} className="text-slate-600" />
                           ▲ Kho: {branchName}
                         </td>
                       </tr>
@@ -421,9 +416,7 @@ export default function CustomerProfitReportPage() {
                         return (
                           <tr
                             key={item.id}
-                            className={`group border-b border-slate-200 transition hover:bg-cyan-50/50 ${
-                              idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
-                            }`}
+                            className="group border-b border-slate-200 transition hover:bg-slate-50"
                           >
                             <td className="border-r border-slate-200 px-3 py-3 text-center font-bold text-slate-500">
                               {item.stt}
@@ -431,7 +424,7 @@ export default function CustomerProfitReportPage() {
                             <td className="border-r border-slate-200 px-4 py-3 text-center text-slate-600">
                               {item.region}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-bold text-cyan-700">
+                            <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-bold text-slate-800">
                               {item.customerCode}
                             </td>
                             <td className="border-r border-slate-200 px-4 py-3 font-bold text-slate-900">
@@ -445,14 +438,14 @@ export default function CustomerProfitReportPage() {
                             </td>
                             <td
                               className={`border-r border-slate-200 px-4 py-3 text-right font-mono font-black ${
-                                isNegative ? 'text-red-600' : 'text-emerald-600'
+                                isNegative ? 'text-rose-600' : 'text-emerald-600'
                               }`}
                             >
                               {item.profit.toLocaleString('vi-VN')}
                             </td>
                             <td
                               className={`px-4 py-3 text-right font-mono font-black ${
-                                isNegative ? 'text-red-600' : 'text-emerald-600'
+                                isNegative ? 'text-rose-600' : 'text-emerald-600'
                               }`}
                             >
                               {item.profitMargin.toFixed(2)}%
@@ -461,7 +454,7 @@ export default function CustomerProfitReportPage() {
                         );
                       })}
 
-                      {/* BRANCH SUB-TOTAL ROW MATCHING SCREENSHOT 2 */}
+                      {/* BRANCH SUB-TOTAL ROW */}
                       <tr className="bg-slate-100 font-bold text-slate-900 border-b-2 border-slate-300">
                         <td colSpan={4} className="px-4 py-2 text-right text-xs uppercase font-extrabold">
                           Tổng chi nhánh ({items.length} KH):
@@ -474,7 +467,7 @@ export default function CustomerProfitReportPage() {
                         </td>
                         <td
                           className={`px-4 py-2 text-right font-mono font-black ${
-                            branchProf >= 0 ? 'text-emerald-700' : 'text-red-600'
+                            branchProf >= 0 ? 'text-emerald-700' : 'text-rose-600'
                           }`}
                         >
                           {branchProf.toLocaleString('vi-VN')}
@@ -487,11 +480,11 @@ export default function CustomerProfitReportPage() {
               )}
             </tbody>
 
-            {/* GRAND TOTAL ROW MATCHING SCREENSHOT 2 */}
+            {/* GRAND TOTAL ROW */}
             {filteredData.length > 0 && (
               <tfoot>
-                <tr className="border-t-2 border-slate-400 bg-cyan-100/60 font-black text-slate-900 text-xs">
-                  <td colSpan={4} className="p-3.5 text-right uppercase tracking-wider text-cyan-950 font-black">
+                <tr className="border-t-2 border-slate-300 bg-slate-200/80 font-black text-slate-900 text-xs">
+                  <td colSpan={4} className="p-3.5 text-right uppercase tracking-wider text-slate-900 font-black">
                     TỔNG CỘNG TOÀN BỘ KHÁCH HÀNG:
                   </td>
                   <td className="p-3.5 text-right font-mono font-black text-slate-900 text-sm">
@@ -502,14 +495,14 @@ export default function CustomerProfitReportPage() {
                   </td>
                   <td
                     className={`p-3.5 text-right font-mono font-black text-sm ${
-                      totalProfitSum >= 0 ? 'text-emerald-700' : 'text-red-600'
+                      totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'
                     }`}
                   >
                     {totalProfitSum.toLocaleString('vi-VN')}
                   </td>
                   <td
                     className={`p-3.5 text-right font-mono font-black text-sm ${
-                      overallMargin >= 0 ? 'text-emerald-700' : 'text-red-600'
+                      overallMargin >= 0 ? 'text-emerald-700' : 'text-rose-600'
                     }`}
                   >
                     {overallMargin.toFixed(2)}%
@@ -520,10 +513,10 @@ export default function CustomerProfitReportPage() {
           </table>
         </div>
 
-        {/* PAGINATION FOOTER ATTACHED MATCHING PERSONNEL.TSX */}
+        {/* PAGINATION FOOTER */}
         {totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
-            <div className="text-sm font-semibold text-slate-600">
+          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-white px-6 py-3 sm:flex-row text-xs font-extrabold text-slate-700">
+            <div className="font-semibold text-slate-600">
               Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
             </div>
             <div className="mt-4 flex items-center gap-2 sm:mt-0">
@@ -533,7 +526,7 @@ export default function CustomerProfitReportPage() {
                   setPageSize(Number(e.target.value));
                   setCurrentPage(1);
                 }}
-                className="h-9 rounded-xl border-2 border-cyan-500 bg-white px-2 text-sm font-bold text-slate-700 outline-none"
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer"
               >
                 <option value={10}>10 dòng / trang</option>
                 <option value={20}>20 dòng / trang</option>
@@ -545,31 +538,31 @@ export default function CustomerProfitReportPage() {
                 <button
                   onClick={() => setCurrentPage(1)}
                   disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                 >
                   «
                 </button>
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                 >
                   ‹
                 </button>
-                <button className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-600 text-sm font-bold text-white">
-                  {currentPage}
-                </button>
+                <span className="px-3 py-1 font-extrabold text-slate-800 bg-slate-100 rounded-lg">
+                  {currentPage} / {totalPages}
+                </span>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                 >
                   ›
                 </button>
                 <button
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                 >
                   »
                 </button>
