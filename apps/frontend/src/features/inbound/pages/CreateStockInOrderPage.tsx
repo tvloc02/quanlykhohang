@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, upsertWarehouseToApi, type WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig } from '../../../shared/utils/warehouseAssignments';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
@@ -286,6 +286,7 @@ export interface InboundTab {
   paymentAccount: string;
   amountPaid: number;
   status: string;
+  stagedSubWarehouses?: any[];
   details: FormDetailRow[];
 }
 
@@ -3011,6 +3012,24 @@ export default function CreateStockInOrderPage({
 
       const savedPO = await res.json();
 
+      // Persist staged warehouse subWarehouses topology to CSDL ONLY when user actually saves the order
+      if (activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0) {
+        try {
+          const fullWhList = getStoredWarehouses();
+          const matchedWh = fullWhList.find((w) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode);
+          if (matchedWh) {
+            const updatedWh: WarehouseRecord = {
+              ...matchedWh,
+              subWarehouses: activeTab.stagedSubWarehouses,
+            };
+            saveStoredWarehouses(fullWhList.map((w) => (w.id === updatedWh.id || w.code === updatedWh.code ? updatedWh : w)));
+            await upsertWarehouseToApi(updatedWh).catch((err: any) => console.error('Lỗi lưu CSDL kho:', err));
+          }
+        } catch (err) {
+          console.error('Error persisting staged warehouse topology:', err);
+        }
+      }
+
       if (!isEditing) {
         const stockInPayload = {
           orderCode: `PNK-${savedPO.poNumber || generatedNo}`,
@@ -4118,10 +4137,14 @@ export default function CreateStockInOrderPage({
         items={activeTab?.details || []}
         targetRowId={aiSlottingTargetRowId}
         products={products}
-        onConfirmAll={(updatedRows) => {
+        subWarehouses={activeTab?.stagedSubWarehouses}
+        orderNo={activeTab?.orderNo}
+        tabId={activeTab?.tabId}
+        onConfirmAll={(updatedRows, updatedSubWarehouses) => {
           updateActiveTab((t) => ({
             ...t,
             details: updatedRows,
+            stagedSubWarehouses: updatedSubWarehouses || t.stagedSubWarehouses,
           }));
           setShowAiSlottingModal(false);
           setToast({ message: 'Đã cập nhật vị trí ô kệ cất hàng!', type: 'success' });
