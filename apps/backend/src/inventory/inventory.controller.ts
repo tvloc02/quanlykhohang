@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { CreateStockBalanceDto } from './dto/create-stock-balance.dto';
 import { AllocateStockDto } from './dto/allocate-stock.dto';
@@ -21,8 +21,8 @@ export class InventoryController {
 
   @Post('clear-all')
   @Roles('admin', 'manager', 'staff')
-  clearAllInventory() {
-    return this.service.clearAllInventory();
+  clearAllInventory(@Query('warehouseCode') warehouseCode?: string) {
+    return this.service.clearAllInventory(warehouseCode);
   }
 
   @Get('balances')

@@ -40,6 +40,7 @@ import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, getRa
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
+import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -509,9 +510,8 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
           {/* ─────────────────────────────────────────────────────────────
               MỤC 1: TRỌNG LƯỢNG THEO LÔ HÀNG
              ───────────────────────────────────────────────────────────── */}
-          <div className={`rounded-2xl border-2 p-4 flex flex-col justify-between transition-all ${
-            enableSection1 ? 'border-cyan-500 bg-white shadow-md' : 'border-slate-200 bg-slate-50/70 opacity-60'
-          }`}>
+          <div className={`rounded-2xl border-2 p-4 flex flex-col justify-between transition-all ${enableSection1 ? 'border-cyan-500 bg-white shadow-md' : 'border-slate-200 bg-slate-50/70 opacity-60'
+            }`}>
             <div className="space-y-3">
               {/* Section Header with Checkbox */}
               <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
@@ -601,9 +601,8 @@ const WeightDimensionsModal: React.FC<WeightDimensionsModalProps> = ({ row, onCl
           {/* ─────────────────────────────────────────────────────────────
               MỤC 2: TRỌNG LƯỢNG & KÍCH THƯỚC THEO KIỆN LẺ / MẪU SẢN PHẨM
              ───────────────────────────────────────────────────────────── */}
-          <div className={`rounded-2xl border-2 p-4 flex flex-col justify-between transition-all ${
-            enableSection2 ? 'border-cyan-500 bg-white shadow-md' : 'border-slate-200 bg-slate-50/70 opacity-60'
-          }`}>
+          <div className={`rounded-2xl border-2 p-4 flex flex-col justify-between transition-all ${enableSection2 ? 'border-cyan-500 bg-white shadow-md' : 'border-slate-200 bg-slate-50/70 opacity-60'
+            }`}>
             <div className="space-y-3">
               {/* Section Header with Checkbox */}
               <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
@@ -1017,24 +1016,24 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         const racks: any[] = Array.isArray(sub.racks) && sub.racks.length > 0
           ? sub.racks
           : Array.from({ length: sub.racksCount || 3 }).map((_, idx) => {
-              const rNum = idx + 1;
-              const rCode = `R${String(rNum).padStart(2, '0')}`;
-              return {
-                id: `rack_${sub.id}_${rNum}`,
-                rackCode: rCode,
-                name: `Dãy Kệ Dọc ${rCode}`,
-                length: rL,
-                width: rW,
-                height: sub.rackHeight || 5,
-                shelvesCount: defaultShelves,
-                baysCount: defaultBays,
-                columnsCount: defaultBays,
-                horizontalPartitions: vachNgang,
-                verticalPartitions: vachDoc,
-                binsPerShelf: defaultBays,
-                defaultBinMaxWeight: sub.maxWeightPerBin || 400,
-              };
-            });
+            const rNum = idx + 1;
+            const rCode = `R${String(rNum).padStart(2, '0')}`;
+            return {
+              id: `rack_${sub.id}_${rNum}`,
+              rackCode: rCode,
+              name: `Dãy Kệ Dọc ${rCode}`,
+              length: rL,
+              width: rW,
+              height: sub.rackHeight || 5,
+              shelvesCount: defaultShelves,
+              baysCount: defaultBays,
+              columnsCount: defaultBays,
+              horizontalPartitions: vachNgang,
+              verticalPartitions: vachDoc,
+              binsPerShelf: defaultBays,
+              defaultBinMaxWeight: sub.maxWeightPerBin || 400,
+            };
+          });
 
         racks.forEach((rk) => {
           const rId = rk.rackCode || rk.id || 'R01';
@@ -1387,8 +1386,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
       // Extract numbers & dimensions from prompt if present
       const batchQtyMatch = userText.match(/(\d+)\s*(?:cái|sản phẩm|sp|thùng|hộp)?\s*(?:mỗi|một|\/)?\s*(?:lô|thùng|kiện)/i)
-                         || userText.match(/bọc\s*(\d+)/i)
-                         || userText.match(/lô\s*(\d+)/i);
+        || userText.match(/bọc\s*(\d+)/i)
+        || userText.match(/lô\s*(\d+)/i);
       const extractedBatchQty = batchQtyMatch ? parseInt(batchQtyMatch[1], 10) : 100;
 
       const totalQtyMatch = userText.match(/(\d+)\s*(?:sản phẩm|cái|áo|kiện)/i);
@@ -1443,7 +1442,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
       // Parse specific requested bin numbers or specific bin codes (e.g. "1 ô", "chỉ chọn ô D1", "lưu 1 ô kệ D1")
       const specificBinQtyMatch = userText.match(/(?:chọn|lưu|dùng|chỉ|lấy|bỏ|bớt|giảm|xuống)\s*(\d+)\s*ô/i)
-                               || userText.match(/(\d+)\s*ô\s*(?:thôi|được|đó|kệ)/i);
+        || userText.match(/(\d+)\s*ô\s*(?:thôi|được|đó|kệ)/i);
       const binCodeMention = userText.match(/\b([A-Z]\d{1,2})\b/i);
 
       let targetBinCount: number | null = specificBinQtyMatch ? parseInt(specificBinQtyMatch[1], 10) : null;
@@ -1631,7 +1630,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-1.5 sm:p-3 animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl shadow-2xl border-2 border-cyan-500 w-full max-w-[98vw] h-[97vh] flex flex-col overflow-hidden">
-        
+
         {/* Modal Header - Master Cyan Theme */}
         <div className="bg-cyan-700 text-white px-6 py-3.5 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
@@ -1657,7 +1656,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
         {/* Modal Body */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-0 flex-1 overflow-hidden bg-slate-50">
-          
+
           {/* Left Column: AI Interactive Chat */}
           <div className="md:col-span-5 lg:col-span-5 border-r border-cyan-200 bg-cyan-50/30 flex flex-col h-full overflow-hidden">
             <div className="p-3 bg-white border-b border-cyan-100 flex items-center justify-between text-xs font-black text-cyan-900 shadow-2xs">
@@ -1682,11 +1681,10 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                     <span>{m.time}</span>
                   </div>
                   <div
-                    className={`max-w-[95%] p-3 rounded-2xl shadow-xs leading-relaxed whitespace-pre-wrap ${
-                      m.sender === 'user'
+                    className={`max-w-[95%] p-3 rounded-2xl shadow-xs leading-relaxed whitespace-pre-wrap ${m.sender === 'user'
                         ? 'bg-cyan-600 text-white rounded-br-none font-medium'
                         : 'bg-white text-slate-800 border border-cyan-200 rounded-bl-none font-normal shadow-2xs'
-                    }`}
+                      }`}
                   >
                     {m.text}
                   </div>
@@ -1732,7 +1730,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
 
           {/* Right Column: Interactive Visual Rack Topology Grid */}
           <div className="md:col-span-7 lg:col-span-7 p-4 flex flex-col h-full overflow-hidden bg-white">
-            
+
             {/* 1. Item Switcher Bar */}
             <div className="mb-3 bg-cyan-50/80 p-2.5 rounded-2xl border border-cyan-200 flex items-center justify-between">
               <div className="flex items-center gap-2 overflow-x-auto">
@@ -1749,16 +1747,14 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                       key={it.rowId}
                       type="button"
                       onClick={() => handleSwitchActiveItem(it.rowId)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                        isActive
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${isActive
                           ? 'bg-cyan-600 text-white shadow-sm'
                           : 'bg-white hover:bg-cyan-100 text-slate-700 border border-cyan-200'
-                      }`}
+                        }`}
                     >
                       <span>#{idx + 1} {it.productName || `Mặt hàng ${idx + 1}`}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black ${
-                        isActive ? 'bg-cyan-800 text-white' : 'bg-cyan-100 text-cyan-900'
-                      }`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black ${isActive ? 'bg-cyan-800 text-white' : 'bg-cyan-100 text-cyan-900'
+                        }`}>
                         {selectedCount}/{countReq} Ô
                       </span>
                     </button>
@@ -1789,11 +1785,10 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                     key={rk.rackId}
                     type="button"
                     onClick={() => setActiveRackId(rk.rackId)}
-                    className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${
-                      activeRackId === rk.rackId
+                    className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${activeRackId === rk.rackId
                         ? 'bg-cyan-700 text-white shadow-xs'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                      }`}
                   >
                     {rk.rackId} ({rk.zoneName.split(' ')[0]} {rk.zoneName.split(' ')[1]})
                   </button>
@@ -1808,7 +1803,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
             {/* 3. Main Visual Rack Topology Card */}
             <div className="flex-1 overflow-y-auto space-y-4 pr-1">
               <div className="bg-white rounded-2xl border-2 border-cyan-200 p-4 shadow-sm">
-                
+
                 {/* Rack Topology Header Banner */}
                 <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
                   <div className="flex items-center gap-3">
@@ -1828,7 +1823,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                 <div className="space-y-4">
                   {currentRack.floors.map((floor) => (
                     <div key={floor.floorId} className="bg-cyan-50/30 rounded-2xl border border-cyan-200 p-3">
-                      
+
                       {/* Floor Header */}
                       <div className="flex items-center justify-between mb-2.5">
                         <div className="flex items-center gap-2">
@@ -1856,15 +1851,14 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                             <div
                               key={cell.binCode}
                               onClick={() => !isCellDisabled && toggleBinSelection(cell.binCode)}
-                              className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between ${
-                                cell.isOccupied
+                              className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between ${cell.isOccupied
                                   ? 'bg-amber-100/90 border-2 border-amber-500 text-amber-950 font-black shadow-xs opacity-90 cursor-not-allowed'
                                   : isOccupiedByOther
-                                  ? 'bg-amber-50/70 border-amber-300 opacity-75 cursor-not-allowed'
-                                  : isSelected
-                                  ? 'bg-cyan-600 text-white border-2 border-cyan-700 shadow-md scale-102 cursor-pointer'
-                                  : 'bg-white hover:bg-cyan-50 text-slate-800 border-slate-200 hover:border-cyan-400 shadow-2xs cursor-pointer'
-                              }`}
+                                    ? 'bg-amber-50/70 border-amber-300 opacity-75 cursor-not-allowed'
+                                    : isSelected
+                                      ? 'bg-cyan-600 text-white border-2 border-cyan-700 shadow-md scale-102 cursor-pointer'
+                                      : 'bg-white hover:bg-cyan-50 text-slate-800 border-slate-200 hover:border-cyan-400 shadow-2xs cursor-pointer'
+                                }`}
                             >
                               <div className="flex items-center justify-between mb-1">
                                 <span className={`text-xs font-black ${cell.isOccupied ? 'text-amber-950' : isSelected ? 'text-white' : isOccupiedByOther ? 'text-amber-900' : 'text-slate-900'}`}>
@@ -1892,9 +1886,8 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                               </span>
 
                               <div className="flex items-center justify-between pt-1 border-t border-black/10">
-                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-                                  isSelected ? 'bg-cyan-800 text-white' : isOccupiedByOther ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'
-                                }`}>
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${isSelected ? 'bg-cyan-800 text-white' : isOccupiedByOther ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-700'
+                                  }`}>
                                   {cell.maxWeight}kg
                                 </span>
                                 <span className={`text-[9px] font-bold ${isSelected ? 'text-cyan-100' : isOccupiedByOther ? 'text-amber-900' : 'text-cyan-900'}`}>
@@ -1992,7 +1985,7 @@ const PutawaySummaryReportModal: React.FC<PutawaySummaryReportModalProps> = ({
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-5 animate-[fadeIn_0.15s_ease-out]">
       <div className="w-full max-w-5xl rounded-3xl bg-white shadow-2xl border-2 border-cyan-500 overflow-hidden flex flex-col max-h-[95vh]">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between bg-gradient-to-r from-cyan-700 via-cyan-600 to-teal-600 px-6 py-4 text-white">
           <div className="flex items-center gap-3">
@@ -2019,7 +2012,7 @@ const PutawaySummaryReportModal: React.FC<PutawaySummaryReportModalProps> = ({
 
         {/* Printable Body Content */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1 bg-slate-50/50">
-          
+
           {/* Executive Summary Cards Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-slate-800">
             <div className="bg-white p-3.5 rounded-2xl border-2 border-cyan-200 shadow-2xs">
@@ -2398,7 +2391,7 @@ export default function CreateStockInOrderPage({
           try {
             const merged = mergeStoredWarehouses(list);
             saveStoredWarehouses(merged);
-          } catch {}
+          } catch { }
           if (list.length > 0) {
             const firstWhCode = list[0].code;
             setTabs((prevTabs) =>
@@ -2533,8 +2526,8 @@ export default function CreateStockInOrderPage({
           expectedDate: orderData.expectedDate
             ? new Date(orderData.expectedDate).toISOString().slice(0, 16)
             : orderData.createdAt
-            ? new Date(orderData.createdAt).toISOString().slice(0, 16)
-            : new Date().toISOString().slice(0, 16),
+              ? new Date(orderData.createdAt).toISOString().slice(0, 16)
+              : new Date().toISOString().slice(0, 16),
           supplierId: orderData.sourcePurchaseOrder?.supplier?.id || orderData.supplier?.id || orderData.supplierId || '',
           supplierName: orderData.sourcePurchaseOrder?.supplier?.name || orderData.supplier?.name || orderData.supplierName || 'Nhà cung cấp',
           supplierPhone: orderData.sourcePurchaseOrder?.supplier?.phone || orderData.supplier?.phone || orderData.supplierPhone || '',
@@ -2901,7 +2894,7 @@ export default function CreateStockInOrderPage({
       }, 100);
     } else {
       // Flow 2: Triggered from individual item action button in table
-      setToast({ message: 'Đã lưu vị trí ô kệ cho sản phẩm trong danh sách!', type: 'success' });
+      setToast({ message: 'Đã Lưu cho sản phẩm trong danh sách!', type: 'success' });
       setAiSlottingTargetRowId(null);
     }
   };
@@ -3198,8 +3191,8 @@ export default function CreateStockInOrderPage({
               {isViewMode
                 ? 'XEM CHI TIẾT PHIẾU NHẬP HÀNG HÓA'
                 : actionParam === 'edit'
-                ? 'CHỈNH SỬA PHIẾU NHẬP HÀNG HÓA'
-                : 'TẠO PHIẾU NHẬP HÀNG HÓA'}
+                  ? 'CHỈNH SỬA PHIẾU NHẬP HÀNG HÓA'
+                  : 'TẠO PHIẾU NHẬP HÀNG HÓA'}
             </h1>
           </div>
 
@@ -3389,9 +3382,8 @@ export default function CreateStockInOrderPage({
                 if (isReadOnly) return;
                 setShowWarehouseDropdown((prev) => !prev);
               }}
-              className={`h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 flex items-center justify-between shadow-xs transition ${
-                isReadOnly ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:bg-cyan-100/70'
-              }`}
+              className={`h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 flex items-center justify-between shadow-xs transition ${isReadOnly ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:bg-cyan-100/70'
+                }`}
             >
               <span className="truncate">
                 {warehouses.find((w) => w.code === activeTab?.warehouseCode)
@@ -3421,11 +3413,10 @@ export default function CreateStockInOrderPage({
                             handleWarehouseChange(wh.code);
                             setShowWarehouseDropdown(false);
                           }}
-                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition cursor-pointer ${
-                            isSelected
+                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition cursor-pointer ${isSelected
                               ? 'bg-cyan-600 text-white shadow-xs'
                               : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
-                          }`}
+                            }`}
                         >
                           <span>
                             [{wh.code}] {wh.name}
@@ -3688,11 +3679,10 @@ export default function CreateStockInOrderPage({
                                 setAiSlottingTargetRowId(row.rowId);
                                 setShowAiSlottingModal(true);
                               }}
-                              className={`flex h-8 w-8 items-center justify-center rounded-xl transition cursor-pointer ${
-                                row.assignedBins && row.assignedBins.length > 0
+                              className={`flex h-8 w-8 items-center justify-center rounded-xl transition cursor-pointer ${row.assignedBins && row.assignedBins.length > 0
                                   ? 'border border-emerald-600 bg-emerald-600 text-white shadow-xs hover:bg-emerald-700'
                                   : 'border border-cyan-400 bg-white text-cyan-600 shadow-2xs hover:bg-cyan-600 hover:text-white hover:border-cyan-600'
-                              }`}
+                                }`}
                               title={
                                 row.assignedBins && row.assignedBins.length > 0
                                   ? `Vị trí ô kệ: ${row.locationBin || row.assignedBins.join(', ')}`
@@ -3702,15 +3692,14 @@ export default function CreateStockInOrderPage({
                               <Sparkles size={16} strokeWidth={2} />
                             </button>
 
-                             {/* 2. Cấu hình Trọng lượng & Thể tích */}
+                            {/* 2. Cấu hình Trọng lượng & Thể tích */}
                             <button
                               type="button"
                               onClick={() => setWeightModalRow(row)}
-                              className={`flex h-8 w-8 items-center justify-center rounded-xl transition cursor-pointer ${
-                                hasWeightOrVol
+                              className={`flex h-8 w-8 items-center justify-center rounded-xl transition cursor-pointer ${hasWeightOrVol
                                   ? 'border border-emerald-600 bg-emerald-600 text-white shadow-xs hover:bg-emerald-700'
                                   : 'border border-cyan-400 bg-white text-cyan-600 shadow-2xs hover:bg-cyan-600 hover:text-white hover:border-cyan-600'
-                              }`}
+                                }`}
                               title={
                                 hasWeightOrVol
                                   ? `Trọng lượng: ${(row.weight || 0).toFixed(1)} kg, Thể tích: ${(row.volume || 0).toFixed(3)} m³`
@@ -3806,9 +3795,8 @@ export default function CreateStockInOrderPage({
                   if (isReadOnly) return;
                   setShowEmployeeDropdown((prev) => !prev);
                 }}
-                className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between outline-none shadow-xs transition ${
-                  isReadOnly ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-500'
-                }`}
+                className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between outline-none shadow-xs transition ${isReadOnly ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-500'
+                  }`}
               >
                 <span className="truncate">{activeTab?.employeeName || currentUserName}</span>
                 <ChevronDown
@@ -3834,11 +3822,10 @@ export default function CreateStockInOrderPage({
                               updateActiveTab((t) => ({ ...t, employeeName: userObj.name }));
                               setShowEmployeeDropdown(false);
                             }}
-                            className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
-                              isSelected
+                            className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${isSelected
                                 ? 'bg-cyan-600 text-white shadow-xs'
                                 : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
-                            }`}
+                              }`}
                           >
                             <span>{userObj.name}</span>
                             {isSelected && <Check size={14} className="text-white" />}
@@ -3913,9 +3900,8 @@ export default function CreateStockInOrderPage({
                     if (isReadOnly) return;
                     setShowAccountDropdown((prev) => !prev);
                   }}
-                  className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between outline-none shadow-xs transition ${
-                    isReadOnly ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-500'
-                  }`}
+                  className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 flex items-center justify-between outline-none shadow-xs transition ${isReadOnly ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-500'
+                    }`}
                 >
                   <span className="truncate">
                     {activeTab?.paymentAccount || 'Chọn tài khoản thanh toán...'}
@@ -3933,18 +3919,18 @@ export default function CreateStockInOrderPage({
                         const storedAccs = readStoredBankAccounts();
                         const dynamicList = storedAccs.length > 0
                           ? [
-                              { code: '', label: 'Chưa chọn tài khoản' },
-                              ...storedAccs.filter((a) => a.status === 'active').map((a) => ({
-                                code: `${a.name} - ${a.accountNumber} (${a.bankName})`,
-                                label: `${a.name} - ${a.accountNumber} (${a.bankName})`,
-                              })),
-                            ]
+                            { code: '', label: 'Chưa chọn tài khoản' },
+                            ...storedAccs.filter((a) => a.status === 'active').map((a) => ({
+                              code: `${a.name} - ${a.accountNumber} (${a.bankName})`,
+                              label: `${a.name} - ${a.accountNumber} (${a.bankName})`,
+                            })),
+                          ]
                           : [
-                              { code: '', label: 'Chưa chọn tài khoản' },
-                              { code: 'Vietcombank - 1012345678 (Hà Nội)', label: 'Vietcombank - 1012345678 (Hà Nội)' },
-                              { code: 'Techcombank - 1903456789 (HCM)', label: 'Techcombank - 1903456789 (HCM)' },
-                              { code: 'MBBank - 999988887777 (Công ty)', label: 'MBBank - 999988887777 (Công ty)' },
-                            ];
+                            { code: '', label: 'Chưa chọn tài khoản' },
+                            { code: 'Vietcombank - 1012345678 (Hà Nội)', label: 'Vietcombank - 1012345678 (Hà Nội)' },
+                            { code: 'Techcombank - 1903456789 (HCM)', label: 'Techcombank - 1903456789 (HCM)' },
+                            { code: 'MBBank - 999988887777 (Công ty)', label: 'MBBank - 999988887777 (Công ty)' },
+                          ];
                         return dynamicList.map((acc) => {
                           const isSelected = activeTab?.paymentAccount === acc.code;
                           return (
@@ -3954,11 +3940,10 @@ export default function CreateStockInOrderPage({
                                 updateActiveTab((t) => ({ ...t, paymentAccount: acc.code }));
                                 setShowAccountDropdown(false);
                               }}
-                              className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
-                                isSelected
+                              className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${isSelected
                                   ? 'bg-cyan-600 text-white shadow-xs'
                                   : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
-                              }`}
+                                }`}
                             >
                               <span className="truncate">{acc.label}</span>
                               {isSelected && <Check size={14} className="text-white flex-shrink-0" />}
@@ -4121,18 +4106,31 @@ export default function CreateStockInOrderPage({
       )}
 
       {/* AI Slotting Chat & Warehouse Location Guidance Modal */}
-      <AiSlottingChatModal
+      {/* ═══ SMART SLOTTING VISUAL MAP MODAL ═══ */}
+      <SmartSlottingGridModal
         isOpen={showAiSlottingModal}
         onClose={() => {
           setShowAiSlottingModal(false);
           setAiSlottingTargetRowId(null);
         }}
-        items={activeValidItems}
-        targetRowId={aiSlottingTargetRowId}
+        mode="INBOUND"
         warehouseCode={activeTab?.warehouseCode || 'KH006'}
-        onConfirmAll={handleConfirmAiSlotting}
-        onSkipAi={handleSkipAiSlotting}
-        isFinalSaving={!!pendingSaveConfig}
+        items={activeTab?.details || []}
+        targetRowId={aiSlottingTargetRowId}
+        products={products}
+        onConfirmAll={(updatedRows) => {
+          updateActiveTab((t) => ({
+            ...t,
+            details: updatedRows,
+          }));
+          setShowAiSlottingModal(false);
+          setToast({ message: 'Đã cập nhật vị trí ô kệ cất hàng!', type: 'success' });
+          if (pendingSaveConfig) {
+            const cfg = pendingSaveConfig;
+            setPendingSaveConfig(null);
+            handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
+          }
+        }}
       />
 
       {/* Storage Information Modal (Xem thông tin lưu trữ tại các kho) */}
