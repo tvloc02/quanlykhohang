@@ -86,11 +86,49 @@ export async function fetchWarehouseOccupiedBins(
   try {
     const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
     const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
-    const currentWhId = warehouseId ? warehouseId.toLowerCase() : '';
+    const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
 
     if (currentWhCode && localStorage.getItem(`cleared_warehouse_goods_${currentWhCode}`) === 'true') {
       return { occupiedMap: map, detailsMap: dMap };
     }
+
+    const isWhMatch = (wCode?: string, wId?: string) => {
+      const cCode = String(wCode || '').trim().toUpperCase();
+      const cId = String(wId || '').trim().toLowerCase();
+
+      if (!currentWhCode && !currentWhId) return true;
+      if (currentWhCode && cCode && (cCode === currentWhCode || cCode.includes(currentWhCode) || currentWhCode.includes(cCode))) return true;
+      if (currentWhId && cId && (cId === currentWhId || cId.includes(currentWhId) || currentWhId.includes(cId))) return true;
+      if (currentWhCode && cId && cId.includes(currentWhCode.toLowerCase())) return true;
+      if (currentWhId && cCode && cCode.includes(currentWhId.toUpperCase())) return true;
+      // Special alias matching for KH002 / HCM warehouse
+      if ((currentWhCode === 'KH002' || currentWhId === 'wh_default_2') && (cCode === 'KH002' || cId === 'wh_default_2' || cCode.includes('HCM'))) return true;
+      return false;
+    };
+
+    const addBinOccupied = (bCode: string, info: BinOccupiedInfo) => {
+      if (!bCode) return;
+      const clean = bCode.trim();
+      if (!clean) return;
+
+      map.set(clean, info);
+      const norm = normalizeBinKey(clean);
+      if (norm) map.set(norm, info);
+
+      const detail: BinGoodsDetail = {
+        binCode: clean,
+        productName: info.productName!,
+        sku: info.sku!,
+        quantity: info.totalPhysical || 1,
+        allocated: info.allocated,
+        supplierName: info.supplierName!,
+        inboundDate: info.inboundDate!,
+        orderCode: info.orderCode!,
+        unit: info.unit!,
+      };
+      dMap.set(clean, detail);
+      if (norm) dMap.set(norm, detail);
+    };
 
     // 1. Fetch real physical inventory balances from CSDL
     const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
@@ -100,19 +138,13 @@ export async function fetchWarehouseOccupiedBins(
         const bWhId = String(b.warehouseId || b.warehouse?.id || '').toLowerCase();
         const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
 
-        // STRICT FILTER: Must belong to target warehouse
-        if (currentWhId && bWhId && bWhId !== currentWhId) return;
-        if (currentWhCode && bWhCode && bWhCode !== currentWhCode) return;
+        if (!isWhMatch(bWhCode, bWhId)) return;
 
         const lc = String(b.locationCode || '').trim();
         const physical = Number(b.totalPhysical || b.available || 0);
         const allocated = Number(b.allocated || 0);
 
         if (lc && (physical > 0 || allocated > 0)) {
-          // Reject un-scoped bare short codes (e.g. "D1") without hyphen/zone context
-          const isFullKey = lc.includes('-') || lc.length > 5;
-          if (!isFullKey) return;
-
           const info: BinOccupiedInfo = {
             totalPhysical: physical || 1,
             allocated,
@@ -128,42 +160,20 @@ export async function fetchWarehouseOccupiedBins(
             orderCode: b.orderCode || b.stockInOrderCode || 'TỒN-KHO',
             unit: b.product?.unit || 'Cái',
           };
-
-          map.set(lc, info);
-          const norm = normalizeBinKey(lc);
-          if (norm) map.set(norm, info);
-
-          const detail: BinGoodsDetail = {
-            binCode: lc,
-            productName: info.productName!,
-            sku: info.sku!,
-            quantity: physical || allocated || 1,
-            allocated: info.allocated,
-            supplierName: info.supplierName!,
-            inboundDate: info.inboundDate!,
-            orderCode: info.orderCode!,
-            unit: info.unit!,
-          };
-          dMap.set(lc, detail);
-          if (norm) dMap.set(norm, detail);
+          addBinOccupied(lc, info);
         }
       });
     }
 
-    // 2. Fetch stock-in orders history (ONLY unconfirmed DRAFT/PENDING orders - completed stock is tracked via inventory balances)
+    // 2. Fetch stock-in orders history
     const inRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
     if (inRes && inRes.ok) {
       const orders: any[] = await inRes.json();
       orders.forEach((ord) => {
-        const isPendingDraft = ord.status === 'DRAFT' || ord.status === 'PENDING' || ord.status === 'IN_PROGRESS';
-        if (!isPendingDraft) return;
-
         const oWhId = String(ord.warehouseId || ord.warehouse?.id || '').toLowerCase();
         const oWhCode = String(ord.warehouseCode || ord.warehouse?.code || '').trim().toUpperCase();
 
-        // STRICT FILTER: Must belong to target warehouse
-        if (currentWhId && oWhId && oWhId !== currentWhId) return;
-        if (currentWhCode && oWhCode && oWhCode !== currentWhCode) return;
+        if (!isWhMatch(oWhCode, oWhId)) return;
 
         const orderCode = ord.code || ord.orderNumber || 'NK-ORDER';
         const supplierName = ord.supplierName || ord.supplier?.name || 'Nhà cung cấp';
@@ -179,9 +189,9 @@ export async function fetchWarehouseOccupiedBins(
           const pQty = Number(item.qty || item.quantity || 1);
           const pUnit = item.unit || 'Cái';
 
-          let bins: string[] = item.assignedBins || [];
+          let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
           if (bins.length === 0 && item.locationBin)
-            bins = item.locationBin.split(',').map((s: string) => s.trim());
+            bins = String(item.locationBin).split(',').map((s: string) => s.trim());
           if (bins.length === 0 && item.note) {
             const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
             if (match) bins = match[1].split(',').map((s: string) => s.trim());
@@ -189,11 +199,6 @@ export async function fetchWarehouseOccupiedBins(
 
           bins.forEach((bCode) => {
             if (!bCode) return;
-            const cleanBCode = bCode.trim();
-
-            const isFullKey = cleanBCode.includes('-') || cleanBCode.length > 5;
-            if (!isFullKey) return;
-
             const info: BinOccupiedInfo = {
               totalPhysical: pQty,
               allocated: 0,
@@ -205,27 +210,100 @@ export async function fetchWarehouseOccupiedBins(
               orderCode,
               unit: pUnit,
             };
-            map.set(cleanBCode, info);
-            const norm = normalizeBinKey(cleanBCode);
-            if (norm) map.set(norm, info);
-
-            const detail: BinGoodsDetail = {
-              binCode: cleanBCode,
-              productName: pName,
-              sku: pSku,
-              quantity: pQty,
-              allocated: 0,
-              supplierName,
-              inboundDate,
-              orderCode,
-              unit: pUnit,
-            };
-            dMap.set(cleanBCode, detail);
-            if (norm) dMap.set(norm, detail);
+            addBinOccupied(bCode, info);
           });
         });
       });
     }
+
+    // 3. Fetch transfer orders (from API & localStorage)
+    const transferRes = await fetch(`${API_BASE_URL}/delivery/transfer-orders`, { headers }).catch(() => null);
+    let transferOrders: any[] = [];
+    if (transferRes && transferRes.ok) {
+      const data = await transferRes.json();
+      transferOrders = Array.isArray(data) ? data : data.data || [];
+    }
+    try {
+      const localTransfers = JSON.parse(localStorage.getItem('smart-wms-transfer-orders') || '[]');
+      if (Array.isArray(localTransfers)) {
+        transferOrders = [...transferOrders, ...localTransfers];
+      }
+    } catch {}
+
+    transferOrders.forEach((ord) => {
+      const destWhCode = String(ord.destinationWarehouse || ord.destinationWarehouseCode || '').trim().toUpperCase();
+      const destWhId = String(ord.destinationWarehouseId || '').toLowerCase();
+
+      if (!isWhMatch(destWhCode, destWhId)) return;
+
+      const orderCode = ord.transferNo || ord.code || 'PX-NỘI-BỘ';
+      const inboundDate = ord.createdAt
+        ? new Date(ord.createdAt).toLocaleDateString('vi-VN') + ' ' + new Date(ord.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        : 'Hôm nay';
+
+      (ord.items || ord.details || []).forEach((item: any) => {
+        const pName = item.productName || item.product?.name || 'Sản phẩm chuyển kho';
+        const pSku = item.productCode || item.productSku || item.sku || 'SKU-001';
+        const pQty = Number(item.quantity || item.qty || 1);
+        const pUnit = item.unit || 'Cái';
+
+        let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+        if (bins.length === 0 && item.locationBin) {
+          bins = String(item.locationBin).split(',').map((s: string) => s.trim());
+        }
+
+        bins.forEach((bCode) => {
+          if (!bCode) return;
+          const info: BinOccupiedInfo = {
+            totalPhysical: pQty,
+            allocated: 0,
+            productsCount: 1,
+            productName: pName,
+            sku: pSku,
+            supplierName: ord.createdBy || 'Chuyển kho nội bộ',
+            inboundDate,
+            orderCode,
+            unit: pUnit,
+          };
+          addBinOccupied(bCode, info);
+        });
+      });
+    });
+
+    // 4. Parse products from localStorage ('smart-wms-products')
+    try {
+      const localProducts = JSON.parse(localStorage.getItem('smart-wms-products') || '[]');
+      if (Array.isArray(localProducts)) {
+        localProducts.forEach((p: any) => {
+          if (Array.isArray(p.stockBalances)) {
+            p.stockBalances.forEach((sb: any) => {
+              const sbWhCode = String(sb.locationCode || sb.warehouseCode || '').trim().toUpperCase();
+              if (isWhMatch(sbWhCode)) {
+                let bins: string[] = Array.isArray(sb.assignedBins) ? sb.assignedBins : [];
+                if (bins.length === 0 && sb.locationBin) {
+                  bins = String(sb.locationBin).split(',').map((s) => s.trim());
+                }
+                bins.forEach((bCode) => {
+                  if (!bCode) return;
+                  const info: BinOccupiedInfo = {
+                    totalPhysical: Number(sb.totalPhysical || sb.available || p.stockQty || 1),
+                    allocated: 0,
+                    productsCount: 1,
+                    productName: p.name || 'Sản phẩm tồn kho',
+                    sku: p.internalSku || p.sku || 'SKU-001',
+                    supplierName: p.supplier || 'Nhà cung cấp',
+                    inboundDate: 'Hôm nay',
+                    orderCode: 'TỒN-KHO',
+                    unit: p.unit || 'Cái',
+                  };
+                  addBinOccupied(bCode, info);
+                });
+              }
+            });
+          }
+        });
+      }
+    } catch {}
   } catch (err) {
     console.error('Error in fetchWarehouseOccupiedBins:', err);
   }
@@ -326,8 +404,58 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     setEditingBinConfig(null);
   };
 
-  const subWarehouses = warehouse?.subWarehouses || [];
-  const whCode = warehouse?.code ? warehouse.code.trim().toUpperCase() : 'KH';
+  const subWarehouses = useMemo<SubWarehouse[]>(() => {
+    if (warehouse?.subWarehouses && warehouse.subWarehouses.length > 0) {
+      return warehouse.subWarehouses;
+    }
+    const code = warehouse?.code ? warehouse.code.trim().toUpperCase() : 'KHO';
+    return [
+      {
+        id: `${code}-ZA`,
+        code: 'ZA',
+        name: `Phân Khu A - Kho ${code}`,
+        length: 20,
+        width: 15,
+        height: 6,
+        racksCount: 1,
+        shelvesPerRack: 4,
+        binsPerShelf: 10,
+        racks: [
+          { id: 'R01', rackCode: 'R01', name: `Dãy Kệ R01 (${code})`, shelvesCount: 4, baysCount: 10, defaultBinMaxWeight: 500, customBins: {} } as any,
+        ],
+      },
+      {
+        id: `${code}-ZB`,
+        code: 'ZB',
+        name: `Phân Khu B - Kho ${code}`,
+        length: 20,
+        width: 15,
+        height: 6,
+        racksCount: 1,
+        shelvesPerRack: 4,
+        binsPerShelf: 10,
+        racks: [
+          { id: 'R02', rackCode: 'R02', name: `Dãy Kệ R02 (${code})`, shelvesCount: 4, baysCount: 10, defaultBinMaxWeight: 500, customBins: {} } as any,
+        ],
+      },
+      {
+        id: `${code}-ZC`,
+        code: 'ZC',
+        name: `Phân Khu C - Kho Lạnh (-18°C)`,
+        length: 20,
+        width: 15,
+        height: 6,
+        racksCount: 1,
+        shelvesPerRack: 4,
+        binsPerShelf: 10,
+        racks: [
+          { id: 'R03', rackCode: 'R03', name: `Dãy Kệ R03 (${code})`, shelvesCount: 4, baysCount: 10, defaultBinMaxWeight: 500, customBins: {} } as any,
+        ],
+      },
+    ];
+  }, [warehouse?.subWarehouses, warehouse?.code]);
+
+  const whCode = warehouse?.code ? warehouse.code.trim().toUpperCase() : 'KHO';
 
   // Synchronize active zone & rack
   useEffect(() => {
@@ -367,14 +495,25 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   // Load occupancy data from CSDL for this warehouse
   useEffect(() => {
     let isMounted = true;
-    fetchWarehouseOccupiedBins(warehouse?.code, warehouse?.id).then(({ occupiedMap: oMap, detailsMap: dMap }) => {
-      if (isMounted) {
-        setOccupiedMap(oMap);
-        setDetailsMap(dMap);
-      }
-    });
+    const reload = () => {
+      fetchWarehouseOccupiedBins(warehouse?.code, warehouse?.id).then(({ occupiedMap: oMap, detailsMap: dMap }) => {
+        if (isMounted) {
+          setOccupiedMap(oMap);
+          setDetailsMap(dMap);
+        }
+      });
+    };
+
+    reload();
+
+    const handleStorage = () => reload();
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('warehouse-goods-cleared', handleStorage);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('warehouse-goods-cleared', handleStorage);
     };
   }, [warehouse?.code, warehouse?.id]);
 
@@ -391,14 +530,30 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     const normKey = normalizeBinKey(fullBinCode);
     if (normKey && occupiedMap.has(normKey)) return occupiedMap.get(normKey);
 
+    if (occupiedMap.has(binCodeShort)) return occupiedMap.get(binCodeShort);
+    const normCell = normalizeBinKey(binCodeShort);
+    if (normCell && occupiedMap.has(normCell)) return occupiedMap.get(normCell);
+
+    const rackCell = `${rackCode}-${binCodeShort}`;
+    if (occupiedMap.has(rackCell)) return occupiedMap.get(rackCell);
+    const normRackCell = normalizeBinKey(rackCell);
+    if (normRackCell && occupiedMap.has(normRackCell)) return occupiedMap.get(normRackCell);
+
     const currentWhNorm = normalizeBinKey(whCode);
     const currentZoneNorm = activeZone?.code ? normalizeBinKey(activeZone.code) : '';
     const normRack = normalizeBinKey(rackCode);
-    const normCell = normalizeBinKey(binCodeShort);
 
     for (const [key, val] of occupiedMap.entries()) {
       const normK = normalizeBinKey(key);
       if (!normK) continue;
+      if (normK === normCell || normK === normRackCell) return val;
+      if (
+        normCell &&
+        normK.endsWith(normCell) &&
+        (!normRack || normK.includes(normRack))
+      ) {
+        return val;
+      }
       if (
         currentWhNorm &&
         currentZoneNorm &&

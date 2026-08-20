@@ -97,7 +97,6 @@ const menuItems: MenuItem[] = [
     icon: Home,
     label: 'Trang chủ',
     path: '/dashboard',
-    isSpecialButton: true,
     allowedRoles: ['admin', 'manager', 'staff'],
   },
   // 2. Nhập - Xuất
@@ -422,7 +421,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             onClick={() => toggleExpanded(item.path)}
             className={`w-full flex items-center ${isOpen ? 'px-3.5' : 'justify-center'} py-3 text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer group ${
               isParentActive || isChildActive || isExpanded
-                ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-l-4 border-cyan-500'
+                ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
                 : 'hover:bg-cyan-50 dark:hover:bg-slate-900 text-gray-800 dark:text-slate-200'
             }`}
             title={!isOpen ? item.label : ''}
@@ -449,7 +448,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                   : 'max-h-0 opacity-0 my-0 pointer-events-none'
               }`}
             >
-              <div className="pl-2.5 ml-4 space-y-1 border-l border-cyan-200 dark:border-slate-800 py-0.5">
+              <div className="pl-2.5 ml-4 space-y-1 py-0.5">
                 {item.children!.map((child) => {
                   const ChildIcon = child.icon;
                   const isChildActiveState = location.pathname === child.path;
@@ -512,12 +511,12 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     <aside
       className={`${
         isOpen ? 'w-80' : 'w-20'
-      } fixed lg:relative z-40 bg-white dark:bg-slate-950 shadow-2xl transform transition-all duration-300 ease-in-out border-r-2 border-gray-200 dark:border-slate-800 flex flex-col h-screen`}
+      } fixed lg:relative z-40 bg-white dark:bg-slate-950 transform transition-all duration-300 ease-in-out border-r-2 border-gray-200 dark:border-slate-800 flex flex-col h-screen`}
       style={{
         background: 'linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%)',
       }}
     >
-      <div className="p-4 border-b-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800 flex justify-center lg:justify-start">
+      <div className="h-20 p-4 border-b-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800 flex justify-center lg:justify-start box-border">
         <div className={`flex items-center gap-3 w-full ${!isOpen ? 'justify-center' : ''}`}>
           <img src="/logo.png" alt="Smart WMS" className="h-11 w-11 object-cover rounded-xl shadow-sm flex-shrink-0" />
           {isOpen && (

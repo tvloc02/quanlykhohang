@@ -51,9 +51,9 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Nháp', color: 'border-slate-200 bg-slate-50 text-slate-700' },
   PENDING: { label: 'Chờ xử lý', color: 'border-amber-300 bg-amber-50 text-amber-800 font-bold' },
   APPROVED: { label: 'Đã duyệt', color: 'border-cyan-300 bg-cyan-50 text-cyan-800 font-bold' },
-  IN_TRANSIT: { label: 'Đang vận chuyển', color: 'border-blue-300 bg-blue-50 text-blue-800 font-bold' },
-  DELIVERED: { label: 'Hoàn thành', color: 'border-emerald-300 bg-emerald-50 text-emerald-800 font-bold' },
-  COMPLETED: { label: 'Hoàn thành', color: 'border-emerald-300 bg-emerald-50 text-emerald-800 font-bold' },
+  IN_TRANSIT: { label: 'Đang giao', color: 'border-blue-400 bg-blue-50 text-blue-800 font-bold' },
+  DELIVERED: { label: 'Đã nhận hàng', color: 'border-emerald-400 bg-emerald-50 text-emerald-800 font-bold' },
+  COMPLETED: { label: 'Đã nhận hàng', color: 'border-emerald-400 bg-emerald-50 text-emerald-800 font-bold' },
   CANCELLED: { label: 'Đã hủy', color: 'border-red-300 bg-red-50 text-red-700 font-bold' },
 };
 
@@ -275,6 +275,9 @@ export default function TransferRequestsPage() {
         receiveDate: new Date().toISOString(),
         items: updatedItems,
       });
+
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('warehouse-goods-cleared'));
 
       setToast({ type: 'success', message: `Xác nhận nhập kho & phân bổ ô kệ thành công cho phiếu: ${receiveModalOrder.transferNo}` });
       setReceiveModalOrder(null);
@@ -1023,7 +1026,7 @@ export default function TransferRequestsPage() {
                               type="button"
                               onClick={() => navigate('/delivery/receive-transfer-order', { state: { editOrderData: order, mode: 'receive', fromRequests: true } })}
                               className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-emerald-600 bg-white text-emerald-600 shadow-2xs transition hover:bg-emerald-50 cursor-pointer"
-                              title="Nhận hàng & Chọn ô kệ nhập kho"
+                              title="Đã nhận hàng & Chọn ô kệ nhập kho"
                             >
                               <CheckCircle2 className="h-4 w-4 text-emerald-600" strokeWidth={2.5} />
                             </button>
