@@ -196,53 +196,53 @@ export default function InventoryBaseUnitReportPage() {
           </div>
         </div>
 
-        {/* Clean White Buttons */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Right Action Buttons - Gold Standard Cyan Theme */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
             onClick={loadData}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-xs font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`h-4 w-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
             Làm mới
           </button>
 
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-xs font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Printer className="h-4 w-4 text-slate-600" />
+            <Printer className="h-4 w-4 text-cyan-700" />
             In báo cáo
           </button>
 
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-xs font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <FileSpreadsheet className="h-4 w-4 text-slate-600" />
+            <FileSpreadsheet className="h-4 w-4 text-cyan-700" />
             Export Excel
           </button>
 
           <button
             type="button"
             onClick={() => setShowColumnSettings(true)}
-            className="inline-flex items-center justify-center gap-2 h-9 px-3.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 h-9 px-3.5 rounded-xl border border-cyan-700 bg-white text-cyan-800 font-bold text-xs shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Cấu hình hiển thị cột"
           >
-            <Settings className="h-4 w-4 text-slate-600" />
+            <Settings className="h-4 w-4 text-cyan-700" />
             <span>Hiển thị</span>
           </button>
 
           <button
             type="button"
             onClick={toggleBrowserFullscreen}
-            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-slate-300 bg-white text-slate-700 shadow-2xs hover:bg-slate-100 transition cursor-pointer"
+            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Toàn màn hình"
           >
-            {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {isFullScreen ? <Minimize2 className="h-4 w-4 text-cyan-700" /> : <Maximize2 className="h-4 w-4 text-cyan-700" />}
           </button>
         </div>
       </div>
@@ -301,36 +301,36 @@ export default function InventoryBaseUnitReportPage() {
         </div>
       )}
 
-      {/* ═══ DATA TABLE - NEUTRAL SLATE / WHITE DESIGN ═══ */}
+      {/* ═══ DATA TABLE - CYAN THEME DESIGN ═══ */}
       <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full min-w-[1100px] border-collapse text-left">
-            <thead className="bg-slate-100 sticky top-0 z-20 shadow-xs border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
+            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700 font-extrabold uppercase text-xs sm:text-sm tracking-wider [&_th]:text-white [&_th]:border-cyan-500/40">
               <tr>
-                <th className="w-12 border-r border-slate-200 px-3 py-3.5 text-center">STT</th>
-                {columnVis.sku && <th className="min-w-[120px] border-r border-slate-200 px-3 py-3.5 text-center">Mã SKU</th>}
-                {columnVis.name && <th className="min-w-[220px] border-r border-slate-200 px-4 py-3.5 text-center">Tên sản phẩm</th>}
-                {columnVis.initialStock && <th className="min-w-[100px] border-r border-slate-200 px-3 py-3.5 text-center">Tồn đầu</th>}
-                {columnVis.importQty && <th className="min-w-[100px] border-r border-slate-200 px-3 py-3.5 text-center">Nhập</th>}
-                {columnVis.exportQty && <th className="min-w-[100px] border-r border-slate-200 px-3 py-3.5 text-center">Xuất</th>}
-                {columnVis.finalStock && <th className="min-w-[110px] border-r border-slate-200 px-3 py-3.5 text-center font-black text-slate-900">Tồn cuối</th>}
-                {columnVis.unitPrice && <th className="min-w-[130px] border-r border-slate-200 px-3 py-3.5 text-center">Giá vốn (đ)</th>}
-                {columnVis.totalValue && <th className="min-w-[160px] border-r border-slate-200 px-3 py-3.5 text-center text-slate-900 font-black">Giá trị tồn (đ)</th>}
-                {columnVis.pendingExportQty && <th className="min-w-[110px] border-r border-slate-200 px-3 py-3.5 text-center">Chưa giao</th>}
+                <th className="w-12 border-r px-3 py-3.5 text-center">STT</th>
+                {columnVis.sku && <th className="min-w-[120px] border-r px-3 py-3.5 text-center">Mã SKU</th>}
+                {columnVis.name && <th className="min-w-[220px] border-r px-4 py-3.5 text-center">Tên sản phẩm</th>}
+                {columnVis.initialStock && <th className="min-w-[100px] border-r px-3 py-3.5 text-center">Tồn đầu</th>}
+                {columnVis.importQty && <th className="min-w-[100px] border-r px-3 py-3.5 text-center">Nhập</th>}
+                {columnVis.exportQty && <th className="min-w-[100px] border-r px-3 py-3.5 text-center">Xuất</th>}
+                {columnVis.finalStock && <th className="min-w-[110px] border-r px-3 py-3.5 text-center font-black">Tồn cuối</th>}
+                {columnVis.unitPrice && <th className="min-w-[130px] border-r px-3 py-3.5 text-center">Giá vốn (đ)</th>}
+                {columnVis.totalValue && <th className="min-w-[160px] border-r px-3 py-3.5 text-center font-black">Giá trị tồn (đ)</th>}
+                {columnVis.pendingExportQty && <th className="min-w-[110px] border-r px-3 py-3.5 text-center">Chưa giao</th>}
                 {columnVis.pendingOrderQty && <th className="min-w-[110px] px-3 py-3.5 text-center">Đang đặt</th>}
               </tr>
               {/* Summary Row */}
-              <tr className="bg-slate-200/80 border-b-2 border-slate-300 font-black text-slate-900 text-xs sm:text-sm">
-                <td colSpan={3} className="py-3 px-4 border-r border-slate-300 uppercase tracking-wide">
+              <tr className="bg-cyan-50/90 border-b-2 border-cyan-200 font-black text-cyan-950 text-xs sm:text-sm">
+                <td colSpan={3} className="py-3 px-4 border-r border-cyan-200 uppercase tracking-wide">
                   TỔNG CỘNG ({allItems.length} mặt hàng):
                 </td>
-                {columnVis.initialStock && <td className="py-3 px-3 text-right border-r border-slate-300">{totals.init}</td>}
-                {columnVis.importQty && <td className="py-3 px-3 text-right border-r border-slate-300">{totals.inQty}</td>}
-                {columnVis.exportQty && <td className="py-3 px-3 text-right border-r border-slate-300">{totals.outQty}</td>}
-                {columnVis.finalStock && <td className="py-3 px-3 text-right border-r border-slate-300 font-black">{totals.finalQty}</td>}
-                {columnVis.unitPrice && <td className="py-3 px-3 text-right border-r border-slate-300">-</td>}
-                {columnVis.totalValue && <td className="py-3 px-3 text-right border-r border-slate-300 font-black">{fmt(totals.val)} đ</td>}
-                {columnVis.pendingExportQty && <td className="py-3 px-3 text-right border-r border-slate-300">0</td>}
+                {columnVis.initialStock && <td className="py-3 px-3 text-right border-r border-cyan-200">{totals.init}</td>}
+                {columnVis.importQty && <td className="py-3 px-3 text-right border-r border-cyan-200">{totals.inQty}</td>}
+                {columnVis.exportQty && <td className="py-3 px-3 text-right border-r border-cyan-200">{totals.outQty}</td>}
+                {columnVis.finalStock && <td className="py-3 px-3 text-right border-r border-cyan-200 font-black">{totals.finalQty}</td>}
+                {columnVis.unitPrice && <td className="py-3 px-3 text-right border-r border-cyan-200">-</td>}
+                {columnVis.totalValue && <td className="py-3 px-3 text-right border-r border-cyan-200 font-black">{fmt(totals.val)} đ</td>}
+                {columnVis.pendingExportQty && <td className="py-3 px-3 text-right border-r border-cyan-200">0</td>}
                 {columnVis.pendingOrderQty && <td className="py-3 px-3 text-right">0</td>}
               </tr>
             </thead>
@@ -339,7 +339,7 @@ export default function InventoryBaseUnitReportPage() {
               {loading ? (
                 <tr>
                   <td colSpan={11} className="py-12 text-center text-slate-400 font-bold">
-                    <RefreshCw size={20} className="animate-spin inline-block mr-2 text-slate-600" />
+                    <RefreshCw size={20} className="animate-spin inline-block mr-2 text-cyan-600" />
                     Đang tính toán dữ liệu đơn vị gốc...
                   </td>
                 </tr>
@@ -354,11 +354,11 @@ export default function InventoryBaseUnitReportPage() {
 
                   return (
                     <React.Fragment key={group.groupName || 'group'}>
-                      <tr className="bg-slate-100/90 font-extrabold text-slate-900 border-t border-slate-300">
+                      <tr className="bg-cyan-100/70 font-extrabold text-cyan-900 border-t border-cyan-300">
                         <td colSpan={11} className="py-2.5 px-4 text-left uppercase tracking-wider">{group.groupName || 'Nhóm hàng'}</td>
                       </tr>
                       {items.map((row, idx) => (
-                        <tr key={row.id || idx} className="hover:bg-slate-50 transition group">
+                        <tr key={row.id || idx} className="hover:bg-cyan-50/50 transition group">
                           <td className="py-3 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">{idx + 1}</td>
                           {columnVis.sku && <td className="py-3 px-3 text-left border-r border-slate-200 font-mono font-bold text-slate-800">{row.sku}</td>}
                           {columnVis.name && <td className="py-3 px-4 text-left border-r border-slate-200 font-extrabold text-slate-900">{row.name}</td>}
@@ -376,15 +376,15 @@ export default function InventoryBaseUnitReportPage() {
                           {columnVis.pendingOrderQty && <td className="py-3 px-3 text-right font-semibold text-slate-600">{row.pendingOrderQty}</td>}
                         </tr>
                       ))}
-                      <tr className="bg-slate-100 font-black text-slate-900 border-b-2 border-slate-300">
-                        <td colSpan={3} className="py-2.5 px-4 text-right border-r border-slate-300 uppercase">Cộng nhóm:</td>
-                        {columnVis.initialStock && <td className="py-2.5 px-3 text-right border-r border-slate-300">{grpInit}</td>}
-                        {columnVis.importQty && <td className="py-2.5 px-3 text-right border-r border-slate-300">{grpIn}</td>}
-                        {columnVis.exportQty && <td className="py-2.5 px-3 text-right border-r border-slate-300">{grpOut}</td>}
-                        {columnVis.finalStock && <td className="py-2.5 px-3 text-right border-r border-slate-300">{grpFinal}</td>}
-                        {columnVis.unitPrice && <td className="py-2.5 px-3 border-r border-slate-300">-</td>}
-                        {columnVis.totalValue && <td className="py-2.5 px-3 text-right border-r border-slate-300">{fmt(grpValue)} đ</td>}
-                        {columnVis.pendingExportQty && <td className="py-2.5 px-3 text-right border-r border-slate-300">0</td>}
+                      <tr className="bg-cyan-50/60 font-black text-cyan-950 border-b-2 border-cyan-200">
+                        <td colSpan={3} className="py-2.5 px-4 text-right border-r border-cyan-200 uppercase">Cộng nhóm:</td>
+                        {columnVis.initialStock && <td className="py-2.5 px-3 text-right border-r border-cyan-200">{grpInit}</td>}
+                        {columnVis.importQty && <td className="py-2.5 px-3 text-right border-r border-cyan-200">{grpIn}</td>}
+                        {columnVis.exportQty && <td className="py-2.5 px-3 text-right border-r border-cyan-200">{grpOut}</td>}
+                        {columnVis.finalStock && <td className="py-2.5 px-3 text-right border-r border-cyan-200">{grpFinal}</td>}
+                        {columnVis.unitPrice && <td className="py-2.5 px-3 border-r border-cyan-200">-</td>}
+                        {columnVis.totalValue && <td className="py-2.5 px-3 text-right border-r border-cyan-200">{fmt(grpValue)} đ</td>}
+                        {columnVis.pendingExportQty && <td className="py-2.5 px-3 text-right border-r border-cyan-200">0</td>}
                         {columnVis.pendingOrderQty && <td className="py-2.5 px-3 text-right">0</td>}
                       </tr>
                     </React.Fragment>

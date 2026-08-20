@@ -84,10 +84,16 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
           return Number(match.totalPhysical);
         }
       }
+
+      return 0;
     }
   }
 
-  return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
+  if (!targetCode) {
+    return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
+  }
+
+  return 0;
 }
 
 
@@ -1648,7 +1654,7 @@ export default function CreateOutboundOrderPage({
                                   <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
                                 ) : (
                                   getFilteredProductsForRow(row.productName || row.productSku).map((p) => {
-                                    const rowWhCode = row.warehouseCode || activeTab?.branchCode || warehouses[0]?.code || 'KHO-TONG';
+                                     const rowWhCode = activeTab?.branchCode || row.warehouseCode || warehouses[0]?.code || 'KHO-TONG';
                                     const whStock = getProductWarehouseStock(p, rowWhCode);
                                     return (
                                       <div
