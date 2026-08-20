@@ -187,452 +187,21 @@ export default function CreateWarehousePage() {
   });
   const [aiRecommendations, setAiRecommendations] = useState<AiSlottingRecommendation[]>([]);
 
-function normalizeBinKey(binCode: string): string {
-  if (!binCode) return '';
-  const trimmed = binCode.trim().toUpperCase();
-  const match = trimmed.match(/(R\d+[-_]S\d+[-_]C\d+)/);
-  if (match) return match[1].replace(/_/g, '-');
-  return trimmed;
-}
+  function normalizeBinKey(binCode: string): string {
+    if (!binCode) return '';
+    const trimmed = binCode.trim().toUpperCase();
+    const match = trimmed.match(/(R\d+[-_]S\d+[-_]C\d+)/);
+    if (match) return match[1].replace(/_/g, '-');
+    return trimmed;
+  }
 
-  // Occupied Bins Inventory state (Bins that contain allocated goods)
-  const [occupiedBinsMap, setOccupiedBinsMap] = useState<Map<string, { totalPhysical: number; allocated: number; productsCount: number }>>(new Map());
-  const [binDetailsMap, setBinDetailsMap] = useState<Map<string, {
-    binCode: string;
-    productName: string;
-    sku: string;
-    quantity: number;
-    allocated: number;
-    supplierName: string;
-    inboundDate: string;
-    orderCode: string;
-    unit: string;
-    note?: string;
-  }>>(new Map());
-  const [binGoodsListMap, setBinGoodsListMap] = useState<Map<string, {
-    binCode: string;
-    productName: string;
-    sku: string;
-    quantity: number;
-    allocated: number;
-    supplierName: string;
-    inboundDate: string;
-    orderCode: string;
-    unit: string;
-    occupancyPct?: number;
-    note?: string;
-  }[]>>(new Map());
-
-  // Fetch real inventory stock balance / allocated bins topology & inbound history
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchOccupiedBins() {
-      try {
-        const map = new Map<string, { totalPhysical: number; allocated: number; productsCount: number }>();
-        const dMap = new Map<string, {
-          binCode: string;
-          productName: string;
-          sku: string;
-          quantity: number;
-          allocated: number;
-          supplierName: string;
-          inboundDate: string;
-          orderCode: string;
-          unit: string;
-          occupancyPct?: number;
-          note?: string;
-        }>();
-        const dListMap = new Map<string, any[]>();
-
-        const appendDetailToList = (key: string, detail: any) => {
-          if (!key) return;
-          const norm = normalizeBinKey(key);
-          const existingKey = dListMap.has(key) ? key : (norm && dListMap.has(norm) ? norm : key);
-          const currentList = dListMap.get(existingKey) || [];
-
-          // Drop dummy balance entries if a real stock-in order entry arrives for the same product
-          const filtered = currentList.filter((x) => {
-            const isSameProduct = x.productName === detail.productName || x.sku === detail.sku;
-            const isDummyOrder = !x.orderCode || x.orderCode.startsWith('PNK-000') || x.orderCode === 'TỒN-KHO';
-            const isRealOrder = detail.orderCode && !detail.orderCode.startsWith('PNK-000') && detail.orderCode !== 'TỒN-KHO';
-            return !(isSameProduct && isDummyOrder && isRealOrder);
-          });
-
-          const isExactDuplicate = filtered.some(
-            (x) => x.orderCode === detail.orderCode && (x.sku === detail.sku || x.productName === detail.productName)
-          );
-          if (!isExactDuplicate) {
-            const updated = [...filtered, detail];
-            dListMap.set(key, updated);
-            if (norm) dListMap.set(norm, updated);
-          }
-        };
-
-        const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
-        const currentWhCode = code ? code.trim().toUpperCase() : '';
-        const currentWhId = id ? id.toLowerCase() : '';
-
-        // 1. Direct real physical stock balances from CSDL
-        const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
-        if (res && res.ok) {
-          const balances: any[] = await res.json();
-          balances.forEach((b) => {
-            const bWhId = String(b.warehouseId || b.warehouse?.id || '').toLowerCase();
-            const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').toUpperCase();
-            if (currentWhId && bWhId && bWhId !== currentWhId) return;
-            if (currentWhCode && bWhCode && bWhCode !== currentWhCode) return;
-
-            const lc = String(b.locationCode || '').trim();
-            const physical = Number(b.totalPhysical || b.available || 0);
-            const allocated = Number(b.allocated || 0);
-            if (lc && (physical > 0 || allocated > 0)) {
-              // Ignore bare short codes without hyphen/zone context
-              const isFullKey = lc.includes('-') || lc.length > 5;
-              if (!isFullKey) return;
-
-              const info = {
-                totalPhysical: physical || 1,
-                allocated,
-                productsCount: 1,
-              };
-              map.set(lc, info);
-              const norm = normalizeBinKey(lc);
-              if (norm) map.set(norm, info);
-
-              const bDate = b.updatedAt || b.createdAt ? new Date(b.updatedAt || b.createdAt) : new Date();
-              const formattedBDate = bDate.toLocaleDateString('vi-VN') + ' ' + bDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-              const detail = {
-                binCode: lc,
-                productName: b.product?.name || b.productName || 'Sản phẩm tồn kho',
-                sku: b.product?.internalSku || b.product?.sku || b.sku || 'SKU-001',
-                quantity: physical || allocated || 1,
-                allocated: allocated,
-                supplierName: b.product?.supplier || b.supplierName || 'Nhà cung cấp',
-                inboundDate: formattedBDate,
-                orderCode: b.orderCode || b.stockInOrderCode || (b.id ? `PNK-${String(b.id).padStart(4, '0')}` : 'PNK-20260819-001'),
-                unit: b.product?.unit || b.unit || 'Cái',
-              };
-              dMap.set(lc, detail);
-              if (norm) dMap.set(norm, detail);
-              appendDetailToList(lc, detail);
-            }
-          });
-        }
-
-        // 2. Stock-in orders history
-        const inRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
-        if (inRes && inRes.ok) {
-          const orders: any[] = await inRes.json();
-          orders.forEach((ord) => {
-            const oWhId = String(ord.warehouseId || ord.warehouse?.id || '').toLowerCase();
-            const oWhCode = String(ord.warehouseCode || ord.warehouse?.code || '').toUpperCase();
-            if (currentWhId && oWhId && oWhId !== currentWhId) return;
-            if (currentWhCode && oWhCode && oWhCode !== currentWhCode) return;
-
-            const orderCode = ord.code || ord.orderCode || ord.receiptNo || ord.orderNumber || ord.poNumber || (ord.id ? `PNK-${String(ord.id).padStart(4, '0')}` : 'PNK-20260819-001');
-            const supplierName = ord.supplierName || ord.supplier?.name || ord.supplier || 'Nhà cung cấp';
-            const rawDate = ord.createdAt || ord.orderDate || ord.createdAtDate;
-            const oDate = rawDate ? new Date(rawDate) : new Date();
-            const inboundDate = oDate.toLocaleDateString('vi-VN') + ' ' + oDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-            (ord.details || ord.items || []).forEach((item: any) => {
-              const pName = item.productName || item.product?.name || item.name || 'Sản phẩm nhập kho';
-              const pSku = item.productSku || item.sku || item.product?.internalSku || item.product?.sku || item.code || 'SKU-001';
-              const pQty = Number(item.actualQty || item.requestedQty || item.expectedQty || item.qty || item.quantity || 1);
-              const pUnit = item.unit || item.product?.unit || 'Cái';
-
-              let bins: string[] = item.assignedBins || [];
-              if (bins.length === 0 && item.locationBin) bins = item.locationBin.split(',').map((s: string) => s.trim());
-              if (bins.length === 0 && item.note) {
-                const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match) bins = match[1].split(',').map((s: string) => s.trim());
-              }
-
-              bins.forEach((bCode) => {
-                if (!bCode) return;
-                const rawBCode = bCode.trim();
-
-                const pctMatch = rawBCode.match(/^([^(]+)\s*\((?:Dư\s*)?(\d+)%\)/i);
-                let cleanBCode = rawBCode;
-                let itemPct: number | undefined = item.occupancyPct !== undefined ? Number(item.occupancyPct) : (item.occupancy !== undefined ? Number(item.occupancy) : undefined);
-
-                if (pctMatch) {
-                  cleanBCode = pctMatch[1].trim();
-                  itemPct = Number(pctMatch[2]);
-                } else if (itemPct === undefined && item.note) {
-                  const noteMatch = item.note.match(/(\d+)%/);
-                  if (noteMatch) itemPct = Number(noteMatch[1]);
-                }
-
-                // Reject bare short codes (like "D1", "D2") that lack warehouse/zone hyphenated prefixes
-                const isFullKey = cleanBCode.includes('-') || cleanBCode.length > 5;
-                if (!isFullKey) return;
-
-                const info = { totalPhysical: pQty, allocated: 0, productsCount: 1 };
-                map.set(cleanBCode, info);
-                const norm = normalizeBinKey(cleanBCode);
-                if (norm) map.set(norm, info);
-
-                const detail = {
-                  binCode: cleanBCode,
-                  productName: pName,
-                  sku: pSku,
-                  quantity: pQty,
-                  allocated: 0,
-                  supplierName: supplierName,
-                  inboundDate: inboundDate,
-                  orderCode: orderCode,
-                  unit: pUnit,
-                  occupancyPct: itemPct,
-                };
-                dMap.set(cleanBCode, detail);
-                if (norm) dMap.set(norm, detail);
-                appendDetailToList(cleanBCode, detail);
-              });
-            });
-          });
-        }
-
-        // 3. Stock-out orders history (Xuất kho / Xuất bán hàng) & Occupancy reduction
-        try {
-          const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
-          const outboundOrders: any[] = storedOutboundStr ? JSON.parse(storedOutboundStr) : [];
-          const outRes = await fetch(`${API_BASE_URL}/outbound/orders`, { headers }).catch(() => null);
-          if (outRes && outRes.ok) {
-            const apiOutOrders = await outRes.json();
-            if (Array.isArray(apiOutOrders)) {
-              apiOutOrders.forEach((ao: any) => {
-                if (!outboundOrders.some((o: any) => o.id === ao.id || o.orderNo === ao.orderNo)) {
-                  outboundOrders.push(ao);
-                }
-              });
-            }
-          }
-
-          outboundOrders.forEach((ord: any) => {
-            const oWhId = String(ord.warehouseId || ord.warehouse?.id || ord.branchCode || ord.warehouseCode || '').toLowerCase();
-            const oWhCode = String(ord.warehouseCode || ord.branchCode || ord.warehouse?.code || '').toUpperCase();
-            if (currentWhId && oWhId && oWhId !== currentWhId) return;
-            if (currentWhCode && oWhCode && oWhCode !== currentWhCode) return;
-
-            const orderCode = ord.orderNo || ord.code || (ord.id ? `PXK-${String(ord.id).padStart(4, '0')}` : 'PXK-20260820-001');
-            const partnerName = ord.customer || ord.customerName || ord.description || 'Xuất bán hàng';
-            const rawDate = ord.orderDate || ord.createdAt;
-            const oDate = rawDate ? new Date(rawDate) : new Date();
-            const outboundDate = oDate.toLocaleDateString('vi-VN') + ' ' + oDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-
-            (ord.details || ord.items || []).forEach((item: any) => {
-              const pName = item.productName || item.product?.name || item.name || 'Sản phẩm xuất kho';
-              const pSku = item.productSku || item.sku || item.product?.internalSku || item.product?.sku || item.code || 'SKU-001';
-              const pQty = Number(item.qty || item.quantity || item.actualQty || 1);
-              const pUnit = item.unit || item.product?.unit || 'Cái';
-
-              let bins: string[] = item.assignedBins || [];
-              if (bins.length === 0 && item.locationBin) bins = item.locationBin.split(',').map((s: string) => s.trim());
-              if (bins.length === 0 && item.binCode) bins = [item.binCode];
-              if (bins.length === 0 && item.note) {
-                const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match) bins = match[1].split(',').map((s: string) => s.trim());
-              }
-
-              bins.forEach((bCode) => {
-                if (!bCode) return;
-                const cleanBCode = bCode.trim();
-                const isFullKey = cleanBCode.includes('-') || cleanBCode.length > 5;
-                if (!isFullKey) return;
-
-                // Subtract quantity from occupied map
-                if (map.has(cleanBCode)) {
-                  const curr = map.get(cleanBCode);
-                  if (curr) {
-                    const remQty = Math.max(0, (curr.totalPhysical || 0) - pQty);
-                    map.set(cleanBCode, { totalPhysical: remQty, allocated: curr.allocated || 0, productsCount: curr.productsCount || 1 });
-                  }
-                }
-                const norm = normalizeBinKey(cleanBCode);
-                if (norm && map.has(norm)) {
-                  const curr = map.get(norm);
-                  if (curr) {
-                    const remQty = Math.max(0, (curr.totalPhysical || 0) - pQty);
-                    map.set(norm, { totalPhysical: remQty, allocated: curr.allocated || 0, productsCount: curr.productsCount || 1 });
-                  }
-                }
-
-                const outDetail = {
-                  binCode: cleanBCode,
-                  productName: pName,
-                  sku: pSku,
-                  quantity: -pQty,
-                  allocated: 0,
-                  supplierName: `Xuất cho: ${partnerName}`,
-                  inboundDate: outboundDate,
-                  orderCode: orderCode,
-                  unit: pUnit,
-                  isOutbound: true,
-                  occupancyPct: undefined,
-                };
-                appendDetailToList(cleanBCode, outDetail);
-              });
-            });
-          });
-        } catch {}
-
-        if (isMounted) {
-          setOccupiedBinsMap(map);
-          setBinDetailsMap(dMap);
-          setBinGoodsListMap(dListMap);
-        }
-      } catch (err) {
-        console.error('Could not fetch stock balance bins', err);
-      }
-    }
-    fetchOccupiedBins();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [code, id]);
-
-  const getBinGoodsDetail = (
-    fullCode: string,
-    binCodeShort: string,
-    zoneCode?: string,
-    rackCode?: string
-  ) => {
-    if (!occupiedBinsMap || occupiedBinsMap.size === 0) return null;
-
-    if (binDetailsMap.has(fullCode)) return binDetailsMap.get(fullCode)!;
-
-    const norm = normalizeBinKey(fullCode);
-    if (norm && binDetailsMap.has(norm)) return binDetailsMap.get(norm)!;
-
-    const currentWhNorm = code ? normalizeBinKey(code) : '';
-    const currentZoneNorm = zoneCode ? normalizeBinKey(zoneCode) : '';
-    const normRack = rackCode ? normalizeBinKey(rackCode) : '';
-    const normCell = normalizeBinKey(binCodeShort);
-
-    for (const [k, v] of binDetailsMap.entries()) {
-      const normK = normalizeBinKey(k);
-      if (!normK) continue;
-      if (k === fullCode || (norm && normK === norm)) return v;
-
-      if (currentWhNorm && currentZoneNorm && normRack && normCell) {
-        if (
-          normK.includes(currentWhNorm) &&
-          normK.includes(currentZoneNorm) &&
-          normK.includes(normRack) &&
-          normK.endsWith(normCell)
-        ) {
-          return v;
-        }
-      }
-    }
-
-    const occupiedInfo = getOccupiedInfo(fullCode, binCodeShort, zoneCode, rackCode);
-    if (occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0)) {
-      return {
-        binCode: fullCode,
-        productName: (occupiedInfo as any).productName || 'Sản phẩm tồn kho',
-        sku: (occupiedInfo as any).sku || 'SKU-001',
-        quantity: occupiedInfo.totalPhysical || occupiedInfo.allocated || 1,
-        allocated: occupiedInfo.allocated || 0,
-        supplierName: (occupiedInfo as any).supplierName || 'Nhà cung cấp',
-        inboundDate: (occupiedInfo as any).inboundDate || 'Hôm nay',
-        orderCode: (occupiedInfo as any).orderCode || 'TỒN-KHO',
-        unit: (occupiedInfo as any).unit || 'Cái',
-      };
-    }
-
-    return null;
-  };
-
-  const getBinGoodsList = (
-    fullCode: string,
-    binCodeShort: string,
-    zoneCode?: string,
-    rackCode?: string
-  ): any[] => {
-    if (!occupiedBinsMap || occupiedBinsMap.size === 0) return [];
-
-    if (binGoodsListMap.has(fullCode)) return binGoodsListMap.get(fullCode)!;
-
-    const norm = normalizeBinKey(fullCode);
-    if (norm && binGoodsListMap.has(norm)) return binGoodsListMap.get(norm)!;
-
-    const currentWhNorm = code ? normalizeBinKey(code) : '';
-    const currentZoneNorm = zoneCode ? normalizeBinKey(zoneCode) : '';
-    const normRack = rackCode ? normalizeBinKey(rackCode) : '';
-    const normCell = normalizeBinKey(binCodeShort);
-
-    for (const [k, v] of binGoodsListMap.entries()) {
-      const normK = normalizeBinKey(k);
-      if (!normK) continue;
-      if (k === fullCode || (norm && normK === norm)) return v;
-
-      if (currentWhNorm && currentZoneNorm && normRack && normCell) {
-        if (
-          normK.includes(currentWhNorm) &&
-          normK.includes(currentZoneNorm) &&
-          normK.includes(normRack) &&
-          normK.endsWith(normCell)
-        ) {
-          return v;
-        }
-      }
-    }
-
-    const single = getBinGoodsDetail(fullCode, binCodeShort, zoneCode, rackCode);
-    return single ? [single] : [];
-  };
-
-  const getOccupiedInfo = (
-    fullBinCode: string,
-    binCodeShort?: string,
-    zoneCode?: string,
-    rackCode?: string,
-    bayCode?: string,
-    shelfCode?: string,
-    cellCode?: string,
-  ) => {
-    if (!occupiedBinsMap || occupiedBinsMap.size === 0) return null;
-
-    // 1. Direct exact full bin code match
-    if (occupiedBinsMap.has(fullBinCode)) return occupiedBinsMap.get(fullBinCode);
-
-    // 2. Normalized full bin code match (preserves Warehouse, Zone, Rack, Shelf, Cell)
-    const normKey = normalizeBinKey(fullBinCode);
-    if (normKey && occupiedBinsMap.has(normKey)) return occupiedBinsMap.get(normKey);
-
-    // 3. Strict warehouse-and-zone qualified loop check
-    const currentWhNorm = code ? normalizeBinKey(code) : '';
-    const currentZoneNorm = zoneCode ? normalizeBinKey(zoneCode) : '';
-
-    for (const [key, val] of occupiedBinsMap.entries()) {
-      const normK = normalizeBinKey(key);
-      if (!normK) continue;
-
-      if (normKey && normK === normKey) {
-        return val;
-      }
-
-      // CRITICAL: Compound match MUST verify BOTH Warehouse AND Zone to prevent leakage across warehouses/zones!
-      if (currentWhNorm && currentZoneNorm && rackCode && binCodeShort) {
-        const normRack = normalizeBinKey(rackCode);
-        const normCell = normalizeBinKey(binCodeShort);
-        if (
-          normK.includes(currentWhNorm) &&
-          normK.includes(currentZoneNorm) &&
-          normK.includes(normRack) &&
-          normK.endsWith(normCell)
-        ) {
-          return val;
-        }
-      }
-    }
-
-    return null;
-  };
+  // Active Bin Details state populated directly by WarehouseSlottingGrid (Single Source of Truth)
+  const [activeBinGoodsDetails, setActiveBinGoodsDetails] = useState<{
+    fullBinCode: string;
+    customConfig: any;
+    occupiedInfo: any;
+    goodsList: any[];
+  } | null>(null);
 
   const handleSaveBinCustomConfig = () => {
     if (!editingBinCode) return;
@@ -685,8 +254,6 @@ function normalizeBinKey(binCode: string): string {
       }));
 
       setSubWarehouses(cleanedZones);
-      setOccupiedBinsMap(new Map());
-      setBinDetailsMap(new Map());
 
       // Persist cleared warehouse state in localStorage for persistent F5 refresh
       localStorage.setItem(`cleared_warehouse_goods_${targetCode}`, 'true');
@@ -728,13 +295,7 @@ function normalizeBinKey(binCode: string): string {
     }
   };
 
-  const hasWarehouseGoods = Boolean(
-    occupiedBinsMap &&
-    occupiedBinsMap.size > 0 &&
-    Array.from(occupiedBinsMap.values()).some((info) => (info.totalPhysical > 0 || info.allocated > 0))
-  );
-
-
+  const hasWarehouseGoods = code ? localStorage.getItem(`cleared_warehouse_goods_${code.trim().toUpperCase()}`) !== 'true' : false;
 
   const populateWarehouse = useCallback((target: WarehouseRecord) => {
     const norm = normalizeWarehouseRecord(target);
@@ -760,17 +321,17 @@ function normalizeBinKey(binCode: string): string {
 
       const rks = z.racks && z.racks.length > 0
         ? z.racks.map((r) => ({
-            ...r,
-            length: r.length || rL,
-            width: r.width || rW,
-            height: r.height || rH,
-            baysCount: calcBays,
-            columnsCount: calcBays,
-            shelvesCount: calcShelves,
-            horizontalPartitions: vachNgang,
-            verticalPartitions: vachDoc,
-            binsPerShelf: r.binsPerShelf || 2,
-          }))
+          ...r,
+          length: r.length || rL,
+          width: r.width || rW,
+          height: r.height || rH,
+          baysCount: calcBays,
+          columnsCount: calcBays,
+          shelvesCount: calcShelves,
+          horizontalPartitions: vachNgang,
+          verticalPartitions: vachDoc,
+          binsPerShelf: r.binsPerShelf || 2,
+        }))
         : generateDefaultRacks(z.racksCount || 4, z.length || 20, z.height || 6, vachDoc, vachNgang, 2, rL, rW, rH);
       return {
         ...z,
@@ -1422,11 +983,10 @@ function normalizeBinKey(binCode: string): string {
                         if (z.racks && z.racks.length > 0) setActiveRackId(z.racks[0].id);
                         setSelectedRackCodes([]);
                       }}
-                      className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer border ${
-                        z.id === activeZone?.id
+                      className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer border ${z.id === activeZone?.id
                           ? 'bg-cyan-600 text-white border-cyan-600 shadow'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-cyan-50'
-                      }`}
+                        }`}
                     >
                       {z.code}
                     </button>
@@ -1645,11 +1205,10 @@ function normalizeBinKey(binCode: string): string {
                   return (
                     <div
                       key={r.id}
-                      className={`p-3 rounded-xl border transition space-y-2 ${
-                        isChecked
+                      className={`p-3 rounded-xl border transition space-y-2 ${isChecked
                           ? 'border-cyan-400 bg-cyan-50/60 dark:bg-cyan-950/40 text-slate-900 dark:text-slate-100 shadow-sm'
                           : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-400 opacity-65'
-                      }`}
+                        }`}
                     >
                       {/* TOP CHECKBOX HEADER */}
                       <div className="flex items-center justify-between">
@@ -1768,11 +1327,10 @@ function normalizeBinKey(binCode: string): string {
                     <button
                       type="button"
                       onClick={() => setViewMode('2D_MATRIX')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                        viewMode === '2D_MATRIX'
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${viewMode === '2D_MATRIX'
                           ? 'bg-cyan-600 text-white shadow'
                           : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
-                      }`}
+                        }`}
                     >
                       <Grid className="h-3.5 w-3.5" />
                       Ma Trận 2D
@@ -1780,11 +1338,10 @@ function normalizeBinKey(binCode: string): string {
                     <button
                       type="button"
                       onClick={() => setViewMode('3D_VIEW')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                        viewMode === '3D_VIEW'
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${viewMode === '3D_VIEW'
                           ? 'bg-cyan-600 text-white shadow'
                           : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
-                      }`}
+                        }`}
                     >
                       <Move3d className="h-3.5 w-3.5" />
                       Khối 3D
@@ -1875,8 +1432,20 @@ function normalizeBinKey(binCode: string): string {
                       activeZoneId={activeZoneId}
                       activeRackId={activeRackId}
                       mode="view"
-                      onBinClick={(fullBinCode, customConfig) => {
+                      onBinClick={(fullBinCode, customConfig, occupiedInfo, goodsList) => {
                         setEditingBinCode(fullBinCode);
+                        const rawList = goodsList && goodsList.length > 0 ? goodsList : (occupiedInfo ? [occupiedInfo] : []);
+                        const normalizedList = rawList.map((item: any) => ({
+                          ...item,
+                          quantity: Number(item.quantity || item.totalPhysical || item.qty || 1),
+                        }));
+
+                        setActiveBinGoodsDetails({
+                          fullBinCode,
+                          customConfig,
+                          occupiedInfo,
+                          goodsList: normalizedList,
+                        });
                         const binShort = fullBinCode.split('-').pop() || fullBinCode;
                         setBinCustomForm(
                           customConfig || {
@@ -1900,17 +1469,20 @@ function normalizeBinKey(binCode: string): string {
       {/* POPUP MODAL: THÔNG TIN CHI TIẾT Ô KỆ & LỊCH SỬ NHẬP HÀNG / CẤU HÌNH TẢI TRỌNG */}
       {editingBinCode && (() => {
         const binShort = editingBinCode.split('-').pop() || editingBinCode;
-        const occupiedInfo = getOccupiedInfo(editingBinCode, binShort, activeZone?.code, activeRackId);
-        const hasGoods = Boolean(occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0));
-        const goodsList = getBinGoodsList(editingBinCode, binShort, activeZone?.code, activeRackId);
-        const customConfig = (activeZone?.racks || [])
+        const occupiedInfo = activeBinGoodsDetails?.occupiedInfo;
+        const goodsList = activeBinGoodsDetails?.goodsList || [];
+        const hasGoods = Boolean(
+          (occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0 || (occupiedInfo.occupancyPct && occupiedInfo.occupancyPct > 0))) ||
+          (goodsList && goodsList.length > 0)
+        );
+        const customConfig = activeBinGoodsDetails?.customConfig || (activeZone?.racks || [])
           .flatMap((rk: any) => Object.values(rk.customBins || {}))
           .find((cb: any) => cb.binCode === binShort || cb.binCode === editingBinCode);
 
         return (
           <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn">
             <div className="w-full max-w-[95vw] lg:max-w-[92vw] xl:max-w-[90vw] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border-2 border-cyan-500/30 overflow-hidden flex flex-col max-h-[94vh]">
-              
+
               {/* Modal Header (Pure Cyan theme) */}
               <div className="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-4 flex items-center justify-between border-b border-cyan-500/40 shadow-sm">
                 <div className="flex items-center gap-3.5">
@@ -1946,9 +1518,13 @@ function normalizeBinKey(binCode: string): string {
 
               {/* Modal Body (Spacious & Open layout) */}
               <div className="p-6 overflow-y-auto space-y-5 text-sm text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900/50">
-                
+
                 {/* SECTION 1: INBOUND & OUTBOUND GOODS TRANSACTION HISTORY TABLE */}
                 {goodsList && goodsList.length > 0 ? (() => {
+                  const filteredGoodsList = goodsList.filter((item: any) => item.sku !== 'SKU-DRAFT');
+
+                  if (filteredGoodsList.length === 0) return null;
+
                   const groupedGoodsMap = new Map<string, {
                     sku: string;
                     productName: string;
@@ -1957,7 +1533,7 @@ function normalizeBinKey(binCode: string): string {
                     transactions: any[];
                   }>();
 
-                  goodsList.forEach((item: any) => {
+                  filteredGoodsList.forEach((item: any) => {
                     const pSku = item.sku || item.productSku || 'SKU-001';
                     const pName = item.productName || 'Sản phẩm';
                     const pKey = `${pSku}___${pName}`;
@@ -1982,13 +1558,13 @@ function normalizeBinKey(binCode: string): string {
 
                   const groupedGoodsList = Array.from(groupedGoodsMap.values()).map((grp) => {
                     const totalInbound = grp.transactions
-                      .filter((t) => !t.isOutbound && t.quantity > 0)
-                      .reduce((s, t) => s + Number(t.quantity || 0), 0);
+                      .filter((t) => !t.isOutbound && Number(t.quantity || t.totalPhysical || 0) > 0)
+                      .reduce((s, t) => s + Number(t.quantity || t.totalPhysical || 0), 0);
                     const totalOutbound = grp.transactions
-                      .filter((t) => t.isOutbound || t.quantity < 0)
+                      .filter((t) => t.isOutbound || Number(t.quantity || 0) < 0)
                       .reduce((s, t) => s + Math.abs(Number(t.quantity || 0)), 0);
 
-                    const netQty = Math.max(0, totalInbound - totalOutbound);
+                    const netQty = Math.max(0, totalInbound > 0 ? totalInbound - totalOutbound : Number(grp.transactions[0]?.quantity || grp.transactions[0]?.totalPhysical || 1));
                     const netOccupancyPct = totalInbound > 0
                       ? Math.round((netQty / totalInbound) * grp.baseOccupancyPct)
                       : Math.max(0, grp.baseOccupancyPct - Math.round((totalOutbound / 1000) * grp.baseOccupancyPct));
@@ -2033,16 +1609,34 @@ function normalizeBinKey(binCode: string): string {
                               const rowSpanCount = txs.length;
 
                               return txs.map((tx: any, txIdx: number) => {
-                                const isOutbound = tx.isOutbound || tx.quantity < 0;
-                                const qtyNum = Number(tx.quantity || 0);
-                                const realOrderCode = tx.orderCode && tx.orderCode !== 'TỒN-KHO' ? tx.orderCode : (tx.id ? `PNK-${String(tx.id).padStart(4, '0')}` : 'PNK-20260819-001');
+                                const isOutbound = Boolean(
+                                  tx.isOutbound ||
+                                  Number(tx.quantity || 0) < 0 ||
+                                  (tx.orderCode && (
+                                    tx.orderCode.startsWith('PX') ||
+                                    tx.orderCode.startsWith('XK') ||
+                                    tx.orderCode.startsWith('XH') ||
+                                    tx.orderCode.startsWith('XBL') ||
+                                    tx.orderCode.startsWith('XBH') ||
+                                    tx.orderCode.includes('XUẤT') ||
+                                    tx.orderCode.includes('XUAT') ||
+                                    tx.orderCode === 'ĐANG-XUẤT'
+                                  )) ||
+                                  (tx.supplierName && (
+                                    tx.supplierName.includes('Đơn xuất') ||
+                                    tx.supplierName.includes('Xuất kho')
+                                  ))
+                                );
+                                const qtyNum = Math.abs(Number(tx.quantity || tx.totalPhysical || tx.qty || 0));
+                                const realOrderCode = tx.orderCode && tx.orderCode !== 'TỒN-KHO' && tx.orderCode !== 'ĐANG-XẾP'
+                                  ? tx.orderCode
+                                  : (tx.id ? `${isOutbound ? 'PXK' : 'PNK'}-${String(tx.id).padStart(4, '0')}` : (isOutbound ? 'PXK-DRAFT' : 'PNK-20260819-001'));
 
                                 return (
                                   <tr
                                     key={`${gIdx}-${txIdx}`}
-                                    className={`hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors ${
-                                      isOutbound ? 'bg-rose-50/20 dark:bg-rose-950/20' : ''
-                                    }`}
+                                    className={`hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors ${isOutbound ? 'bg-rose-50/20 dark:bg-rose-950/20' : ''
+                                      }`}
                                   >
                                     {txIdx === 0 && (
                                       <td
@@ -2076,11 +1670,10 @@ function normalizeBinKey(binCode: string): string {
 
                                     <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
                                       <span
-                                        className={`px-2.5 py-1 rounded border font-bold text-xs ${
-                                          isOutbound
+                                        className={`px-2.5 py-1 rounded border font-bold text-xs ${isOutbound
                                             ? 'bg-rose-50 text-rose-900 border-rose-300'
                                             : 'bg-cyan-50 text-cyan-950 border-cyan-300'
-                                        }`}
+                                          }`}
                                       >
                                         {realOrderCode}
                                       </span>
@@ -2105,11 +1698,10 @@ function normalizeBinKey(binCode: string): string {
                                     )}
 
                                     <td
-                                      className={`py-2.5 px-3 text-center font-black border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle ${
-                                        isOutbound ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                                      }`}
+                                      className={`py-2.5 px-3 text-center font-black border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle ${isOutbound ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                                        }`}
                                     >
-                                      {isOutbound ? `${qtyNum.toLocaleString('vi-VN')}` : `${qtyNum.toLocaleString('vi-VN')}`}
+                                      {isOutbound ? `-${qtyNum.toLocaleString('vi-VN')}` : `+${qtyNum.toLocaleString('vi-VN')}`}
                                     </td>
 
                                     <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">

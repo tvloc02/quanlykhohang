@@ -158,8 +158,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         currentLocks.push({ binCode: bCode, productName: it.productName, occupancyPct: pct });
       });
     });
-    saveActiveDraftSlotLocks(tabId || orderNo, orderNo, currentLocks);
-  }, [selectedBinsMap, isOpen, tabId, orderNo, items, dbSubWarehouses, currentWarehouseObj]);
+    const isOutboundMode = mode === 'OUTBOUND_TRANSFER';
+    saveActiveDraftSlotLocks(tabId || orderNo, orderNo, currentLocks, isOutboundMode);
+  }, [selectedBinsMap, isOpen, tabId, orderNo, items, dbSubWarehouses, currentWarehouseObj, mode]);
 
   // Auto-hide warning message after 4s
   useEffect(() => {
@@ -470,6 +471,12 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
       if (matches && info.qty > 0) {
         validBins.push(binKey);
+        const clean = binKey.split('(')[0].trim();
+        const norm = normalizeBinKey(clean);
+        const short = (clean.split('-').pop() || clean).toUpperCase();
+        if (norm) validBins.push(norm);
+        if (short) validBins.push(short);
+        if (short) validBins.push(normalizeBinKey(short));
       }
     });
 
@@ -489,11 +496,14 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             }
           });
         });
-        if (foundMatch) validBins.push(binKey);
+        if (foundMatch) {
+          validBins.push(binKey);
+          if (normKey) validBins.push(normKey);
+        }
       }
     });
 
-    return validBins;
+    return Array.from(new Set(validBins));
   }, [mode, items, activeRowId, binProductsMap, dbOccupiedBinsMap, dbSubWarehouses]);
 
   // Generate Rack Topology dynamically for the warehouse from CSDL or fallback
@@ -826,19 +836,6 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   const toggleBinSelection = (cell: BinCell) => {
     if (!activeRowId || !currentItem) return;
 
-    const isOutbound = mode === 'OUTBOUND_TRANSFER';
-
-    if (isOutbound) {
-      const isMatch = isBinMatchingActiveItem(cell);
-      if (!isMatch) {
-        const msg = cell.isOccupied
-          ? `KHÔNG THỂ CHỌN: Ô ${cell.cellCode} đang chứa mặt hàng "${cell.productName || 'khác'}". Vui lòng chọn ô có chứa "${currentItem.productName}".`
-          : `KHÔNG THỂ CHỌN: Ô ${cell.cellCode} đang TRỐNG. Không thể xuất hàng từ ô không có hàng!`;
-        setWarningMessage(msg);
-        return;
-      }
-    }
-
     const binCode = cell.binCode;
     const shortCode = (binCode.split('-').pop() || binCode).toUpperCase();
     const normKey = normalizeBinKey(binCode);
@@ -879,16 +876,34 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         const targetQty = Number(activeItem?.qty || 1);
 
         if (mode === 'OUTBOUND_TRANSFER') {
-          // 1. Is this bin valid for active product?
-          const isBinValid = outboundValidBins.some(
-            (b) => normalizeBinKey(b) === normKey || b === binCode || b.includes(shortCode)
-          );
-          if (outboundValidBins.length > 0 && !isBinValid) {
-            setWarningMessage(`⚠️ Kệ ${binCode} không chứa mặt hàng "${activeItem?.productName || ''}". Vui lòng chọn các ô kệ màu xanh lá có chứa hàng!`);
+          // 1. Check if bin is assigned to another item in current order
+          const assignedToOtherItem = Object.entries(prev).find(([rId, bList]) => {
+            if (rId === activeRowId) return false;
+            return bList.some((b) => normalizeBinKey(b) === normKey || b.startsWith(binCode) || b.includes(shortCode));
+          });
+          if (assignedToOtherItem) {
+            const otherRowId = assignedToOtherItem[0];
+            const otherItemIdx = items.findIndex((i) => i.rowId === otherRowId);
+            const otherName = items[otherItemIdx]?.productName || 'mặt hàng khác';
+            setWarningMessage(`⚠️ Ô ${binCode} đã được chọn cho mặt hàng #${otherItemIdx + 1} "${otherName}". Vui lòng chọn ô khác cho "${activeItem?.productName}"!`);
             return prev;
           }
 
-          // 2. Check if total stock from selected bins already satisfies target export quantity
+          // 2. Verify that the bin actually stores the active product being exported
+          if (outboundValidBins.length > 0) {
+            const isValidForActiveProduct = outboundValidBins.some(
+              (b) => normalizeBinKey(b) === normKey || b === binCode || b.includes(shortCode) || normalizeBinKey(b) === normalizeBinKey(shortCode)
+            );
+            if (!isValidForActiveProduct) {
+              setWarningMessage(`⚠️ Kệ ${binCode} không lưu trữ mặt hàng "${activeItem?.productName || ''}". Vui lòng chỉ chọn các ô kệ có chứa mặt hàng này!`);
+              return prev;
+            }
+          } else {
+            setWarningMessage(`⚠️ Không tìm thấy ô kệ nào trong kho đang lưu trữ mặt hàng "${activeItem?.productName || ''}"!`);
+            return prev;
+          }
+
+          // 3. Check if total stock from selected bins already satisfies target export quantity
           let currentSelectedStock = 0;
           currentList.forEach((bCode) => {
             const cleanCode = bCode.split('(')[0].trim();
@@ -1513,12 +1528,18 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
                         const cleanBinCode = bCode.split('(')[0].trim();
                         const normKey = normalizeBinKey(cleanBinCode);
-                        const shortKey = (cleanBinCode.split('-').pop() || cleanBinCode).toUpperCase();
 
                         const itemObj = { label, occupancyPct: pct };
                         map[cleanBinCode] = itemObj;
                         if (normKey) map[normKey] = itemObj;
-                        if (shortKey) map[shortKey] = itemObj;
+
+                        // Also add rack-short combination e.g. R02-H1 (only if rack is specified)
+                        const parts = cleanBinCode.split('-');
+                        if (parts.length >= 2) {
+                          const rackShort = `${parts[parts.length - 2]}-${parts[parts.length - 1]}`.toUpperCase();
+                          map[rackShort] = itemObj;
+                          map[normalizeBinKey(rackShort)] = itemObj;
+                        }
                       });
                     }
                   });
@@ -1526,17 +1547,27 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                   // 2. Draft slot locks from OTHER orders / concurrent sessions
                   const activeDraftLocks = getActiveDraftSlotLocks(tabId || orderNo);
                   Object.entries(activeDraftLocks).forEach(([binCode, info]) => {
-                    if (!map[binCode]) {
-                      const itemObj = { label: info.label, occupancyPct: Number(info.occupancyPct ?? 100) };
-                      map[binCode] = itemObj;
-                      const norm = normalizeBinKey(binCode);
-                      if (norm && !map[norm]) map[norm] = itemObj;
+                    const cleanBinCode = binCode.split('(')[0].trim();
+                    const normKey = normalizeBinKey(cleanBinCode);
+
+                    const itemObj = { label: info.label, occupancyPct: Number(info.occupancyPct ?? 100) };
+                    if (!map[cleanBinCode]) map[cleanBinCode] = itemObj;
+                    if (normKey && !map[normKey]) map[normKey] = itemObj;
+
+                    const parts = cleanBinCode.split('-');
+                    if (parts.length >= 2) {
+                      const rackShort = `${parts[parts.length - 2]}-${parts[parts.length - 1]}`.toUpperCase();
+                      if (!map[rackShort]) map[rackShort] = itemObj;
+                      const normRS = normalizeBinKey(rackShort);
+                      if (normRS && !map[normRS]) map[normRS] = itemObj;
                     }
                   });
 
                   return map;
                 })()}
                 mode="select"
+                isOutbound={mode === 'OUTBOUND_TRANSFER'}
+                maxBinsAllowed={Math.max(1, Math.ceil(((items.find((i) => i.rowId === activeRowId) || items[0])?.qty || 1) / 100))}
                 orderItems={items}
                 selectedBinsMap={selectedBinsMap}
                 onSelectBin={(fullBinCode) => {
