@@ -421,71 +421,71 @@ export default function BillProfitReportPage() {
 
       {/* ═══ TABLE DISPLAY WITH BRANCH COLUMN & PLAIN CODE STYLES ═══ */}
       <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-xs">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full border-collapse text-left">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed border-collapse text-left text-xs">
             <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs">
-              <tr className="border-b-2 border-cyan-700 text-white font-bold uppercase text-xs sm:text-sm tracking-wider">
-                <th className="border-r border-cyan-500/40 px-3.5 py-3 text-center w-12 whitespace-nowrap">
+              <tr className="border-b-2 border-cyan-700 text-white font-bold uppercase text-[10px] tracking-normal whitespace-nowrap [&>th]:text-center">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-10 whitespace-nowrap">
                   STT
                 </th>
                 {columnVis.billCode && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-center min-w-[140px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap">
                     Mã HĐ
                   </th>
                 )}
                 {columnVis.branchName && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-left min-w-[150px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[14%] whitespace-nowrap">
                     Chi nhánh
                   </th>
                 )}
                 {columnVis.productCode && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-center min-w-[130px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap">
                     Mã SP
                   </th>
                 )}
                 {columnVis.productName && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-left min-w-[200px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[14%] whitespace-nowrap">
                     Tên hàng hóa
                   </th>
                 )}
                 {columnVis.exportQty && (
-                  <th className="border-r border-cyan-500/40 px-3.5 py-3 text-right w-24 whitespace-nowrap">
-                    Số xuất
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap text-[11px]">
+                    Số lượng
                   </th>
                 )}
                 {columnVis.exportPrice && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-right min-w-[130px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
                     Giá xuất (VNĐ)
                   </th>
                 )}
                 {columnVis.revenue && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-right min-w-[140px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
                     Doanh thu (VNĐ)
                   </th>
                 )}
                 {columnVis.importPrice && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-right min-w-[130px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
                     Giá nhập (VNĐ)
                   </th>
                 )}
                 {columnVis.totalCost && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-right min-w-[140px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
                     Tổng vốn (VNĐ)
                   </th>
                 )}
                 {columnVis.profit && (
-                  <th className="border-r border-cyan-500/40 px-4 py-3 text-right min-w-[140px] whitespace-nowrap">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
                     Lợi nhuận (VNĐ)
                   </th>
                 )}
                 {columnVis.profitMargin && (
-                  <th className="px-4 py-3 text-right w-28 whitespace-nowrap">
+                  <th className="px-2 py-2 text-center w-20 whitespace-nowrap">
                     % Lợi nhuận
                   </th>
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 bg-white text-sm font-medium text-slate-800">
+            <tbody className="divide-y divide-slate-200 bg-white text-sm font-medium text-slate-800 [&_td]:text-center">
               {loading ? (
                 <tr>
                   <td colSpan={12} className="py-12 text-center text-slate-500 font-bold text-sm">
@@ -512,17 +512,17 @@ export default function BillProfitReportPage() {
                         {globalIndex}
                       </td>
                       {columnVis.billCode && (
-                        <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-semibold text-slate-800 text-sm">
+                        <td className="border-r border-slate-200 px-3 py-3 text-center font-mono font-semibold text-slate-800 text-xs">
                           {item.billCode}
                         </td>
                       )}
                       {columnVis.branchName && (
-                        <td className="border-r border-slate-200 px-4 py-3 text-left font-semibold text-slate-800 text-sm">
+                        <td className="border-r border-slate-200 px-3 py-3 text-left font-semibold text-slate-800 text-xs">
                           {item.branchName}
                         </td>
                       )}
                       {columnVis.productCode && (
-                        <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-semibold text-slate-800 text-sm">
+                        <td className="border-r border-slate-200 px-3 py-3 text-center font-mono font-semibold text-slate-800 text-xs">
                           {item.productCode}
                         </td>
                       )}
