@@ -988,7 +988,7 @@ export default function StockInOrdersPage() {
   return (
     <div className="space-y-6">
       {toast && (
-        <div className={`fixed right-4 top-4 z-[9999] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
+        <div className={`fixed right-6 top-24 z-[9999] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
           {toast.type === 'error' ? <XCircle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
           <p className="text-sm font-bold">{toast.message}</p>
           <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">

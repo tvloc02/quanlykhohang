@@ -91,6 +91,8 @@ type OrderForm = {
 interface PurchaseOrderFormModalProps {
   isOpen: boolean;
   mode: 'create' | 'edit' | 'view';
+  standalone?: boolean;
+  hideWarehouseSelection?: boolean;
   customActions?: React.ReactNode;
   form: OrderForm;
   suppliers: Supplier[];
@@ -211,6 +213,8 @@ function formatDate(value?: string | number | Date | null) {
 export function PurchaseOrderFormModal({
   isOpen,
   mode,
+  standalone = false,
+  hideWarehouseSelection = false,
   form,
   suppliers,
   warehouses,
@@ -335,12 +339,12 @@ export function PurchaseOrderFormModal({
 
   if (!isOpen || !mounted || !form || typeof document === 'undefined' || !document.body) return null;
 
-  return createPortal(
+  const formContent = (
     <>
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
+      <div className={standalone ? 'w-full' : 'fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm'}>
         <form
           onSubmit={onSubmit}
-          className={`max-h-[94vh] ${customWidthClass || 'w-2/3'} overflow-hidden rounded-3xl bg-white shadow-2xl flex flex-col`}
+          className={`${standalone ? 'min-h-[calc(100vh-180px)] w-full' : 'max-h-[94vh]'} ${customWidthClass || 'w-2/3'} overflow-hidden rounded-3xl bg-white ${standalone ? 'border-2 border-slate-200 shadow-sm' : 'shadow-2xl'} flex flex-col`}
         >
           {/* HEADER */}
           <div className="flex items-start justify-between border-b-2 border-slate-100 px-6 py-4 bg-gradient-to-r from-slate-50 to-white">
@@ -479,7 +483,7 @@ export function PurchaseOrderFormModal({
                     </div>
 
                     {/* Row 2: Kho hàng & Quản lý */}
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
+                    {!hideWarehouseSelection && <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-4">
                       <div>
                         <label className="mb-2 block text-sm font-bold text-slate-700">
                           Kho hàng <span className="text-red-600">*</span>
@@ -512,7 +516,7 @@ export function PurchaseOrderFormModal({
                           placeholder="Chọn quản lý"
                         />
                       </div>
-                    </div>
+                    </div>}
 
                     {/* Row 3: Ghi chú */}
                     <div className="flex-1 flex flex-col min-h-[120px]">
@@ -1103,7 +1107,8 @@ export function PurchaseOrderFormModal({
           </div>
         </div>
       )}
-    </>,
-    document.body
+    </>
   );
+
+  return standalone ? formContent : createPortal(formContent, document.body);
 }

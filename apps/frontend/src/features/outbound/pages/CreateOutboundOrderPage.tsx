@@ -25,6 +25,7 @@ import {
   Search,
   Layers,
   MapPin,
+  PlusCircle,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -420,6 +421,16 @@ export default function CreateOutboundOrderPage({
   const [showQuickSearchDropdown, setShowQuickSearchDropdown] = useState(false);
   const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false);
   const [disposalReasonSelect, setDisposalReasonSelect] = useState('Hàng hết hạn sử dụng (HSD)');
+  const [disposalReasons, setDisposalReasons] = useState<string[]>([
+    'Hàng hết hạn sử dụng (HSD)',
+    'Hàng hư hỏng / Bể vỡ trong quá trình lưu kho',
+    'Hàng ẩm mốc / Biến chất / Lỗi bảo quản',
+    'Hàng lỗi nhà sản xuất (không đổi trả được)',
+    'Hao hụt kiểm kê / Thanh lý tiêu hủy',
+    'Khác (Ghi chú chi tiết)',
+  ]);
+  const [showAddReasonModal, setShowAddReasonModal] = useState(false);
+  const [newReasonInput, setNewReasonInput] = useState('');
   const [disposalMethod, setDisposalMethod] = useState('Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)');
 
   // Synchronous Multi-Tab state with Session Storage restoration
@@ -1269,7 +1280,7 @@ export default function CreateOutboundOrderPage({
 
       {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (Horizontal bar spanning full width across page) ═══ */}
       <div className="w-full rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md flex-shrink-0">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 items-center">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 items-center">
           {/* Ngày xuất hàng / Ngày xuất hủy */}
           <div>
             <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">
@@ -1301,10 +1312,21 @@ export default function CreateOutboundOrderPage({
           {/* If Disposal: Chọn Lý do xuất hủy | If Sales: Chọn Khách hàng */}
           {isDisposal ? (
             <div>
-              <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
-                <FileText className="h-4 w-4 text-cyan-600" />
-                <span>Lý do xuất hủy</span>
-              </label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-black uppercase text-slate-700 flex items-center gap-1">
+                  <FileText className="h-4 w-4 text-cyan-600" />
+                  <span>Lý do xuất hủy</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddReasonModal(true)}
+                  className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-300 hover:bg-cyan-100 transition"
+                  title="Thêm lý do xuất hủy mới"
+                >
+                  <Plus size={13} />
+                  <span>+ Thêm</span>
+                </button>
+              </div>
               <select
                 value={disposalReasonSelect}
                 onChange={(e) => {
@@ -1312,14 +1334,13 @@ export default function CreateOutboundOrderPage({
                   setDisposalReasonSelect(val);
                   updateActiveTab((t) => ({ ...t, customer: val, description: val }));
                 }}
-                className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-xs font-bold text-cyan-950 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs"
+                className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-xs font-bold text-cyan-950 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs rounded-xl"
               >
-                <option value="Hàng hết hạn sử dụng (HSD)">Hàng hết hạn sử dụng (HSD)</option>
-                <option value="Hàng hư hỏng / Bể vỡ trong quá trình lưu kho">Hàng hư hỏng / Bể vỡ trong quá trình lưu kho</option>
-                <option value="Hàng ẩm mốc / Biến chất / Lỗi bảo quản">Hàng ẩm mốc / Biến chất / Lỗi bảo quản</option>
-                <option value="Hàng lỗi nhà sản xuất (không đổi trả được)">Hàng lỗi nhà sản xuất (không đổi trả được)</option>
-                <option value="Hao hụt kiểm kê / Thanh lý tiêu hủy">Hao hụt kiểm kê / Thanh lý tiêu hủy</option>
-                <option value="Khác (Ghi chú chi tiết)">Khác (Ghi chú chi tiết)</option>
+                {disposalReasons.map((reason) => (
+                  <option key={reason} value={reason} className="py-1.5 px-2 bg-white text-slate-800 font-semibold rounded-lg">
+                    {reason}
+                  </option>
+                ))}
               </select>
             </div>
           ) : (
@@ -1419,22 +1440,37 @@ export default function CreateOutboundOrderPage({
                   })),
                 }));
               }}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs"
+              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs rounded-xl"
             >
               {warehouses.length > 0 ? (
                 warehouses.map((wh) => (
-                  <option key={wh.id || wh.code} value={wh.code}>
+                  <option key={wh.id || wh.code} value={wh.code} className="py-1.5 px-2 bg-white text-slate-800 font-semibold rounded-lg">
                     [{wh.code}] {wh.name}
                   </option>
                 ))
               ) : (
                 <>
-                  <option value="KHO-TONG">KHO-TONG - Kho tổng chính</option>
-                  <option value="KH001">KH001 - Kho Hàng Hóa HCM</option>
-                  <option value="KH002">KH002 - Kho Chi Nhánh Hà Nội</option>
+                  <option value="KHO-TONG" className="py-1.5 px-2 bg-white text-slate-800 font-semibold">KHO-TONG - Kho tổng chính</option>
+                  <option value="KH001" className="py-1.5 px-2 bg-white text-slate-800 font-semibold">KH001 - Kho Hàng Hóa HCM</option>
+                  <option value="KH002" className="py-1.5 px-2 bg-white text-slate-800 font-semibold">KH002 - Kho Chi Nhánh Hà Nội</option>
                 </>
               )}
             </select>
+          </div>
+
+          {/* Card 5: Người tạo phiếu */}
+          <div>
+            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
+              <User className="h-4 w-4 text-cyan-600" />
+              <span>Người tạo phiếu</span>
+            </label>
+            <input
+              type="text"
+              value={activeTab?.employeeName || currentUserName || 'Dương Ngọc Anh'}
+              onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
+              placeholder="Nhập tên người tạo phiếu..."
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text shadow-xs"
+            />
           </div>
         </div>
       </div>
@@ -1540,15 +1576,15 @@ export default function CreateOutboundOrderPage({
                 <thead className="bg-slate-100 text-slate-800 font-extrabold border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
                   <tr>
                     <th className="p-2 w-10 text-center border-r border-slate-200 bg-slate-100">STT</th>
-                    <th className="p-2 min-w-[200px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
-                    <th className="p-2 min-w-[130px] text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-[24%] min-w-[180px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
+                    <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">
                       {isDisposal ? 'KỆ XUẤT HỦY' : 'KỆ LẤY HÀNG'}
                     </th>
-                    <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
-                    <th className="p-2 w-20 text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-14 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
+                    <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">
                       {isDisposal ? 'SL HỦY' : 'SỐ LƯỢNG'}
                     </th>
-                    <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">
                       {isDisposal ? 'GIÁ VỐN (đ)' : (isReturnSupplier ? 'GIÁ NHẬP (đ)' : 'ĐƠN GIÁ (đ)')}
                     </th>
                     {!isDisposal && (
@@ -1560,13 +1596,13 @@ export default function CreateOutboundOrderPage({
                     <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">
                       {isDisposal ? 'GIÁ TRỊ HỦY' : 'THÀNH TIỀN'}
                     </th>
-                    <th className="p-2 w-36 min-w-[120px] text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-56 min-w-[200px] text-center border-r border-slate-200 bg-slate-100">
                       {isDisposal ? 'TÌNH TRẠNG / LÝ DO HỦY' : 'GHI CHÚ'}
                     </th>
                     {isDisposal && (
-                      <th className="p-2 w-28 min-w-[100px] text-center border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
+                      <th className="p-2 w-36 min-w-[120px] text-center border-r border-slate-200 bg-slate-100">BIÊN BẢN / GHI CHÚ</th>
                     )}
-                    <th className="p-2.5 w-28 text-center bg-slate-100 min-w-[100px]">THAO TÁC</th>
+                    <th className="p-2.5 w-24 text-center bg-slate-100 min-w-[90px]">THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -1649,42 +1685,42 @@ export default function CreateOutboundOrderPage({
                         </td>
 
                         {/* KỆ XUẤT HÀNG / KỆ XUẤT HỦY */}
-                        <td className="p-1.5 border-r border-slate-200 text-center">
+                        <td className="p-1.5 border-r border-slate-200 text-center w-32">
                           {row.assignedBins && row.assignedBins.length > 0 ? (
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="inline-flex items-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer w-full"
                               title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
                               <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                              <span className="truncate max-w-[110px]">{row.assignedBins.join(', ')}</span>
+                              <span className="truncate max-w-[90px]">{row.assignedBins.join(', ')}</span>
                             </button>
                           ) : row.locationBin ? (
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="inline-flex items-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer w-full"
                               title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
                               <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                              <span className="truncate max-w-[110px]">{row.locationBin}</span>
+                              <span className="truncate max-w-[90px]">{row.locationBin}</span>
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="inline-flex items-center gap-1 bg-white hover:bg-cyan-50 text-cyan-700 border border-cyan-400 font-bold px-2 py-1 rounded-lg text-xs transition cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1 bg-white hover:bg-cyan-50 text-cyan-700 border border-cyan-400 font-bold px-2 py-1 rounded-lg text-xs transition cursor-pointer w-full"
                               title="Bấm mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
                               <MapPin className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                              <span>+ Chọn kệ lấy</span>
+                              <span>+ Kệ</span>
                             </button>
                           )}
                         </td>
 
                         {/* ĐVT */}
-                        <td className="p-1 text-center border-r border-slate-200">
+                        <td className="p-1 text-center border-r border-slate-200 w-14">
                           <input
                             type="text"
                             value={row.unit}
@@ -1694,7 +1730,7 @@ export default function CreateOutboundOrderPage({
                         </td>
 
                         {/* SỐ LƯỢNG */}
-                        <td className="p-1 border-r border-slate-200">
+                        <td className="p-1 border-r border-slate-200 w-28">
                           <input
                             type="number"
                             min="0"
@@ -2089,6 +2125,81 @@ export default function CreateOutboundOrderPage({
           setToast({ message: 'Đã cập nhật vị trí kệ xuất hàng!', type: 'success' });
         }}
       />
+
+      {/* ═══ MODAL THÊM LÝ DO XUẤT HỦY MỚI ═══ */}
+      {showAddReasonModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-cyan-900 uppercase flex items-center gap-2">
+                <PlusCircle className="h-5 w-5 text-cyan-600" />
+                Thêm lý do xuất hủy mới
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddReasonModal(false)}
+                className="rounded-lg p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                Nội dung lý do xuất hủy:
+              </label>
+              <input
+                type="text"
+                value={newReasonInput}
+                onChange={(e) => setNewReasonInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newReasonInput.trim()) {
+                    const added = newReasonInput.trim();
+                    if (!disposalReasons.includes(added)) {
+                      setDisposalReasons((prev) => [...prev, added]);
+                    }
+                    setDisposalReasonSelect(added);
+                    updateActiveTab((t) => ({ ...t, customer: added, description: added }));
+                    setNewReasonInput('');
+                    setShowAddReasonModal(false);
+                    setToast({ message: `Đã thêm lý do: "${added}"`, type: 'success' });
+                  }
+                }}
+                placeholder="Ví dụ: Hàng cấn móp nhẹ, thanh lý nội bộ..."
+                className="w-full h-10 rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddReasonModal(false)}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (newReasonInput.trim()) {
+                    const added = newReasonInput.trim();
+                    if (!disposalReasons.includes(added)) {
+                      setDisposalReasons((prev) => [...prev, added]);
+                    }
+                    setDisposalReasonSelect(added);
+                    updateActiveTab((t) => ({ ...t, customer: added, description: added }));
+                    setNewReasonInput('');
+                    setShowAddReasonModal(false);
+                    setToast({ message: `Đã thêm lý do: "${added}"`, type: 'success' });
+                  }
+                }}
+                className="rounded-xl bg-cyan-600 px-4 py-2 text-xs font-extrabold text-white hover:bg-cyan-700 cursor-pointer shadow-sm"
+              >
+                Lưu lý do
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

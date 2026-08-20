@@ -64,4 +64,11 @@ input[type=number] {
   appearance: textfield;
 }
 
+/* Globally disable slashed-zero on digit 0 across all fonts */
+*, ::before, ::after, .font-mono, code, kbd, samp, pre {
+  font-variant-numeric: normal !important;
+  font-feature-settings: "zero" 0 !important;
+}
+
+
 

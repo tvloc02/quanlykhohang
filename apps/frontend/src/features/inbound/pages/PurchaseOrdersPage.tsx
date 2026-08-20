@@ -4,11 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
   Building2,
+  Copy,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   Clock3,
   FileText,
+  FileSpreadsheet,
   Filter,
   Eye,
   Package,
@@ -22,11 +24,14 @@ import {
   X,
   XCircle,
   MoreHorizontal,
+  Maximize2,
+  Minimize2,
   Send,
   Calendar,
   User,
   Printer,
   Scale,
+  Settings,
 } from 'lucide-react';
 import InboundSectionPlaceholderPage from './InboundSectionPlaceholderPage';
 import {
@@ -446,6 +451,7 @@ function PurchaseOrdersPageContent() {
   const [pageSize, setPageSize] = React.useState(10);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [selectedOrderDetails, setSelectedOrderDetails] = React.useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -465,6 +471,7 @@ function PurchaseOrdersPageContent() {
   const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
   const [printOrder, setPrintOrder] = React.useState<PurchaseOrder | null>(null);
   const [showPrintPreview, setShowPrintPreview] = React.useState(false);
+  const [isFullScreen, setIsFullScreen] = React.useState(false);
 
   // Price Negotiation Modal State
   const [priceNegotiationOrder, setPriceNegotiationOrder] = React.useState<PurchaseOrder | null>(null);
@@ -1143,6 +1150,64 @@ function PurchaseOrdersPageContent() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      setToast({ type: 'error', message: 'Vui lòng chọn ít nhất một đơn hàng để xóa.' });
+      return;
+    }
+    if (!window.confirm(`Bạn có chắc muốn xóa ${selectedIds.size} đơn hàng đã chọn?`)) return;
+    setSaving(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => fetch(`${API_BASE_URL}/inbound/purchase-orders/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      })));
+      setSelectedIds(new Set());
+      setToast({ type: 'success', message: 'Đã xóa các đơn hàng đã chọn.' });
+      await loadData();
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi xóa đơn hàng' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCopySelected = () => {
+    if (selectedIds.size !== 1) {
+      setToast({ type: 'error', message: 'Vui lòng chọn đúng một đơn hàng để sao chép.' });
+      return;
+    }
+    const source = orders.find((order) => order.id === Array.from(selectedIds)[0]);
+    if (source) {
+      setToast({ type: 'success', message: `Đã chọn ${source.poNumber}. Hãy dùng Thêm mới để lập đơn mới.` });
+      openCreate();
+    }
+  };
+
+  const handleExportPurchaseOrders = () => {
+    const rows = orders.map((order) => [
+      order.poNumber,
+      (order as any).creatorName || '',
+      order.supplier?.name || order.supplierName || '',
+      order.warehouseCode || order.details?.[0]?.warehouseCode || '',
+      (order.details || []).reduce((sum, detail) => sum + Number(detail.expectedQty || 0), 0),
+      order.description || '',
+      order.status,
+    ]);
+    const csv = [['Số đơn hàng', 'Người đặt', 'Nhà cung cấp', 'Kho', 'Tổng SL', 'Diễn giải', 'Tình trạng'], ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'don-dat-hang-nha-cung-cap.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleFullScreen = () => setIsFullScreen((current) => !current);
+
   const approveOrder = async (order: PurchaseOrder) => {
     setSaving(true);
     try {
@@ -1481,9 +1546,9 @@ function PurchaseOrdersPageContent() {
   }, [form.items, form.supplierId, modalMode, supplierProducts]);
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] overflow-y-auto bg-white p-6' : ''}`}>
       {toast && (
-        <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
+        <div className={`fixed right-6 top-24 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
           <p className="text-sm font-bold">{toast.message}</p>
           <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
             <X className="h-4 w-4" />
@@ -1491,6 +1556,8 @@ function PurchaseOrdersPageContent() {
         </div>
       )}
 
+      {modalMode !== 'create' && (
+      <>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
@@ -1498,14 +1565,29 @@ function PurchaseOrdersPageContent() {
             <h1 className="text-lg font-bold tracking-tight text-white">Quản lý Đơn Mua Hàng</h1>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Tạo đơn mua hàng
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button type="button" onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Plus className="h-4 w-4" /> Thêm mới
+          </button>
+          <button type="button" onClick={handleCopySelected} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Copy className="h-4 w-4" /> Copy
+          </button>
+          <button type="button" onClick={handleBulkDelete} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Trash2 className="h-4 w-4" /> Xóa
+          </button>
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Printer className="h-4 w-4" /> In báo cáo
+          </button>
+          <button type="button" onClick={handleExportPurchaseOrders} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <FileSpreadsheet className="h-4 w-4" /> Export Excel
+          </button>
+          <button type="button" onClick={() => setToast({ type: 'success', message: 'Danh sách đang hiển thị đầy đủ các cột.' })} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Settings className="h-4 w-4" /> Hiển thị
+          </button>
+          <button type="button" onClick={toggleFullScreen} aria-label="Toàn màn hình" className="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-cyan-700 transition hover:bg-cyan-50">
+            {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -1628,7 +1710,18 @@ function PurchaseOrdersPageContent() {
             <thead className="bg-cyan-50">
               <tr className="border-b border-slate-200">
                 <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                  <input
+                    type="checkbox"
+                    checked={paginatedOrders.length > 0 && paginatedOrders.every((order) => selectedIds.has(order.id))}
+                    onChange={(event) => {
+                      setSelectedIds((current) => {
+                        const next = new Set(current);
+                        paginatedOrders.forEach((order) => event.target.checked ? next.add(order.id) : next.delete(order.id));
+                        return next;
+                      });
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600"
+                  />
                 </th>
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số đơn hàng</th>
@@ -1666,7 +1759,16 @@ function PurchaseOrdersPageContent() {
                       className="group border-b border-slate-200 transition hover:bg-cyan-50/50"
                     >
                       <td className="border-x border-slate-200 px-3 py-4 text-center align-middle" onClick={e => e.stopPropagation()}>
-                        <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(order.id)}
+                          onChange={(event) => setSelectedIds((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(order.id); else next.delete(order.id);
+                            return next;
+                          })}
+                          className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600"
+                        />
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{startIndex + index}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.poNumber}</td>
@@ -1917,9 +2019,27 @@ function PurchaseOrdersPageContent() {
         </div>
       </div>
 
+      </>
+      )}
+
+      {modalMode === 'create' && (
+        <div className="flex items-center justify-between rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-3 text-white shadow-md">
+          <div className="flex items-center gap-3">
+            <FileText className="h-5 w-5 text-cyan-100" />
+            <div>
+              <h1 className="text-lg font-bold tracking-tight">Tạo đơn đặt hàng nhà cung cấp</h1>
+              <p className="text-xs font-medium text-cyan-100">Lập kế hoạch đặt hàng, chưa thực hiện nhập kho.</p>
+            </div>
+          </div>
+          <button type="button" onClick={closeModal} className="rounded-xl border border-white/40 px-4 py-2 text-sm font-bold hover:bg-white/10">Quay lại danh sách</button>
+        </div>
+      )}
+
       {/* POPUP TẠO / SỬA / XEM */}
       <PurchaseOrderFormModal
         isOpen={modalMode === 'create' || modalMode === 'edit' || modalMode === 'view' || modalMode === ('create_order' as any)}
+        standalone={modalMode === 'create'}
+        hideWarehouseSelection={true}
         mode={modalMode === 'create' ? 'create' : modalMode === 'view' ? 'view' : modalMode === ('create_order' as any) ? ('create_order' as any) : 'edit'}
         form={form}
         suppliers={suppliers}
