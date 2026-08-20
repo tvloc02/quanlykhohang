@@ -1759,27 +1759,48 @@ export default function Products() {
         </div>
       </div>
 
-      {/* 4 Button tổng hợp */}
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            {products.length} TỔNG HÀNG HÓA
-          </p>
+      {/* ═══ 3 OVERVIEW METRIC CARDS (GOLD STANDARD PATTERN) ═══ */}
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Card 1: TỔNG HÀNG HÓA */}
+        <div className="flex h-20 items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-xs transition hover:border-cyan-400 hover:bg-cyan-50/20">
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">TỔNG MẶT HÀNG HÓA</p>
+            <p className="text-xl font-bold text-slate-900 mt-0.5">
+              {filteredProducts.length.toLocaleString('vi-VN')} <span className="text-sm font-semibold text-slate-600">mặt hàng</span>
+            </p>
+          </div>
+          <div className="rounded-xl bg-cyan-50 p-2.5 text-cyan-700 border border-cyan-200">
+            <Package className="h-6 w-6" />
+          </div>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            {products.reduce((sum, p) => sum + (p.stock || 0), 0).toLocaleString('vi-VN')} TỔNG SỐ LƯỢNG HÀNG HÓA
-          </p>
+
+        {/* Card 2: TỔNG SỐ LƯỢNG TỒN */}
+        <div className="flex h-20 items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-xs transition hover:border-slate-300 hover:bg-slate-50/50">
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">TỔNG SỐ LƯỢNG TỒN</p>
+            <p className="text-xl font-bold text-slate-800 mt-0.5">
+              {filteredProducts.reduce((sum, p) => sum + (p.stock || 0), 0).toLocaleString('vi-VN')} <span className="text-sm font-semibold text-slate-500">sản phẩm</span>
+            </p>
+          </div>
+          <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700 border border-slate-200">
+            <Boxes className="h-6 w-6" />
+          </div>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            {products.reduce((sum, p) => sum + ((p.stock || 0) + (p.totalExportedQty || 0)), 0).toLocaleString('vi-VN')} SL MỚI NHẬP KHO
-          </p>
-        </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            {products.reduce((sum, p) => sum + (p.totalExportedQty || 0), 0).toLocaleString('vi-VN')} SL VỪA XUẤT BÁN
-          </p>
+
+        {/* Card 3: TỔNG GIÁ TRỊ TỒN KHO */}
+        <div className="flex h-20 items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-xs transition hover:border-emerald-300 hover:bg-emerald-50/20">
+          <div>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">TỔNG GIÁ TRỊ TỒN KHO</p>
+            <p className="text-xl font-bold text-emerald-700 mt-0.5">
+              {filteredProducts
+                .reduce((sum, p) => sum + (p.stock || 0) * (p.importPrice !== '' && p.importPrice !== undefined && p.importPrice !== null ? Number(p.importPrice) : (p.price || 0)), 0)
+                .toLocaleString('vi-VN')}{' '}
+              <span className="text-sm font-semibold text-slate-600">đ</span>
+            </p>
+          </div>
+          <div className="rounded-xl bg-emerald-50 p-2.5 text-emerald-700 border border-emerald-200">
+            <DollarSign className="h-6 w-6" />
+          </div>
         </div>
       </div>
 
