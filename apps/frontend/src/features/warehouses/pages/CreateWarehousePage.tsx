@@ -394,6 +394,90 @@ function normalizeBinKey(binCode: string): string {
           });
         }
 
+        // 3. Stock-out orders history (Xuất kho / Xuất bán hàng) & Occupancy reduction
+        try {
+          const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+          const outboundOrders: any[] = storedOutboundStr ? JSON.parse(storedOutboundStr) : [];
+          const outRes = await fetch(`${API_BASE_URL}/outbound/orders`, { headers }).catch(() => null);
+          if (outRes && outRes.ok) {
+            const apiOutOrders = await outRes.json();
+            if (Array.isArray(apiOutOrders)) {
+              apiOutOrders.forEach((ao: any) => {
+                if (!outboundOrders.some((o: any) => o.id === ao.id || o.orderNo === ao.orderNo)) {
+                  outboundOrders.push(ao);
+                }
+              });
+            }
+          }
+
+          outboundOrders.forEach((ord: any) => {
+            const oWhId = String(ord.warehouseId || ord.warehouse?.id || ord.branchCode || ord.warehouseCode || '').toLowerCase();
+            const oWhCode = String(ord.warehouseCode || ord.branchCode || ord.warehouse?.code || '').toUpperCase();
+            if (currentWhId && oWhId && oWhId !== currentWhId) return;
+            if (currentWhCode && oWhCode && oWhCode !== currentWhCode) return;
+
+            const orderCode = ord.orderNo || ord.code || (ord.id ? `PXK-${String(ord.id).padStart(4, '0')}` : 'PXK-20260820-001');
+            const partnerName = ord.customer || ord.customerName || ord.description || 'Xuất bán hàng';
+            const rawDate = ord.orderDate || ord.createdAt;
+            const oDate = rawDate ? new Date(rawDate) : new Date();
+            const outboundDate = oDate.toLocaleDateString('vi-VN') + ' ' + oDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+            (ord.details || ord.items || []).forEach((item: any) => {
+              const pName = item.productName || item.product?.name || item.name || 'Sản phẩm xuất kho';
+              const pSku = item.productSku || item.sku || item.product?.internalSku || item.product?.sku || item.code || 'SKU-001';
+              const pQty = Number(item.qty || item.quantity || item.actualQty || 1);
+              const pUnit = item.unit || item.product?.unit || 'Cái';
+
+              let bins: string[] = item.assignedBins || [];
+              if (bins.length === 0 && item.locationBin) bins = item.locationBin.split(',').map((s: string) => s.trim());
+              if (bins.length === 0 && item.binCode) bins = [item.binCode];
+              if (bins.length === 0 && item.note) {
+                const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
+                if (match) bins = match[1].split(',').map((s: string) => s.trim());
+              }
+
+              bins.forEach((bCode) => {
+                if (!bCode) return;
+                const cleanBCode = bCode.trim();
+                const isFullKey = cleanBCode.includes('-') || cleanBCode.length > 5;
+                if (!isFullKey) return;
+
+                // Subtract quantity from occupied map
+                if (map.has(cleanBCode)) {
+                  const curr = map.get(cleanBCode);
+                  if (curr) {
+                    const remQty = Math.max(0, (curr.totalPhysical || 0) - pQty);
+                    map.set(cleanBCode, { totalPhysical: remQty, allocated: curr.allocated || 0, productsCount: curr.productsCount || 1 });
+                  }
+                }
+                const norm = normalizeBinKey(cleanBCode);
+                if (norm && map.has(norm)) {
+                  const curr = map.get(norm);
+                  if (curr) {
+                    const remQty = Math.max(0, (curr.totalPhysical || 0) - pQty);
+                    map.set(norm, { totalPhysical: remQty, allocated: curr.allocated || 0, productsCount: curr.productsCount || 1 });
+                  }
+                }
+
+                const outDetail = {
+                  binCode: cleanBCode,
+                  productName: pName,
+                  sku: pSku,
+                  quantity: -pQty,
+                  allocated: 0,
+                  supplierName: `Xuất cho: ${partnerName}`,
+                  inboundDate: outboundDate,
+                  orderCode: orderCode,
+                  unit: pUnit,
+                  isOutbound: true,
+                  occupancyPct: undefined,
+                };
+                appendDetailToList(cleanBCode, outDetail);
+              });
+            });
+          });
+        } catch {}
+
         if (isMounted) {
           setOccupiedBinsMap(map);
           setBinDetailsMap(dMap);
@@ -1863,76 +1947,199 @@ function normalizeBinKey(binCode: string): string {
               {/* Modal Body (Spacious & Open layout) */}
               <div className="p-6 overflow-y-auto space-y-5 text-sm text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900/50">
                 
-                {/* SECTION 1: INBOUND GOODS & SUPPLIER DETAILS TABLE */}
-                {goodsList && goodsList.length > 0 ? (
-                  <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3 shadow-sm">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
-                      <span className="font-semibold text-xs sm:text-sm uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                        <Package className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
-                        Lịch sử nhập hàng & Nhà cung cấp
-                      </span>
-                      <span className="text-[11px] font-medium text-cyan-700 bg-cyan-50 dark:bg-cyan-950 dark:text-cyan-300 px-2.5 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800">
-                        {goodsList.length} lượt lưu kho
-                      </span>
-                    </div>
+                {/* SECTION 1: INBOUND & OUTBOUND GOODS TRANSACTION HISTORY TABLE */}
+                {goodsList && goodsList.length > 0 ? (() => {
+                  const groupedGoodsMap = new Map<string, {
+                    sku: string;
+                    productName: string;
+                    unit: string;
+                    baseOccupancyPct: number;
+                    transactions: any[];
+                  }>();
 
-                    <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700">
-                      <table className="w-full text-center text-xs border-collapse border border-slate-300 dark:border-slate-700">
-                        <thead className="bg-cyan-100/90 dark:bg-slate-800 text-cyan-950 dark:text-cyan-200 font-extrabold text-xs uppercase tracking-wider">
-                          <tr>
-                            <th className="py-3 px-3 font-extrabold text-center w-12 border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">STT</th>
-                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Mã hàng hóa</th>
-                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Mã phiếu nhập kho</th>
-                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Tên hàng hóa</th>
-                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">ĐVT</th>
-                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Số lượng</th>
-                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Ngày nhập</th>
-                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Nhà cung cấp</th>
-                            <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">% chứa</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-300 dark:divide-slate-700 font-normal text-slate-700 dark:text-slate-200">
-                          {goodsList.map((item: any, index: number) => {
-                            let itemPct = item.occupancyPct;
-                            if (itemPct === undefined || itemPct === null) {
-                              if (goodsList.length === 1) {
-                                itemPct = (customConfig as any)?.occupancyPct !== undefined ? (customConfig as any).occupancyPct : 100;
-                              } else {
-                                itemPct = Math.round(100 / goodsList.length);
-                              }
-                            }
+                  goodsList.forEach((item: any) => {
+                    const pSku = item.sku || item.productSku || 'SKU-001';
+                    const pName = item.productName || 'Sản phẩm';
+                    const pKey = `${pSku}___${pName}`;
 
-                            const realOrderCode = item.orderCode && item.orderCode !== 'TỒN-KHO' ? item.orderCode : (item.id ? `PNK-${String(item.id).padStart(4, '0')}` : 'PNK-20260819-001');
-                            const displaySku = item.sku || item.productSku || 'SKU-001';
-                            return (
-                              <tr key={index} className="hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors">
-                                <td className="py-2.5 px-3 text-center font-medium text-slate-500 border border-slate-300 dark:border-slate-700 whitespace-nowrap">{index + 1}</td>
-                                <td className="py-2.5 px-3 text-center font-mono font-medium text-cyan-700 dark:text-cyan-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap">{displaySku}</td>
-                                <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap">
-                                  <span className="px-2.5 py-1 rounded bg-cyan-50 dark:bg-cyan-950/80 border border-cyan-300 dark:border-cyan-800 text-cyan-950 dark:text-cyan-200 font-bold text-xs">
-                                    {realOrderCode}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-3 text-center font-medium text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700">{item.productName}</td>
-                                <td className="py-2.5 px-3 text-center font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap">{item.unit || 'Cái'}</td>
-                                <td className="py-2.5 px-3 text-center font-bold text-amber-600 dark:text-amber-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap">
-                                  {Number(item.quantity || 1).toLocaleString('vi-VN')}
-                                </td>
-                                <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap">{item.inboundDate}</td>
-                                <td className="py-2.5 px-3 text-center font-medium text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700">{item.supplierName}</td>
-                                <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap">
-                                  <span className="px-2 py-0.5 rounded-full font-bold text-[11px] bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800">
-                                    {itemPct}%
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                    let itemPct = item.occupancyPct;
+                    if (itemPct === undefined || itemPct === null) {
+                      itemPct = Math.round(100 / Math.max(1, goodsList.length));
+                    }
+
+                    if (!groupedGoodsMap.has(pKey)) {
+                      groupedGoodsMap.set(pKey, {
+                        sku: pSku,
+                        productName: pName,
+                        unit: item.unit || 'Cái',
+                        baseOccupancyPct: itemPct,
+                        transactions: [],
+                      });
+                    }
+
+                    groupedGoodsMap.get(pKey)!.transactions.push(item);
+                  });
+
+                  const groupedGoodsList = Array.from(groupedGoodsMap.values()).map((grp) => {
+                    const totalInbound = grp.transactions
+                      .filter((t) => !t.isOutbound && t.quantity > 0)
+                      .reduce((s, t) => s + Number(t.quantity || 0), 0);
+                    const totalOutbound = grp.transactions
+                      .filter((t) => t.isOutbound || t.quantity < 0)
+                      .reduce((s, t) => s + Math.abs(Number(t.quantity || 0)), 0);
+
+                    const netQty = Math.max(0, totalInbound - totalOutbound);
+                    const netOccupancyPct = totalInbound > 0
+                      ? Math.round((netQty / totalInbound) * grp.baseOccupancyPct)
+                      : Math.max(0, grp.baseOccupancyPct - Math.round((totalOutbound / 1000) * grp.baseOccupancyPct));
+
+                    return {
+                      ...grp,
+                      netOccupancyPct,
+                    };
+                  });
+
+                  return (
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                        <span className="font-semibold text-xs sm:text-sm uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                          <Package className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
+                          Lịch sử xuất nhập hàng hóa & phân bổ ô
+                        </span>
+                        <span className="text-[11px] font-medium text-cyan-700 bg-cyan-50 dark:bg-cyan-950 dark:text-cyan-300 px-2.5 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800">
+                          {goodsList.length} lượt xuất nhập
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700">
+                        <table className="w-full text-center text-xs border-collapse border border-slate-300 dark:border-slate-700">
+                          <thead className="bg-cyan-100/90 dark:bg-slate-800 text-cyan-950 dark:text-cyan-200 font-extrabold text-xs uppercase tracking-wider">
+                            <tr>
+                              <th className="py-3 px-3 font-extrabold text-center w-12 border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">STT</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Loại giao dịch</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Mã hàng hóa</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Mã phiếu</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Tên hàng hóa</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">ĐVT</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Số lượng</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Thời gian</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Đối tác / Khách / NCC</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">% chứa</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-300 dark:divide-slate-700 font-normal text-slate-700 dark:text-slate-200">
+                            {groupedGoodsList.map((group, gIdx) => {
+                              const txs = group.transactions;
+                              const rowSpanCount = txs.length;
+
+                              return txs.map((tx: any, txIdx: number) => {
+                                const isOutbound = tx.isOutbound || tx.quantity < 0;
+                                const qtyNum = Number(tx.quantity || 0);
+                                const realOrderCode = tx.orderCode && tx.orderCode !== 'TỒN-KHO' ? tx.orderCode : (tx.id ? `PNK-${String(tx.id).padStart(4, '0')}` : 'PNK-20260819-001');
+
+                                return (
+                                  <tr
+                                    key={`${gIdx}-${txIdx}`}
+                                    className={`hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors ${
+                                      isOutbound ? 'bg-rose-50/20 dark:bg-rose-950/20' : ''
+                                    }`}
+                                  >
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        {gIdx + 1}
+                                      </td>
+                                    )}
+
+                                    <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                      {isOutbound ? (
+                                        <span className="px-2 py-0.5 rounded font-black text-[10px] bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                                          XUẤT KHO
+                                        </span>
+                                      ) : (
+                                        <span className="px-2 py-0.5 rounded font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                                          NHẬP KHO
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center font-mono font-bold text-cyan-700 dark:text-cyan-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        {group.sku}
+                                      </td>
+                                    )}
+
+                                    <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                      <span
+                                        className={`px-2.5 py-1 rounded border font-bold text-xs ${
+                                          isOutbound
+                                            ? 'bg-rose-50 text-rose-900 border-rose-300'
+                                            : 'bg-cyan-50 text-cyan-950 border-cyan-300'
+                                        }`}
+                                      >
+                                        {realOrderCode}
+                                      </span>
+                                    </td>
+
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center font-bold text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        {group.productName}
+                                      </td>
+                                    )}
+
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        {group.unit}
+                                      </td>
+                                    )}
+
+                                    <td
+                                      className={`py-2.5 px-3 text-center font-black border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle ${
+                                        isOutbound ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                                      }`}
+                                    >
+                                      {isOutbound ? `${qtyNum.toLocaleString('vi-VN')}` : `${qtyNum.toLocaleString('vi-VN')}`}
+                                    </td>
+
+                                    <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                      {tx.inboundDate}
+                                    </td>
+
+                                    <td className="py-2.5 px-3 text-center font-medium text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 align-middle">
+                                      {tx.supplierName}
+                                    </td>
+
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        <span className="px-2.5 py-1 rounded-full font-black text-xs bg-cyan-100 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-200 border border-cyan-300 dark:border-cyan-800">
+                                          {group.netOccupancyPct}%
+                                        </span>
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              });
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                ) : (
+                  );
+                })() : (
                   <div className="rounded-2xl border border-cyan-200 dark:border-cyan-900/70 bg-white dark:bg-slate-900 p-5 space-y-2 shadow-sm text-center">
                     <span className="font-bold text-xs sm:text-sm uppercase tracking-wider text-cyan-900 dark:text-cyan-200 flex items-center justify-center gap-2">
                       <Boxes className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />

@@ -29,7 +29,7 @@ import {
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
-import { getStoredWarehouses, mergeStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
 
 
@@ -130,6 +130,98 @@ export interface FormDetailRow {
   note: string;
 }
 
+export function findStockBinForProduct(
+  pId: string,
+  pSku: string,
+  pName: string,
+  whCode?: string
+): { locationBin: string; assignedBins: string[] } {
+  if (!pId && !pSku && !pName) {
+    return { locationBin: '', assignedBins: [] };
+  }
+
+  const normId = String(pId || '').trim().toLowerCase();
+  const normSku = String(pSku || '').trim().toLowerCase();
+  const normName = String(pName || '').trim().toLowerCase();
+  const targetWh = String(whCode || '').trim().toUpperCase();
+
+  const foundBinsSet = new Set<string>();
+
+  // 1. Check local stock-in orders
+  try {
+    const rawOrders = localStorage.getItem('stored_stock_in_orders');
+    if (rawOrders) {
+      const orders = JSON.parse(rawOrders);
+      if (Array.isArray(orders)) {
+        orders.forEach((ord: any) => {
+          const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toUpperCase();
+          if (targetWh && oWh && oWh !== targetWh) return;
+          (ord.details || ord.items || []).forEach((item: any) => {
+            const iName = String(item.productName || '').trim().toLowerCase();
+            const iSku = String(item.sku || item.productSku || '').trim().toLowerCase();
+            const iId = String(item.productId || '').trim().toLowerCase();
+
+            const matches =
+              (normId && iId && normId === iId) ||
+              (normSku && iSku && normSku === iSku) ||
+              (normName && iName && (normName.includes(iName) || iName.includes(normName)));
+
+            if (matches) {
+              let bins: string[] = item.assignedBins || (item.locationBin ? item.locationBin.split(',') : []);
+              bins.forEach((b: string) => {
+                const clean = b.split('(')[0].trim();
+                const short = (clean.split('-').pop() || clean).toUpperCase();
+                if (short) foundBinsSet.add(short);
+              });
+            }
+          });
+        });
+      }
+    }
+  } catch {}
+
+  // 2. Check stored warehouses customBins
+  try {
+    const rawWhs = localStorage.getItem('smart-wms-warehouses');
+    if (rawWhs) {
+      const whs = JSON.parse(rawWhs);
+      if (Array.isArray(whs)) {
+        whs.forEach((wh: any) => {
+          const wCode = String(wh.code || wh.id || '').trim().toUpperCase();
+          if (targetWh && wCode && wCode !== targetWh) return;
+          (wh.subWarehouses || []).forEach((sub: any) => {
+            (sub.racks || []).forEach((rk: any) => {
+              if (rk.customBins) {
+                Object.entries(rk.customBins).forEach(([bKey, cfg]: [string, any]) => {
+                  const notes = String(cfg?.notes || '').toLowerCase();
+                  const pct = Number(cfg?.occupancyPct || 0);
+                  if (
+                    pct > 0 &&
+                    ((normName && notes.includes(normName)) || (normSku && notes.includes(normSku)))
+                  ) {
+                    const shortBin = (bKey.split('-').pop() || bKey).toUpperCase();
+                    foundBinsSet.add(shortBin);
+                  }
+                });
+              }
+            });
+          });
+        });
+      }
+    }
+  } catch {}
+
+  const binsList = Array.from(foundBinsSet);
+  if (binsList.length > 0) {
+    return {
+      locationBin: binsList.join(', '),
+      assignedBins: binsList,
+    };
+  }
+
+  return { locationBin: '', assignedBins: [] };
+}
+
 export function getAvailableBinsForProduct(row?: FormDetailRow | null, branchCode?: string): string[] {
   const binsSet = new Set<string>();
 
@@ -138,23 +230,18 @@ export function getAvailableBinsForProduct(row?: FormDetailRow | null, branchCod
     row.assignedBins.forEach((b) => b && binsSet.add(b));
   }
 
-  const defaultBins = [
-    'Kệ A1-01',
-    'Kệ A1-02',
-    'Kệ A2-01',
-    'Kệ B1-01',
-    'Kệ B1-02',
-    'Kệ B2-01',
-    'Kệ C1-01',
-    'Kệ K01',
-    'Kệ K02',
-    'Kệ K03',
-  ];
+  if (row?.productId || row?.productName || row?.productSku) {
+    const autoBins = findStockBinForProduct(
+      row.productId || '',
+      row.productSku || '',
+      row.productName || '',
+      branchCode
+    );
+    autoBins.assignedBins.forEach((b) => binsSet.add(b));
+  }
 
-  defaultBins.forEach((b) => binsSet.add(b));
   return Array.from(binsSet);
 }
-
 
 export interface OutboundTab {
   tabId: string;
@@ -220,8 +307,8 @@ function makeEmptyRow(index: number, defaultWhCode = 'KHO-TONG'): FormDetailRow 
     productSku: '',
     productName: '',
     warehouseCode: defaultWhCode,
-    locationBin: 'Kệ A1-01',
-    assignedBins: ['Kệ A1-01'],
+    locationBin: '',
+    assignedBins: [],
     unit: 'Cái',
     qty: 0,
     price: 0,
@@ -268,7 +355,8 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administra
 export interface CreateOutboundOrderPageProps {
   onBack?: () => void;
   standalone?: boolean;
-  featureMode?: 'orders' | 'retail' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal';
+  featureMode?: 'orders' | 'retail' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal' | 'return-supplier';
+  orderType?: string;
   title?: string;
   codePrefix?: string;
   partnerLabel?: string;
@@ -278,6 +366,7 @@ export default function CreateOutboundOrderPage({
   onBack,
   standalone = true,
   featureMode = 'orders',
+  orderType,
   title,
   codePrefix = 'PXK',
   partnerLabel = 'Khách hàng',
@@ -285,13 +374,17 @@ export default function CreateOutboundOrderPage({
   const navigate = useNavigate();
   const isRetail = featureMode === 'retail' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/retail'));
   const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
+  const isReturnSupplier = featureMode === 'return-supplier' || orderType === 'return-supplier' || partnerLabel === 'Nhà cung cấp';
 
   const getProductPriceForMode = useCallback((p: ProductOption) => {
+    if (isReturnSupplier) {
+      return p.purchasePrice || (p as any).importPrice || 0;
+    }
     if (isRetail) {
       return p.salePrice || p.price || 0;
     }
     return (p.wholesalePrice && p.wholesalePrice > 0) ? p.wholesalePrice : (p.salePrice || p.price || 0);
-  }, [isRetail]);
+  }, [isReturnSupplier, isRetail]);
 
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'System Administrator';
@@ -336,7 +429,14 @@ export default function CreateOutboundOrderPage({
       if (savedDraft) {
         const parsed = JSON.parse(savedDraft);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.map((t: OutboundTab) => ({
+            ...t,
+            details: (t.details || []).map((d) => ({
+              ...d,
+              locationBin: d.locationBin === 'Kệ A1-01' ? '' : (d.locationBin || ''),
+              assignedBins: (d.assignedBins || []).filter((b) => b !== 'Kệ A1-01'),
+            })),
+          }));
         }
       }
     } catch { }
@@ -404,8 +504,9 @@ export default function CreateOutboundOrderPage({
   useEffect(() => {
     async function loadMasterData() {
       try {
+        const partnerEndpoint = isReturnSupplier ? `${API_BASE_URL}/suppliers` : `${API_BASE_URL}/customers`;
         const [custRes, prodRes, userRes, whRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/customers`, { headers: authHeaders() }).catch(() => null),
+          fetch(partnerEndpoint, { headers: authHeaders() }).catch(() => null),
           fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(() => null),
           fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(() => null),
           fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
@@ -414,7 +515,14 @@ export default function CreateOutboundOrderPage({
         if (custRes && custRes.ok) {
           const custData = await custRes.json();
           const list = Array.isArray(custData) ? custData : custData.data || [];
-          setCustomers(list);
+          const normalized: CustomerOption[] = list.map((c: any) => ({
+            id: String(c.id),
+            customerCode: c.customerCode || c.supplierCode || c.code || (isReturnSupplier ? `NCC${c.id}` : `KH${c.id}`),
+            name: c.name || '',
+            phone: c.phone || '',
+            address: c.address || '',
+          }));
+          setCustomers(normalized);
         }
 
         if (prodRes && prodRes.ok) {
@@ -498,18 +606,33 @@ export default function CreateOutboundOrderPage({
           }
         }
 
+        if ((patch.productId || patch.productName || patch.productSku) && !patch.locationBin && (!patch.assignedBins || patch.assignedBins.length === 0)) {
+          const autoBin = findStockBinForProduct(
+            newRow.productId || '',
+            newRow.productSku || '',
+            newRow.productName || '',
+            newRow.warehouseCode || tab.branchCode
+          );
+          if (autoBin.locationBin) {
+            newRow.locationBin = autoBin.locationBin;
+            newRow.assignedBins = autoBin.assignedBins;
+          }
+        }
+
         const qty = Number(newRow.qty) || 0;
         const price = Number(newRow.price) || 0;
-        const discPercent = Number(newRow.discountPercent) || 0;
         const lineTotalBeforeDisc = qty * price;
+
+        const discPercent = Number(newRow.discountPercent) || 0;
         const discAmount = (lineTotalBeforeDisc * discPercent) / 100;
-        const lineTotalAfterDisc = Math.max(0, lineTotalBeforeDisc - discAmount);
+
         const vatPercent = Number(newRow.vatPercent) || 0;
-        const vatAmount = (lineTotalAfterDisc * vatPercent) / 100;
+        // Chiết khấu và VAT đều tính theo tổng số tiền gốc (lineTotalBeforeDisc)
+        const vatAmount = (lineTotalBeforeDisc * vatPercent) / 100;
 
         newRow.discountAmount = discAmount;
         newRow.vatAmount = vatAmount;
-        newRow.totalAmount = lineTotalAfterDisc + vatAmount;
+        newRow.totalAmount = Math.max(0, lineTotalBeforeDisc - discAmount + vatAmount);
 
         return newRow;
       });
@@ -649,24 +772,59 @@ export default function CreateOutboundOrderPage({
     return activeValidItems.reduce((s, r) => s + (Number(r.qty) || 0), 0);
   }, [activeValidItems]);
 
-  const subtotal = useMemo(() => {
+  // Tổng tiền gốc chưa chiết khấu/VAT
+  const baseSubtotal = useMemo(() => {
     return activeValidItems.reduce(
-      (s, r) => s + (Number(r.totalAmount) || Number(r.qty) * Number(r.price)),
+      (s, r) => s + (Number(r.qty) || 0) * (Number(r.price) || 0),
       0
     );
   }, [activeValidItems]);
 
+  // Tổng chiết khấu của tất cả các dòng
+  const totalRowDiscount = useMemo(() => {
+    return activeValidItems.reduce((s, r) => s + (Number(r.discountAmount) || 0), 0);
+  }, [activeValidItems]);
+
+  // Tổng VAT của tất cả các dòng
+  const totalRowVat = useMemo(() => {
+    return activeValidItems.reduce((s, r) => s + (Number(r.vatAmount) || 0), 0);
+  }, [activeValidItems]);
+
+  // Chiết khấu đơn hàng ở khung bên phải
+  const overallDiscount = useMemo(() => {
+    return Number(activeTab?.discount) || 0;
+  }, [activeTab?.discount]);
+
+  // VAT đơn hàng ở khung bên phải tính theo tổng tiền gốc
+  const overallVatAmount = useMemo(() => {
+    const rate = Number(activeTab?.vatRate) || 0;
+    return (baseSubtotal * rate) / 100;
+  }, [baseSubtotal, activeTab?.vatRate]);
+
+  // Tổng Chiết Khấu và Tổng VAT
+  const totalDiscount = useMemo(() => {
+    return totalRowDiscount + overallDiscount;
+  }, [totalRowDiscount, overallDiscount]);
+
+  const totalVat = useMemo(() => {
+    return totalRowVat + overallVatAmount;
+  }, [totalRowVat, overallVatAmount]);
+
+  const subtotal = useMemo(() => {
+    return baseSubtotal;
+  }, [baseSubtotal]);
+
   const vatAmount = useMemo(() => {
-    return (subtotal * (activeTab?.vatRate || 0)) / 100;
-  }, [subtotal, activeTab?.vatRate]);
+    return totalVat;
+  }, [totalVat]);
 
   const grandTotal = useMemo(() => {
     if (!activeTab) return 0;
     return Math.max(
       0,
-      subtotal - (activeTab.discount || 0) + (activeTab.shippingFee || 0) + vatAmount
+      baseSubtotal - totalDiscount + totalVat + (Number(activeTab.shippingFee) || 0)
     );
-  }, [subtotal, activeTab, vatAmount]);
+  }, [baseSubtotal, totalDiscount, totalVat, activeTab?.shippingFee]);
 
   const remainingDebt = useMemo(() => {
     if (!activeTab) return 0;
@@ -708,8 +866,8 @@ export default function CreateOutboundOrderPage({
             productSku: r.productSku,
             productName: r.productName,
             warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
-            locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || 'Kệ A1-01',
-            assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : [r.locationBin || 'Kệ A1-01'],
+            locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
+            assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
             unit: r.unit,
             qty: Number(r.qty),
             price: Number(r.price),
@@ -740,8 +898,8 @@ export default function CreateOutboundOrderPage({
             productSku: r.productSku,
             productName: r.productName,
             warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-NVL',
-            locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || 'Kệ A1-01',
-            assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : [r.locationBin || 'Kệ A1-01'],
+            locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
+            assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
             unit: r.unit,
             qty: Number(r.qty),
             price: Number(r.price),
@@ -759,6 +917,99 @@ export default function CreateOutboundOrderPage({
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
         throw new Error(errData?.message || `Không thể tạo ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`);
+      }
+
+      // Automatically update local inventory balances & bin topologies upon save
+      try {
+        const localWhs = getStoredWarehouses();
+        let changed = false;
+
+        activeValidItems.forEach((r) => {
+          const binsToDeduct: string[] = Array.isArray(r.assignedBins) && r.assignedBins.length > 0
+            ? r.assignedBins
+            : (r.locationBin ? r.locationBin.split(',').map((s: string) => s.trim()) : []);
+
+          binsToDeduct.forEach((bCode) => {
+            const cleanCode = bCode.split('(')[0].trim();
+            const normKey = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+            localWhs.forEach((wh) => {
+              (wh.subWarehouses || []).forEach((sub) => {
+                (sub.racks || []).forEach((rk) => {
+                  const customBins = rk.customBins as Record<string, any> | undefined;
+                  if (customBins) {
+                    Object.keys(customBins).forEach((k) => {
+                      const normK = k.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                      if (normK === normKey || k === cleanCode || k.includes(cleanCode)) {
+                        const curr = customBins[k];
+                        const oldPct = Number(curr?.occupancyPct ?? 100);
+                        const newPct = Math.max(0, oldPct - 100);
+                        customBins[k] = {
+                          ...curr,
+                          occupancyPct: newPct,
+                          notes: newPct === 0 ? 'Ô Trống' : `Đã lưu xuất: ${r.productName}`,
+                        };
+                        changed = true;
+                      }
+                    });
+                  }
+                });
+              });
+            });
+          });
+        });
+
+        if (changed) {
+          saveStoredWarehouses(localWhs);
+        }
+
+        // Store outbound order in local storage for instant sync across all views
+        try {
+          const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+          let storedOutbound: any[] = [];
+          if (storedOutboundStr) {
+            try { storedOutbound = JSON.parse(storedOutboundStr); } catch {}
+          }
+          storedOutbound.push({
+            ...payload,
+            id: payload.orderNo || `out_${Date.now()}`,
+            orderCode: payload.orderNo,
+            createdAt: new Date().toISOString(),
+          });
+          localStorage.setItem('stored_outbound_orders', JSON.stringify(storedOutbound));
+
+          // Also update smart-wms-products in localStorage
+          const storedProdsStr = localStorage.getItem('smart-wms-products');
+          if (storedProdsStr) {
+            let prods = JSON.parse(storedProdsStr);
+            if (Array.isArray(prods)) {
+              activeValidItems.forEach((r) => {
+                prods = prods.map((p: any) => {
+                  if (
+                    p.id === r.productId ||
+                    p.sku === r.productSku ||
+                    (r.productSku && p.sku && p.sku.toUpperCase() === r.productSku.toUpperCase())
+                  ) {
+                    const currentStk = Number(p.stock || 0);
+                    return {
+                      ...p,
+                      stock: Math.max(0, currentStk - Number(r.qty || 0)),
+                    };
+                  }
+                  return p;
+                });
+              });
+              localStorage.setItem('smart-wms-products', JSON.stringify(prods));
+            }
+          }
+        } catch (errLocal) {
+          console.warn('Lỗi lưu stored_outbound_orders vào localStorage:', errLocal);
+        }
+
+        window.dispatchEvent(new Event('warehouse-goods-cleared'));
+        window.dispatchEvent(new Event('storage'));
+      } catch (e) {
+        console.error('Lỗi tự động cập nhật sơ đồ kho sau khi xuất hàng:', e);
       }
 
       setToast({
@@ -1076,16 +1327,18 @@ export default function CreateOutboundOrderPage({
               <div className="mb-1.5 flex items-center justify-between">
                 <label className="text-xs font-black uppercase text-slate-700 flex items-center gap-1">
                   <User className="h-4 w-4 text-cyan-600" />
-                  <span>Khách hàng</span>
+                  <span>{partnerLabel || (isReturnSupplier ? 'Nhà cung cấp' : 'Khách hàng')}</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setShowAddCustomerModal(true)}
-                  className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer"
-                >
-                  <UserPlus size={13} />
-                  <span>+ Thêm KH</span>
-                </button>
+                {!isReturnSupplier && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCustomerModal(true)}
+                    className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <UserPlus size={13} />
+                    <span>+ Thêm KH</span>
+                  </button>
+                )}
               </div>
               <input
                 type="text"
@@ -1103,20 +1356,22 @@ export default function CreateOutboundOrderPage({
                   setShowCustomerDropdown(true);
                 }}
                 onClick={() => setShowCustomerDropdown(true)}
-                placeholder="Tìm theo tên, mã KH, SĐT..."
+                placeholder={isReturnSupplier ? "Tìm theo tên NCC, mã NCC, SĐT..." : "Tìm theo tên, mã KH, SĐT..."}
                 className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text"
               />
 
               {showCustomerDropdown && (
                 <div className="absolute left-0 top-full z-[100] mt-1 w-[400px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
                   <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-black text-slate-700 sticky top-0 z-10">
-                    <span className="w-1/3 uppercase">Mã KH</span>
-                    <span className="w-1/3 uppercase">Tên khách hàng</span>
+                    <span className="w-1/3 uppercase">{isReturnSupplier ? 'Mã NCC' : 'Mã KH'}</span>
+                    <span className="w-1/3 uppercase">{isReturnSupplier ? 'Tên NCC' : 'Tên khách hàng'}</span>
                     <span className="w-1/3 text-right uppercase">SĐT</span>
                   </div>
                   <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
                     {filteredCustomers.length === 0 ? (
-                      <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy khách hàng</div>
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        {isReturnSupplier ? 'Không tìm thấy nhà cung cấp' : 'Không tìm thấy khách hàng'}
+                      </div>
                     ) : (
                       filteredCustomers.map((c) => (
                         <div
@@ -1133,7 +1388,7 @@ export default function CreateOutboundOrderPage({
                           }}
                           className="flex items-center px-3 py-2.5 hover:bg-cyan-50 cursor-pointer text-xs transition"
                         >
-                          <span className="w-1/3 font-bold text-cyan-800">{c.customerCode || 'KH---'}</span>
+                          <span className="w-1/3 font-bold text-cyan-800">{c.customerCode || (isReturnSupplier ? 'NCC---' : 'KH---')}</span>
                           <span className="w-1/3 font-bold text-slate-800 truncate pr-1">{c.name}</span>
                           <span className="w-1/3 text-right text-slate-500 font-semibold">{c.phone || '-'}</span>
                         </div>
@@ -1294,7 +1549,7 @@ export default function CreateOutboundOrderPage({
                       {isDisposal ? 'SL HỦY' : 'SỐ LƯỢNG'}
                     </th>
                     <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">
-                      {isDisposal ? 'GIÁ VỐN (đ)' : 'ĐƠN GIÁ (đ)'}
+                      {isDisposal ? 'GIÁ VỐN (đ)' : (isReturnSupplier ? 'GIÁ NHẬP (đ)' : 'ĐƠN GIÁ (đ)')}
                     </th>
                     {!isDisposal && (
                       <>
@@ -1350,7 +1605,7 @@ export default function CreateOutboundOrderPage({
                                 <span className="w-1/4 uppercase">Mã hàng</span>
                                 <span className="w-1/3 uppercase">Tên hàng hóa</span>
                                 <span className="w-1/5 text-center uppercase">Tồn kho</span>
-                                <span className="w-1/4 text-right uppercase">Giá vốn / Giá</span>
+                                <span className="w-1/4 text-right uppercase">{isReturnSupplier ? 'Giá nhập / Giá' : 'Giá vốn / Giá'}</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
                                 {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
@@ -1682,22 +1937,7 @@ export default function CreateOutboundOrderPage({
                 </select>
               </div>
 
-              {/* Sử dụng điểm tích */}
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-800 pt-0.5">
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={useLoyaltyPoints}
-                    onChange={(e) => setUseLoyaltyPoints(e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                  />
-                  <span>Sử dụng điểm tích</span>
-                </label>
-                <div className="flex items-center gap-0.5">
-                  <span className="flex h-5 min-w-[20px] items-center justify-center bg-yellow-400 px-1 text-xs font-black text-black border border-slate-300">0</span>
-                  <span className="flex h-5 min-w-[20px] items-center justify-center bg-blue-700 px-1 text-xs font-black text-white border border-slate-300">0</span>
-                </div>
-              </div>
+
 
               {/* Hình thức thanh toán Radios */}
               <div className="space-y-1 text-xs font-semibold text-slate-800 border-t border-slate-200 pt-1.5">
@@ -1753,32 +1993,21 @@ export default function CreateOutboundOrderPage({
               <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/60 p-2.5 shadow-sm space-y-1.5 text-slate-800">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
                   <span>Thành tiền hàng:</span>
-                  <span className="font-extrabold text-slate-900">{subtotal.toLocaleString('vi-VN')} đ</span>
+                  <span className="font-extrabold text-slate-900">{baseSubtotal.toLocaleString('vi-VN')} đ</span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
                   <span>Chiết khấu:</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={activeTab?.discount || ''}
-                    onChange={(e) => updateActiveTab((t) => ({ ...t, discount: Number(e.target.value) }))}
-                    placeholder="0"
-                    className="h-7 w-24 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
-                  />
+                  <span className="font-extrabold text-rose-600 text-xs">
+                    - {totalDiscount.toLocaleString('vi-VN')} đ
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                  <span>Thuế VAT (%):</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={activeTab?.vatRate || ''}
-                    onChange={(e) => updateActiveTab((t) => ({ ...t, vatRate: Number(e.target.value) }))}
-                    placeholder="0"
-                    className="h-7 w-16 rounded bg-white px-2 text-right font-extrabold text-cyan-900 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
-                  />
+                  <span>Thuế VAT:</span>
+                  <span className="font-extrabold text-emerald-600 text-xs">
+                    + {totalVat.toLocaleString('vi-VN')} đ
+                  </span>
                 </div>
 
                 <div className="border-t border-slate-300/80 pt-1.5 flex items-center justify-between">
@@ -1819,7 +2048,7 @@ export default function CreateOutboundOrderPage({
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
-                <span>LƯU & IN PHIẾU XUẤT</span>
+                <span>{isReturnSupplier ? 'LƯU & IN PHIẾU XUẤT TRẢ' : 'LƯU & IN PHIẾU XUẤT'}</span>
               </button>
 
               <button
@@ -1828,7 +2057,7 @@ export default function CreateOutboundOrderPage({
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
-                <span>LƯU PHIẾU XUẤT HÀNG</span>
+                <span>{isReturnSupplier ? 'LƯU PHIẾU XUẤT TRẢ NCC' : 'LƯU PHIẾU XUẤT HÀNG'}</span>
               </button>
 
               <button

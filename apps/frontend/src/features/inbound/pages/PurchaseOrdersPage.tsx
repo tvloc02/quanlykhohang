@@ -10,11 +10,11 @@ import {
   Clock3,
   FileText,
   Filter,
+  Eye,
   Package,
   Pencil,
   Plus,
   PlusCircle,
-  History,
   RefreshCw,
   Search,
   Trash2,
@@ -39,7 +39,6 @@ import {
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { PurchaseOrderFormModal } from '../components/PurchaseOrderFormModal';
 import { PrintablePurchaseOrder } from '../components/PrintablePurchaseOrder';
-import { CreateStockInReceiptModal } from '../components/CreateStockInReceiptModal';
 import { PriceNegotiationModal } from '../components/PriceNegotiationModal';
 
 type SupplierProduct = {
@@ -97,6 +96,7 @@ type PurchaseOrder = {
   id: string;
   poNumber: string;
   receiptNo?: string;
+  warehouseCode?: string;
   orderDate?: string;
   expectedDate?: string;
   status?: string;
@@ -463,12 +463,8 @@ function PurchaseOrdersPageContent() {
   const [receiptDate, setReceiptDate] = React.useState(new Date().toISOString().slice(0, 16));
   const [stockInNote, setStockInNote] = React.useState('');
   const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
-  const [duplicateReceipts, setDuplicateReceipts] = React.useState<any[]>([]);
-  const [pendingOrderForStockIn, setPendingOrderForStockIn] = React.useState<PurchaseOrder | null>(null);
   const [printOrder, setPrintOrder] = React.useState<PurchaseOrder | null>(null);
   const [showPrintPreview, setShowPrintPreview] = React.useState(false);
-  const [createReceiptModalOpen, setCreateReceiptModalOpen] = React.useState(false);
-  const [receiptSourcePOId, setReceiptSourcePOId] = React.useState<string | null>(null);
 
   // Price Negotiation Modal State
   const [priceNegotiationOrder, setPriceNegotiationOrder] = React.useState<PurchaseOrder | null>(null);
@@ -1292,31 +1288,6 @@ function PurchaseOrdersPageContent() {
     }
   };
 
-  const openCreateStockIn = async (order: PurchaseOrder) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts`, { headers: authHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data.data || [];
-        const matching = list.filter((o: any) => o.sourceReferenceNo === order.poNumber);
-        if (matching.length > 0) {
-          setDuplicateReceipts(matching);
-          setPendingOrderForStockIn(order);
-          return;
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    proceedWithCreateStockIn(order);
-  };
-
-  const proceedWithCreateStockIn = (order: PurchaseOrder) => {
-    closeModal();
-    setReceiptSourcePOId(order.id);
-    setCreateReceiptModalOpen(true);
-  };
-
   const openReceive = (order: PurchaseOrder) => {
     setSelectedId(order.id);
     setReceiveRows(
@@ -1403,7 +1374,7 @@ function PurchaseOrdersPageContent() {
   }
 
   const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
-  const canManagerApprove = (selectedOrderStatus === 'CREATED' || selectedOrderStatus === 'REJECTED') && currentUserIsManager;
+  const canManagerApprove = selectedOrderStatus === 'CREATED' || selectedOrderStatus === 'REJECTED';
   
   const canEditOrder = (order: PurchaseOrder) => {
     const status = (order.status || '').toUpperCase();
@@ -1416,18 +1387,14 @@ function PurchaseOrdersPageContent() {
   };
 
   const canReceiveRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
-  const canCreateOrderRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
-  const canCreateReceiptRow = (order: PurchaseOrder) => ['PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
+  const canCreateReceiptRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
 
   const canApproveRow = (order: PurchaseOrder) => {
     const status = (order.status || 'CREATED').toUpperCase();
-    return (status === 'CREATED' || status === 'REJECTED') && currentUserIsManager;
+    return status === 'CREATED' || status === 'REJECTED';
   };
 
-  const canDelete = (order: PurchaseOrder) => {
-    const s = statusToFilter(order.status);
-    return s === 'waiting' || s === 'cancelled';
-  };
+  const canDelete = (_order: PurchaseOrder) => true;
 
   const addRow = () => {
     setForm((current) => ({ ...current, items: [...current.items, makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')] }));
@@ -1657,7 +1624,7 @@ function PurchaseOrdersPageContent() {
 
       <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] border-collapse bg-white">
+          <table className="w-full min-w-[1450px] border-collapse bg-white">
             <thead className="bg-cyan-50">
               <tr className="border-b border-slate-200">
                 <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
@@ -1668,10 +1635,12 @@ function PurchaseOrdersPageContent() {
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Người đặt</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày tạo đơn</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nhà cung cấp</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tổng SL</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Diễn giải</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tổng tiền</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tình trạng</th>
-                <th className="sticky right-0 w-40 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="sticky right-0 w-56 min-w-[250px] border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -1679,13 +1648,13 @@ function PurchaseOrdersPageContent() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Đang tải danh sách đơn mua hàng...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Chưa có đơn mua hàng phù hợp.
                   </td>
                 </tr>
@@ -1710,6 +1679,12 @@ function PurchaseOrdersPageContent() {
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                         {order.supplier?.name || order.supplierName || order.supplier?.supplierCode || '-'}
                       </td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                        {order.warehouseCode || order.details?.[0]?.warehouseCode || '-'}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black text-slate-800">
+                        {(order.details || []).reduce((sum, detail) => sum + Number(detail.expectedQty || 0), 0)}
+                      </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-left text-sm font-semibold text-slate-700 whitespace-pre-line">{order.description || '-'}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatMoney(order.totalAmount)}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
@@ -1717,8 +1692,8 @@ function PurchaseOrdersPageContent() {
                           {statusLabel(order.status)}
                         </span>
                       </td>
-                      <td className={`sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeDropdown === order.id ? 'z-[60]' : 'z-10'}`}>
-                        <div className="flex items-center justify-center gap-2">
+                      <td className={`sticky right-0 w-56 min-w-[250px] border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeDropdown === order.id ? 'z-[60]' : 'z-10'}`}>
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
                             onClick={(event) => {
@@ -1726,9 +1701,9 @@ function PurchaseOrdersPageContent() {
                               openView(order);
                             }}
                             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Lịch sử đơn hàng"
+                            title="Xem đơn hàng"
                           >
-                            <History size={18} strokeWidth={2.5} />
+                            <Eye size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
@@ -1747,25 +1722,12 @@ function PurchaseOrdersPageContent() {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              if (!canNegotiatePrice(order)) return;
-                              openPriceNegotiation(order);
-                            }}
-                            disabled={!canNegotiatePrice(order)}
-                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${canNegotiatePrice(order) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
-                            title="Điều chỉnh giá / Phản hồi giá"
-                          >
-                            <Scale size={18} strokeWidth={2.5} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
                               if (!canDelete(order)) return;
                               setDeleteTarget(order);
                               setModalMode('delete');
                             }}
                             disabled={!canDelete(order)}
-                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${canDelete(order) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                            className="hidden"
                             title="Xóa"
                           >
                             <Trash2 size={18} strokeWidth={2.5} />
@@ -1781,7 +1743,37 @@ function PurchaseOrdersPageContent() {
                           >
                             <Printer size={18} strokeWidth={2.5} />
                           </button>
-                          {order.status === 'DRAFT' ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (canApproveRow(order)) {
+                                approveOrder(order);
+                                return;
+                              }
+                              if (canCreateReceiptRow(order)) {
+                                navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
+                              }
+                            }}
+                            disabled={(!canApproveRow(order) && !canCreateReceiptRow(order)) || saving}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${(canApproveRow(order) || canCreateReceiptRow(order)) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                            title={canApproveRow(order) ? 'Duyệt đơn hàng' : 'Tạo phiếu nhập kho'}
+                          >
+                            {canApproveRow(order) ? <CheckCircle2 size={18} strokeWidth={2.5} /> : <FileText size={18} strokeWidth={2.5} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setDeleteTarget(order);
+                              setModalMode('delete');
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50"
+                            title="Xóa đơn hàng"
+                          >
+                            <Trash2 size={18} strokeWidth={2.5} />
+                          </button>
+                          {false && (order.status === 'DRAFT' ? (
                             <button
                               type="button"
                               onClick={(event) => {
@@ -1864,8 +1856,7 @@ function PurchaseOrdersPageContent() {
                                     disabled={!canCreateReceiptRow(order)}
                                     onClick={() => {
                                       if (!canCreateReceiptRow(order)) return;
-                                      setReceiptSourcePOId(order.id);
-                                      setCreateReceiptModalOpen(true);
+                                      navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
                                       setActiveDropdown(null);
                                     }}
                                     className={`flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-left transition ${
@@ -1888,23 +1879,10 @@ function PurchaseOrdersPageContent() {
                                     <Printer className="h-4 w-4" />
                                     Xem trước bản in & In
                                   </button>
-                                  <button
-                                    type="button"
-                                    disabled={!canCreateOrderRow(order)}
-                                    onClick={() => {
-                                      if (!canCreateOrderRow(order)) return;
-                                      navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
-                                      setActiveDropdown(null);
-                                    }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:hover:bg-white text-left"
-                                  >
-                                    <Clock3 className="h-4 w-4" />
-                                    Tạo lệnh nhập kho
-                                  </button>
                                 </div>
                               )}
                             </div>
-                          )}
+                          ))}
                         </div>
                       </td>
                     </tr>
@@ -1990,38 +1968,16 @@ function PurchaseOrdersPageContent() {
               {canManagerApprove && (
                 <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder!); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-transparent bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:opacity-60">
                   <CheckCircle2 className="h-4 w-4" />
-                  {selectedOrderStatus === 'REJECTED' ? 'Đồng ý giá đề xuất' : 'Duyệt đơn hàng'}
+                  Duyệt đơn hàng
                 </button>
               )}
-              {selectedOrder && canReceiveRow(selectedOrder) && (
-                <button
-                  type="button"
-                  onClick={() => openReceive(selectedOrder)}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
-                >
-                  <Package className="h-4 w-4" />
-                  Đã nhận hàng
-                </button>
-              )}
-              {selectedOrder && canCreateOrderRow(selectedOrder) && (
+              {selectedOrder && canCreateReceiptRow(selectedOrder) && (
                 <button
                   type="button"
                   onClick={() => {
                     closeModal();
                     navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: selectedOrder.id } });
                   }}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
-                >
-                  <Clock3 className="h-4 w-4" />
-                  Tạo lệnh nhập kho
-                </button>
-              )}
-              {selectedOrder && canCreateReceiptRow(selectedOrder) && (
-                <button
-                  type="button"
-                  onClick={() => openCreateStockIn(selectedOrder)}
                   disabled={saving}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                 >
@@ -2212,71 +2168,6 @@ function PurchaseOrdersPageContent() {
         title="Quét mã vạch nhập kho"
       />
 
-      {duplicateReceipts.length > 0 && pendingOrderForStockIn && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
-              <div>
-                <h3 className="text-lg font-black text-slate-900">Đã tồn tại phiếu nhập kho</h3>
-                <p className="text-sm font-medium text-slate-500">
-                  Đơn mua hàng <span className="font-bold text-slate-700">{pendingOrderForStockIn.poNumber}</span> đã có {duplicateReceipts.length} phiếu nhập kho trước đó.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setDuplicateReceipts([]);
-                  setPendingOrderForStockIn(null);
-                }}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
-              <div className="space-y-3">
-                {duplicateReceipts.map((receipt) => (
-                  <div key={receipt.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-bold text-slate-800">{receipt.receiptCode}</span>
-                      <span className={`inline-flex rounded-lg border px-2 py-0.5 text-xs font-bold ${receipt.status === 'POSTED' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-100 text-slate-600'}`}>{receipt.status === 'POSTED' ? 'Đã chốt' : 'Lưu nháp'}</span>
-                    </div>
-                    <div className="text-sm text-slate-600">Ngày lập: {new Date(receipt.createdAt || receipt.receiptDate).toLocaleString('vi-VN')}</div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-6 text-sm font-bold text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                Bạn có chắc chắn muốn tiếp tục tạo thêm phiếu nhập kho mới không?
-              </p>
-            </div>
-            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setDuplicateReceipts([]);
-                  setPendingOrderForStockIn(null);
-                }}
-                className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const order = pendingOrderForStockIn;
-                  setDuplicateReceipts([]);
-                  setPendingOrderForStockIn(null);
-                  proceedWithCreateStockIn(order);
-                }}
-                className="rounded-xl bg-amber-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-amber-700"
-              >
-                Vẫn tiếp tục tạo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL XEM TRƯỚC BẢN IN */}
       {showPrintPreview && printOrder && createPortal(
         <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
@@ -2347,19 +2238,6 @@ function PurchaseOrdersPageContent() {
           </div>
         </div>,
         document.body
-      )}
-      {createReceiptModalOpen && (
-        <CreateStockInReceiptModal
-          isOpen={createReceiptModalOpen}
-          onClose={() => setCreateReceiptModalOpen(false)}
-          onSuccess={() => {
-            setCreateReceiptModalOpen(false);
-            loadData();
-            setToast({ type: 'success', message: 'Tạo phiếu nhập kho thành công!' });
-          }}
-          sourcePurchaseOrderId={receiptSourcePOId}
-          mode="create"
-        />
       )}
       <PriceNegotiationModal
         isOpen={priceNegotiationModalOpen}

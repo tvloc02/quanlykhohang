@@ -797,7 +797,7 @@ export default function CreateTransferOrderPage({
       const sourceWh = (activeTab.sourceWarehouseCode || warehouses[0]?.code || warehouses[0]?.id || 'KH006').trim();
       const destWh = (activeTab.destinationWarehouseCode || warehouses[1]?.code || warehouses[1]?.id || 'KH002').trim();
 
-      const finalStatus = isReceiveMode ? 'DELIVERED' : statusSave;
+      const finalStatus = isReceiveMode ? 'DELIVERED' : (statusSave === 'APPROVED' ? 'IN_TRANSIT' : statusSave);
 
       const payload = {
         transferNo: activeTab.transferNo,
@@ -834,6 +834,9 @@ export default function CreateTransferOrderPage({
         await deliveryApi.createTransferOrder(payload);
         setToast({ type: 'success', message: `Tạo mới thành công phiếu điều chuyển: ${activeTab.transferNo}` });
       }
+
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('warehouse-goods-cleared'));
 
       try {
         sessionStorage.removeItem('transfer_tabs_draft');

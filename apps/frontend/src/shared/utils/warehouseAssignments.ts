@@ -4,6 +4,9 @@ export type CustomBinConfig = {
   width: number;   // cm
   height: number;  // cm
   maxWeight: number; // kg
+  occupancyPct?: number;
+  notes?: string;
+  status?: string;
 };
 
 export type RackConfig = {
@@ -90,7 +93,7 @@ export type SubWarehouse = {
   cellHeight?: number; // cm
   wallRacksCount?: number; // kệ trên tường
   rackRowsCount?: number; // số hàng kệ
-  racks?: RackConfig[]; // Cấu hình chi tiết từng Dãy Kệ
+  racks?: RackConfig[]; // Danh sách dãy kệ trong phân khu
   structure?: {
     wallType?: string;    // Tường
     ceilingType?: string; // Trần

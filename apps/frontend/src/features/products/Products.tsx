@@ -295,6 +295,7 @@ type Product = {
   retailPrice?: number | '';
   lastStockInQty?: number;
   stock: number;
+  totalExportedQty?: number;
   warehouseStocks?: Record<string, number>;
   images: string[];
   isVisible: boolean;
@@ -773,8 +774,8 @@ export default function Products() {
     return col ? col.visible : true;
   };
 
-  const loadData = React.useCallback(async () => {
-    setLoading(true);
+  const loadData = React.useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     setError('');
 
     const deletedKeys = getActiveDeletedProductKeys();
@@ -792,7 +793,53 @@ export default function Products() {
         }
       }
 
-      // 2. Fetch latest products from API
+      // 2. Fetch outbound orders to reconcile exported quantities
+      let outboundList: any[] = [];
+      const outRes = await fetch(`${API_BASE_URL}/outbounds`, { headers: authHeaders() }).catch(() => null);
+      if (outRes && outRes.ok) {
+        const outRaw = await outRes.json().catch(() => []);
+        outboundList = Array.isArray(outRaw) ? outRaw : (outRaw.data || []);
+      }
+      const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+      if (storedOutboundStr) {
+        try {
+          const localOut = JSON.parse(storedOutboundStr);
+          if (Array.isArray(localOut)) {
+            const existingNos = new Set(outboundList.map((o) => String(o.orderNo || o.id)));
+            localOut.forEach((o) => {
+              const no = String(o.orderNo || o.id);
+              if (!existingNos.has(no)) {
+                outboundList.push(o);
+              }
+            });
+          }
+        } catch {}
+      }
+
+      // Map exported quantity per product SKU/ID/Name
+      const outboundQtyMap = new Map<string, number>();
+      outboundList.forEach((order) => {
+        const st = String(order.status || '').toLowerCase();
+        if (st.includes('hủy') || st.includes('cancel')) return;
+
+        const details = order.details || order.items || order.products || [];
+        if (Array.isArray(details)) {
+          details.forEach((d: any) => {
+            const qty = Number(d.qty || d.quantity || d.requiredQty || 0);
+            if (qty > 0) {
+              const pId = String(d.productId || d.id || '').toLowerCase();
+              const pSku = String(d.productSku || d.sku || '').toLowerCase();
+              const pName = String(d.productName || d.name || '').toLowerCase();
+
+              if (pId) outboundQtyMap.set(`id:${pId}`, (outboundQtyMap.get(`id:${pId}`) || 0) + qty);
+              if (pSku) outboundQtyMap.set(`sku:${pSku}`, (outboundQtyMap.get(`sku:${pSku}`) || 0) + qty);
+              if (pName) outboundQtyMap.set(`name:${pName}`, (outboundQtyMap.get(`name:${pName}`) || 0) + qty);
+            }
+          });
+        }
+      });
+
+      // 3. Fetch latest products from API
       const response = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
@@ -801,15 +848,85 @@ export default function Products() {
 
       const data = (await response.json()) as RawProduct[];
       const normalizedProducts = data
-        .map(normalizeProduct)
+        .map((p) => {
+          const norm = normalizeProduct(p);
+          const pId = String(norm.id || '').toLowerCase();
+          const pSku = String(norm.sku || '').toLowerCase();
+          const pName = String(norm.name || '').toLowerCase();
+
+          const exportedQty = outboundQtyMap.get(`id:${pId}`)
+            || outboundQtyMap.get(`sku:${pSku}`)
+            || outboundQtyMap.get(`name:${pName}`)
+            || 0;
+
+          const baseStock = norm.stock;
+          const netStock = Math.max(0, baseStock - exportedQty);
+
+          return {
+            ...norm,
+            totalExportedQty: exportedQty,
+            stock: netStock,
+          };
+        })
         .filter((p) => !deletedKeys.has(String(p.id)) && !deletedKeys.has(String(p.sku)));
 
       setProducts(normalizedProducts);
       saveStoredProducts(normalizedProducts);
     } catch (err) {
-      const stored = getStoredProducts().filter(
-        (p) => !deletedKeys.has(String(p.id)) && !deletedKeys.has(String(p.sku))
-      );
+      const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+      let outboundList: any[] = [];
+      if (storedOutboundStr) {
+        try {
+          const localOut = JSON.parse(storedOutboundStr);
+          if (Array.isArray(localOut)) outboundList = localOut;
+        } catch {}
+      }
+
+      const outboundQtyMap = new Map<string, number>();
+      outboundList.forEach((order) => {
+        const st = String(order.status || '').toLowerCase();
+        if (st.includes('hủy') || st.includes('cancel')) return;
+
+        const details = order.details || order.items || order.products || [];
+        if (Array.isArray(details)) {
+          details.forEach((d: any) => {
+            const qty = Number(d.qty || d.quantity || d.requiredQty || 0);
+            if (qty > 0) {
+              const pId = String(d.productId || d.id || '').toLowerCase();
+              const pSku = String(d.productSku || d.sku || '').toLowerCase();
+              const pName = String(d.productName || d.name || '').toLowerCase();
+
+              if (pId) outboundQtyMap.set(`id:${pId}`, (outboundQtyMap.get(`id:${pId}`) || 0) + qty);
+              if (pSku) outboundQtyMap.set(`sku:${pSku}`, (outboundQtyMap.get(`sku:${pSku}`) || 0) + qty);
+              if (pName) outboundQtyMap.set(`name:${pName}`, (outboundQtyMap.get(`name:${pName}`) || 0) + qty);
+            }
+          });
+        }
+      });
+
+      const stored = getStoredProducts()
+        .map((p) => {
+          const pId = String(p.id || '').toLowerCase();
+          const pSku = String(p.sku || '').toLowerCase();
+          const pName = String(p.name || '').toLowerCase();
+
+          const exportedQty = outboundQtyMap.get(`id:${pId}`)
+            || outboundQtyMap.get(`sku:${pSku}`)
+            || outboundQtyMap.get(`name:${pName}`)
+            || 0;
+
+          const baseStock = p.stock;
+          const netStock = Math.max(0, baseStock - exportedQty);
+
+          return {
+            ...p,
+            totalExportedQty: exportedQty,
+            stock: netStock,
+          };
+        })
+        .filter(
+          (p) => !deletedKeys.has(String(p.id)) && !deletedKeys.has(String(p.sku))
+        );
       setProducts(stored);
       setWarehouses(getStoredWarehouses());
     } finally {
@@ -818,17 +935,23 @@ export default function Products() {
   }, []);
 
   React.useEffect(() => {
-    loadData();
+    loadData(true);
   }, [loadData]);
 
   React.useEffect(() => {
-    const syncMasterData = () => {
+    const syncMasterData = (e?: Event) => {
+      if (e && (e as StorageEvent).key === PRODUCT_STORAGE_KEY) return;
       setCatalogCategories(getStoredCatalogCategories());
       setWarehouses(getStoredWarehouses());
+      loadData(false);
     };
     window.addEventListener('storage', syncMasterData);
-    return () => window.removeEventListener('storage', syncMasterData);
-  }, []);
+    window.addEventListener('warehouse-goods-cleared', syncMasterData);
+    return () => {
+      window.removeEventListener('storage', syncMasterData);
+      window.removeEventListener('warehouse-goods-cleared', syncMasterData);
+    };
+  }, [loadData]);
 
   // Reset trang khi filter thay doi
   React.useEffect(() => {
@@ -1650,12 +1773,12 @@ export default function Products() {
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
           <p className="text-base font-black text-cyan-700 uppercase">
-            {products.filter((p) => (p.stock || 0) > 0).reduce((sum, p) => sum + (p.stock || 0), 0).toLocaleString('vi-VN')} SL MỚI NHẬP KHO
+            {products.reduce((sum, p) => sum + ((p.stock || 0) + (p.totalExportedQty || 0)), 0).toLocaleString('vi-VN')} SL MỚI NHẬP KHO
           </p>
         </div>
         <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
           <p className="text-base font-black text-cyan-700 uppercase">
-            {products.filter((p) => (p.stock || 0) === 0).length} SL VỪA XUẤT BÁN
+            {products.reduce((sum, p) => sum + (p.totalExportedQty || 0), 0).toLocaleString('vi-VN')} SL VỪA XUẤT BÁN
           </p>
         </div>
       </div>

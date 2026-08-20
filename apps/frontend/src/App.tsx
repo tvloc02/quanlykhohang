@@ -375,7 +375,7 @@ function App() {
           element={
             <RoleRoute menuId="inbound-purchase-orders">
               <MainLayout>
-                <Inbound featureMode="purchase-order" title="DANH SÁCH ĐƠN ĐẶT HÀNG NHÀ CUNG CẤP" codePrefix="PO" partnerLabel="Nhà cung cấp" />
+                <PurchaseOrdersPage />
               </MainLayout>
             </RoleRoute>
           }
