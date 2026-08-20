@@ -447,7 +447,6 @@ export default function Inbound({
     code: true,
     date: true,
     supplierName: true,
-    supplierAddress: true,
     supplierPhone: true,
     subtotal: true,
     discount: true,
@@ -464,7 +463,6 @@ export default function Inbound({
     { key: 'code', label: 'Mã' },
     { key: 'date', label: 'Ngày' },
     { key: 'supplierName', label: 'Tên NCC' },
-    { key: 'supplierAddress', label: 'Địa chỉ' },
     { key: 'supplierPhone', label: 'Tel' },
     { key: 'subtotal', label: 'Thành tiền' },
     { key: 'discount', label: 'CK' },
@@ -1414,7 +1412,7 @@ export default function Inbound({
                 <button
                   type="button"
                   onClick={() => {
-                    const header = ['STT', 'Kho', 'NV', 'Mã Phiếu', 'Ngày Nhập', 'Nhà Cung Cấp', 'Địa Chỉ', 'SĐT', 'Thành Tiền', 'Chiết Khấu', 'VAT', 'Tổng Tiền', 'Thanh Toán', 'Trạng Thái'];
+                    const header = ['STT', 'Kho', 'NV', 'Mã Phiếu', 'Ngày Nhập', 'Nhà Cung Cấp', 'SĐT', 'Thành Tiền', 'Chiết Khấu', 'VAT', 'Tổng Tiền', 'Thanh Toán', 'Trạng Thái'];
                     const rows = filteredOrders.map((o, idx) => [
                       idx + 1,
                       formatWarehouseDisplay(o.warehouseCode, warehouses),
@@ -1422,7 +1420,6 @@ export default function Inbound({
                       o.receiptNo,
                       o.orderDate,
                       o.supplier,
-                      o.supplierAddress || '',
                       o.supplierPhone || '',
                       o.subtotal || o.totalAmount,
                       o.discount || 0,
@@ -1552,7 +1549,6 @@ export default function Inbound({
                     {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Ngày xuất' : 'Ngày nhập'}</th>}
                     {columnVis.supplierName && <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">Nhà cung cấp</th>}
                     {columnVis.supplierPhone && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">SĐT</th>}
-                    {columnVis.supplierAddress && <th className="min-w-[240px] border-r border-slate-200 px-4 py-4 text-center">Địa chỉ</th>}
                     {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Kho xuất' : 'Kho'}</th>}
                     {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'NV xuất' : 'Nhân viên'}</th>}
                     {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Thành tiền</th>}
@@ -1568,13 +1564,13 @@ export default function Inbound({
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {loading ? (
                     <tr>
-                      <td colSpan={17} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      <td colSpan={16} className="py-12 text-center text-slate-500 font-semibold text-sm">
                         {featureMode === 'return-supplier' ? 'Đang tải danh sách phiếu xuất trả nhà cung cấp...' : 'Đang tải danh sách phiếu nhập kho...'}
                       </td>
                     </tr>
                   ) : paginatedOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={17} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                      <td colSpan={16} className="py-12 text-center text-slate-500 font-semibold text-sm">
                         {featureMode === 'return-supplier' ? 'Không tìm thấy phiếu xuất trả nhà cung cấp nào' : 'Không tìm thấy phiếu nhập kho nào'}
                       </td>
                     </tr>
@@ -1613,7 +1609,6 @@ export default function Inbound({
                             {columnVis.date && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.orderDate}</td>}
                             {columnVis.supplierName && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-slate-800">{ord.supplier}</td>}
                             {columnVis.supplierPhone && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.supplierPhone || '-'}</td>}
-                            {columnVis.supplierAddress && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-700 max-w-[240px] truncate" title={ord.supplierAddress}>{ord.supplierAddress || '-'}</td>}
                             {columnVis.branch && (
                               <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
                                 {formatWarehouseDisplay(ord.warehouseCode, warehouses)}

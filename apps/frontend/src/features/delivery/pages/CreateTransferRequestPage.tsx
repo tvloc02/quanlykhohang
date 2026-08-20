@@ -166,10 +166,16 @@ export function getProductWarehouseStock(p: ProductOption, whCode?: string): num
           return Number(match.totalPhysical);
         }
       }
+
+      return 0;
     }
   }
 
-  return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
+  if (!targetCode) {
+    return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
+  }
+
+  return 0;
 }
 
 function generateRequestCode() {
