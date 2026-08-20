@@ -519,12 +519,16 @@ export default function Inbound({
         const list = Array.isArray(raw) ? raw : raw.data || [];
         if (list.length > 0) {
           if (isReturnSupplier) {
-            const returnList = list.filter((item: any) =>
-              item.orderType === 'return-supplier' ||
-              item.receiptType === 'return-supplier' ||
-              item.partnerLabel === 'Nhà cung cấp' ||
-              (item.orderNo && item.orderNo.startsWith('XNCC'))
-            );
+            const returnList = list.filter((item: any) => {
+              const code = String(item.orderNo || item.receiptNo || item.orderCode || '').toUpperCase();
+              if (code.startsWith('PNK')) return false;
+              return (
+                item.orderType === 'return-supplier' ||
+                item.receiptType === 'return-supplier' ||
+                code.startsWith('XNCC') ||
+                code.startsWith('PXTR')
+              );
+            });
 
             formatted = returnList.map((item: any, idx: number) => ({
               id: String(item.id || `ret_${idx}`),
@@ -1767,7 +1771,7 @@ export default function Inbound({
                 </div>
                 <div className="border-l-2 border-slate-300 pl-3 text-sm font-semibold text-slate-600">
                   Hiển thị <span className="font-extrabold text-slate-900">{filteredOrders.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}</span> -{' '}
-                  <span className="font-extrabold text-slate-900">{Math.min(currentPage * pageSize, filteredOrders.length)}</span> trên tổng <span className="font-black text-cyan-800">{filteredOrders.length}</span> phiếu nhập
+                  <span className="font-extrabold text-slate-900">{Math.min(currentPage * pageSize, filteredOrders.length)}</span> trên tổng <span className="font-black text-cyan-800">{filteredOrders.length}</span> {featureMode === 'return-supplier' ? 'phiếu xuất trả' : 'phiếu nhập'}
                 </div>
               </div>
 

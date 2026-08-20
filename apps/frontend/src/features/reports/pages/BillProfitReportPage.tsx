@@ -344,48 +344,22 @@ export default function BillProfitReportPage() {
         </div>
       </div>
 
-      {/* ═══ 3 OVERVIEW METRIC CARDS ═══ */}
+      {/* ═══ 3 BUTTON TỔNG HỢP (LẤY MẪU TỪ TRANG HÀNG HÓA) ═══ */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {/* Doanh thu */}
-        <div className="flex h-20 items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-xs transition hover:border-cyan-400 hover:bg-cyan-50/20">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">TỔNG DOANH THU</p>
-            <p className="text-xl font-bold text-slate-900 mt-0.5">
-              {fmt(totalRevenue)} <span className="text-sm font-semibold text-slate-600">đ</span>
-            </p>
-          </div>
-          <div className="rounded-xl bg-cyan-50 p-2.5 text-cyan-700 border border-cyan-200">
-            <DollarSign className="h-6 w-6" />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG DOANH THU: <span className="text-slate-900">{fmt(totalRevenue)} đ</span>
+          </p>
         </div>
-
-        {/* Tổng vốn */}
-        <div className="flex h-20 items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-xs transition hover:border-slate-300 hover:bg-slate-50/50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">TỔNG VỐN NHẬP</p>
-            <p className="text-xl font-bold text-slate-800 mt-0.5">
-              {fmt(totalCostSum)} <span className="text-sm font-semibold text-slate-500">đ</span>
-            </p>
-          </div>
-          <div className="rounded-xl bg-slate-100 p-2.5 text-slate-700 border border-slate-200">
-            <BarChart3 className="h-6 w-6" />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG VỐN NHẬP: <span className="text-slate-900">{fmt(totalCostSum)} đ</span>
+          </p>
         </div>
-
-        {/* Lợi nhuận ròng */}
-        <div className="flex h-20 items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-xs transition hover:border-emerald-300 hover:bg-emerald-50/20">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">TỔNG LỢI NHUẬN RÒNG</p>
-            <p className={`text-xl font-bold mt-0.5 ${totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-              {fmt(totalProfitSum)} <span className="text-sm font-semibold">đ</span>{' '}
-              <span className="text-xs font-bold font-mono text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded ml-1">
-                ({overallMargin.toFixed(1)}%)
-              </span>
-            </p>
-          </div>
-          <div className={`rounded-xl p-2.5 border ${totalProfitSum >= 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-            <TrendingUp className="h-6 w-6" />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG LỢI NHUẬN RÒNG: <span className={totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{fmt(totalProfitSum)} đ ({overallMargin.toFixed(1)}%)</span>
+          </p>
         </div>
       </div>
 

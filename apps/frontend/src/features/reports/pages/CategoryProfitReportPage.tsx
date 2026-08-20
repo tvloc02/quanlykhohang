@@ -300,38 +300,22 @@ export default function CategoryProfitReportPage() {
         </div>
       </div>
 
-      {/* ═══ 3 STAT OVERVIEW CARDS - CLEAN WHITE ═══ */}
+      {/* ═══ 3 BUTTON TỔNG HỢP (LẤY MẪU TỪ TRANG HÀNG HÓA) ═══ */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG DOANH THU NHÓM HÀNG</p>
-            <p className="text-lg font-black text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-slate-100 p-2 text-slate-700">
-            <DollarSign size={22} />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG DOANH THU NHÓM HÀNG: <span className="text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</span>
+          </p>
         </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG VỐN NHẬP NHÓM HÀNG</p>
-            <p className="text-lg font-black text-slate-700">{totalCostSum.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-slate-100 p-2 text-slate-700">
-            <BarChart3 size={22} />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG VỐN NHẬP NHÓM HÀNG: <span className="text-slate-900">{totalCostSum.toLocaleString('vi-VN')} đ</span>
+          </p>
         </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG LỢI NHUẬN NHÓM HÀNG</p>
-            <p className={`text-lg font-black ${totalProfitSum >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)
-            </p>
-          </div>
-          <div className={`rounded-xl p-2 ${totalProfitSum >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-            <TrendingUp size={22} />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG LỢI NHUẬN NHÓM HÀNG: <span className={totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)</span>
+          </p>
         </div>
       </div>
 

@@ -439,13 +439,15 @@ export interface DraftSlotLock {
   binCode: string;
   productName?: string;
   occupancyPct?: number;
+  isOutbound?: boolean;
   updatedAt: number;
 }
 
 export function saveActiveDraftSlotLocks(
   tabId: string,
   orderNo: string,
-  locks: { binCode: string; productName?: string; occupancyPct?: number }[]
+  locks: { binCode: string; productName?: string; occupancyPct?: number }[],
+  isOutbound?: boolean
 ) {
   try {
     const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
@@ -461,6 +463,7 @@ export function saveActiveDraftSlotLocks(
         binCode: lk.binCode,
         productName: lk.productName,
         occupancyPct: lk.occupancyPct || 100,
+        isOutbound: isOutbound || Boolean(orderNo && (orderNo.startsWith('PX') || orderNo.startsWith('XK') || orderNo.startsWith('XH') || orderNo.startsWith('XBL') || orderNo.startsWith('XBH'))),
         updatedAt: now,
       });
     });
@@ -485,12 +488,12 @@ export function releaseActiveDraftSlotLocks(tabId: string) {
   }
 }
 
-export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, { label: string; occupancyPct: number }> {
+export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, { label: string; occupancyPct: number; isOutbound?: boolean }> {
   try {
     const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
     if (!raw) return {};
     const allLocks: DraftSlotLock[] = JSON.parse(raw);
-    const result: Record<string, { label: string; occupancyPct: number }> = {};
+    const result: Record<string, { label: string; occupancyPct: number; isOutbound?: boolean }> = {};
     const now = Date.now();
     // Exclude locks older than 2 hours to avoid stale locks
     const validLocks = allLocks.filter((l) => now - l.updatedAt < 2 * 60 * 60 * 1000);
@@ -498,7 +501,7 @@ export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, {
     validLocks.forEach((l) => {
       if (!excludeTabId || l.tabId !== excludeTabId) {
         const label = `${l.orderNo ? `Phiếu ${l.orderNo}` : 'Phiếu khác'}${l.productName ? `: ${l.productName}` : ''}`;
-        result[l.binCode] = { label, occupancyPct: l.occupancyPct || 100 };
+        result[l.binCode] = { label, occupancyPct: l.occupancyPct || 100, isOutbound: l.isOutbound };
       }
     });
     return result;
