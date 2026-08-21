@@ -160,7 +160,10 @@ export const documentsApi = {
   async getStockOutNotes(): Promise<StockOutDoc[]> {
     try {
       const res = await fetch(`${API_BASE}/documents/stock-out-notes`, { headers: getAuthHeaders() });
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
     } catch (e) {
       console.warn('Fallback stock-out fetch', e);
     }

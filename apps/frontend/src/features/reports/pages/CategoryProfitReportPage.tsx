@@ -12,6 +12,10 @@ import {
   FolderTree,
   Building2,
   RefreshCw,
+  ChevronDown,
+  Settings,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -60,8 +64,21 @@ export default function CategoryProfitReportPage() {
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Toast
+  // Toast & Fullscreen
   const [toastMessage, setToastMessage] = useState('');
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  const toggleBrowserFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullScreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+        setIsFullScreen(false);
+      }
+    }
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -207,39 +224,46 @@ export default function CategoryProfitReportPage() {
   const groupedDataByBranch = useMemo(() => {
     const map = new Map<string, CategoryProfitItem[]>();
     filteredData.forEach((item) => {
-      const list = map.get(item.branch) || [];
-      list.push(item);
-      map.set(item.branch, list);
+      const key = item.branch || 'Khác';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
     });
     return map;
   }, [filteredData]);
 
-  // Totals calculations
-  const totalExportQty = filteredData.reduce((sum, i) => sum + i.exportQty, 0);
-  const totalRevenue = filteredData.reduce((sum, i) => sum + i.revenue, 0);
-  const totalCostSum = filteredData.reduce((sum, i) => sum + i.totalCost, 0);
-  const totalProfitSum = filteredData.reduce((sum, i) => sum + i.profit, 0);
-  const overallMargin = totalRevenue > 0 ? (totalProfitSum / totalRevenue) * 100 : 0;
+  const totalExportQty = useMemo(() => filteredData.reduce((s, i) => s + i.exportQty, 0), [filteredData]);
+  const totalRevenue = useMemo(() => filteredData.reduce((s, i) => s + i.revenue, 0), [filteredData]);
+  const totalCostSum = useMemo(() => filteredData.reduce((s, i) => s + i.totalCost, 0), [filteredData]);
+  const totalProfitSum = useMemo(() => filteredData.reduce((s, i) => s + i.profit, 0), [filteredData]);
+  const overallMargin = useMemo(
+    () => (totalRevenue > 0 ? (totalProfitSum / totalRevenue) * 100 : 0),
+    [totalRevenue, totalProfitSum]
+  );
 
   const totalItems = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const startIndex = (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
 
   const handleExportExcel = () => {
-    const exportRows = filteredData.map((item, idx) => ({
-      STT: idx + 1,
+    if (filteredData.length === 0) {
+      showToast('Không có dữ liệu để xuất Excel!');
+      return;
+    }
+
+    const exportRows = filteredData.map((item) => ({
+      'STT': item.stt,
       'Chi Nhánh': item.branch,
       'Nhóm Hàng': item.categoryName,
-      'Mã Sản Phẩm': item.productCode,
-      'Tên Sản Phẩm': item.productName,
-      'Số Xuất': item.exportQty,
+      'Mã SP': item.productCode,
+      'Tên Hàng Hóa': item.productName,
+      'Số Lượng': item.exportQty,
       'Giá Xuất (VND)': item.exportPrice,
       'Doanh Thu (VND)': item.revenue,
       'Giá Nhập (VND)': item.importPrice,
       'Tổng Vốn (VND)': item.totalCost,
       'Lợi Nhuận (VND)': item.profit,
-      '% Lợi Nhuận': `${item.profitMargin}%`,
+      '% Lợi Nhuận': item.profitMargin.toFixed(2),
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportRows);
@@ -260,7 +284,7 @@ export default function CategoryProfitReportPage() {
           document.body
         )}
 
-      {/* ═══ TOP HEADER - CYAN ONLY FOR TITLE BADGE ═══ */}
+      {/* ═══ TOP HEADER - CYAN TITLE & EXACT MATCHED BUTTONS ═══ */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
@@ -271,64 +295,78 @@ export default function CategoryProfitReportPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        {/* Action Buttons styled like sample image: cyan border, text, icons */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl border border-cyan-700 bg-white text-cyan-800 font-bold text-xs shadow-2xs hover:bg-cyan-50 transition cursor-pointer"
+          >
+            <Printer className="h-4 w-4 text-cyan-700" />
+            <span>In báo cáo</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl border border-cyan-700 bg-white text-cyan-800 font-bold text-xs shadow-2xs hover:bg-cyan-50 transition cursor-pointer"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-cyan-700" />
+            <span>Export Excel</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => showToast('Đang bật cấu hình hiển thị cột!')}
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl border border-cyan-700 bg-white text-cyan-800 font-bold text-xs shadow-2xs hover:bg-cyan-50 transition cursor-pointer"
+          >
+            <Settings className="h-4 w-4 text-cyan-700" />
+            <span>Hiển thị</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleBrowserFullscreen}
+            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs hover:bg-cyan-50 transition cursor-pointer"
+            title="Toàn màn hình"
+          >
+            {isFullScreen ? <Minimize2 className="h-4 w-4 text-cyan-700" /> : <Maximize2 className="h-4 w-4 text-cyan-700" />}
+          </button>
+
           <button
             type="button"
             onClick={fetchCategoryProfitReport}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs hover:bg-cyan-50 transition cursor-pointer disabled:opacity-50"
+            title="Làm mới"
           >
-            <RefreshCw className={`h-4 w-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
-            Làm mới
-          </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
-          >
-            <Printer size={15} className="text-slate-600" />
-            In báo cáo
-          </button>
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
-          >
-            <FileSpreadsheet size={15} className="text-slate-600" />
-            Export Excel
+            <RefreshCw className={`h-4 w-4 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* ═══ 3 BUTTON TỔNG HỢP (LẤY MẪU TỪ TRANG HÀNG HÓA) ═══ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG DOANH THU NHÓM HÀNG: <span className="text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</span>
-          </p>
+      {/* ═══ FILTER & CONTROL TOOLBAR - SEARCH LEFT & FILTERS RIGHT ═══ */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-3.5 shadow-sm text-xs font-bold">
+        {/* Left: Expanded Search Bar */}
+        <div className="relative w-full lg:w-96 flex-1">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Tìm mã SP, tên SP, nhóm..."
+            className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20"
+          />
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG VỐN NHẬP NHÓM HÀNG: <span className="text-slate-900">{totalCostSum.toLocaleString('vi-VN')} đ</span>
-          </p>
-        </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG LỢI NHUẬN NHÓM HÀNG: <span className={totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)</span>
-          </p>
-        </div>
-      </div>
 
-      {/* ═══ FILTER & CONTROL TOOLBAR - CLEAN WHITE ═══ */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm text-xs font-bold">
-        {/* Left Filters */}
+        {/* Right: Filters (Nhóm, Kho, Từ ngày, Đến ngày) */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Nhóm:</span>
+            <span className="text-slate-700 font-extrabold">Nhóm:</span>
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[150px]"
+              className="h-9 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[130px]"
             >
               <option value="ALL">Tất cả nhóm</option>
               {categoriesList.map((cat) => (
@@ -340,11 +378,11 @@ export default function CategoryProfitReportPage() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Kho:</span>
+            <span className="text-slate-700 font-extrabold">Kho:</span>
             <select
               value={selectedBranch}
               onChange={(e) => setSelectedBranch(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[140px]"
+              className="h-9 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[130px]"
             >
               <option value="ALL">Tất cả chi nhánh</option>
               {branchOptions.filter((b) => b !== 'ALL').map((br) => (
@@ -356,78 +394,66 @@ export default function CategoryProfitReportPage() {
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Từ ngày:</span>
+            <span className="text-slate-700 font-extrabold">Từ ngày:</span>
             <input
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
+              className="h-9 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
             />
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Đến ngày:</span>
+            <span className="text-slate-700 font-extrabold">Đến ngày:</span>
             <input
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
+              className="h-9 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
             />
           </div>
         </div>
-
-        {/* Right Search Input */}
-        <div className="relative w-full lg:w-64">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm mã SP, tên SP, nhóm..."
-            className="h-9 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-xs font-bold text-slate-700 outline-none transition focus:border-cyan-600"
-          />
-        </div>
       </div>
 
-      {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE ═══ */}
-      <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-hidden">
-          <table className="w-full table-fixed border-collapse text-left text-xs">
-            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700 [&_th]:text-white [&_th]:border-cyan-500/40">
-              <tr className="text-[10px] tracking-normal [&>th]:text-center">
-                <th className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 w-14 whitespace-nowrap">
-                  No.
+      {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE WITH CRISP GRID BORDERS ═══ */}
+      <div className="overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700">
+              <tr className="text-xs font-extrabold uppercase tracking-tight">
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-center w-14 whitespace-nowrap">
+                  STT
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Mã
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-center w-28 whitespace-nowrap">
+                  MÃ
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Tên
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-center w-52 min-w-[150px]">
+                  TÊN HÀNG HÓA
                 </th>
-                <th className="border-r border-slate-200 px-3 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 w-24 whitespace-nowrap">
-                  Số xuất
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-center w-28 whitespace-nowrap">
+                  SỐ LƯỢNG
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Giá xuất
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-center w-36 whitespace-nowrap">
+                  GIÁ XUẤT
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Doanh thu
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-center w-40 whitespace-nowrap">
+                  DOANH THU
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Giá nhập
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-center w-36 whitespace-nowrap">
+                  GIÁ NHẬP
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Tổng vốn
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-center w-40 whitespace-nowrap">
+                  TỔNG VỐN
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Lợi nhuận
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-center w-40 whitespace-nowrap">
+                  LỢI NHUẬN
                 </th>
-                <th className="px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 w-32 whitespace-nowrap">
-                  % Lợi nhuận
+                <th className="px-4 py-3 text-center w-32 whitespace-nowrap">
+                  % LỢI NHUẬN
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 bg-white text-xs font-semibold text-slate-800 [&_td]:text-center">
+            <tbody className="divide-y divide-slate-200 bg-white text-xs text-slate-800">
               {loading ? (
                 <tr>
                   <td colSpan={10} className="py-12 text-center text-slate-500 font-semibold">
@@ -449,88 +475,84 @@ export default function CategoryProfitReportPage() {
 
                   return (
                     <React.Fragment key={branchName}>
-                      {/* BRANCH SECTION HEADER */}
-                      <tr className="bg-slate-100/90 font-black text-slate-900 border-t-2 border-slate-300">
-                        <td colSpan={10} className="px-4 py-2.5 font-black uppercase text-xs tracking-wider text-center">
-                          <Building2 size={15} className="text-slate-600" />
-                          ▲ Kho: {branchName}
+                      {/* BRANCH SECTION HEADER - ALIGNED LEFT WITH ARROW */}
+                      <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300 border-b border-slate-300">
+                        <td colSpan={10} className="px-4 py-2.5 text-left font-black uppercase text-xs tracking-wider border-r border-slate-300">
+                          <div className="flex items-center gap-2">
+                            <ChevronDown size={16} className="text-slate-700" />
+                            <Building2 size={16} className="text-cyan-700" />
+                            <span>KHO: {branchName}</span>
+                          </div>
                         </td>
                       </tr>
 
                       {/* BRANCH CATEGORY PRODUCT ROWS */}
-                      {items.map((item, idx) => {
-                        const isNegative = item.profit < 0;
+                      {items.map((item) => {
                         return (
                           <tr
                             key={item.id}
                             className="group border-b border-slate-200 transition hover:bg-slate-50"
                           >
-                            <td className="border-r border-slate-200 px-3 py-3 text-center font-bold text-slate-500">
+                            <td className="border-r border-slate-300 px-3 py-3 text-center font-bold text-slate-500 text-sm">
                               {item.stt}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-bold text-slate-800">
+                            <td className="border-r border-slate-300 px-3 py-3 text-left font-bold text-slate-800 text-sm">
                               {item.productCode}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 font-bold text-slate-900">
+                            <td className="border-r border-slate-300 px-4 py-3 text-left font-bold text-slate-900 text-sm">
                               {item.productName}
                             </td>
-                            <td className="border-r border-slate-200 px-3 py-3 text-right font-mono font-bold text-slate-800">
+                            <td className="border-r border-slate-300 px-3 py-3 text-center font-bold text-slate-800 text-sm">
                               {item.exportQty}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-700">
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.exportPrice.toLocaleString('vi-VN')}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-bold text-slate-900">
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.revenue.toLocaleString('vi-VN')}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-600">
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.importPrice.toLocaleString('vi-VN')}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-bold text-slate-700">
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.totalCost.toLocaleString('vi-VN')}
                             </td>
-                            <td
-                              className={`border-r border-slate-200 px-4 py-3 text-right font-mono font-black ${
-                                isNegative ? 'text-rose-600' : 'text-emerald-600'
-                              }`}
-                            >
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.profit.toLocaleString('vi-VN')}
                             </td>
-                            <td
-                              className={`px-4 py-3 text-right font-mono font-black ${
-                                isNegative ? 'text-rose-600' : 'text-emerald-600'
-                              }`}
-                            >
+                            <td className="px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.profitMargin.toFixed(2)}%
                             </td>
                           </tr>
                         );
                       })}
 
-                      {/* BRANCH SUB-TOTAL ROW */}
-                      <tr className="bg-slate-100 font-bold text-slate-900 border-b-2 border-slate-300">
-                        <td colSpan={3} className="px-4 py-2 text-right text-xs uppercase font-extrabold">
-                          Tổng chi nhánh ({items.length} mục):
+                      {/* BRANCH SUB-TOTAL ROW - LEFT ALIGNED LABEL & CENTERED QTY */}
+                      <tr className="bg-slate-100 font-extrabold text-slate-900 border-y-2 border-slate-300 text-sm">
+                        <td colSpan={3} className="border-r border-slate-300 px-4 py-2.5 text-left text-xs uppercase font-black">
+                          TỔNG CHI NHÁNH ({items.length} MỤC):
                         </td>
-                        <td className="px-3 py-2 text-right font-mono font-black text-slate-900">
+                        <td className="border-r border-slate-300 px-3 py-2.5 text-center font-bold text-slate-900 text-sm">
                           {branchQty.toLocaleString('vi-VN')}
                         </td>
-                        <td className="px-4 py-2"></td>
-                        <td className="px-4 py-2 text-right font-mono font-black text-slate-900">
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-center font-bold text-slate-900 text-sm">
+                          -
+                        </td>
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchRev.toLocaleString('vi-VN')}
                         </td>
-                        <td className="px-4 py-2"></td>
-                        <td className="px-4 py-2 text-right font-mono font-black text-slate-800">
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-center font-bold text-slate-900 text-sm">
+                          -
+                        </td>
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchCost.toLocaleString('vi-VN')}
                         </td>
-                        <td
-                          className={`px-4 py-2 text-right font-mono font-black ${
-                            branchProf >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                          }`}
-                        >
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchProf.toLocaleString('vi-VN')}
                         </td>
-                        <td className="px-4 py-2"></td>
+                        <td className="px-4 py-2.5 text-center font-bold text-slate-900 text-sm">
+                          -
+                        </td>
                       </tr>
                     </React.Fragment>
                   );
@@ -538,36 +560,32 @@ export default function CategoryProfitReportPage() {
               )}
             </tbody>
 
-            {/* GRAND TOTAL ROW */}
+            {/* GRAND TOTAL ROW - LEFT ALIGNED LABEL & CENTERED QTY */}
             {filteredData.length > 0 && (
               <tfoot>
-                <tr className="border-t-2 border-slate-300 bg-slate-200/80 font-black text-slate-900 text-xs">
-                  <td colSpan={3} className="p-3.5 text-right uppercase tracking-wider text-slate-900 font-black">
+                <tr className="border-t-2 border-slate-400 bg-slate-200/90 font-black text-slate-900 text-sm">
+                  <td colSpan={3} className="border-r border-slate-300 p-3.5 text-left uppercase tracking-wider font-black text-xs text-slate-900">
                     TỔNG CỘNG TOÀN BỘ NHÓM HÀNG:
                   </td>
-                  <td className="p-3.5 text-right font-mono font-black text-slate-900 text-sm">
+                  <td className="border-r border-slate-300 p-3.5 text-center font-bold text-slate-900 text-sm">
                     {totalExportQty.toLocaleString('vi-VN')}
                   </td>
-                  <td className="p-3.5"></td>
-                  <td className="p-3.5 text-right font-mono font-black text-slate-900 text-sm">
+                  <td className="border-r border-slate-300 p-3.5 text-center font-bold text-slate-900 text-sm">
+                    -
+                  </td>
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalRevenue.toLocaleString('vi-VN')}
                   </td>
-                  <td className="p-3.5"></td>
-                  <td className="p-3.5 text-right font-mono font-black text-slate-800 text-sm">
+                  <td className="border-r border-slate-300 p-3.5 text-center font-bold text-slate-900 text-sm">
+                    -
+                  </td>
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalCostSum.toLocaleString('vi-VN')}
                   </td>
-                  <td
-                    className={`p-3.5 text-right font-mono font-black text-sm ${
-                      totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalProfitSum.toLocaleString('vi-VN')}
                   </td>
-                  <td
-                    className={`p-3.5 text-right font-mono font-black text-sm ${
-                      overallMargin >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
+                  <td className="p-3.5 text-right font-bold text-slate-900 text-sm">
                     {overallMargin.toFixed(2)}%
                   </td>
                 </tr>
