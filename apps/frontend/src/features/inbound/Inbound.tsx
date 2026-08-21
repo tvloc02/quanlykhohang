@@ -378,6 +378,9 @@ export default function Inbound({
     if (modeAction === 'create') {
       sessionStorage.removeItem('inbound_tabs_draft');
       sessionStorage.removeItem('inbound_active_tab_id');
+      sessionStorage.removeItem('outbound_tabs_draft');
+      sessionStorage.removeItem('outbound_active_tab_id');
+      sessionStorage.removeItem('outbound_draft_mode');
     }
     if (modeAction === 'edit' && id) {
       setSearchParams({ action: 'edit', id });
@@ -389,6 +392,9 @@ export default function Inbound({
   const handleCloseFormModal = useCallback(() => {
     sessionStorage.removeItem('inbound_tabs_draft');
     sessionStorage.removeItem('inbound_active_tab_id');
+    sessionStorage.removeItem('outbound_tabs_draft');
+    sessionStorage.removeItem('outbound_active_tab_id');
+    sessionStorage.removeItem('outbound_draft_mode');
     setSearchParams({});
   }, [setSearchParams]);
 

@@ -11,6 +11,7 @@ import { Customer } from '../entities/customer.entity';
 import { Supplier } from '../entities/supplier.entity';
 import { Role } from '../entities/role.entity';
 import { User } from '../entities/user.entity';
+import { Warehouse } from '../entities/warehouse.entity';
 
 @Injectable()
 export class DashboardService {
@@ -25,6 +26,7 @@ export class DashboardService {
     @InjectRepository(Supplier) private supplierRepo: Repository<Supplier>,
     @InjectRepository(Role) private roleRepo: Repository<Role>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(Warehouse) private warehouseRepo: Repository<Warehouse>,
   ) {}
 
   async getDashboardOverview() {
@@ -340,9 +342,12 @@ export class DashboardService {
   }
 
   /**
-   * BÁO CÁO DOANH THU (REAL DATABASE QUERY)
+   * BÁO CÁO DOANH THU (REAL DATABASE QUERY FOR ALL WAREHOUSES)
    */
   async getRevenueReport(startDate?: string, endDate?: string, branch?: string) {
+    const rawWarehouses = await this.warehouseRepo.find();
+    const allWarehouses = rawWarehouses.filter((w) => w.status !== 'inactive');
+
     const qb = this.outboundRepo.createQueryBuilder('o')
       .leftJoin('o.details', 'd')
       .leftJoin('o.customer', 'c')
@@ -364,11 +369,28 @@ export class DashboardService {
 
     const rows = await qb.getRawMany();
     const groupsMap = new Map<string, any[]>();
-    
+
+    // Pre-populate map with ALL active warehouses in system so none are missed
+    allWarehouses.forEach((wh) => {
+      const gName = wh.name || `Kho ${wh.code}`;
+      const gCode = wh.code || '';
+      const groupKey = `${gName}::${gCode}`;
+      if (!groupsMap.has(groupKey)) {
+        groupsMap.set(groupKey, []);
+      }
+    });
+
     rows.forEach((r, idx) => {
       const gName = r.groupName || 'Kho không xác định';
       const gCode = r.groupCode || '';
-      const groupKey = `${gName}::${gCode}`;
+      let groupKey = `${gName}::${gCode}`;
+
+      // Try matching by warehouse code if exact name key is not present
+      if (!groupsMap.has(groupKey) && gCode) {
+        const foundKey = Array.from(groupsMap.keys()).find((k) => k.endsWith(`::${gCode}`));
+        if (foundKey) groupKey = foundKey;
+      }
+
       if (!groupsMap.has(groupKey)) groupsMap.set(groupKey, []);
       groupsMap.get(groupKey)?.push({
         id: String(idx + 1),
@@ -382,13 +404,21 @@ export class DashboardService {
 
     return Array.from(groupsMap.entries()).map(([groupKey, items]) => {
       const [groupName, groupCode = ''] = groupKey.split('::');
+      // If a warehouse has no sales/outbound items, render 1 default row with 0 revenue as requested
+      if (items.length === 0) {
+        items.push({
+          id: `empty_${groupCode || groupName}`,
+          staffName: `Kho ${groupName} (Chưa phát sinh xuất hàng)`,
+          revenue: 0,
+          returnAmount: 0,
+          netRevenue: 0,
+          cashReceived: 0,
+        });
+      }
       return { groupName, groupCode, items };
     });
   }
 
-  /**
-   * BÁO CÁO THU CHI (REAL DATABASE QUERY)
-   */
   async getCashflowReport(startDate?: string, endDate?: string, branch?: string) {
     const [inboundTotal, outboundTotal] = await Promise.all([
       this.inboundRepo.createQueryBuilder('i')

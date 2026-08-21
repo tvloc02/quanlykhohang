@@ -149,7 +149,23 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
   if (user.role === 'customer') {
     return <Navigate to="/customer-portal" replace />;
   }
-  const { isAdmin, canViewMenu } = usePermissions();
+  const { isAdmin, canViewMenu, isLoading } = usePermissions();
+
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <div className="flex h-[calc(100vh-120px)] w-full items-center justify-center bg-slate-50/50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-cyan-600 border-t-transparent" />
+            <p className="text-xs font-extrabold text-cyan-800 animate-pulse uppercase tracking-wider">
+              Đang xác thực quyền truy cập...
+            </p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
   if (isAdmin) {
     return <>{children}</>;
   }
