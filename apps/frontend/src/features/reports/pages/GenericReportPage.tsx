@@ -1,5 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Printer, FileSpreadsheet, RefreshCw, Search, FileText, Calendar } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Printer,
+  FileSpreadsheet,
+  RefreshCw,
+  Search,
+  FileText,
+  Calendar,
+  Settings,
+  Maximize2,
+  Minimize2,
+  Building2,
+  ChevronDown,
+  Check,
+} from 'lucide-react';
 import { reportsApi } from '../api/reportsApi';
 
 interface Props {
@@ -27,6 +40,48 @@ export default function GenericReportPage({
   const [data, setData] = useState<any>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Warehouse filter & popover dropdown state
+  const [selectedBranch, setSelectedBranch] = useState('ALL');
+  const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);
+  const warehouseDropdownRef = useRef<HTMLDivElement>(null);
+  const [warehouses, setWarehouses] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch('http://localhost:3000/api/warehouses', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+    })
+      .then((res) => res.json())
+      .then((wData) => {
+        if (Array.isArray(wData)) {
+          setWarehouses(wData.map((w: any) => ({ id: String(w.id || w.code), name: String(w.name || w.warehouseName) })));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (warehouseDropdownRef.current && !warehouseDropdownRef.current.contains(event.target as Node)) {
+        setIsWarehouseDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleBrowserFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullScreen(true);
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+        setIsFullScreen(false);
+      }
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -65,6 +120,13 @@ export default function GenericReportPage({
       flatList = data;
     }
 
+    if (selectedBranch !== 'ALL') {
+      flatList = flatList.filter((item: any) => {
+        const b = String(item.branch || item.warehouseName || item.branchName || '').toLowerCase();
+        return b.includes(selectedBranch.toLowerCase());
+      });
+    }
+
     if (!search.trim()) return flatList;
     const q = search.trim().toLowerCase();
     return flatList.filter((item: any) =>
@@ -75,7 +137,7 @@ export default function GenericReportPage({
         return String(val || '').toLowerCase().includes(q);
       })
     );
-  }, [data, search]);
+  }, [data, search, selectedBranch]);
 
   const handleExportExcel = () => {
     if (!Array.isArray(rows) || rows.length === 0) return;
@@ -160,8 +222,8 @@ export default function GenericReportPage({
   }, [validKeys, rows]);
 
   return (
-    <div className="space-y-4 pb-12 animate-in fade-in duration-200">
-      {/* ═══ HEADER TITLE - CYAN ONLY FOR TITLE BADGE ═══ */}
+    <div className={`space-y-4 pb-12 animate-in fade-in duration-200 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+      {/* ═══ HEADER TITLE - GOLD CYAN BADGE & MATCHED ACTION BUTTONS ═══ */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
@@ -172,64 +234,156 @@ export default function GenericReportPage({
 
         <div className="flex flex-wrap items-center gap-3">
           <button
+            type="button"
             onClick={loadData}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin text-slate-600' : 'text-slate-600'} />
+            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
             Làm mới
           </button>
           <button
+            type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Printer size={14} className="text-slate-600" />
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
             In báo cáo
           </button>
           <button
+            type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <FileSpreadsheet size={14} className="text-slate-600" />
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
             Export Excel
+          </button>
+          <button
+            type="button"
+            onClick={toggleBrowserFullscreen}
+            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            title="Toàn màn hình"
+          >
+            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
           </button>
         </div>
       </div>
 
-      {/* ═══ FILTER CONTROL PANEL - CLEAN WHITE ═══ */}
+      {/* ═══ FILTER CONTROL PANEL WITH CUSTOM STYLED WAREHOUSE DROPDOWN ═══ */}
       <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative flex-1 min-w-[300px]">
+          <div className="relative flex-1 min-w-[280px]">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm kiếm báo cáo..."
-              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
+              className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
             />
           </div>
 
-          <div className="inline-flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 shadow-2xs">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-slate-600 shrink-0" />
-              <span className="text-xs font-extrabold uppercase text-slate-800 tracking-wide">Thời gian:</span>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Custom Styled Warehouse Selection Component */}
+            <div ref={warehouseDropdownRef} className="relative inline-block">
+              <button
+                type="button"
+                onClick={() => setIsWarehouseDropdownOpen(!isWarehouseDropdownOpen)}
+                className="inline-flex h-12 items-center gap-2.5 rounded-xl border-2 border-cyan-600/40 bg-slate-50 px-4 py-2 shadow-2xs transition hover:bg-slate-100 hover:border-cyan-600 active:scale-95 cursor-pointer"
+              >
+                <Building2 className="h-5 w-5 text-cyan-600 shrink-0" />
+                <span className="text-xs sm:text-sm font-extrabold uppercase text-cyan-950 tracking-wide">KHO HÀNG:</span>
+                <div className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-bold text-slate-800 shadow-2xs hover:border-cyan-600 min-w-[220px] justify-between">
+                  <span className="truncate max-w-[190px]">
+                    {selectedBranch === 'ALL' ? 'Tất cả chi nhánh' : warehouses.find((w) => w.id === selectedBranch || w.name === selectedBranch)?.name || selectedBranch}
+                  </span>
+                  <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform duration-200 ${isWarehouseDropdownOpen ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+
+              {/* Custom Styled Menu với Bo góc tròn Rounded-2xl */}
+              {isWarehouseDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 w-full min-w-[280px] rounded-2xl border-2 border-cyan-500 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedBranch('ALL');
+                      setIsWarehouseDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                      selectedBranch === 'ALL'
+                        ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                        : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                    }`}
+                  >
+                    <span>Tất cả chi nhánh</span>
+                    {selectedBranch === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
+                  </button>
+
+                  {warehouses.length > 0 ? (
+                    warehouses.map((wh) => (
+                      <button
+                        key={wh.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBranch(wh.name);
+                          setIsWarehouseDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                          selectedBranch === wh.name
+                            ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                            : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                        }`}
+                      >
+                        <span>{wh.name}</span>
+                        {selectedBranch === wh.name && <Check className="h-4 w-4 text-white shrink-0" />}
+                      </button>
+                    ))
+                  ) : (
+                    ['Kho Chi Nhánh HCM', 'Kho Thanh Trì', 'Kho Hà Đông'].map((bName) => (
+                      <button
+                        key={bName}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBranch(bName);
+                          setIsWarehouseDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                          selectedBranch === bName
+                            ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                            : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                        }`}
+                      >
+                        <span>{bName}</span>
+                        {selectedBranch === bName && <Check className="h-4 w-4 text-white shrink-0" />}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-600">Từ</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 transition cursor-pointer"
-              />
-              <span className="text-xs font-bold text-slate-600">Đến</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 transition cursor-pointer"
-              />
+
+            <div className="inline-flex h-12 items-center gap-3 rounded-xl border-2 border-slate-200 bg-slate-50 px-3.5 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4.5 w-4.5 text-slate-600 shrink-0" />
+                <span className="text-xs sm:text-sm font-extrabold uppercase text-slate-800 tracking-wide">Thời gian:</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-600">Từ</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 transition cursor-pointer"
+                />
+                <span className="text-xs font-bold text-slate-600">Đến</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 transition cursor-pointer"
+                />
+              </div>
             </div>
           </div>
         </div>

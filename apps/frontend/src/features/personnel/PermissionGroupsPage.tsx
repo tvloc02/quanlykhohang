@@ -160,12 +160,6 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'report-bill-profit', label: 'Lợi nhuận theo Hóa đơn', parentId: 'bao-cao-phan-tich' },
   { id: 'report-category-profit', label: 'Lợi nhuận theo Nhóm hàng', parentId: 'bao-cao-phan-tich' },
   { id: 'report-customer-profit', label: 'Lợi nhuận theo Khách hàng', parentId: 'bao-cao-phan-tich' },
-
-  // 6. Sổ sách kế toán
-  { id: 'so-sach-ke-toan', label: 'Sổ sách kế toán', isHeader: true },
-  { id: 'accounting-cashbook', label: 'Sổ quỹ tiền mặt', parentId: 'so-sach-ke-toan' },
-  { id: 'accounting-sales-journal', label: 'Nhật ký bán hàng', parentId: 'so-sach-ke-toan' },
-
   // 7. Danh mục
   { id: 'danh-muc', label: 'Danh mục', isHeader: true },
   { id: 'products-main', label: 'Hàng hóa', parentId: 'danh-muc' },

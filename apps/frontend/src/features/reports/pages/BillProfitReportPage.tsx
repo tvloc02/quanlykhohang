@@ -288,15 +288,26 @@ export default function BillProfitReportPage() {
           </div>
         </div>
 
-        {/* Right Action Buttons matching image 2 standard outline style */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Right Action Buttons matching standard style */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Làm mới */}
+          <button
+            type="button"
+            onClick={fetchProfitReport}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
+            Làm mới
+          </button>
+
           {/* In báo cáo */}
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-sm font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Printer className="h-4 w-4 text-cyan-700" />
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
             In báo cáo
           </button>
 
@@ -304,9 +315,9 @@ export default function BillProfitReportPage() {
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-sm font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <FileSpreadsheet className="h-4 w-4 text-cyan-700" />
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
             Export Excel
           </button>
 
@@ -314,10 +325,10 @@ export default function BillProfitReportPage() {
           <button
             type="button"
             onClick={() => setShowColumnSettings(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-sm font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Cấu hình hiển thị cột"
           >
-            <Settings className="h-4 w-4 text-cyan-700" />
+            <Settings className="h-4.5 w-4.5 text-cyan-700" />
             <span>Hiển thị</span>
           </button>
 
@@ -325,21 +336,10 @@ export default function BillProfitReportPage() {
           <button
             type="button"
             onClick={toggleBrowserFullscreen}
-            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Toàn màn hình"
           >
-            {isFullScreen ? <Minimize2 className="h-4 w-4 text-cyan-700" /> : <Maximize2 className="h-4 w-4 text-cyan-700" />}
-          </button>
-
-          {/* Làm mới */}
-          <button
-            type="button"
-            onClick={fetchProfitReport}
-            disabled={loading}
-            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50 ml-1"
-            title="Làm mới dữ liệu"
-          >
-            <RefreshCw className={`h-4 w-4 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
+            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
           </button>
         </div>
       </div>

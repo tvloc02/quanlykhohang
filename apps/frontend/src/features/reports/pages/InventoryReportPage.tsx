@@ -204,47 +204,47 @@ export default function InventoryReportPage() {
             type="button"
             onClick={loadData}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-extrabold text-slate-700 shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`h-4.5 w-4.5 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
             Làm mới
           </button>
 
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-extrabold text-slate-700 shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Printer className="h-4.5 w-4.5 text-slate-600" />
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
             In báo cáo
           </button>
 
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-extrabold text-slate-700 shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <FileSpreadsheet className="h-4.5 w-4.5 text-slate-600" />
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
             Export Excel
           </button>
 
           <button
             type="button"
             onClick={() => setShowColumnSettings(true)}
-            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-slate-300 bg-white text-slate-700 font-extrabold text-sm shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Cấu hình hiển thị cột"
           >
-            <Settings className="h-4.5 w-4.5 text-slate-600" />
+            <Settings className="h-4.5 w-4.5 text-cyan-700" />
             <span>Hiển thị</span>
           </button>
 
           <button
             type="button"
             onClick={toggleBrowserFullscreen}
-            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-300 bg-white text-slate-700 shadow-xs transition hover:bg-slate-100 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Toàn màn hình"
           >
-            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5" /> : <Maximize2 className="h-4.5 w-4.5" />}
+            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
           </button>
         </div>
       </div>
