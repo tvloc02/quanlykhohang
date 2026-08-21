@@ -32,7 +32,7 @@ export class Product extends BaseEntity {
   @Column({ type: 'json', nullable: true })
   images?: string[];
 
-  @ManyToOne(() => Category, { nullable: true })
+  @ManyToOne(() => Category, { nullable: true, onDelete: 'SET NULL' })
   category?: Category;
 
   @ManyToOne(() => Supplier, { nullable: true, onDelete: 'SET NULL' })

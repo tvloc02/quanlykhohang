@@ -137,7 +137,7 @@ export default function BarcodeMappingsPage() {
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${
+          className={`fixed right-6 top-24 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${
             toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'
           }`}
         >

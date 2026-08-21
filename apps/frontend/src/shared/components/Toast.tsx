@@ -21,7 +21,7 @@ export default function Toast({ message, type, onClose }: ToastProps) {
   }, [message, isError, onClose]);
 
   return (
-    <div className="fixed right-4 top-4 z-[90] flex justify-end">
+    <div className="fixed right-6 top-24 z-[90] flex justify-end">
       <div
         role="alert"
         className={`flex items-center gap-3 rounded-xl border px-4 py-3 shadow-xl max-w-sm w-full ${

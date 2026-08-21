@@ -4,17 +4,19 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
   Building2,
+  Copy,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   Clock3,
   FileText,
+  FileSpreadsheet,
   Filter,
+  Eye,
   Package,
   Pencil,
   Plus,
   PlusCircle,
-  History,
   RefreshCw,
   Search,
   Trash2,
@@ -22,11 +24,14 @@ import {
   X,
   XCircle,
   MoreHorizontal,
+  Maximize2,
+  Minimize2,
   Send,
   Calendar,
   User,
   Printer,
   Scale,
+  Settings,
 } from 'lucide-react';
 import InboundSectionPlaceholderPage from './InboundSectionPlaceholderPage';
 import {
@@ -39,7 +44,6 @@ import {
 import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { PurchaseOrderFormModal } from '../components/PurchaseOrderFormModal';
 import { PrintablePurchaseOrder } from '../components/PrintablePurchaseOrder';
-import { CreateStockInReceiptModal } from '../components/CreateStockInReceiptModal';
 import { PriceNegotiationModal } from '../components/PriceNegotiationModal';
 
 type SupplierProduct = {
@@ -97,6 +101,7 @@ type PurchaseOrder = {
   id: string;
   poNumber: string;
   receiptNo?: string;
+  warehouseCode?: string;
   orderDate?: string;
   expectedDate?: string;
   status?: string;
@@ -446,6 +451,7 @@ function PurchaseOrdersPageContent() {
   const [pageSize, setPageSize] = React.useState(10);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [selectedOrderDetails, setSelectedOrderDetails] = React.useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -463,12 +469,9 @@ function PurchaseOrdersPageContent() {
   const [receiptDate, setReceiptDate] = React.useState(new Date().toISOString().slice(0, 16));
   const [stockInNote, setStockInNote] = React.useState('');
   const [selectedStaffIds, setSelectedStaffIds] = React.useState<string[]>([]);
-  const [duplicateReceipts, setDuplicateReceipts] = React.useState<any[]>([]);
-  const [pendingOrderForStockIn, setPendingOrderForStockIn] = React.useState<PurchaseOrder | null>(null);
   const [printOrder, setPrintOrder] = React.useState<PurchaseOrder | null>(null);
   const [showPrintPreview, setShowPrintPreview] = React.useState(false);
-  const [createReceiptModalOpen, setCreateReceiptModalOpen] = React.useState(false);
-  const [receiptSourcePOId, setReceiptSourcePOId] = React.useState<string | null>(null);
+  const [isFullScreen, setIsFullScreen] = React.useState(false);
 
   // Price Negotiation Modal State
   const [priceNegotiationOrder, setPriceNegotiationOrder] = React.useState<PurchaseOrder | null>(null);
@@ -1147,6 +1150,64 @@ function PurchaseOrdersPageContent() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      setToast({ type: 'error', message: 'Vui lòng chọn ít nhất một đơn hàng để xóa.' });
+      return;
+    }
+    if (!window.confirm(`Bạn có chắc muốn xóa ${selectedIds.size} đơn hàng đã chọn?`)) return;
+    setSaving(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => fetch(`${API_BASE_URL}/inbound/purchase-orders/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      })));
+      setSelectedIds(new Set());
+      setToast({ type: 'success', message: 'Đã xóa các đơn hàng đã chọn.' });
+      await loadData();
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Lỗi khi xóa đơn hàng' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCopySelected = () => {
+    if (selectedIds.size !== 1) {
+      setToast({ type: 'error', message: 'Vui lòng chọn đúng một đơn hàng để sao chép.' });
+      return;
+    }
+    const source = orders.find((order) => order.id === Array.from(selectedIds)[0]);
+    if (source) {
+      setToast({ type: 'success', message: `Đã chọn ${source.poNumber}. Hãy dùng Thêm mới để lập đơn mới.` });
+      openCreate();
+    }
+  };
+
+  const handleExportPurchaseOrders = () => {
+    const rows = orders.map((order) => [
+      order.poNumber,
+      (order as any).creatorName || '',
+      order.supplier?.name || order.supplierName || '',
+      order.warehouseCode || order.details?.[0]?.warehouseCode || '',
+      (order.details || []).reduce((sum, detail) => sum + Number(detail.expectedQty || 0), 0),
+      order.description || '',
+      order.status,
+    ]);
+    const csv = [['Số đơn hàng', 'Người đặt', 'Nhà cung cấp', 'Kho', 'Tổng SL', 'Diễn giải', 'Tình trạng'], ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'don-dat-hang-nha-cung-cap.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const toggleFullScreen = () => setIsFullScreen((current) => !current);
+
   const approveOrder = async (order: PurchaseOrder) => {
     setSaving(true);
     try {
@@ -1292,31 +1353,6 @@ function PurchaseOrdersPageContent() {
     }
   };
 
-  const openCreateStockIn = async (order: PurchaseOrder) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/inbound/stock-in-receipts`, { headers: authHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data.data || [];
-        const matching = list.filter((o: any) => o.sourceReferenceNo === order.poNumber);
-        if (matching.length > 0) {
-          setDuplicateReceipts(matching);
-          setPendingOrderForStockIn(order);
-          return;
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    proceedWithCreateStockIn(order);
-  };
-
-  const proceedWithCreateStockIn = (order: PurchaseOrder) => {
-    closeModal();
-    setReceiptSourcePOId(order.id);
-    setCreateReceiptModalOpen(true);
-  };
-
   const openReceive = (order: PurchaseOrder) => {
     setSelectedId(order.id);
     setReceiveRows(
@@ -1403,7 +1439,7 @@ function PurchaseOrdersPageContent() {
   }
 
   const selectedOrderStatus = (selectedOrder?.status || 'CREATED').toUpperCase();
-  const canManagerApprove = (selectedOrderStatus === 'CREATED' || selectedOrderStatus === 'REJECTED') && currentUserIsManager;
+  const canManagerApprove = selectedOrderStatus === 'CREATED' || selectedOrderStatus === 'REJECTED';
   
   const canEditOrder = (order: PurchaseOrder) => {
     const status = (order.status || '').toUpperCase();
@@ -1416,18 +1452,14 @@ function PurchaseOrdersPageContent() {
   };
 
   const canReceiveRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
-  const canCreateOrderRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
-  const canCreateReceiptRow = (order: PurchaseOrder) => ['PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
+  const canCreateReceiptRow = (order: PurchaseOrder) => ['SUPPLIER_APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED'].includes((order.status || 'CREATED').toUpperCase());
 
   const canApproveRow = (order: PurchaseOrder) => {
     const status = (order.status || 'CREATED').toUpperCase();
-    return (status === 'CREATED' || status === 'REJECTED') && currentUserIsManager;
+    return status === 'CREATED' || status === 'REJECTED';
   };
 
-  const canDelete = (order: PurchaseOrder) => {
-    const s = statusToFilter(order.status);
-    return s === 'waiting' || s === 'cancelled';
-  };
+  const canDelete = (_order: PurchaseOrder) => true;
 
   const addRow = () => {
     setForm((current) => ({ ...current, items: [...current.items, makeRow(current.warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')] }));
@@ -1514,9 +1546,9 @@ function PurchaseOrdersPageContent() {
   }, [form.items, form.supplierId, modalMode, supplierProducts]);
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] overflow-y-auto bg-white p-6' : ''}`}>
       {toast && (
-        <div className={`fixed right-4 top-4 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
+        <div className={`fixed right-6 top-24 z-[70] flex items-center gap-3 rounded-xl border bg-white px-4 py-3 shadow-xl ${toast.type === 'error' ? 'border-red-200 text-red-600' : 'border-emerald-200 text-emerald-600'}`}>
           <p className="text-sm font-bold">{toast.message}</p>
           <button type="button" onClick={() => setToast(null)} className="rounded-lg p-1 hover:bg-slate-100">
             <X className="h-4 w-4" />
@@ -1524,6 +1556,8 @@ function PurchaseOrdersPageContent() {
         </div>
       )}
 
+      {modalMode !== 'create' && (
+      <>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
@@ -1531,14 +1565,29 @@ function PurchaseOrdersPageContent() {
             <h1 className="text-lg font-bold tracking-tight text-white">Quản lý Đơn Mua Hàng</h1>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700"
-        >
-          <PlusCircle className="h-4 w-4" />
-          Tạo đơn mua hàng
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button type="button" onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Plus className="h-4 w-4" /> Thêm mới
+          </button>
+          <button type="button" onClick={handleCopySelected} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Copy className="h-4 w-4" /> Copy
+          </button>
+          <button type="button" onClick={handleBulkDelete} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Trash2 className="h-4 w-4" /> Xóa
+          </button>
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Printer className="h-4 w-4" /> In báo cáo
+          </button>
+          <button type="button" onClick={handleExportPurchaseOrders} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <FileSpreadsheet className="h-4 w-4" /> Export Excel
+          </button>
+          <button type="button" onClick={() => setToast({ type: 'success', message: 'Danh sách đang hiển thị đầy đủ các cột.' })} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50">
+            <Settings className="h-4 w-4" /> Hiển thị
+          </button>
+          <button type="button" onClick={toggleFullScreen} aria-label="Toàn màn hình" className="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-cyan-700 transition hover:bg-cyan-50">
+            {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -1657,21 +1706,34 @@ function PurchaseOrdersPageContent() {
 
       <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] border-collapse bg-white">
+          <table className="w-full min-w-[1450px] border-collapse bg-white">
             <thead className="bg-cyan-50">
               <tr className="border-b border-slate-200">
                 <th className="w-12 border-x border-slate-200 px-3 py-4 text-center align-middle">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                  <input
+                    type="checkbox"
+                    checked={paginatedOrders.length > 0 && paginatedOrders.every((order) => selectedIds.has(order.id))}
+                    onChange={(event) => {
+                      setSelectedIds((current) => {
+                        const next = new Set(current);
+                        paginatedOrders.forEach((order) => event.target.checked ? next.add(order.id) : next.delete(order.id));
+                        return next;
+                      });
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600"
+                  />
                 </th>
                 <th className="w-16 border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">STT</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Số đơn hàng</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Người đặt</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Ngày tạo đơn</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Nhà cung cấp</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Kho</th>
+                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tổng SL</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Diễn giải</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tổng tiền</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800">Tình trạng</th>
-                <th className="sticky right-0 w-40 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
+                <th className="sticky right-0 w-56 min-w-[250px] border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
                 </th>
               </tr>
@@ -1679,13 +1741,13 @@ function PurchaseOrdersPageContent() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Đang tải danh sách đơn mua hàng...
                   </td>
                 </tr>
               ) : paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
+                  <td colSpan={12} className="px-6 py-12 text-center text-sm font-medium text-slate-500">
                     Chưa có đơn mua hàng phù hợp.
                   </td>
                 </tr>
@@ -1697,7 +1759,16 @@ function PurchaseOrdersPageContent() {
                       className="group border-b border-slate-200 transition hover:bg-cyan-50/50"
                     >
                       <td className="border-x border-slate-200 px-3 py-4 text-center align-middle" onClick={e => e.stopPropagation()}>
-                        <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600" />
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(order.id)}
+                          onChange={(event) => setSelectedIds((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(order.id); else next.delete(order.id);
+                            return next;
+                          })}
+                          className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-600"
+                        />
                       </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{startIndex + index}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{order.poNumber}</td>
@@ -1710,6 +1781,12 @@ function PurchaseOrdersPageContent() {
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
                         {order.supplier?.name || order.supplierName || order.supplier?.supplierCode || '-'}
                       </td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
+                        {order.warehouseCode || order.details?.[0]?.warehouseCode || '-'}
+                      </td>
+                      <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-black text-slate-800">
+                        {(order.details || []).reduce((sum, detail) => sum + Number(detail.expectedQty || 0), 0)}
+                      </td>
                       <td className="border-x border-slate-200 px-3 py-4 text-left text-sm font-semibold text-slate-700 whitespace-pre-line">{order.description || '-'}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{formatMoney(order.totalAmount)}</td>
                       <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
@@ -1717,8 +1794,8 @@ function PurchaseOrdersPageContent() {
                           {statusLabel(order.status)}
                         </span>
                       </td>
-                      <td className={`sticky right-0 border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeDropdown === order.id ? 'z-[60]' : 'z-10'}`}>
-                        <div className="flex items-center justify-center gap-2">
+                      <td className={`sticky right-0 w-56 min-w-[250px] border-l border-slate-200 bg-white px-3 py-4 text-center align-middle shadow-[-4px_0_12px_rgba(0,0,0,0.03)] group-hover:bg-cyan-50/50 ${activeDropdown === order.id ? 'z-[60]' : 'z-10'}`}>
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
                             onClick={(event) => {
@@ -1726,9 +1803,9 @@ function PurchaseOrdersPageContent() {
                               openView(order);
                             }}
                             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50"
-                            title="Lịch sử đơn hàng"
+                            title="Xem đơn hàng"
                           >
-                            <History size={18} strokeWidth={2.5} />
+                            <Eye size={18} strokeWidth={2.5} />
                           </button>
                           <button
                             type="button"
@@ -1747,25 +1824,12 @@ function PurchaseOrdersPageContent() {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              if (!canNegotiatePrice(order)) return;
-                              openPriceNegotiation(order);
-                            }}
-                            disabled={!canNegotiatePrice(order)}
-                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${canNegotiatePrice(order) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
-                            title="Điều chỉnh giá / Phản hồi giá"
-                          >
-                            <Scale size={18} strokeWidth={2.5} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
                               if (!canDelete(order)) return;
                               setDeleteTarget(order);
                               setModalMode('delete');
                             }}
                             disabled={!canDelete(order)}
-                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${canDelete(order) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                            className="hidden"
                             title="Xóa"
                           >
                             <Trash2 size={18} strokeWidth={2.5} />
@@ -1781,7 +1845,37 @@ function PurchaseOrdersPageContent() {
                           >
                             <Printer size={18} strokeWidth={2.5} />
                           </button>
-                          {order.status === 'DRAFT' ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (canApproveRow(order)) {
+                                approveOrder(order);
+                                return;
+                              }
+                              if (canCreateReceiptRow(order)) {
+                                navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
+                              }
+                            }}
+                            disabled={(!canApproveRow(order) && !canCreateReceiptRow(order)) || saving}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 transition-colors shadow-sm ${(canApproveRow(order) || canCreateReceiptRow(order)) ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50' : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'}`}
+                            title={canApproveRow(order) ? 'Duyệt đơn hàng' : 'Tạo phiếu nhập kho'}
+                          >
+                            {canApproveRow(order) ? <CheckCircle2 size={18} strokeWidth={2.5} /> : <FileText size={18} strokeWidth={2.5} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setDeleteTarget(order);
+                              setModalMode('delete');
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-red-500 bg-white text-red-600 shadow-sm transition hover:bg-red-50"
+                            title="Xóa đơn hàng"
+                          >
+                            <Trash2 size={18} strokeWidth={2.5} />
+                          </button>
+                          {false && (order.status === 'DRAFT' ? (
                             <button
                               type="button"
                               onClick={(event) => {
@@ -1864,8 +1958,7 @@ function PurchaseOrdersPageContent() {
                                     disabled={!canCreateReceiptRow(order)}
                                     onClick={() => {
                                       if (!canCreateReceiptRow(order)) return;
-                                      setReceiptSourcePOId(order.id);
-                                      setCreateReceiptModalOpen(true);
+                                      navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
                                       setActiveDropdown(null);
                                     }}
                                     className={`flex w-full items-center gap-2 px-4 py-2 text-sm font-semibold text-left transition ${
@@ -1888,23 +1981,10 @@ function PurchaseOrdersPageContent() {
                                     <Printer className="h-4 w-4" />
                                     Xem trước bản in & In
                                   </button>
-                                  <button
-                                    type="button"
-                                    disabled={!canCreateOrderRow(order)}
-                                    onClick={() => {
-                                      if (!canCreateOrderRow(order)) return;
-                                      navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: order.id } });
-                                      setActiveDropdown(null);
-                                    }}
-                                    className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-40 disabled:hover:bg-white text-left"
-                                  >
-                                    <Clock3 className="h-4 w-4" />
-                                    Tạo lệnh nhập kho
-                                  </button>
                                 </div>
                               )}
                             </div>
-                          )}
+                          ))}
                         </div>
                       </td>
                     </tr>
@@ -1939,9 +2019,27 @@ function PurchaseOrdersPageContent() {
         </div>
       </div>
 
+      </>
+      )}
+
+      {modalMode === 'create' && (
+        <div className="flex items-center justify-between rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-3 text-white shadow-md">
+          <div className="flex items-center gap-3">
+            <FileText className="h-5 w-5 text-cyan-100" />
+            <div>
+              <h1 className="text-lg font-bold tracking-tight">Tạo đơn đặt hàng nhà cung cấp</h1>
+              <p className="text-xs font-medium text-cyan-100">Lập kế hoạch đặt hàng, chưa thực hiện nhập kho.</p>
+            </div>
+          </div>
+          <button type="button" onClick={closeModal} className="rounded-xl border border-white/40 px-4 py-2 text-sm font-bold hover:bg-white/10">Quay lại danh sách</button>
+        </div>
+      )}
+
       {/* POPUP TẠO / SỬA / XEM */}
       <PurchaseOrderFormModal
         isOpen={modalMode === 'create' || modalMode === 'edit' || modalMode === 'view' || modalMode === ('create_order' as any)}
+        standalone={modalMode === 'create'}
+        hideWarehouseSelection={true}
         mode={modalMode === 'create' ? 'create' : modalMode === 'view' ? 'view' : modalMode === ('create_order' as any) ? ('create_order' as any) : 'edit'}
         form={form}
         suppliers={suppliers}
@@ -1990,38 +2088,16 @@ function PurchaseOrdersPageContent() {
               {canManagerApprove && (
                 <button type="button" onClick={() => { closeModal(); approveOrder(selectedOrder!); }} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-transparent bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-700 disabled:opacity-60">
                   <CheckCircle2 className="h-4 w-4" />
-                  {selectedOrderStatus === 'REJECTED' ? 'Đồng ý giá đề xuất' : 'Duyệt đơn hàng'}
+                  Duyệt đơn hàng
                 </button>
               )}
-              {selectedOrder && canReceiveRow(selectedOrder) && (
-                <button
-                  type="button"
-                  onClick={() => openReceive(selectedOrder)}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
-                >
-                  <Package className="h-4 w-4" />
-                  Đã nhận hàng
-                </button>
-              )}
-              {selectedOrder && canCreateOrderRow(selectedOrder) && (
+              {selectedOrder && canCreateReceiptRow(selectedOrder) && (
                 <button
                   type="button"
                   onClick={() => {
                     closeModal();
                     navigate('/inbound/stock-in-orders', { state: { sourcePurchaseOrderId: selectedOrder.id } });
                   }}
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:opacity-60"
-                >
-                  <Clock3 className="h-4 w-4" />
-                  Tạo lệnh nhập kho
-                </button>
-              )}
-              {selectedOrder && canCreateReceiptRow(selectedOrder) && (
-                <button
-                  type="button"
-                  onClick={() => openCreateStockIn(selectedOrder)}
                   disabled={saving}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-60"
                 >
@@ -2212,71 +2288,6 @@ function PurchaseOrdersPageContent() {
         title="Quét mã vạch nhập kho"
       />
 
-      {duplicateReceipts.length > 0 && pendingOrderForStockIn && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-slate-100 px-6 py-4">
-              <div>
-                <h3 className="text-lg font-black text-slate-900">Đã tồn tại phiếu nhập kho</h3>
-                <p className="text-sm font-medium text-slate-500">
-                  Đơn mua hàng <span className="font-bold text-slate-700">{pendingOrderForStockIn.poNumber}</span> đã có {duplicateReceipts.length} phiếu nhập kho trước đó.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setDuplicateReceipts([]);
-                  setPendingOrderForStockIn(null);
-                }}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
-              <div className="space-y-3">
-                {duplicateReceipts.map((receipt) => (
-                  <div key={receipt.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-bold text-slate-800">{receipt.receiptCode}</span>
-                      <span className={`inline-flex rounded-lg border px-2 py-0.5 text-xs font-bold ${receipt.status === 'POSTED' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-100 text-slate-600'}`}>{receipt.status === 'POSTED' ? 'Đã chốt' : 'Lưu nháp'}</span>
-                    </div>
-                    <div className="text-sm text-slate-600">Ngày lập: {new Date(receipt.createdAt || receipt.receiptDate).toLocaleString('vi-VN')}</div>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-6 text-sm font-bold text-amber-700 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                Bạn có chắc chắn muốn tiếp tục tạo thêm phiếu nhập kho mới không?
-              </p>
-            </div>
-            <div className="flex justify-end gap-3 border-t border-slate-100 px-6 py-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setDuplicateReceipts([]);
-                  setPendingOrderForStockIn(null);
-                }}
-                className="rounded-xl border-2 border-slate-200 px-5 py-2.5 font-bold text-slate-600 hover:bg-slate-50"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const order = pendingOrderForStockIn;
-                  setDuplicateReceipts([]);
-                  setPendingOrderForStockIn(null);
-                  proceedWithCreateStockIn(order);
-                }}
-                className="rounded-xl bg-amber-600 px-6 py-2.5 font-bold text-white shadow-sm hover:bg-amber-700"
-              >
-                Vẫn tiếp tục tạo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* MODAL XEM TRƯỚC BẢN IN */}
       {showPrintPreview && printOrder && createPortal(
         <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
@@ -2347,19 +2358,6 @@ function PurchaseOrdersPageContent() {
           </div>
         </div>,
         document.body
-      )}
-      {createReceiptModalOpen && (
-        <CreateStockInReceiptModal
-          isOpen={createReceiptModalOpen}
-          onClose={() => setCreateReceiptModalOpen(false)}
-          onSuccess={() => {
-            setCreateReceiptModalOpen(false);
-            loadData();
-            setToast({ type: 'success', message: 'Tạo phiếu nhập kho thành công!' });
-          }}
-          sourcePurchaseOrderId={receiptSourcePOId}
-          mode="create"
-        />
       )}
       <PriceNegotiationModal
         isOpen={priceNegotiationModalOpen}

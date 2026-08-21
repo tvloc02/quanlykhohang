@@ -39,7 +39,12 @@ import {
   Filter,
   CheckSquare,
   Square,
+  Boxes,
+  Calendar,
+  Building2,
+  X,
 } from 'lucide-react';
+import { WarehouseSlottingGrid } from '../components/WarehouseSlottingGrid';
 import Toast from '../../../shared/components/Toast';
 import MainLayout from '../../../shared/components/MainLayout';
 import {
@@ -48,6 +53,9 @@ import {
   saveStoredWarehouses,
   upsertWarehouseToApi,
   normalizeWarehouseRecord,
+  getRackLetterPrefix,
+  calculateGlobalShelfIndex,
+  clearAllDraftSlotLocks,
   type WarehouseRecord,
   type SubWarehouse,
   type RackConfig,
@@ -179,113 +187,115 @@ export default function CreateWarehousePage() {
   });
   const [aiRecommendations, setAiRecommendations] = useState<AiSlottingRecommendation[]>([]);
 
-function normalizeBinKey(binCode: string): string {
-  if (!binCode) return '';
-  const trimmed = binCode.trim().toUpperCase();
-  const match = trimmed.match(/(R\d+[-_]S\d+[-_]C\d+)/);
-  if (match) return match[1].replace(/_/g, '-');
-  return trimmed;
-}
+  function normalizeBinKey(binCode: string): string {
+    if (!binCode) return '';
+    const trimmed = binCode.trim().toUpperCase();
+    const match = trimmed.match(/(R\d+[-_]S\d+[-_]C\d+)/);
+    if (match) return match[1].replace(/_/g, '-');
+    return trimmed;
+  }
 
-  // Occupied Bins Inventory state (Bins that contain allocated goods)
-  const [occupiedBinsMap, setOccupiedBinsMap] = useState<Map<string, { totalPhysical: number; allocated: number; productsCount: number }>>(new Map());
+  // Active Bin Details state populated directly by WarehouseSlottingGrid (Single Source of Truth)
+  const [activeBinGoodsDetails, setActiveBinGoodsDetails] = useState<{
+    fullBinCode: string;
+    customConfig: any;
+    occupiedInfo: any;
+    goodsList: any[];
+  } | null>(null);
 
-  // Fetch real inventory stock balance / allocated bins topology
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchOccupiedBins() {
-      try {
-        const map = new Map<string, { totalPhysical: number; allocated: number; productsCount: number }>();
-        const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
-
-        // Direct real physical stock balances from CSDL (Single Source of Truth)
-        const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
-        if (res && res.ok) {
-          const balances: any[] = await res.json();
-          balances.forEach((b) => {
-            const lc = String(b.locationCode || '').trim();
-            const physical = Number(b.totalPhysical || b.available || 0);
-            const allocated = Number(b.allocated || 0);
-            if (lc && (physical > 0 || allocated > 0) && (lc.includes('-S0') || lc.includes('-R0') || lc.includes('-C') || lc.includes('-ZA') || lc.includes('-ZB'))) {
-              const info = {
-                totalPhysical: physical || 1,
-                allocated,
-                productsCount: 1,
-              };
-              map.set(lc, info);
-              const norm = normalizeBinKey(lc);
-              if (norm) map.set(norm, info);
-            }
-          });
-        }
-
-        if (isMounted) setOccupiedBinsMap(map);
-      } catch (err) {
-        console.error('Could not fetch stock balance bins', err);
-      }
-    }
-    fetchOccupiedBins();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const handleSaveBinCustomConfig = () => {
+    if (!editingBinCode) return;
+    setSubWarehouses((prev) =>
+      prev.map((zone) => {
+        if (zone.id !== activeZoneId) return zone;
+        return {
+          ...zone,
+          racks: (zone.racks || []).map((rk) => {
+            if (!editingBinCode.includes(rk.rackCode)) return rk;
+            return {
+              ...rk,
+              customBins: {
+                ...(rk.customBins || {}),
+                [editingBinCode]: { ...binCustomForm },
+              },
+            };
+          }),
+        };
+      })
+    );
+    setSuccess(`Đã lưu cấu hình ô ${editingBinCode} thành công!`);
+    setEditingBinCode(null);
+  };
 
   const handleClearAllGoods = async () => {
-    if (window.confirm('Bạn có chắc chắn muốn giải phóng toàn bộ ô kệ và xóa hết hàng hóa trong kho này về trạng thái KỆ TRỐNG?')) {
+    if (!code) {
+      setError('Không thể xác định mã kho hàng để xóa');
+      return;
+    }
+    const targetCode = code.trim().toUpperCase();
+    if (window.confirm(`Bạn có chắc chắn muốn giải phóng toàn bộ ô kệ và xóa hết hàng hóa trong KHO [${targetCode}] về trạng thái KỆ TRỐNG?\n(Lưu ý: Thao tác này CHỈ áp dụng cho kho [${targetCode}], không ảnh hưởng các kho khác)`)) {
       try {
         const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
-        await fetch(`${API_BASE_URL}/inventory/clear-all`, {
+        await fetch(`${API_BASE_URL}/inventory/clear-all?warehouseCode=${encodeURIComponent(targetCode)}`, {
           method: 'POST',
           headers,
         }).catch(() => null);
       } catch (e) {
         console.error('Error clearing inventory balances:', e);
       }
-      setOccupiedBinsMap(new Map());
-      sessionStorage.clear();
-      localStorage.removeItem('cleared_warehouse_goods_global');
-      if (code) {
-        localStorage.removeItem(`cleared_warehouse_goods_${code}`);
+
+      // Clear all customBins occupancy across all subWarehouses & racks
+      const cleanedZones = subWarehouses.map((z) => ({
+        ...z,
+        racks: (z.racks || []).map((rk) => ({
+          ...rk,
+          customBins: {},
+        })),
+      }));
+
+      setSubWarehouses(cleanedZones);
+
+      // Persist cleared warehouse state in localStorage for persistent F5 refresh
+      localStorage.setItem(`cleared_warehouse_goods_${targetCode}`, 'true');
+
+      // Save cleared subWarehouses to backend API & localStorage
+      if (id || code) {
+        const fullAddress = `${detailAddress ? detailAddress + ', ' : ''}${ward}, ${province}`;
+        const payload: WarehouseRecord = {
+          id: id || `wh_${Date.now()}`,
+          code: targetCode,
+          name: name.trim(),
+          province,
+          ward,
+          detailAddress,
+          address: fullAddress,
+          status,
+          length,
+          width,
+          height,
+          managerIds: [],
+          staffIds: [],
+          subWarehouses: cleanedZones,
+        };
+        try {
+          const savedWarehouse = await upsertWarehouseToApi(payload);
+          const existingWarehouses = getStoredWarehouses();
+          const updatedList = existingWarehouses.some((w) => w.id === savedWarehouse.id || w.code === savedWarehouse.code)
+            ? existingWarehouses.map((w) => (w.id === savedWarehouse.id || w.code === savedWarehouse.code ? savedWarehouse : w))
+            : [...existingWarehouses, savedWarehouse];
+          saveStoredWarehouses(updatedList);
+        } catch (err) {
+          console.error('Error updating warehouse reset topology:', err);
+        }
       }
+
+      clearAllDraftSlotLocks(targetCode);
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
-      setSuccess('Đã xóa toàn bộ hàng hóa trong kho CSDL. Tất cả ô kệ đã trở về trạng thái KỆ TRỐNG!');
+      setSuccess(`Đã xóa toàn bộ hàng hóa của kho [${targetCode}]. Tất cả ô kệ thuộc kho này đã trở về trạng thái KỆ TRỐNG!`);
     }
   };
 
-  const getOccupiedInfo = (
-    fullBinCode: string,
-    zoneCode?: string,
-    rackCode?: string,
-    bayCode?: string,
-    shelfCode?: string,
-    cellCode?: string,
-  ) => {
-    if (!occupiedBinsMap || occupiedBinsMap.size === 0) return null;
-    if (occupiedBinsMap.has(fullBinCode)) return occupiedBinsMap.get(fullBinCode);
-
-    const normKey = normalizeBinKey(fullBinCode);
-    if (normKey && occupiedBinsMap.has(normKey)) return occupiedBinsMap.get(normKey);
-
-    const shortCode = `${rackCode}-${shelfCode}-${cellCode}`;
-    if (occupiedBinsMap.has(shortCode)) return occupiedBinsMap.get(shortCode);
-
-    if (zoneCode) {
-      const zoneShort = `${zoneCode}-${rackCode}-${shelfCode}-${cellCode}`;
-      if (occupiedBinsMap.has(zoneShort)) return occupiedBinsMap.get(zoneShort);
-    }
-
-    for (const [key, val] of occupiedBinsMap.entries()) {
-      if (
-        key.includes(fullBinCode) ||
-        (normKey && key.includes(normKey)) ||
-        (rackCode && shelfCode && cellCode && key.includes(rackCode) && key.includes(shelfCode) && key.includes(cellCode))
-      ) {
-        return val;
-      }
-    }
-
-    return null;
-  };
+  const hasWarehouseGoods = code ? localStorage.getItem(`cleared_warehouse_goods_${code.trim().toUpperCase()}`) !== 'true' : false;
 
   const populateWarehouse = useCallback((target: WarehouseRecord) => {
     const norm = normalizeWarehouseRecord(target);
@@ -311,17 +321,17 @@ function normalizeBinKey(binCode: string): string {
 
       const rks = z.racks && z.racks.length > 0
         ? z.racks.map((r) => ({
-            ...r,
-            length: r.length || rL,
-            width: r.width || rW,
-            height: r.height || rH,
-            baysCount: calcBays,
-            columnsCount: calcBays,
-            shelvesCount: calcShelves,
-            horizontalPartitions: vachNgang,
-            verticalPartitions: vachDoc,
-            binsPerShelf: r.binsPerShelf || 2,
-          }))
+          ...r,
+          length: r.length || rL,
+          width: r.width || rW,
+          height: r.height || rH,
+          baysCount: calcBays,
+          columnsCount: calcBays,
+          shelvesCount: calcShelves,
+          horizontalPartitions: vachNgang,
+          verticalPartitions: vachDoc,
+          binsPerShelf: r.binsPerShelf || 2,
+        }))
         : generateDefaultRacks(z.racksCount || 4, z.length || 20, z.height || 6, vachDoc, vachNgang, 2, rL, rW, rH);
       return {
         ...z,
@@ -973,17 +983,30 @@ function normalizeBinKey(binCode: string): string {
                         if (z.racks && z.racks.length > 0) setActiveRackId(z.racks[0].id);
                         setSelectedRackCodes([]);
                       }}
-                      className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer border ${
-                        z.id === activeZone?.id
+                      className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer border ${z.id === activeZone?.id
                           ? 'bg-cyan-600 text-white border-cyan-600 shadow'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-cyan-50'
-                      }`}
+                        }`}
                     >
                       {z.code}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {hasWarehouseGoods && (
+                <div className="rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-950/60 p-3.5 text-xs font-bold text-amber-900 dark:text-amber-200 shadow-sm flex items-start gap-2.5">
+                  <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-black text-amber-950 dark:text-amber-100 uppercase tracking-wide">
+                      🔒 ĐÃ KHÓA THÔNG SỐ KỆ (ĐANG CHỨA HÀNG)
+                    </p>
+                    <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 leading-relaxed">
+                      Kệ chỉ được phép thay đổi thông số khi kệ <b>không có hàng</b>. Nếu muốn sửa kích thước/vách kệ, vui lòng bấm nút <b>"Xóa hết hàng (Về kệ trống)"</b>.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {activeZone && (
                 <div className="space-y-4 text-xs">
@@ -1021,9 +1044,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.length}
                             onChange={(e) => updateActiveZone({ length: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1031,9 +1055,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.width}
                             onChange={(e) => updateActiveZone({ width: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1041,9 +1066,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.height}
                             onChange={(e) => updateActiveZone({ height: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -1060,9 +1086,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.rackLength ?? activeZone.racks?.[0]?.length ?? Math.max(activeZone.length - 2, 4)}
                             onChange={(e) => updateActiveZone({ rackLength: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1071,9 +1098,10 @@ function normalizeBinKey(binCode: string): string {
                             type="number"
                             min={0}
                             step={0.1}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.rackWidth ?? activeZone.racks?.[0]?.width ?? 1.2}
                             onChange={(e) => updateActiveZone({ rackWidth: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1081,9 +1109,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.rackHeight ?? activeZone.racks?.[0]?.height ?? Math.max(activeZone.height - 1, 3)}
                             onChange={(e) => updateActiveZone({ rackHeight: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300"
+                            className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -1100,9 +1129,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.racksCount ?? 4}
                             onChange={(e) => updateActiveZone({ racksCount: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1110,9 +1140,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.shelvesPerRack ?? 5}
                             onChange={(e) => updateActiveZone({ shelvesPerRack: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1120,9 +1151,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.binsPerShelf ?? 2}
                             onChange={(e) => updateActiveZone({ binsPerShelf: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                         <div>
@@ -1130,9 +1162,10 @@ function normalizeBinKey(binCode: string): string {
                           <input
                             type="number"
                             min={0}
+                            disabled={hasWarehouseGoods}
                             value={activeZone.maxWeightPerBin ?? 500}
                             onChange={(e) => updateActiveZone({ maxWeightPerBin: parseNumInput(e.target.value) })}
-                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-emerald-600"
+                            className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                           />
                         </div>
                       </div>
@@ -1172,11 +1205,10 @@ function normalizeBinKey(binCode: string): string {
                   return (
                     <div
                       key={r.id}
-                      className={`p-3 rounded-xl border transition space-y-2 ${
-                        isChecked
+                      className={`p-3 rounded-xl border transition space-y-2 ${isChecked
                           ? 'border-cyan-400 bg-cyan-50/60 dark:bg-cyan-950/40 text-slate-900 dark:text-slate-100 shadow-sm'
                           : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-400 opacity-65'
-                      }`}
+                        }`}
                     >
                       {/* TOP CHECKBOX HEADER */}
                       <div className="flex items-center justify-between">
@@ -1208,9 +1240,10 @@ function normalizeBinKey(binCode: string): string {
                             <input
                               type="number"
                               min={0}
+                              disabled={hasWarehouseGoods}
                               value={r.length}
                               onChange={(e) => updateRackById(r.id, { length: parseNumInput(e.target.value) })}
-                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div>
@@ -1219,9 +1252,10 @@ function normalizeBinKey(binCode: string): string {
                               type="number"
                               min={0}
                               step={0.1}
+                              disabled={hasWarehouseGoods}
                               value={r.width}
                               onChange={(e) => updateRackById(r.id, { width: parseNumInput(e.target.value) })}
-                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div>
@@ -1229,9 +1263,10 @@ function normalizeBinKey(binCode: string): string {
                             <input
                               type="number"
                               min={0}
+                              disabled={hasWarehouseGoods}
                               value={r.height}
                               onChange={(e) => updateRackById(r.id, { height: parseNumInput(e.target.value) })}
-                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200"
+                              className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                         </div>
@@ -1244,9 +1279,10 @@ function normalizeBinKey(binCode: string): string {
                             <input
                               type="number"
                               min={0}
+                              disabled={hasWarehouseGoods}
                               value={currentBinWeight}
                               onChange={(e) => updateRackWeightById(r.id, parseNumInput(e.target.value), currentRackLoad)}
-                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-cyan-700 text-center"
+                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-cyan-700 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div>
@@ -1256,9 +1292,10 @@ function normalizeBinKey(binCode: string): string {
                             <input
                               type="number"
                               min={0}
+                              disabled={hasWarehouseGoods}
                               value={currentRackLoad}
                               onChange={(e) => updateRackWeightById(r.id, currentBinWeight, parseNumInput(e.target.value))}
-                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-emerald-700 text-center"
+                              className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-emerald-700 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                             />
                           </div>
                         </div>
@@ -1290,11 +1327,10 @@ function normalizeBinKey(binCode: string): string {
                     <button
                       type="button"
                       onClick={() => setViewMode('2D_MATRIX')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                        viewMode === '2D_MATRIX'
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${viewMode === '2D_MATRIX'
                           ? 'bg-cyan-600 text-white shadow'
                           : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
-                      }`}
+                        }`}
                     >
                       <Grid className="h-3.5 w-3.5" />
                       Ma Trận 2D
@@ -1302,11 +1338,10 @@ function normalizeBinKey(binCode: string): string {
                     <button
                       type="button"
                       onClick={() => setViewMode('3D_VIEW')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                        viewMode === '3D_VIEW'
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${viewMode === '3D_VIEW'
                           ? 'bg-cyan-600 text-white shadow'
                           : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
-                      }`}
+                        }`}
                     >
                       <Move3d className="h-3.5 w-3.5" />
                       Khối 3D
@@ -1377,128 +1412,52 @@ function normalizeBinKey(binCode: string): string {
                     style={{ zoom: `${gridZoomScale}%` }}
                     className="space-y-6 transition-all duration-200"
                   >
-                    {displayedRacks.map((rack) => {
-                      const vachDoc = activeZone?.binsPerShelf ?? 2;
-                      const vachNgang = activeZone?.shelvesPerRack ?? 5;
-                      const baysCount = Math.max(1, vachDoc - 1);
-                      const shelvesCount = Math.max(1, vachNgang - 1);
-                      const totalBinsPerShelf = baysCount;
+                    <WarehouseSlottingGrid
+                      warehouse={{
+                        id: id || 'temp-id',
+                        code,
+                        name,
+                        province,
+                        ward,
+                        address: detailAddress,
+                        detailAddress,
+                        status,
+                        length,
+                        width,
+                        height,
+                        managerIds: [],
+                        staffIds: [],
+                        subWarehouses,
+                      }}
+                      activeZoneId={activeZoneId}
+                      activeRackId={activeRackId}
+                      mode="view"
+                      onBinClick={(fullBinCode, customConfig, occupiedInfo, goodsList) => {
+                        setEditingBinCode(fullBinCode);
+                        const rawList = goodsList && goodsList.length > 0 ? goodsList : (occupiedInfo ? [occupiedInfo] : []);
+                        const normalizedList = rawList.map((item: any) => ({
+                          ...item,
+                          quantity: Number(item.quantity || item.totalPhysical || item.qty || 1),
+                        }));
 
-                      return (
-                        <div
-                          key={rack.id}
-                          className="rounded-2xl border-2 border-cyan-300 dark:border-cyan-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4"
-                        >
-                          {/* RACK ROW HEADER */}
-                          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                            <div className="flex items-center gap-2.5">
-                              <span className="px-3 py-1 rounded-xl bg-cyan-600 text-white font-black text-xs shadow-sm">
-                                {rack.rackCode}
-                              </span>
-                              <span className="font-extrabold text-sm text-slate-800 dark:text-slate-100">
-                                {rack.name} ({rack.length}m Dài × {rack.width}m Rộng)
-                              </span>
-                            </div>
-                            <span className="text-xs font-bold text-slate-500 bg-slate-50 dark:bg-slate-800 px-3 py-1 rounded-xl border border-slate-200 dark:border-slate-700">
-                              {shelvesCount} Tầng ({vachNgang} Vách Ngang) × {totalBinsPerShelf} Ô ({vachDoc} Vách Dọc)
-                            </span>
-                          </div>
-
-                          {/* 2D MATRIX ROWS: RENDERED TẦNG BY TẦNG (S04 -> S01) */}
-                          <div className="space-y-3">
-                            {Array.from({ length: shelvesCount })
-                              .map((_, sIdx) => shelvesCount - sIdx) // Render top level down (e.g. S04 -> S01)
-                              .map((shelfNum) => {
-                                const shelfCode = `S${String(shelfNum).padStart(2, '0')}`;
-
-                                return (
-                                  <div
-                                    key={shelfCode}
-                                    className="rounded-xl border border-cyan-200/80 dark:border-cyan-900/60 bg-slate-50/70 dark:bg-slate-950 p-3 space-y-2"
-                                  >
-                                    {/* TẦNG ROW LABEL */}
-                                    <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800 pb-1.5">
-                                      <div className="flex items-center gap-2">
-                                        <span className="px-2.5 py-0.5 rounded-lg bg-cyan-700 text-white font-black text-xs">
-                                          Tầng {shelfCode}
-                                        </span>
-                                        <span className="text-xs font-bold text-slate-500">
-                                          (Mâm kệ tầng {shelfNum})
-                                        </span>
-                                      </div>
-                                      <span className="text-[11px] font-bold text-cyan-600 dark:text-cyan-400">
-                                        {totalBinsPerShelf} Ô / Hộc chứa hàng
-                                      </span>
-                                    </div>
-
-                                    {/* HORIZONTAL GRID OF Ô (BINS) FOR THIS TẦNG */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                                      {Array.from({ length: baysCount }).map((_, bIdx) => {
-                                        const cellNum = bIdx + 1;
-                                        const bayCode = `B${String(cellNum).padStart(2, '0')}`;
-                                        const binLabel = `Ô C${String(cellNum).padStart(2, '0')}`;
-                                        const cellCode = `C${String(cellNum).padStart(2, '0')}`;
-                                        const fullBinCode = `${activeZone?.code || 'ZONE'}-${rack.rackCode}-${bayCode}-${shelfCode}-${cellCode}`;
-                                        const isCustom = rack.customBins && rack.customBins[fullBinCode];
-
-                                        const occupiedInfo = getOccupiedInfo(fullBinCode, activeZone?.code, rack.rackCode, bayCode, shelfCode, cellCode);
-                                        const hasGoods = Boolean(occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0));
-
-                                        return (
-                                          <button
-                                            key={fullBinCode}
-                                            type="button"
-                                            onClick={() => {
-                                              setEditingBinCode(fullBinCode);
-                                              setBinCustomForm(
-                                                isCustom || {
-                                                  binCode: fullBinCode,
-                                                  length: rack.defaultBinLength || 120,
-                                                  width: rack.defaultBinWidth || 80,
-                                                  height: rack.defaultBinHeight || 100,
-                                                  maxWeight: rack.defaultBinMaxWeight || 500,
-                                                }
-                                              );
-                                            }}
-                                            className={`p-2 rounded-xl border text-center transition cursor-pointer flex flex-col items-center justify-between gap-1 shadow-sm ${
-                                              hasGoods
-                                                ? 'border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/80 text-amber-950 dark:text-amber-100 shadow-md ring-2 ring-amber-300/60 font-black'
-                                                : isCustom
-                                                  ? 'border-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 text-cyan-900 dark:text-cyan-200'
-                                                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-950/50 text-slate-700 dark:text-slate-200'
-                                            }`}
-                                          >
-                                            <div className="w-full flex items-center justify-between gap-1">
-                                              <span className={`text-xs font-black ${hasGoods ? 'text-amber-900 dark:text-amber-200' : 'text-cyan-700 dark:text-cyan-300'}`}>
-                                                {binLabel}
-                                              </span>
-                                              {hasGoods && (
-                                                <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" title="Có hàng lưu trữ" />
-                                              )}
-                                            </div>
-                                            <span className="text-[10px] font-bold text-slate-400">
-                                              Khoang {bayCode}
-                                            </span>
-                                            {hasGoods ? (
-                                              <span className="text-[10px] font-black text-amber-950 bg-amber-300 dark:bg-amber-700 dark:text-amber-50 px-1.5 py-0.5 rounded-md w-full truncate border border-amber-400 shadow-2xs flex items-center justify-center gap-0.5">
-                                                {occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1} sp
-                                              </span>
-                                            ) : (
-                                              <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-full truncate">
-                                                {isCustom ? `${isCustom.maxWeight}kg` : `${rack.defaultBinMaxWeight || 500}kg`}
-                                              </span>
-                                            )}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        setActiveBinGoodsDetails({
+                          fullBinCode,
+                          customConfig,
+                          occupiedInfo,
+                          goodsList: normalizedList,
+                        });
+                        const binShort = fullBinCode.split('-').pop() || fullBinCode;
+                        setBinCustomForm(
+                          customConfig || {
+                            binCode: binShort,
+                            length: 120,
+                            width: 80,
+                            height: 100,
+                            maxWeight: 500,
+                          }
+                        );
+                      }}
+                    />
                   </div>
                 </div>
               )}
@@ -1506,6 +1465,358 @@ function normalizeBinKey(binCode: string): string {
           </div>
         </div>
       </div>
+
+      {/* POPUP MODAL: THÔNG TIN CHI TIẾT Ô KỆ & LỊCH SỬ NHẬP HÀNG / CẤU HÌNH TẢI TRỌNG */}
+      {editingBinCode && (() => {
+        const binShort = editingBinCode.split('-').pop() || editingBinCode;
+        const occupiedInfo = activeBinGoodsDetails?.occupiedInfo;
+        const goodsList = activeBinGoodsDetails?.goodsList || [];
+        const hasGoods = Boolean(
+          (occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0 || (occupiedInfo.occupancyPct && occupiedInfo.occupancyPct > 0))) ||
+          (goodsList && goodsList.length > 0)
+        );
+        const customConfig = activeBinGoodsDetails?.customConfig || (activeZone?.racks || [])
+          .flatMap((rk: any) => Object.values(rk.customBins || {}))
+          .find((cb: any) => cb.binCode === binShort || cb.binCode === editingBinCode);
+
+        return (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn">
+            <div className="w-full max-w-[95vw] lg:max-w-[92vw] xl:max-w-[90vw] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl border-2 border-cyan-500/30 overflow-hidden flex flex-col max-h-[94vh]">
+
+              {/* Modal Header (Pure Cyan theme) */}
+              <div className="bg-gradient-to-r from-cyan-600 to-cyan-700 text-white px-6 py-4 flex items-center justify-between border-b border-cyan-500/40 shadow-sm">
+                <div className="flex items-center gap-3.5">
+                  <div className="h-10 w-10 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white shadow-2xs">
+                    <Boxes className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-white flex items-center gap-2.5 tracking-tight">
+                      THÔNG TIN CHI TIẾT Ô {binShort}
+                      {hasGoods ? (
+                        <span className="px-3 py-0.5 rounded-full text-xs font-bold bg-amber-400 text-amber-950 border border-amber-300 shadow-2xs">
+                          Đã Có Hàng
+                        </span>
+                      ) : (
+                        <span className="px-3 py-0.5 rounded-full text-xs font-bold bg-cyan-900/60 text-cyan-100 border border-white/30">
+                          Kệ Trống
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-cyan-100 font-medium mt-0.5">
+                      Mã vị trí ô chứa: <span className="font-mono text-white font-semibold">{editingBinCode}</span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingBinCode(null)}
+                  className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/20 transition cursor-pointer"
+                >
+                  <X className="h-5.5 w-5.5" />
+                </button>
+              </div>
+
+              {/* Modal Body (Spacious & Open layout) */}
+              <div className="p-6 overflow-y-auto space-y-5 text-sm text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-slate-900/50">
+
+                {/* SECTION 1: INBOUND & OUTBOUND GOODS TRANSACTION HISTORY TABLE */}
+                {goodsList && goodsList.length > 0 ? (() => {
+                  const filteredGoodsList = goodsList.filter((item: any) => item.sku !== 'SKU-DRAFT');
+
+                  if (filteredGoodsList.length === 0) return null;
+
+                  const groupedGoodsMap = new Map<string, {
+                    sku: string;
+                    productName: string;
+                    unit: string;
+                    baseOccupancyPct: number;
+                    transactions: any[];
+                  }>();
+
+                  filteredGoodsList.forEach((item: any) => {
+                    const pSku = item.sku || item.productSku || 'SKU-001';
+                    const pName = item.productName || 'Sản phẩm';
+                    const pKey = `${pSku}___${pName}`;
+
+                    let itemPct = item.occupancyPct;
+                    if (itemPct === undefined || itemPct === null) {
+                      itemPct = Math.round(100 / Math.max(1, goodsList.length));
+                    }
+
+                    if (!groupedGoodsMap.has(pKey)) {
+                      groupedGoodsMap.set(pKey, {
+                        sku: pSku,
+                        productName: pName,
+                        unit: item.unit || 'Cái',
+                        baseOccupancyPct: itemPct,
+                        transactions: [],
+                      });
+                    }
+
+                    groupedGoodsMap.get(pKey)!.transactions.push(item);
+                  });
+
+                  const groupedGoodsList = Array.from(groupedGoodsMap.values()).map((grp) => {
+                    const totalInbound = grp.transactions
+                      .filter((t) => !t.isOutbound && Number(t.quantity || t.totalPhysical || 0) > 0)
+                      .reduce((s, t) => s + Number(t.quantity || t.totalPhysical || 0), 0);
+                    const totalOutbound = grp.transactions
+                      .filter((t) => t.isOutbound || Number(t.quantity || 0) < 0)
+                      .reduce((s, t) => s + Math.abs(Number(t.quantity || 0)), 0);
+
+                    const netQty = Math.max(0, totalInbound > 0 ? totalInbound - totalOutbound : Number(grp.transactions[0]?.quantity || grp.transactions[0]?.totalPhysical || 1));
+                    const netOccupancyPct = totalInbound > 0
+                      ? Math.round((netQty / totalInbound) * grp.baseOccupancyPct)
+                      : Math.max(0, grp.baseOccupancyPct - Math.round((totalOutbound / 1000) * grp.baseOccupancyPct));
+
+                    return {
+                      ...grp,
+                      netOccupancyPct,
+                    };
+                  });
+
+                  return (
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3 shadow-sm">
+                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                        <span className="font-semibold text-xs sm:text-sm uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                          <Package className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
+                          Lịch sử xuất nhập hàng hóa & phân bổ ô
+                        </span>
+                        <span className="text-[11px] font-medium text-cyan-700 bg-cyan-50 dark:bg-cyan-950 dark:text-cyan-300 px-2.5 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800">
+                          {goodsList.length} lượt xuất nhập
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700">
+                        <table className="w-full text-center text-xs border-collapse border border-slate-300 dark:border-slate-700">
+                          <thead className="bg-cyan-100/90 dark:bg-slate-800 text-cyan-950 dark:text-cyan-200 font-extrabold text-xs uppercase tracking-wider">
+                            <tr>
+                              <th className="py-3 px-3 font-extrabold text-center w-12 border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">STT</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Loại giao dịch</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Mã hàng hóa</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Mã phiếu</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Tên hàng hóa</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">ĐVT</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Số lượng</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Thời gian</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">Đối tác / Khách / NCC</th>
+                              <th className="py-3 px-3 font-extrabold text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap text-cyan-950 dark:text-cyan-200">% chứa</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-300 dark:divide-slate-700 font-normal text-slate-700 dark:text-slate-200">
+                            {groupedGoodsList.map((group, gIdx) => {
+                              const txs = group.transactions;
+                              const rowSpanCount = txs.length;
+
+                              return txs.map((tx: any, txIdx: number) => {
+                                const isOutbound = Boolean(
+                                  tx.isOutbound ||
+                                  Number(tx.quantity || 0) < 0 ||
+                                  (tx.orderCode && (
+                                    tx.orderCode.startsWith('PX') ||
+                                    tx.orderCode.startsWith('XK') ||
+                                    tx.orderCode.startsWith('XH') ||
+                                    tx.orderCode.startsWith('XBL') ||
+                                    tx.orderCode.startsWith('XBH') ||
+                                    tx.orderCode.includes('XUẤT') ||
+                                    tx.orderCode.includes('XUAT') ||
+                                    tx.orderCode === 'ĐANG-XUẤT'
+                                  )) ||
+                                  (tx.supplierName && (
+                                    tx.supplierName.includes('Đơn xuất') ||
+                                    tx.supplierName.includes('Xuất kho')
+                                  ))
+                                );
+                                const qtyNum = Math.abs(Number(tx.quantity || tx.totalPhysical || tx.qty || 0));
+                                const realOrderCode = tx.orderCode && tx.orderCode !== 'TỒN-KHO' && tx.orderCode !== 'ĐANG-XẾP'
+                                  ? tx.orderCode
+                                  : (tx.id ? `${isOutbound ? 'PXK' : 'PNK'}-${String(tx.id).padStart(4, '0')}` : (isOutbound ? 'PXK-DRAFT' : 'PNK-20260819-001'));
+
+                                return (
+                                  <tr
+                                    key={`${gIdx}-${txIdx}`}
+                                    className={`hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors ${isOutbound ? 'bg-rose-50/20 dark:bg-rose-950/20' : ''
+                                      }`}
+                                  >
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        {gIdx + 1}
+                                      </td>
+                                    )}
+
+                                    <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                      {isOutbound ? (
+                                        <span className="px-2 py-0.5 rounded font-black text-[10px] bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                                          XUẤT KHO
+                                        </span>
+                                      ) : (
+                                        <span className="px-2 py-0.5 rounded font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                                          NHẬP KHO
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center font-mono font-bold text-cyan-700 dark:text-cyan-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        {group.sku}
+                                      </td>
+                                    )}
+
+                                    <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                      <span
+                                        className={`px-2.5 py-1 rounded border font-bold text-xs ${isOutbound
+                                            ? 'bg-rose-50 text-rose-900 border-rose-300'
+                                            : 'bg-cyan-50 text-cyan-950 border-cyan-300'
+                                          }`}
+                                      >
+                                        {realOrderCode}
+                                      </span>
+                                    </td>
+
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center font-bold text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        {group.productName}
+                                      </td>
+                                    )}
+
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        {group.unit}
+                                      </td>
+                                    )}
+
+                                    <td
+                                      className={`py-2.5 px-3 text-center font-black border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle ${isOutbound ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                                        }`}
+                                    >
+                                      {isOutbound ? `-${qtyNum.toLocaleString('vi-VN')}` : `+${qtyNum.toLocaleString('vi-VN')}`}
+                                    </td>
+
+                                    <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                      {tx.inboundDate}
+                                    </td>
+
+                                    <td className="py-2.5 px-3 text-center font-medium text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 align-middle">
+                                      {tx.supplierName}
+                                    </td>
+
+                                    {txIdx === 0 && (
+                                      <td
+                                        rowSpan={rowSpanCount}
+                                        className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                      >
+                                        <span className="px-2.5 py-1 rounded-full font-black text-xs bg-cyan-100 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-200 border border-cyan-300 dark:border-cyan-800">
+                                          {group.netOccupancyPct}%
+                                        </span>
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              });
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div className="rounded-2xl border border-cyan-200 dark:border-cyan-900/70 bg-white dark:bg-slate-900 p-5 space-y-2 shadow-sm text-center">
+                    <span className="font-bold text-xs sm:text-sm uppercase tracking-wider text-cyan-900 dark:text-cyan-200 flex items-center justify-center gap-2">
+                      <Boxes className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
+                      Trạng Thái Vị Trí Ô Kệ
+                    </span>
+                    <p className="text-xs font-medium text-slate-500 py-1">
+                      KỆ TRỐNG - Ô chứa này hiện tại chưa có hàng hóa lưu trữ trong CSDL.
+                    </p>
+                  </div>
+                )}
+
+                {/* SECTION 2: BIN SPECS & WEIGHT CAPACITY FORM */}
+                <div className="rounded-2xl border border-cyan-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+                  <span className="font-extrabold text-xs sm:text-sm uppercase tracking-wider text-cyan-950 dark:text-cyan-200 block border-b border-slate-200 dark:border-slate-800 pb-3">
+                    Cấu hình kích thước & Tải trọng ô
+                  </span>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-extrabold text-cyan-950 dark:text-cyan-200 block">Dài (cm)</label>
+                      <input
+                        type="number"
+                        value={binCustomForm.length !== undefined && binCustomForm.length !== null && binCustomForm.length > 0 ? binCustomForm.length : ((customConfig as any)?.length || 120)}
+                        onChange={(e) => setBinCustomForm((c) => ({ ...c, length: Number(e.target.value) || 0 }))}
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-cyan-500 outline-none shadow-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-extrabold text-cyan-950 dark:text-cyan-200 block">Rộng (cm)</label>
+                      <input
+                        type="number"
+                        value={binCustomForm.width !== undefined && binCustomForm.width !== null && binCustomForm.width > 0 ? binCustomForm.width : ((customConfig as any)?.width || 80)}
+                        onChange={(e) => setBinCustomForm((c) => ({ ...c, width: Number(e.target.value) || 0 }))}
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-cyan-500 outline-none shadow-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-extrabold text-cyan-950 dark:text-cyan-200 block">Cao (cm)</label>
+                      <input
+                        type="number"
+                        value={binCustomForm.height !== undefined && binCustomForm.height !== null && binCustomForm.height > 0 ? binCustomForm.height : ((customConfig as any)?.height || 100)}
+                        onChange={(e) => setBinCustomForm((c) => ({ ...c, height: Number(e.target.value) || 0 }))}
+                        className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 font-bold text-center bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-cyan-500 outline-none shadow-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-extrabold text-cyan-950 dark:text-cyan-200 block">Tải trọng (kg)</label>
+                      <input
+                        type="number"
+                        value={binCustomForm.maxWeight !== undefined && binCustomForm.maxWeight !== null && binCustomForm.maxWeight > 0 ? binCustomForm.maxWeight : ((customConfig as any)?.maxWeight || 500)}
+                        onChange={(e) => setBinCustomForm((c) => ({ ...c, maxWeight: Number(e.target.value) || 0 }))}
+                        className="w-full h-10 px-3 rounded-xl border-2 border-cyan-400 font-black text-center text-cyan-950 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950 focus:border-cyan-600 outline-none shadow-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-white dark:bg-slate-950 px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingBinCode(null)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveBinCustomConfig}
+                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold text-xs shadow-md transition cursor-pointer flex items-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  Lưu cấu hình ô chứa
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </MainLayout>
   );
 }

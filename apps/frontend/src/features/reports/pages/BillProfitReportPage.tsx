@@ -1,16 +1,25 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  FileSpreadsheet,
-  Printer,
-  Search,
   PieChart,
-  DollarSign,
-  TrendingUp,
   BarChart3,
-  Filter,
-  CheckCircle,
+  TrendingUp,
+  DollarSign,
+  Printer,
+  FileSpreadsheet,
   RefreshCw,
+  Search,
+  Calendar,
+  CheckCircle,
+  Settings,
+  Maximize2,
+  Minimize2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -18,6 +27,7 @@ export interface BillProfitItem {
   id: string;
   stt: number;
   billCode: string;
+  branchName: string;
   productCode: string;
   productName: string;
   exportQty: number;
@@ -33,6 +43,8 @@ export interface BillProfitItem {
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
+const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
+
 function authHeaders() {
   return {
     'Content-Type': 'application/json',
@@ -43,9 +55,9 @@ function authHeaders() {
 export default function BillProfitReportPage() {
   const [reportData, setReportData] = useState<BillProfitItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   // Filters
-  const [selectedBillCode, setSelectedBillCode] = useState('ALL');
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
@@ -58,6 +70,25 @@ export default function BillProfitReportPage() {
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Fullscreen state
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Column settings modal
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [columnVis, setColumnVis] = useState({
+    billCode: true,
+    branchName: true,
+    productCode: true,
+    productName: true,
+    exportQty: true,
+    exportPrice: true,
+    revenue: true,
+    importPrice: true,
+    totalCost: true,
+    profit: true,
+    profitMargin: true,
+  });
+
   // Toast
   const [toastMessage, setToastMessage] = useState('');
 
@@ -66,8 +97,27 @@ export default function BillProfitReportPage() {
     setTimeout(() => setToastMessage(''), 3500);
   };
 
+  const toggleBrowserFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+      setIsFullScreen(true);
+    } else {
+      document.exitFullscreen().catch(() => {});
+      setIsFullScreen(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleFSChange = () => {
+      setIsFullScreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFSChange);
+    return () => document.removeEventListener('fullscreenchange', handleFSChange);
+  }, []);
+
   const fetchProfitReport = async () => {
     setLoading(true);
+    setError('');
     try {
       const [outboundRes, productRes] = await Promise.all([
         fetch(`${API_BASE_URL}/outbounds`, { headers: authHeaders() }).catch(() => null),
@@ -95,16 +145,17 @@ export default function BillProfitReportPage() {
         if (Array.isArray(outboundData)) {
           let count = 1;
           outboundData.forEach((order: any) => {
-            const billCode = order.orderNo || `XBH_${String(order.id).slice(0, 6)}`;
+            const billCode = order.orderNo || order.code || `XBH_${String(order.id).slice(0, 6)}`;
+            const branchName = order.warehouseName || order.branchName || order.warehouse?.name || order.branch || 'Kho Tổng Hồ Chí Minh';
             const orderDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-            const custName = order.customer || 'Khách hàng lẻ';
+            const custName = order.customer || order.customerName || 'Khách hàng lẻ';
 
-            const details = Array.isArray(order.details) ? order.details : [];
+            const details = Array.isArray(order.details) ? order.details : Array.isArray(order.items) ? order.items : [];
 
             details.forEach((d: any) => {
-              const pCode = d.productCode || d.productSku || d.product?.internalSku || '';
+              const pCode = d.productCode || d.productSku || d.product?.internalSku || d.sku || '';
               const pName = d.productName || d.product?.name || 'Sản phẩm kinh doanh';
-              const exportQty = Number(d.requiredQty || d.pickedQty || d.qty || 0);
+              const exportQty = Number(d.requiredQty || d.pickedQty || d.qty || d.quantity || 0);
               const exportPrice = Number(d.unitPrice || d.price || 1000000);
               const revenue = exportQty * exportPrice;
 
@@ -118,6 +169,7 @@ export default function BillProfitReportPage() {
                 id: `${order.id}-${count}`,
                 stt: count++,
                 billCode,
+                branchName,
                 productCode: pCode,
                 productName: pName,
                 exportQty,
@@ -135,8 +187,8 @@ export default function BillProfitReportPage() {
         }
       }
       setReportData(itemsList);
-    } catch {
-      // quiet fallback
+    } catch (err: any) {
+      setError(err?.message || 'Không thể tải dữ liệu báo cáo lợi nhuận');
     } finally {
       setLoading(false);
     }
@@ -146,29 +198,25 @@ export default function BillProfitReportPage() {
     fetchProfitReport();
   }, []);
 
-  const billCodeOptions = useMemo(() => {
-    const codes = Array.from(new Set(reportData.map((d) => d.billCode)));
-    return ['ALL', ...codes];
-  }, [reportData]);
-
   const filteredData = useMemo(() => {
     return reportData.filter((item) => {
-      const matchesBill = selectedBillCode === 'ALL' || item.billCode === selectedBillCode;
       const matchesSearch =
-        !searchQuery ||
+        !searchQuery.trim() ||
         item.billCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.branchName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.productCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.productName.toLowerCase().includes(searchQuery.toLowerCase());
+        item.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.customerName.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesFrom = !fromDate || item.date >= fromDate;
       const matchesTo = !toDate || item.date <= toDate;
 
-      return matchesBill && matchesSearch && matchesFrom && matchesTo;
+      return matchesSearch && matchesFrom && matchesTo;
     });
-  }, [reportData, selectedBillCode, searchQuery, fromDate, toDate]);
+  }, [reportData, searchQuery, fromDate, toDate]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedBillCode, searchQuery, fromDate, toDate]);
+  }, [searchQuery, fromDate, toDate]);
 
   // Totals calculations
   const totalExportQty = filteredData.reduce((sum, i) => sum + i.exportQty, 0);
@@ -177,24 +225,36 @@ export default function BillProfitReportPage() {
   const totalProfitSum = filteredData.reduce((sum, i) => sum + i.profit, 0);
   const overallMargin = totalRevenue > 0 ? (totalProfitSum / totalRevenue) * 100 : 0;
 
+  const labelColSpan =
+    1 +
+    (columnVis.billCode ? 1 : 0) +
+    (columnVis.branchName ? 1 : 0) +
+    (columnVis.productCode ? 1 : 0) +
+    (columnVis.productName ? 1 : 0);
+
   const totalItems = filteredData.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalItems);
-  const paginatedData = filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredData.slice(start, start + pageSize);
+  }, [filteredData, currentPage, pageSize]);
 
   const handleExportExcel = () => {
+    if (filteredData.length === 0) return;
     const exportRows = filteredData.map((item, idx) => ({
       STT: idx + 1,
       'Mã Hóa Đơn': item.billCode,
+      'Chi Nhánh': item.branchName,
       'Mã Sản Phẩm': item.productCode,
       'Tên Hàng Hóa': item.productName,
       'Số Xuất': item.exportQty,
-      'Giá Xuất (VND)': item.exportPrice,
-      'Doanh Thu (VND)': item.revenue,
-      'Giá Nhập (VND)': item.importPrice,
-      'Tổng Vốn (VND)': item.totalCost,
-      'Lợi Nhuận (VND)': item.profit,
+      'Giá Xuất (VNĐ)': item.exportPrice,
+      'Doanh Thu (VNĐ)': item.revenue,
+      'Giá Nhập (VNĐ)': item.importPrice,
+      'Tổng Vốn (VNĐ)': item.totalCost,
+      'Lợi Nhuận (VNĐ)': item.profit,
       '% Lợi Nhuận': `${item.profitMargin}%`,
     }));
 
@@ -216,186 +276,225 @@ export default function BillProfitReportPage() {
           document.body
         )}
 
-      {/* ═══ TOP HEADER - CYAN ONLY FOR TITLE BADGE ═══ */}
+      {/* ═══ TOP HEADER SECTION ═══ */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* Left Badge Title */}
         <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
-            <PieChart className="h-5 w-5" />
-            <h1 className="text-xl font-extrabold tracking-tight uppercase">
-              Báo cáo Lợi nhuận theo Hóa đơn
+          <div className="inline-flex items-center gap-3 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
+            <PieChart className="h-5.5 w-5.5 text-white" />
+            <h1 className="text-xl font-extrabold tracking-tight uppercase text-white">
+              BÁO CÁO LỢI NHUẬN THEO HÓA ĐƠN
             </h1>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        {/* Right Action Buttons matching image 2 standard outline style */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* In báo cáo */}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-sm font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+          >
+            <Printer className="h-4 w-4 text-cyan-700" />
+            In báo cáo
+          </button>
+
+          {/* Export Excel */}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-sm font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-cyan-700" />
+            Export Excel
+          </button>
+
+          {/* Hiển thị */}
+          <button
+            type="button"
+            onClick={() => setShowColumnSettings(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-700 bg-white px-4 py-2 text-sm font-bold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            title="Cấu hình hiển thị cột"
+          >
+            <Settings className="h-4 w-4 text-cyan-700" />
+            <span>Hiển thị</span>
+          </button>
+
+          {/* Toàn màn hình */}
+          <button
+            type="button"
+            onClick={toggleBrowserFullscreen}
+            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            title="Toàn màn hình"
+          >
+            {isFullScreen ? <Minimize2 className="h-4 w-4 text-cyan-700" /> : <Maximize2 className="h-4 w-4 text-cyan-700" />}
+          </button>
+
+          {/* Làm mới */}
           <button
             type="button"
             onClick={fetchProfitReport}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50 ml-1"
+            title="Làm mới dữ liệu"
           >
-            <RefreshCw className={`h-4 w-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
-            Làm mới
-          </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
-          >
-            <Printer size={15} className="text-slate-600" />
-            In báo cáo
-          </button>
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
-          >
-            <FileSpreadsheet size={15} className="text-slate-600" />
-            Export Excel
+            <RefreshCw className={`h-4 w-4 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* ═══ 3 STAT OVERVIEW CARDS - CLEAN WHITE ═══ */}
+      {/* ═══ 3 BUTTON TỔNG HỢP (LẤY MẪU TỪ TRANG HÀNG HÓA) ═══ */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG DOANH THU</p>
-            <p className="text-lg font-black text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-slate-100 p-2 text-slate-700">
-            <DollarSign size={22} />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG DOANH THU: <span className="text-slate-900">{fmt(totalRevenue)} đ</span>
+          </p>
         </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG VỐN NHẬP</p>
-            <p className="text-lg font-black text-slate-700">{totalCostSum.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-slate-100 p-2 text-slate-700">
-            <BarChart3 size={22} />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG VỐN NHẬP: <span className="text-slate-900">{fmt(totalCostSum)} đ</span>
+          </p>
         </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG LỢI NHUẬN RÒNG: <span className={totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{fmt(totalProfitSum)} đ ({overallMargin.toFixed(1)}%)</span>
+          </p>
+        </div>
+      </div>
 
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG LỢI NHUẬN RÒNG</p>
-            <p className={`text-lg font-black ${totalProfitSum >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)
-            </p>
+      {/* ═══ FILTER & SEARCH PANEL (CLEAN LIVE SEARCH & DATE FILTER ONLY) ═══ */}
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-xs">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          {/* Live Search input */}
+          <div className="relative flex-1 min-w-[300px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
+              placeholder="Tìm theo mã HĐ, chi nhánh, mã SP, tên sản phẩm..."
+            />
           </div>
-          <div className={`rounded-xl p-2 ${totalProfitSum >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-            <TrendingUp size={22} />
+
+          {/* Date Filter Box */}
+          <div className="inline-flex h-11 items-center gap-3 rounded-xl border border-slate-300 bg-slate-50 px-3.5 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4.5 w-4.5 text-slate-600 shrink-0" />
+              <span className="text-xs font-bold uppercase text-slate-800 tracking-wide">Thời gian:</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-600">Từ</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+              />
+              <span className="text-xs font-bold text-slate-600">Đến</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ═══ FILTER & CONTROL TOOLBAR - CLEAN WHITE ═══ */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm text-xs font-bold">
-        {/* Left Filters */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Hóa đơn:</span>
-            <select
-              value={selectedBillCode}
-              onChange={(e) => setSelectedBillCode(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[140px]"
-            >
-              <option value="ALL">Tất cả hóa đơn</option>
-              {billCodeOptions.filter((c) => c !== 'ALL').map((code) => (
-                <option key={code} value={code}>
-                  {code}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Từ ngày:</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Đến ngày:</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
-            />
-          </div>
+      {error && (
+        <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-4 text-xs font-extrabold text-rose-700">
+          {error}
         </div>
+      )}
 
-        {/* Right Search Input */}
-        <div className="relative w-full lg:w-64">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm theo mã HĐ, tên SP..."
-            className="h-9 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-xs font-bold text-slate-700 outline-none transition focus:border-cyan-600"
-          />
-        </div>
-      </div>
-
-      {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE ═══ */}
-      <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full border-collapse text-left">
-            <thead className="bg-slate-100 sticky top-0 z-20 shadow-xs border-b-2 border-slate-200">
-              <tr>
-                <th className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 w-12 whitespace-nowrap">
-                  No.
+      {/* ═══ TABLE DISPLAY WITH BRANCH COLUMN & PLAIN CODE STYLES ═══ */}
+      <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-xs">
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed border-collapse text-left text-xs">
+            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs">
+              <tr className="border-b-2 border-cyan-700 text-white font-bold uppercase text-[10px] tracking-normal whitespace-nowrap [&>th]:text-center">
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-10 whitespace-nowrap">
+                  STT
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[140px] whitespace-nowrap">
-                  Mã HĐ
-                </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[120px] whitespace-nowrap">
-                  Mã SP
-                </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[200px] whitespace-nowrap">
-                  Tên hàng hóa
-                </th>
-                <th className="border-r border-slate-200 px-3 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 w-24 whitespace-nowrap">
-                  Số xuất
-                </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[130px] whitespace-nowrap">
-                  Giá xuất
-                </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[140px] whitespace-nowrap">
-                  Doanh thu
-                </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[130px] whitespace-nowrap">
-                  Giá nhập
-                </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[140px] whitespace-nowrap">
-                  Tổng vốn
-                </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[140px] whitespace-nowrap">
-                  Lợi nhuận
-                </th>
-                <th className="px-3 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 w-28 whitespace-nowrap">
-                  % Lợi nhuận
-                </th>
+                {columnVis.billCode && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap">
+                    Mã HĐ
+                  </th>
+                )}
+                {columnVis.branchName && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[14%] whitespace-nowrap">
+                    Chi nhánh
+                  </th>
+                )}
+                {columnVis.productCode && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap">
+                    Mã SP
+                  </th>
+                )}
+                {columnVis.productName && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[14%] whitespace-nowrap">
+                    Tên hàng hóa
+                  </th>
+                )}
+                {columnVis.exportQty && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap text-[11px]">
+                    Số lượng
+                  </th>
+                )}
+                {columnVis.exportPrice && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
+                    Giá xuất (VNĐ)
+                  </th>
+                )}
+                {columnVis.revenue && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
+                    Doanh thu (VNĐ)
+                  </th>
+                )}
+                {columnVis.importPrice && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
+                    Giá nhập (VNĐ)
+                  </th>
+                )}
+                {columnVis.totalCost && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
+                    Tổng vốn (VNĐ)
+                  </th>
+                )}
+                {columnVis.profit && (
+                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
+                    Lợi nhuận (VNĐ)
+                  </th>
+                )}
+                {columnVis.profitMargin && (
+                  <th className="px-2 py-2 text-center w-20 whitespace-nowrap">
+                    % Lợi nhuận
+                  </th>
+                )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 bg-white text-xs font-semibold text-slate-800">
+            <tbody className="divide-y divide-slate-200 bg-white text-sm font-medium text-slate-800 [&_td]:text-center">
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-500 font-semibold">
+                  <td colSpan={12} className="py-12 text-center text-slate-500 font-bold text-sm">
                     Đang tính toán dữ liệu báo cáo lợi nhuận theo hóa đơn...
                   </td>
                 </tr>
               ) : paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-500 font-semibold">
+                  <td colSpan={12} className="py-12 text-center text-slate-500 font-bold text-sm">
                     Không tìm thấy bản ghi hóa đơn phù hợp.
                   </td>
                 </tr>
@@ -407,86 +506,122 @@ export default function BillProfitReportPage() {
                   return (
                     <tr
                       key={item.id}
-                      className="group border-b border-slate-200 transition hover:bg-slate-50"
+                      className="group border-b border-slate-200 transition hover:bg-cyan-50/50"
                     >
-                      <td className="border-r border-slate-200 px-3 py-3 text-center font-bold text-slate-500">
+                      <td className="border-r border-slate-200 px-3.5 py-3 text-center font-medium text-slate-500 text-sm">
                         {globalIndex}
                       </td>
-                      <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-bold text-slate-800">
-                        {item.billCode}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-bold text-slate-700">
-                        {item.productCode}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3 font-bold text-slate-900">
-                        {item.productName}
-                      </td>
-                      <td className="border-r border-slate-200 px-3 py-3 text-right font-mono font-bold text-slate-800">
-                        {item.exportQty}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-700">
-                        {item.exportPrice.toLocaleString('vi-VN')}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-bold text-slate-900">
-                        {item.revenue.toLocaleString('vi-VN')}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-600">
-                        {item.importPrice.toLocaleString('vi-VN')}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-bold text-slate-800">
-                        {item.totalCost.toLocaleString('vi-VN')}
-                      </td>
-                      <td
-                        className={`border-r border-slate-200 px-4 py-3 text-right font-mono font-black ${
-                          isNegative ? 'text-rose-600' : 'text-emerald-600'
-                        }`}
-                      >
-                        {item.profit.toLocaleString('vi-VN')}
-                      </td>
-                      <td
-                        className={`px-3 py-3 text-right font-mono font-black ${
-                          isNegative ? 'text-rose-600' : 'text-emerald-600'
-                        }`}
-                      >
-                        {item.profitMargin.toFixed(2)}%
-                      </td>
+                      {columnVis.billCode && (
+                        <td className="border-r border-slate-200 px-3 py-3 text-center font-mono font-semibold text-slate-800 text-xs">
+                          {item.billCode}
+                        </td>
+                      )}
+                      {columnVis.branchName && (
+                        <td className="border-r border-slate-200 px-3 py-3 text-left font-semibold text-slate-800 text-xs">
+                          {item.branchName}
+                        </td>
+                      )}
+                      {columnVis.productCode && (
+                        <td className="border-r border-slate-200 px-3 py-3 text-center font-mono font-semibold text-slate-800 text-xs">
+                          {item.productCode}
+                        </td>
+                      )}
+                      {columnVis.productName && (
+                        <td className="border-r border-slate-200 px-4 py-3 font-semibold text-slate-900 text-sm">
+                          {item.productName}
+                        </td>
+                      )}
+                      {columnVis.exportQty && (
+                        <td className="border-r border-slate-200 px-3.5 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                          {fmt(item.exportQty)}
+                        </td>
+                      )}
+                      {columnVis.exportPrice && (
+                        <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                          {fmt(item.exportPrice)}
+                        </td>
+                      )}
+                      {columnVis.revenue && (
+                        <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                          {fmt(item.revenue)}
+                        </td>
+                      )}
+                      {columnVis.importPrice && (
+                        <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                          {fmt(item.importPrice)}
+                        </td>
+                      )}
+                      {columnVis.totalCost && (
+                        <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                          {fmt(item.totalCost)}
+                        </td>
+                      )}
+                      {columnVis.profit && (
+                        <td
+                          className={`border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-sm ${
+                            isNegative ? 'text-rose-600' : 'text-slate-800'
+                          }`}
+                        >
+                          {fmt(item.profit)}
+                        </td>
+                      )}
+                      {columnVis.profitMargin && (
+                        <td
+                          className={`px-4 py-3 text-right font-mono font-semibold text-sm ${
+                            isNegative ? 'text-rose-600' : 'text-slate-800'
+                          }`}
+                        >
+                          {item.profitMargin.toFixed(2)}%
+                        </td>
+                      )}
                     </tr>
                   );
                 })
               )}
             </tbody>
-            {/* TOTALS SUMMARY ROW */}
+
+            {/* TOTALS SUMMARY ROW WITH UNIFORM TEXT COLOR & BOLD WEIGHT */}
             {filteredData.length > 0 && (
               <tfoot>
-                <tr className="border-t-2 border-slate-300 bg-slate-200/80 font-black text-slate-900 text-xs">
-                  <td colSpan={4} className="p-3 text-right uppercase tracking-wider">
+                <tr className="border-t-2 border-cyan-200 bg-cyan-50/60 font-bold text-slate-800 text-sm">
+                  <td colSpan={labelColSpan} className="p-3.5 text-right uppercase tracking-wider font-bold text-slate-800 text-sm">
                     TỔNG CỘNG HÓA ĐƠN:
                   </td>
-                  <td className="p-3 text-right font-mono font-black text-slate-900">
-                    {totalExportQty.toLocaleString('vi-VN')}
-                  </td>
-                  <td className="p-3"></td>
-                  <td className="p-3 text-right font-mono font-black text-slate-900">
-                    {totalRevenue.toLocaleString('vi-VN')}
-                  </td>
-                  <td className="p-3"></td>
-                  <td className="p-3 text-right font-mono font-black text-slate-800">
-                    {totalCostSum.toLocaleString('vi-VN')}
-                  </td>
-                  <td
-                    className={`p-3 text-right font-mono font-black ${
-                      totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
-                    {totalProfitSum.toLocaleString('vi-VN')}
-                  </td>
-                  <td
-                    className={`p-3 text-right font-mono font-black ${
-                      overallMargin >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
-                    {overallMargin.toFixed(2)}%
-                  </td>
+                  {columnVis.exportQty && (
+                    <td className="p-3.5 text-right font-mono font-bold text-slate-800 text-sm border-r border-cyan-100">
+                      {fmt(totalExportQty)}
+                    </td>
+                  )}
+                  {columnVis.exportPrice && <td className="p-3.5 border-r border-cyan-100"></td>}
+                  {columnVis.revenue && (
+                    <td className="p-3.5 text-right font-mono font-bold text-slate-800 text-sm border-r border-cyan-100">
+                      {fmt(totalRevenue)}
+                    </td>
+                  )}
+                  {columnVis.importPrice && <td className="p-3.5 border-r border-cyan-100"></td>}
+                  {columnVis.totalCost && (
+                    <td className="p-3.5 text-right font-mono font-bold text-slate-800 text-sm border-r border-cyan-100">
+                      {fmt(totalCostSum)}
+                    </td>
+                  )}
+                  {columnVis.profit && (
+                    <td
+                      className={`p-3.5 text-right font-mono font-bold text-sm border-r border-cyan-100 ${
+                        totalProfitSum >= 0 ? 'text-slate-800' : 'text-rose-600'
+                      }`}
+                    >
+                      {fmt(totalProfitSum)}
+                    </td>
+                  )}
+                  {columnVis.profitMargin && (
+                    <td
+                      className={`p-3.5 text-right font-mono font-bold text-sm ${
+                        overallMargin >= 0 ? 'text-slate-800' : 'text-rose-600'
+                      }`}
+                    >
+                      {overallMargin.toFixed(2)}%
+                    </td>
+                  )}
                 </tr>
               </tfoot>
             )}
@@ -495,62 +630,131 @@ export default function BillProfitReportPage() {
 
         {/* PAGINATION FOOTER ATTACHED */}
         {totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-white px-6 py-3 sm:flex-row text-xs font-extrabold text-slate-700">
+          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-white px-5 py-3 sm:flex-row text-xs font-bold text-slate-700">
             <div className="font-semibold text-slate-600">
-              Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
+              Hiển thị <span className="font-bold text-slate-900">{startIndex} - {endIndex}</span> trong tổng số <span className="font-bold text-slate-900">{totalItems}</span> bản ghi
             </div>
-            <div className="mt-4 flex items-center gap-2 sm:mt-0">
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer"
-              >
-                <option value={10}>10 dòng / trang</option>
-                <option value={20}>20 dòng / trang</option>
-                <option value={50}>50 dòng / trang</option>
-                <option value={100}>100 dòng / trang</option>
-              </select>
+            <div className="mt-3 flex items-center gap-3 sm:mt-0">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 font-bold">Hiển thị:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                >
+                  <option value={10}>10 dòng/trang</option>
+                  <option value={20}>20 dòng/trang</option>
+                  <option value={50}>50 dòng/trang</option>
+                  <option value={100}>100 dòng/trang</option>
+                </select>
+              </div>
 
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() => setCurrentPage(1)}
                   disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                  title="Trang đầu"
                 >
-                  «
+                  <ChevronsLeft className="h-4 w-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                  title="Trang trước"
                 >
-                  ‹
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
-                <span className="px-3 py-1 font-extrabold text-slate-800 bg-slate-100 rounded-lg">
+                <span className="px-3 py-1 font-bold text-slate-800 bg-slate-100 rounded-lg text-xs">
                   {currentPage} / {totalPages}
                 </span>
                 <button
+                  type="button"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                  title="Trang sau"
                 >
-                  ›
+                  <ChevronRight className="h-4 w-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                  title="Trang cuối"
                 >
-                  »
+                  <ChevronsRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* ═══ COLUMN VISIBILITY SETTINGS MODAL ═══ */}
+      {showColumnSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2 uppercase tracking-wide">
+                <SlidersHorizontal className="h-5 w-5 text-cyan-600" /> Cấu hình hiển thị cột
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowColumnSettings(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+              {[
+                { key: 'billCode', label: 'Mã Hóa Đơn' },
+                { key: 'branchName', label: 'Chi Nhánh' },
+                { key: 'productCode', label: 'Mã Sản Phẩm' },
+                { key: 'productName', label: 'Tên Hàng Hóa' },
+                { key: 'exportQty', label: 'Số Xuất' },
+                { key: 'exportPrice', label: 'Giá Xuất' },
+                { key: 'revenue', label: 'Doanh Thu' },
+                { key: 'importPrice', label: 'Giá Nhập' },
+                { key: 'totalCost', label: 'Tổng Vốn' },
+                { key: 'profit', label: 'Lợi Nhuận' },
+                { key: 'profitMargin', label: '% Lợi Nhuận' },
+              ].map((col) => (
+                <label key={col.key} className="flex items-center justify-between rounded-xl bg-slate-50 p-3 hover:bg-cyan-50/50 cursor-pointer transition">
+                  <span className="text-xs font-bold text-slate-800">{col.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={(columnVis as any)[col.key]}
+                    onChange={(e) =>
+                      setColumnVis((prev) => ({ ...prev, [col.key]: e.target.checked }))
+                    }
+                    className="h-4 w-4 rounded-md border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowColumnSettings(false)}
+                className="rounded-xl bg-cyan-600 px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-cyan-700 transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

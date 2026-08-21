@@ -40,6 +40,7 @@ import ProfilePage from './features/user-management/pages/ProfilePage';
 import SupplierProfilePage from './features/supplier-portal/pages/SupplierProfilePage';
 import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
 import Inbound from './features/inbound/Inbound';
+import ReturnSupplierPage from './features/inbound/pages/ReturnSupplierPage';
 import InboundSectionPlaceholderPage from './features/inbound/pages/InboundSectionPlaceholderPage';
 import StockInOrdersPage from './features/inbound/pages/StockInOrdersPage';
 import CreateStockInOrderPage from './features/inbound/pages/CreateStockInOrderPage';
@@ -375,7 +376,7 @@ function App() {
           element={
             <RoleRoute menuId="inbound-purchase-orders">
               <MainLayout>
-                <Inbound featureMode="purchase-order" title="DANH SÁCH ĐƠN ĐẶT HÀNG NHÀ CUNG CẤP" codePrefix="PO" partnerLabel="Nhà cung cấp" />
+                <PurchaseOrdersPage />
               </MainLayout>
             </RoleRoute>
           }
@@ -385,7 +386,7 @@ function App() {
           element={
             <RoleRoute menuId="inbound-return-requests">
               <MainLayout>
-                <Inbound featureMode="return-supplier" title="DANH SÁCH PHIẾU XUẤT TRẢ NHÀ CUNG CẤP" codePrefix="XNCC" partnerLabel="Nhà cung cấp" />
+                <ReturnSupplierPage />
               </MainLayout>
             </RoleRoute>
           }
