@@ -153,7 +153,10 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
   if (isAdmin) {
     return <>{children}</>;
   }
-  if (menuId && !canViewMenu(menuId)) {
+  if (menuId) {
+    if (canViewMenu(menuId)) {
+      return <>{children}</>;
+    }
     return (
       <MainLayout>
         <AccessDenied />
@@ -298,15 +301,15 @@ function App() {
         <Route
           path="/personnel"
           element={
-            <RoleRoute allowedRoles={['admin']} menuId="personnel">
+            <RoleRoute menuId="personnel">
               <MainLayout>
                 <Personnel />
               </MainLayout>
             </RoleRoute>
           }
         />
-        <Route path="/personnel/permission-groups" element={<RoleRoute allowedRoles={['admin']} menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
-        <Route path="/personnel/teams" element={<RoleRoute allowedRoles={['admin']} menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
+        <Route path="/personnel/permission-groups" element={<RoleRoute menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
+        <Route path="/personnel/teams" element={<RoleRoute menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
         <Route
           path="/customers"
           element={
