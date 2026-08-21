@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import CreateStockInOrderPage from './pages/CreateStockInOrderPage';
+import CreateOutboundOrderPage from '../outbound/pages/CreateOutboundOrderPage';
 import {
   Search,
   Plus,
@@ -79,7 +80,7 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   );
 }
 
-// ─── STATUS BADGE (Nhập Kho) ───────────────────────────────────
+// ─── STATUS BADGE (Nhập Kho & Xuất Trả NCC) ─────────────────────
 
 const INBOUND_STATUS_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
   'completed': { label: 'Đã nhập kho', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
@@ -97,8 +98,23 @@ const INBOUND_STATUS_MAP: Record<string, { label: string; color: string; bg: str
   'CANCELLED': { label: 'Đã hủy', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
 };
 
-function StatusBadge({ status }: { status?: string }) {
-  const config = INBOUND_STATUS_MAP[status || ''] || INBOUND_STATUS_MAP['completed'];
+const RETURN_SUPPLIER_STATUS_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  'completed': { label: 'Đã xuất trả', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  'Đã xuất trả': { label: 'Đã xuất trả', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  'RECEIVED': { label: 'Đã xuất trả', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  'SHIPPED': { label: 'Đã xuất trả', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+  'pending': { label: 'Chờ xuất trả', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+  'Chờ xuất trả': { label: 'Chờ xuất trả', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+  'Chờ xử lý': { label: 'Chờ xuất trả', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+  'DRAFT': { label: 'Đơn nháp', color: 'text-slate-700', bg: 'bg-slate-100', border: 'border-slate-300' },
+  'approved': { label: 'Đã duyệt', color: 'text-cyan-700', bg: 'bg-cyan-50', border: 'border-cyan-200' },
+  'cancelled': { label: 'Đã hủy', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+};
+
+function StatusBadge({ status, featureMode }: { status?: string; featureMode?: string }) {
+  const isReturnSupplier = featureMode === 'return-supplier';
+  const map = isReturnSupplier ? RETURN_SUPPLIER_STATUS_MAP : INBOUND_STATUS_MAP;
+  const config = map[status || ''] || map['completed'];
   return (
     <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold border ${config.color} ${config.bg} ${config.border}`}>
       {config.label}
@@ -209,6 +225,8 @@ export interface InboundReceiptOrder {
     unit?: string;
     qty: number;
     price: number;
+    discountPercent?: number;
+    vatPercent?: number;
     totalLineAmount?: number;
     warehouseCode?: string;
     locationBin?: string;
@@ -249,6 +267,8 @@ const DEFAULT_FALLBACK_SUPPLIERS: SupplierOption[] = [];
 const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [];
 
 const DEFAULT_FALLBACK_ORDERS: InboundReceiptOrder[] = [];
+
+const DEFAULT_RETURN_SUPPLIER_ORDERS: InboundReceiptOrder[] = [];
 
 function makeEmptyRow(index: number): FormDetailRow {
   return {
@@ -427,7 +447,6 @@ export default function Inbound({
     code: true,
     date: true,
     supplierName: true,
-    supplierAddress: true,
     supplierPhone: true,
     subtotal: true,
     discount: true,
@@ -444,7 +463,6 @@ export default function Inbound({
     { key: 'code', label: 'Mã' },
     { key: 'date', label: 'Ngày' },
     { key: 'supplierName', label: 'Tên NCC' },
-    { key: 'supplierAddress', label: 'Địa chỉ' },
     { key: 'supplierPhone', label: 'Tel' },
     { key: 'subtotal', label: 'Thành tiền' },
     { key: 'discount', label: 'CK' },
@@ -479,56 +497,167 @@ export default function Inbound({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const isReturnSupplier = featureMode === 'return-supplier';
+      const orderEndpoint = isReturnSupplier
+        ? `${API_BASE_URL}/outbounds`
+        : `${API_BASE_URL}/inbound/purchase-orders`;
+
       const [ordRes, supRes, prodRes, userRes, whRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers: authHeaders() }).catch(() => null),
+        fetch(orderEndpoint, { headers: authHeaders() }).catch(() => null),
         fetch(`${API_BASE_URL}/suppliers`, { headers: authHeaders() }).catch(() => null),
         fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(() => null),
         fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(() => null),
         fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
       ]);
 
+      let formatted: InboundReceiptOrder[] = [];
+
       if (ordRes && ordRes.ok) {
         const raw = await ordRes.json();
         const list = Array.isArray(raw) ? raw : raw.data || [];
         if (list.length > 0) {
-          const formatted: InboundReceiptOrder[] = list.map((item: any, idx: number) => ({
-            id: String(item.id || idx),
-            receiptNo: item.poNumber || item.receiptNo || `PNK-${1000 + idx}`,
-            supplier: item.supplierName || item.supplier?.name || 'Nhà cung cấp',
-            supplierId: item.supplierId || item.supplier?.id,
-            supplierPhone: item.supplier?.phone || '',
-            supplierAddress: item.supplier?.address || '',
-            warehouseCode: item.warehouseCode || item.details?.[0]?.warehouseCode || item.warehouse?.code || item.warehouseId || 'KHO-NVL',
-            employeeName: item.creatorName || currentUserName,
-            orderDate: item.orderDate || item.createdAt ? new Date(item.orderDate || item.createdAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN'),
-            expectedDate: item.expectedDate ? new Date(item.expectedDate).toLocaleString('vi-VN') : '',
-            status: item.status || 'completed',
-            subtotal: Number(item.subtotal || item.totalAmount || 0),
-            discount: Number(item.discount || 0),
-            vatRate: Number(item.vatRate || 0),
-            vatAmount: Number(item.vatAmount || 0),
-            totalAmount: Number(item.totalAmount || 0),
-            amountPaid: Number(item.amountPaid !== undefined ? item.amountPaid : item.totalAmount || 0),
-            itemsCount: item.details?.length || item.items || 1,
-            totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.expectedQty || d.receivedQty || d.qty || 1)), 0) || 1,
-            details: item.details?.map((d: any) => ({
-              id: d.id,
-              productId: d.productId || d.product?.id,
-              productSku: d.product?.internalSku || d.sku || d.productSku || 'SKU',
-              productName: d.product?.name || d.productName || 'Sản phẩm',
-              unit: d.product?.unit || d.unit || 'Cái',
-              qty: Number(d.receivedQty || d.expectedQty || d.qty || 1),
-              price: Number(d.unitPrice || d.price || 0),
-              discountPercent: Number(d.discountPercent || 0),
-              vatPercent: Number(d.vatPercent || 0),
-              totalLineAmount: Number(d.totalLineAmount || (Number(d.expectedQty || d.receivedQty || d.qty || 1) * Number(d.unitPrice || d.price || 0)) || 0),
-            })) || [],
-          }));
-          setOrders(formatted);
-        } else {
-          setOrders(DEFAULT_FALLBACK_ORDERS);
+          if (isReturnSupplier) {
+            const returnList = list.filter((item: any) => {
+              const code = String(item.orderNo || item.receiptNo || item.orderCode || '').toUpperCase();
+              if (code.startsWith('PNK')) return false;
+              return (
+                item.orderType === 'return-supplier' ||
+                item.receiptType === 'return-supplier' ||
+                code.startsWith('XNCC') ||
+                code.startsWith('PXTR')
+              );
+            });
+
+            formatted = returnList.map((item: any, idx: number) => ({
+              id: String(item.id || `ret_${idx}`),
+              receiptNo: item.orderNo || item.receiptNo || `XNCC-${2000 + idx}`,
+              supplier: item.customer || item.supplier || item.supplierName || 'Nhà cung cấp',
+              supplierId: item.customerId || item.supplierId,
+              supplierPhone: item.customerPhone || item.supplierPhone || '',
+              supplierAddress: item.customerAddress || item.supplierAddress || '',
+              warehouseCode: item.branchCode || item.warehouseCode || 'KHO-TONG',
+              employeeName: item.employeeName || item.creatorName || currentUserName,
+              orderDate: item.orderDate || (item.createdAt ? new Date(item.createdAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN')),
+              expectedDate: item.expectedDate || '',
+              status: item.status || 'completed',
+              subtotal: Number(item.subtotal || item.totalAmount || 0),
+              discount: Number(item.discount || 0),
+              vatRate: Number(item.vatRate || 0),
+              vatAmount: Number(item.vatAmount || 0),
+              totalAmount: Number(item.totalAmount || 0),
+              amountPaid: Number(item.amountPaid !== undefined ? item.amountPaid : item.totalAmount || 0),
+              itemsCount: item.details?.length || 1,
+              totalQty: item.details?.reduce((s: number, d: any) => s + Number(d.qty || 1), 0) || 1,
+              details: (item.details || []).map((d: any) => ({
+                id: d.id || d.rowId,
+                productId: d.productId,
+                productSku: d.productSku || d.sku || 'SKU',
+                productName: d.productName || d.name || 'Sản phẩm',
+                unit: d.unit || 'Cái',
+                qty: Number(d.qty || 1),
+                price: Number(d.price || d.unitPrice || 0),
+                discountPercent: Number(d.discountPercent || 0),
+                vatPercent: Number(d.vatPercent || 0),
+                totalLineAmount: Number(d.totalAmount || d.totalLineAmount || 0),
+              })),
+            }));
+          } else {
+            formatted = list.map((item: any, idx: number) => ({
+              id: String(item.id || idx),
+              receiptNo: item.poNumber || item.receiptNo || `PNK-${1000 + idx}`,
+              supplier: item.supplierName || item.supplier?.name || 'Nhà cung cấp',
+              supplierId: item.supplierId || item.supplier?.id,
+              supplierPhone: item.supplier?.phone || '',
+              supplierAddress: item.supplier?.address || '',
+              warehouseCode: item.warehouseCode || item.details?.[0]?.warehouseCode || item.warehouse?.code || item.warehouseId || 'KHO-NVL',
+              employeeName: item.creatorName || currentUserName,
+              orderDate: item.orderDate || item.createdAt ? new Date(item.orderDate || item.createdAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN'),
+              expectedDate: item.expectedDate ? new Date(item.expectedDate).toLocaleString('vi-VN') : '',
+              status: item.status || 'completed',
+              subtotal: Number(item.subtotal || item.totalAmount || 0),
+              discount: Number(item.discount || 0),
+              vatRate: Number(item.vatRate || 0),
+              vatAmount: Number(item.vatAmount || 0),
+              totalAmount: Number(item.totalAmount || 0),
+              amountPaid: Number(item.amountPaid !== undefined ? item.amountPaid : item.totalAmount || 0),
+              itemsCount: item.details?.length || item.items || 1,
+              totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.expectedQty || d.receivedQty || d.qty || 1)), 0) || 1,
+              details: item.details?.map((d: any) => ({
+                id: d.id,
+                productId: d.productId || d.product?.id,
+                productSku: d.product?.internalSku || d.sku || d.productSku || 'SKU',
+                productName: d.product?.name || d.productName || 'Sản phẩm',
+                unit: d.product?.unit || d.unit || 'Cái',
+                qty: Number(d.receivedQty || d.expectedQty || d.qty || 1),
+                price: Number(d.unitPrice || d.price || 0),
+                discountPercent: Number(d.discountPercent || 0),
+                vatPercent: Number(d.vatPercent || 0),
+                totalLineAmount: Number(d.totalLineAmount || (Number(d.expectedQty || d.receivedQty || d.qty || 1) * Number(d.unitPrice || d.price || 0)) || 0),
+              })) || [],
+            }));
+          }
         }
       }
+
+      // Merge local stored outbound orders for return supplier
+      if (isReturnSupplier) {
+        try {
+          const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+          if (storedOutboundStr) {
+            const storedOutbound = JSON.parse(storedOutboundStr);
+            if (Array.isArray(storedOutbound)) {
+              const returnOrders = storedOutbound.filter((ord: any) =>
+                String(ord.orderNo || ord.orderCode || '').startsWith('XNCC') ||
+                ord.receiptType === 'return-supplier' ||
+                ord.orderType === 'return-supplier' ||
+                ord.partnerLabel === 'Nhà cung cấp'
+              );
+              returnOrders.forEach((item: any, idx: number) => {
+                if (!formatted.some(f => f.receiptNo === (item.orderNo || item.orderCode))) {
+                  formatted.unshift({
+                    id: String(item.id || `xncc_${idx}`),
+                    receiptNo: item.orderNo || item.orderCode || `XNCC-${1000 + idx}`,
+                    supplier: item.customer || item.supplier || 'Nhà cung cấp',
+                    supplierId: item.customerId || item.supplierId,
+                    supplierPhone: item.customerPhone || item.supplierPhone || '',
+                    supplierAddress: item.customerAddress || item.supplierAddress || '',
+                    warehouseCode: item.branchCode || item.warehouseCode || 'KHO-TONG',
+                    employeeName: item.employeeName || currentUserName,
+                    orderDate: item.orderDate || new Date().toLocaleString('vi-VN'),
+                    expectedDate: item.expectedDate || '',
+                    status: 'completed',
+                    subtotal: Number(item.subtotal || item.totalAmount || 0),
+                    discount: Number(item.discount || 0),
+                    vatRate: Number(item.vatRate || 0),
+                    vatAmount: Number(item.vatAmount || 0),
+                    totalAmount: Number(item.totalAmount || item.amountPaid || 0),
+                    amountPaid: Number(item.amountPaid || item.totalAmount || 0),
+                    itemsCount: item.details?.length || 1,
+                    totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.qty || 1)), 0) || 1,
+                    details: (item.details || []).map((d: any) => ({
+                      id: d.rowId || d.id,
+                      productId: d.productId,
+                      productSku: d.productSku || 'SKU',
+                      productName: d.productName || 'Sản phẩm',
+                      unit: d.unit || 'Cái',
+                      qty: Number(d.qty || 1),
+                      price: Number(d.price || 0),
+                      discountPercent: Number(d.discountPercent || 0),
+                      vatPercent: Number(d.vatPercent || 0),
+                      totalLineAmount: Number(d.totalAmount || 0),
+                    })),
+                  });
+                }
+              });
+            }
+          }
+        } catch (eLocal) {}
+      }
+
+      if (formatted.length === 0) {
+        formatted = isReturnSupplier ? DEFAULT_RETURN_SUPPLIER_ORDERS : DEFAULT_FALLBACK_ORDERS;
+      }
+      setOrders(formatted);
 
       if (supRes && supRes.ok) {
         const sData = await supRes.json();
@@ -1192,6 +1321,19 @@ export default function Inbound({
   }, [filteredOrders, currentPage, pageSize]);
 
   if (showFormModal) {
+    if (featureMode === 'return-supplier') {
+      return (
+        <CreateOutboundOrderPage
+          standalone={false}
+          featureMode="return-supplier"
+          orderType="return-supplier"
+          title="TẠO PHIẾU XUẤT TRẢ NHÀ CUNG CẤP"
+          codePrefix="XNCC"
+          partnerLabel="Nhà cung cấp"
+          onBack={handleCloseFormModal}
+        />
+      );
+    }
     return <CreateStockInOrderPage standalone={false} onBack={handleCloseFormModal} />;
   }
 
@@ -1270,7 +1412,7 @@ export default function Inbound({
                 <button
                   type="button"
                   onClick={() => {
-                    const header = ['STT', 'Kho', 'NV', 'Mã Phiếu', 'Ngày Nhập', 'Nhà Cung Cấp', 'Địa Chỉ', 'SĐT', 'Thành Tiền', 'Chiết Khấu', 'VAT', 'Tổng Tiền', 'Thanh Toán', 'Trạng Thái'];
+                    const header = ['STT', 'Kho', 'NV', 'Mã Phiếu', 'Ngày Nhập', 'Nhà Cung Cấp', 'SĐT', 'Thành Tiền', 'Chiết Khấu', 'VAT', 'Tổng Tiền', 'Thanh Toán', 'Trạng Thái'];
                     const rows = filteredOrders.map((o, idx) => [
                       idx + 1,
                       formatWarehouseDisplay(o.warehouseCode, warehouses),
@@ -1278,7 +1420,6 @@ export default function Inbound({
                       o.receiptNo,
                       o.orderDate,
                       o.supplier,
-                      o.supplierAddress || '',
                       o.supplierPhone || '',
                       o.subtotal || o.totalAmount,
                       o.discount || 0,
@@ -1329,7 +1470,7 @@ export default function Inbound({
           {/* Filter & Search Panel */}
           <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              {/* Search input - Matching height (h-12) with Date & Status filters */}
+              {/* Search input */}
               <div className="relative flex-1 min-w-[320px]">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600" />
                 <input
@@ -1337,7 +1478,7 @@ export default function Inbound({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="h-12 w-full rounded-xl border-2 border-cyan-600/40 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
-                  placeholder="Tìm theo mã phiếu nhập, nhà cung cấp, SĐT, nhân viên..."
+                  placeholder={featureMode === 'return-supplier' ? "Tìm theo mã phiếu xuất trả, nhà cung cấp, SĐT, nhân viên..." : "Tìm theo mã phiếu nhập, nhà cung cấp, SĐT, nhân viên..."}
                 />
               </div>
 
@@ -1379,8 +1520,8 @@ export default function Inbound({
                     className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                   >
                     <option value="all">Tất cả</option>
-                    <option value="completed">Đã nhập kho</option>
-                    <option value="pending">Chờ xử lý</option>
+                    <option value="completed">{featureMode === 'return-supplier' ? 'Đã xuất trả' : 'Đã nhập kho'}</option>
+                    <option value="pending">{featureMode === 'return-supplier' ? 'Chờ xuất trả' : 'Chờ xử lý'}</option>
                     <option value="approved">Đã duyệt</option>
                     <option value="cancelled">Đã hủy</option>
                   </select>
@@ -1404,18 +1545,17 @@ export default function Inbound({
                       />
                     </th>
                     <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
-                    {columnVis.code && <th className="min-w-[210px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">Mã phiếu</th>}
-                    {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">Ngày nhập</th>}
+                    {columnVis.code && <th className="min-w-[210px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">{featureMode === 'return-supplier' ? 'Mã phiếu xuất' : 'Mã phiếu'}</th>}
+                    {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Ngày xuất' : 'Ngày nhập'}</th>}
                     {columnVis.supplierName && <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">Nhà cung cấp</th>}
                     {columnVis.supplierPhone && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">SĐT</th>}
-                    {columnVis.supplierAddress && <th className="min-w-[240px] border-r border-slate-200 px-4 py-4 text-center">Địa chỉ</th>}
-                    {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Kho</th>}
-                    {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Nhân viên</th>}
+                    {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Kho xuất' : 'Kho'}</th>}
+                    {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'NV xuất' : 'Nhân viên'}</th>}
                     {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Thành tiền</th>}
                     {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 px-3 py-4 text-center">Chiết khấu</th>}
                     {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">VAT</th>}
-                    {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Tổng tiền</th>}
-                    {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Thanh toán</th>}
+                    {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Tổng tiền trả' : 'Tổng tiền'}</th>}
+                    {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'NCC hoàn tiền' : 'Thanh toán'}</th>}
                     {columnVis.note && <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Ghi chú</th>}
                     {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>}
                     <th className="sticky right-0 top-0 z-30 w-56 min-w-[210px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
@@ -1424,14 +1564,14 @@ export default function Inbound({
                 <tbody className="divide-y divide-slate-200 bg-white">
                   {loading ? (
                     <tr>
-                      <td colSpan={17} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                        Đang tải danh sách phiếu nhập kho...
+                      <td colSpan={16} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                        {featureMode === 'return-supplier' ? 'Đang tải danh sách phiếu xuất trả nhà cung cấp...' : 'Đang tải danh sách phiếu nhập kho...'}
                       </td>
                     </tr>
                   ) : paginatedOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={17} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                        Không tìm thấy phiếu nhập kho nào
+                      <td colSpan={16} className="py-12 text-center text-slate-500 font-semibold text-sm">
+                        {featureMode === 'return-supplier' ? 'Không tìm thấy phiếu xuất trả nhà cung cấp nào' : 'Không tìm thấy phiếu nhập kho nào'}
                       </td>
                     </tr>
                   ) : (
@@ -1469,7 +1609,6 @@ export default function Inbound({
                             {columnVis.date && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.orderDate}</td>}
                             {columnVis.supplierName && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-slate-800">{ord.supplier}</td>}
                             {columnVis.supplierPhone && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.supplierPhone || '-'}</td>}
-                            {columnVis.supplierAddress && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-700 max-w-[240px] truncate" title={ord.supplierAddress}>{ord.supplierAddress || '-'}</td>}
                             {columnVis.branch && (
                               <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
                                 {formatWarehouseDisplay(ord.warehouseCode, warehouses)}
@@ -1627,7 +1766,7 @@ export default function Inbound({
                 </div>
                 <div className="border-l-2 border-slate-300 pl-3 text-sm font-semibold text-slate-600">
                   Hiển thị <span className="font-extrabold text-slate-900">{filteredOrders.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}</span> -{' '}
-                  <span className="font-extrabold text-slate-900">{Math.min(currentPage * pageSize, filteredOrders.length)}</span> trên tổng <span className="font-black text-cyan-800">{filteredOrders.length}</span> phiếu nhập
+                  <span className="font-extrabold text-slate-900">{Math.min(currentPage * pageSize, filteredOrders.length)}</span> trên tổng <span className="font-black text-cyan-800">{filteredOrders.length}</span> {featureMode === 'return-supplier' ? 'phiếu xuất trả' : 'phiếu nhập'}
                 </div>
               </div>
 
@@ -1793,7 +1932,9 @@ export default function Inbound({
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black uppercase text-slate-900">Chi tiết Phiếu Nhập Kho #{selectedOrder.receiptNo}</h2>
+              <h2 className="text-base font-black uppercase text-slate-900">
+                {featureMode === 'return-supplier' ? `Chi tiết Phiếu Xuất Trả Nhà Cung Cấp #${selectedOrder.receiptNo}` : `Chi tiết Phiếu Nhập Kho #${selectedOrder.receiptNo}`}
+              </h2>
               <button onClick={() => setShowDetailModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
                 <X size={20} />
               </button>
@@ -1801,9 +1942,9 @@ export default function Inbound({
             <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-semibold text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <div><span className="text-slate-400 block text-[10px] uppercase">Nhà cung cấp</span> <span className="font-bold text-slate-900">{selectedOrder.supplier}</span></div>
-                <div><span className="text-slate-400 block text-[10px] uppercase">Kho nhập chính</span> <span className="font-bold text-cyan-800">{formatWarehouseDisplay(selectedOrder.warehouseCode, warehouses)}</span></div>
-                <div><span className="text-slate-400 block text-[10px] uppercase">Ngày lập</span> <span className="font-semibold text-slate-800">{selectedOrder.orderDate}</span></div>
-                <div><span className="text-slate-400 block text-[10px] uppercase">Trạng thái</span> <StatusBadge status={selectedOrder.status} /></div>
+                <div><span className="text-slate-400 block text-[10px] uppercase">{featureMode === 'return-supplier' ? 'Kho xuất trả' : 'Kho nhập chính'}</span> <span className="font-bold text-cyan-800">{formatWarehouseDisplay(selectedOrder.warehouseCode, warehouses)}</span></div>
+                <div><span className="text-slate-400 block text-[10px] uppercase">{featureMode === 'return-supplier' ? 'Ngày xuất' : 'Ngày lập'}</span> <span className="font-semibold text-slate-800">{selectedOrder.orderDate}</span></div>
+                <div><span className="text-slate-400 block text-[10px] uppercase">Trạng thái</span> <StatusBadge status={selectedOrder.status} featureMode={featureMode} /></div>
               </div>
               <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[400px] overflow-y-auto">
                 <table className="w-full text-xs text-left">
@@ -1811,7 +1952,7 @@ export default function Inbound({
                     <tr>
                       <th className="p-2.5">Mã SKU</th>
                       <th className="p-2.5">Tên sản phẩm</th>
-                      <th className="p-2.5 text-center">Vị trí Kho & Ô Kệ</th>
+                      <th className="p-2.5 text-center">{featureMode === 'return-supplier' ? 'Vị trí Kho lấy xuất' : 'Vị trí Kho & Ô Kệ'}</th>
                       <th className="p-2.5 text-center">ĐVT</th>
                       <th className="p-2.5 text-center">SL</th>
                       <th className="p-2.5 text-right">Đơn giá</th>
@@ -1839,7 +1980,7 @@ export default function Inbound({
                     ) : (
                       <tr>
                         <td colSpan={7} className="p-6 text-center text-slate-400 font-medium">
-                          Chưa có sản phẩm trong đơn nhập
+                          {featureMode === 'return-supplier' ? 'Chưa có sản phẩm trong đơn xuất trả' : 'Chưa có sản phẩm trong đơn nhập'}
                         </td>
                       </tr>
                     )}
@@ -1856,9 +1997,9 @@ export default function Inbound({
                   className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition cursor-pointer"
                 >
                   <MapPin size={15} />
-                  <span>Xem sơ đồ vị trí ô kệ</span>
+                  <span>{featureMode === 'return-supplier' ? 'Xem sơ đồ vị trí lấy hàng' : 'Xem sơ đồ vị trí ô kệ'}</span>
                 </button>
-                <span>Tổng giá trị: {selectedOrder.totalAmount.toLocaleString('vi-VN')} đ</span>
+                <span>{featureMode === 'return-supplier' ? `Tổng giá trị xuất trả: ${selectedOrder.totalAmount.toLocaleString('vi-VN')} đ` : `Tổng giá trị: ${selectedOrder.totalAmount.toLocaleString('vi-VN')} đ`}</span>
               </div>
             </div>
           </div>
@@ -1876,7 +2017,7 @@ export default function Inbound({
                 </div>
                 <div>
                   <h2 className="text-base font-black uppercase text-slate-900">
-                    Vị Trí Sắp Xếp Kho & Ô Kệ — #{selectedOrder.receiptNo}
+                    {featureMode === 'return-supplier' ? `Vị Trí Hàng Hóa Xuất Trả Kho & Ô Kệ — #${selectedOrder.receiptNo}` : `Vị Trí Sắp Xếp Kho & Ô Kệ — #${selectedOrder.receiptNo}`}
                   </h2>
                   <p className="text-xs text-slate-500 font-medium">
                     Nhà cung cấp: <span className="font-bold text-slate-700">{selectedOrder.supplier}</span> | Ngày lập: {selectedOrder.orderDate}
@@ -1894,12 +2035,12 @@ export default function Inbound({
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                 <div className="rounded-xl bg-cyan-50/70 p-3 border border-cyan-200">
-                  <span className="text-slate-500 font-semibold block">Kho tiếp nhận chính:</span>
+                  <span className="text-slate-500 font-semibold block">{featureMode === 'return-supplier' ? 'Kho xuất trả chính:' : 'Kho tiếp nhận chính:'}</span>
                   <span className="font-black text-cyan-900 text-sm">{formatWarehouseDisplay(selectedOrder.warehouseCode, warehouses)}</span>
                 </div>
                 <div className="rounded-xl bg-emerald-50/70 p-3 border border-emerald-200">
                   <span className="text-slate-500 font-semibold block">Trạng thái phiếu:</span>
-                  <StatusBadge status={selectedOrder.status} />
+                  <StatusBadge status={selectedOrder.status} featureMode={featureMode} />
                 </div>
                 <div className="rounded-xl bg-slate-50 p-3 border border-slate-200">
                   <span className="text-slate-500 font-semibold block">Tổng sản phẩm:</span>
@@ -1914,7 +2055,7 @@ export default function Inbound({
                       <th className="p-3">Mã SKU</th>
                       <th className="p-3">Tên sản phẩm</th>
                       <th className="p-3 text-center">Kho lưu trữ</th>
-                      <th className="p-3 text-center">Vị trí Ô Kệ (Bin Allocation)</th>
+                      <th className="p-3 text-center">{featureMode === 'return-supplier' ? 'Vị trí Ô Kệ lấy xuất (Bin Location)' : 'Vị trí Ô Kệ (Bin Allocation)'}</th>
                       <th className="p-3 text-center">Số lượng</th>
                       <th className="p-3">Ghi chú vị trí</th>
                     </tr>
@@ -1989,19 +2130,23 @@ export default function Inbound({
         <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black text-slate-900">Xem trước Phiếu Nhập Kho</h2>
+              <h2 className="text-base font-black text-slate-900">
+                {featureMode === 'return-supplier' ? 'Xem trước Phiếu Xuất Trả Nhà Cung Cấp' : 'Xem trước Phiếu Nhập Kho'}
+              </h2>
               <button onClick={() => setShowPrintModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
                 <X size={20} />
               </button>
             </div>
             <div className="p-4 border border-slate-300 rounded-xl space-y-3 text-xs">
               <div className="text-center">
-                <h2 className="text-base font-black uppercase text-slate-900">PHIẾU NHẬP KHO HÀNG HÓA</h2>
+                <h2 className="text-base font-black uppercase text-slate-900">
+                  {featureMode === 'return-supplier' ? 'PHIẾU XUẤT TRẢ NHÀ CUNG CẤP' : 'PHIẾU NHẬP KHO HÀNG HÓA'}
+                </h2>
                 <p className="text-slate-500">Mã phiếu: {selectedOrder.receiptNo} - Ngày: {selectedOrder.orderDate}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 font-semibold">
                 <p>Nhà cung cấp: {selectedOrder.supplier}</p>
-                <p>Kho nhập: {formatWarehouseDisplay(selectedOrder.warehouseCode, warehouses)}</p>
+                <p>{featureMode === 'return-supplier' ? 'Kho xuất:' : 'Kho nhập:'} {formatWarehouseDisplay(selectedOrder.warehouseCode, warehouses)}</p>
                 <p>SĐT: {selectedOrder.supplierPhone || '-'}</p>
                 <p>Người lập: {selectedOrder.employeeName}</p>
               </div>
@@ -2029,7 +2174,7 @@ export default function Inbound({
                   ))}
                 </tbody>
               </table>
-              <div className="text-right font-black text-sm">Tổng tiền: {selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ</div>
+              <div className="text-right font-black text-sm">Tong tiền: {selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ</div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer">

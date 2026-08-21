@@ -260,38 +260,22 @@ export default function CustomerProfitReportPage() {
         </div>
       </div>
 
-      {/* ═══ 3 STAT OVERVIEW CARDS - CLEAN WHITE ═══ */}
+      {/* ═══ 3 BUTTON TỔNG HỢP (LẤY MẪU TỪ TRANG HÀNG HÓA) ═══ */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG DOANH THU KHÁCH HÀNG</p>
-            <p className="text-lg font-black text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-slate-100 p-2 text-slate-700">
-            <DollarSign size={22} />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG DOANH THU KHÁCH HÀNG: <span className="text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</span>
+          </p>
         </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG VỐN HÀNG XUẤT KHÁCH HÀNG</p>
-            <p className="text-lg font-black text-slate-700">{totalCostSum.toLocaleString('vi-VN')} đ</p>
-          </div>
-          <div className="rounded-xl bg-slate-100 p-2 text-slate-700">
-            <BarChart3 size={22} />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG VỐN HÀNG XUẤT: <span className="text-slate-900">{totalCostSum.toLocaleString('vi-VN')} đ</span>
+          </p>
         </div>
-
-        <div className="flex h-[72px] items-center justify-between rounded-2xl border-2 border-slate-200 bg-white px-5 shadow-sm transition hover:bg-slate-50">
-          <div>
-            <p className="text-xs font-bold text-slate-500 uppercase">TỔNG LỢI NHUẬN KHÁCH HÀNG</p>
-            <p className={`text-lg font-black ${totalProfitSum >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)
-            </p>
-          </div>
-          <div className={`rounded-xl p-2 ${totalProfitSum >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-            <TrendingUp size={22} />
-          </div>
+        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-base font-black text-cyan-700 uppercase">
+            TỔNG LỢI NHUẬN KHÁCH HÀNG: <span className={totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)</span>
+          </p>
         </div>
       </div>
 
@@ -351,29 +335,29 @@ export default function CustomerProfitReportPage() {
 
       {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE ═══ */}
       <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full border-collapse text-left">
-            <thead className="bg-slate-100 sticky top-0 z-20 shadow-xs border-b-2 border-slate-200">
-              <tr>
+        <div className="overflow-x-hidden">
+          <table className="w-full table-fixed border-collapse text-left text-xs">
+            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700 [&_th]:text-white [&_th]:border-cyan-500/40">
+              <tr className="text-[10px] tracking-normal [&>th]:text-center">
                 <th className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 w-14 whitespace-nowrap">
                   No.
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[140px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
                   Khu vực
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[130px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
                   Mã KH
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 min-w-[220px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
                   Tên Khách hàng
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
                   Doanh thu
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
                   Tổng vốn
                 </th>
-                <th className="border-r border-slate-200 px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 min-w-[150px] whitespace-nowrap">
+                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
                   Lợi nhuận
                 </th>
                 <th className="px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 w-32 whitespace-nowrap">
@@ -381,7 +365,7 @@ export default function CustomerProfitReportPage() {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 bg-white text-xs font-semibold text-slate-800">
+            <tbody className="divide-y divide-slate-200 bg-white text-xs font-semibold text-slate-800 [&_td]:text-center">
               {loading ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-500 font-semibold">
@@ -404,7 +388,7 @@ export default function CustomerProfitReportPage() {
                     <React.Fragment key={branchName}>
                       {/* BRANCH SECTION HEADER */}
                       <tr className="bg-slate-100/90 font-black text-slate-900 border-t-2 border-slate-300">
-                        <td colSpan={8} className="px-4 py-2.5 font-black uppercase text-xs tracking-wider flex items-center gap-2">
+                        <td colSpan={8} className="px-4 py-2.5 font-black uppercase text-xs tracking-wider text-center">
                           <Building2 size={15} className="text-slate-600" />
                           ▲ Kho: {branchName}
                         </td>

@@ -152,8 +152,7 @@ export function getStoredCatalogCategories(): CatalogCategory[] {
     }
   } catch {}
 
-  saveStoredCatalogCategories(DEFAULT_CATALOG_CATEGORIES);
-  return DEFAULT_CATALOG_CATEGORIES;
+  return [];
 }
 
 export function saveStoredCatalogCategories(categories: CatalogCategory[]) {
@@ -162,7 +161,6 @@ export function saveStoredCatalogCategories(categories: CatalogCategory[]) {
 }
 
 export function getActiveItemGroupCategories(categories = getStoredCatalogCategories()) {
-  const active = categories.filter((category) => category.type === 'item-group' && category.status === 'active');
-  if (active.length > 0) return active;
-  return DEFAULT_CATALOG_CATEGORIES.filter((category) => category.type === 'item-group');
+  return categories.filter((category) => category.type === 'item-group' && category.status === 'active');
 }
+

@@ -4,6 +4,9 @@ export type CustomBinConfig = {
   width: number;   // cm
   height: number;  // cm
   maxWeight: number; // kg
+  occupancyPct?: number;
+  notes?: string;
+  status?: string;
 };
 
 export type RackConfig = {
@@ -26,6 +29,45 @@ export type RackConfig = {
   defaultBinMaxWeight: number; // kg
   customBins?: Record<string, CustomBinConfig>; // Chi tiết ô tùy chỉnh
 };
+
+export function getRackLetterPrefix(index: number): string {
+  let prefix = '';
+  let n = index;
+  while (n >= 0) {
+    prefix = String.fromCharCode((n % 26) + 65) + prefix;
+    n = Math.floor(n / 26) - 1;
+  }
+  return prefix;
+}
+
+export function calculateGlobalShelfIndex(
+  subWarehouses: SubWarehouse[],
+  targetZoneId: string,
+  targetRackId: string,
+  shelfNum: number // 1 for bottom shelf Tầng 1
+): number {
+  let globalIndex = 0;
+  for (const zone of subWarehouses || []) {
+    const racks = zone.racks || [];
+    if (zone.id === targetZoneId) {
+      for (const rack of racks) {
+        if (rack.id === targetRackId) {
+          globalIndex += Math.max(0, shelfNum - 1);
+          return globalIndex;
+        }
+        const shelves = rack.shelvesCount || zone.shelvesPerRack || 5;
+        globalIndex += Math.max(1, shelves);
+      }
+      break;
+    } else {
+      for (const rack of racks) {
+        const shelves = rack.shelvesCount || zone.shelvesPerRack || 5;
+        globalIndex += Math.max(1, shelves);
+      }
+    }
+  }
+  return globalIndex;
+}
 
 export type SubWarehouse = {
   id: string;
@@ -51,7 +93,7 @@ export type SubWarehouse = {
   cellHeight?: number; // cm
   wallRacksCount?: number; // kệ trên tường
   rackRowsCount?: number; // số hàng kệ
-  racks?: RackConfig[]; // Cấu hình chi tiết từng Dãy Kệ
+  racks?: RackConfig[]; // Danh sách dãy kệ trong phân khu
   structure?: {
     wallType?: string;    // Tường
     ceilingType?: string; // Trần
@@ -139,23 +181,7 @@ export function normalizeWarehouseRecord(
     }
   }
 
-  // Filter out any leftover auto-generated mock sub-warehouses from local storage cache
-  const cleanedSubWarehouses = Array.isArray(rawSub)
-    ? rawSub.filter((sub) => {
-        if (!sub) return false;
-        if (
-          typeof sub.id === 'string' &&
-          (sub.id.startsWith('sub-default') ||
-            sub.id.startsWith('sub-init') ||
-            sub.id.startsWith('sub_def') ||
-            sub.id.startsWith('sub_wh_') ||
-            sub.id.startsWith('sub_wh_default'))
-        ) {
-          return false;
-        }
-        return true;
-      })
-    : [];
+  const cleanedSubWarehouses = Array.isArray(rawSub) ? rawSub : [];
 
   return {
     id: String(warehouse.id),
@@ -606,3 +632,99 @@ export function buildWarehouseRackTopology(
   ];
 }
 
+const DRAFT_LOCKS_STORAGE_KEY = 'smart-wms-active-draft-locks';
+
+export interface DraftSlotLock {
+  tabId: string;
+  orderNo?: string;
+  binCode: string;
+  productName?: string;
+  occupancyPct?: number;
+  isOutbound?: boolean;
+  updatedAt: number;
+}
+
+export function saveActiveDraftSlotLocks(
+  tabId: string,
+  orderNo: string,
+  locks: { binCode: string; productName?: string; occupancyPct?: number }[],
+  isOutbound?: boolean
+) {
+  try {
+    const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+    let allLocks: DraftSlotLock[] = raw ? JSON.parse(raw) : [];
+    // Remove previous locks for this tabId
+    allLocks = allLocks.filter((l) => l.tabId !== tabId);
+
+    const now = Date.now();
+    locks.forEach((lk) => {
+      allLocks.push({
+        tabId,
+        orderNo,
+        binCode: lk.binCode,
+        productName: lk.productName,
+        occupancyPct: lk.occupancyPct || 100,
+        isOutbound: isOutbound || Boolean(orderNo && (orderNo.startsWith('PX') || orderNo.startsWith('XK') || orderNo.startsWith('XH') || orderNo.startsWith('XBL') || orderNo.startsWith('XBH'))),
+        updatedAt: now,
+      });
+    });
+
+    localStorage.setItem(DRAFT_LOCKS_STORAGE_KEY, JSON.stringify(allLocks));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error saving active draft slot locks:', err);
+  }
+}
+
+export function releaseActiveDraftSlotLocks(tabId: string) {
+  try {
+    const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+    if (!raw) return;
+    let allLocks: DraftSlotLock[] = JSON.parse(raw);
+    allLocks = allLocks.filter((l) => l.tabId !== tabId);
+    localStorage.setItem(DRAFT_LOCKS_STORAGE_KEY, JSON.stringify(allLocks));
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error releasing draft slot locks:', err);
+  }
+}
+
+export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, { label: string; occupancyPct: number; isOutbound?: boolean }> {
+  try {
+    const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+    if (!raw) return {};
+    const allLocks: DraftSlotLock[] = JSON.parse(raw);
+    const result: Record<string, { label: string; occupancyPct: number; isOutbound?: boolean }> = {};
+    const now = Date.now();
+    // Exclude locks older than 2 hours to avoid stale locks
+    const validLocks = allLocks.filter((l) => now - l.updatedAt < 2 * 60 * 60 * 1000);
+
+    validLocks.forEach((l) => {
+      if (!excludeTabId || l.tabId !== excludeTabId) {
+        const label = `${l.orderNo ? `Phiếu ${l.orderNo}` : 'Phiếu khác'}${l.productName ? `: ${l.productName}` : ''}`;
+        result[l.binCode] = { label, occupancyPct: l.occupancyPct || 100, isOutbound: l.isOutbound };
+      }
+    });
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+export function clearAllDraftSlotLocks(warehouseCode?: string) {
+  try {
+    if (!warehouseCode) {
+      localStorage.removeItem(DRAFT_LOCKS_STORAGE_KEY);
+    } else {
+      const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+      if (!raw) return;
+      let allLocks: DraftSlotLock[] = JSON.parse(raw);
+      const whUpper = warehouseCode.trim().toUpperCase();
+      allLocks = allLocks.filter((l) => !l.binCode.toUpperCase().startsWith(whUpper));
+      localStorage.setItem(DRAFT_LOCKS_STORAGE_KEY, JSON.stringify(allLocks));
+    }
+    window.dispatchEvent(new Event('storage'));
+  } catch (err) {
+    console.error('Error clearing draft slot locks:', err);
+  }
+}

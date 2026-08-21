@@ -49,9 +49,9 @@ function formatSampleDate(dateStr: string): string {
   if (!dateStr) return '';
   const parts = dateStr.split('-');
   if (parts.length === 3) {
-    const day = parseInt(parts[2], 10);
-    const month = parseInt(parts[1], 10);
-    const year = parts[0];
+    const day = parts[2].padStart(2, '0');
+    const month = parts[1].padStart(2, '0');
+    const year = parts[0].slice(-2);
     return `${day}/${month}/${year}`;
   }
   return dateStr;
@@ -70,20 +70,7 @@ interface SalesGroupItem {
   orders: any[];
 }
 
-const DEMO_FALLBACK_SALES: SalesGroupItem[] = [
-  { id: '1', dateOrName: '2026-07-24', salesOrderCount: 2, revenue: 2000000, discount: 50000, vatAmount: 180000, returnOrderCount: 0, returnAmount: 0, netRevenue: 2000000, orders: [] },
-  { id: '2', dateOrName: '2026-07-28', salesOrderCount: 1, revenue: 1000000, discount: 20000, vatAmount: 90000, returnOrderCount: 0, returnAmount: 0, netRevenue: 1000000, orders: [] },
-  { id: '3', dateOrName: '2026-07-29', salesOrderCount: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrderCount: 0, returnAmount: 0, netRevenue: 0, orders: [] },
-  { id: '4', dateOrName: '2026-08-01', salesOrderCount: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrderCount: 0, returnAmount: 0, netRevenue: 0, orders: [] },
-  { id: '5', dateOrName: '2026-08-05', salesOrderCount: 1, revenue: 1000000, discount: 0, vatAmount: 100000, returnOrderCount: 0, returnAmount: 0, netRevenue: 1000000, orders: [] },
-  { id: '6', dateOrName: '2026-08-06', salesOrderCount: 2, revenue: 2000000, discount: 100000, vatAmount: 190000, returnOrderCount: 0, returnAmount: 0, netRevenue: 2000000, orders: [] },
-  { id: '7', dateOrName: '2026-08-07', salesOrderCount: 5, revenue: 5000000, discount: 200000, vatAmount: 480000, returnOrderCount: 0, returnAmount: 0, netRevenue: 5000000, orders: [] },
-  { id: '8', dateOrName: '2026-08-09', salesOrderCount: 12, revenue: 12000000, discount: 500000, vatAmount: 1150000, returnOrderCount: 0, returnAmount: 0, netRevenue: 12000000, orders: [] },
-  { id: '9', dateOrName: '2026-08-10', salesOrderCount: 1, revenue: 1000000, discount: 0, vatAmount: 100000, returnOrderCount: 0, returnAmount: 0, netRevenue: 1000000, orders: [] },
-  { id: '10', dateOrName: '2026-08-12', salesOrderCount: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrderCount: 0, returnAmount: 0, netRevenue: 0, orders: [] },
-  { id: '11', dateOrName: '2026-08-15', salesOrderCount: 19, revenue: 19000000, discount: 800000, vatAmount: 1820000, returnOrderCount: 2, returnAmount: 2000000, netRevenue: 18000000, orders: [] },
-  { id: '12', dateOrName: '2026-08-18', salesOrderCount: 6, revenue: 6000000, discount: 200000, vatAmount: 580000, returnOrderCount: 1, returnAmount: 1000000, netRevenue: 5000000, orders: [] },
-];
+
 
 function buildChartTimeline(
   rawGroupedItems: SalesGroupItem[],
@@ -340,7 +327,7 @@ export default function SalesReportPage() {
           items.sort((a, b) => b.netRevenue - a.netRevenue);
         }
 
-        setData(items.length > 0 ? items : DEMO_FALLBACK_SALES);
+        setData(items);
       } else if (apiSummary.length > 0) {
         setData(
           apiSummary.map((item: any, idx: number) => ({
@@ -357,11 +344,11 @@ export default function SalesReportPage() {
           }))
         );
       } else {
-        setData(DEMO_FALLBACK_SALES);
+        setData([]);
       }
     } catch (err: any) {
       setError(err?.message || 'Không thể kết nối dữ liệu báo cáo bán hàng');
-      setData(DEMO_FALLBACK_SALES);
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -403,8 +390,8 @@ export default function SalesReportPage() {
 
   // Build full timeline for Chart mode
   const chartItems = useMemo(() => {
-    const base = filteredData.length > 0 ? filteredData : DEMO_FALLBACK_SALES;
-    return buildChartTimeline(base, startDate, endDate, chartTimeGroup);
+    if (filteredData.length === 0) return [];
+    return buildChartTimeline(filteredData, startDate, endDate, chartTimeGroup);
   }, [filteredData, startDate, endDate, chartTimeGroup]);
 
   // FULL-BLEED EDGE-TO-EDGE DUAL Y-AXIS GRAPHIC
@@ -412,11 +399,12 @@ export default function SalesReportPage() {
     const N = chartItems.length;
     if (N === 0) return { maxOrders: 1, maxRevenue: 1, groups: [], lineCoords: [], linePathD: '', areaPathD: '' };
 
-    const startX = 60;
-    const endX = 940;
-    const plotWidth = endX - startX; // 880px
-    const plotHeight = 250;
-    const baselineY = 280;
+    // Keep both axes safely inside the SVG so the right-hand VNĐ labels are not clipped.
+    const startX = 135;
+    const endX = 1350;
+    const plotWidth = endX - startX;
+    const plotHeight = 320;
+    const baselineY = 350;
 
     const slotW = plotWidth / Math.max(N, 1);
 
@@ -754,8 +742,8 @@ export default function SalesReportPage() {
             </div>
           ) : (
             <div className="relative w-full overflow-hidden">
-              <div className="w-full h-[400px] relative">
-                <svg viewBox="0 0 1000 370" preserveAspectRatio="none" className="w-full h-full">
+              <div className="w-full h-[480px] relative">
+                  <svg viewBox="0 0 1500 440" preserveAspectRatio="none" className="w-full h-full">
                   <defs>
                     <linearGradient id="cyanAreaGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#0891b2" stopOpacity="0.35" />
@@ -768,31 +756,31 @@ export default function SalesReportPage() {
                   </defs>
 
                   {/* Left & Right Y-Axis Outer Labels */}
-                  <text x="52" y="16" textAnchor="end" fontSize="11" fontWeight="800" fill="#0891b2">
+                  <text x="123" y="16" textAnchor="end" fontSize="11" fontWeight="800" fill="#0891b2">
                     (Đơn)
                   </text>
-                  <text x="948" y="16" textAnchor="start" fontSize="11" fontWeight="800" fill="#0284c7">
+                  <text x="1377" y="16" textAnchor="start" fontSize="11" fontWeight="800" fill="#0284c7">
                     (VNĐ)
                   </text>
 
                   {/* Horizontal Grid Lines with Dual Y-Axis Edge Labels */}
                   {[0, 0.2, 0.4, 0.6, 0.8, 1].map((pct, idx) => {
-                    const yVal = 280 - pct * 250;
+                    const yVal = 350 - pct * 320;
                     const labelOrders = Math.round(pct * dualAxisData.maxOrders);
                     const labelRevenue = Math.round(pct * dualAxisData.maxRevenue);
                     return (
                       <g key={idx}>
                         <line
-                          x1="60"
+                          x1="135"
                           y1={yVal}
-                          x2="940"
+                          x2="1350"
                           y2={yVal}
                           stroke="#e2e8f0"
                           strokeWidth="1"
                         />
                         {/* Left Outer Y Axis Label: Order count */}
                         <text
-                          x="52"
+                          x="123"
                           y={yVal + 4}
                           textAnchor="end"
                           fontSize="11"
@@ -803,7 +791,7 @@ export default function SalesReportPage() {
                         </text>
                         {/* Right Outer Y Axis Label: Money amount */}
                         <text
-                          x="948"
+                          x="1377"
                           y={yVal + 4}
                           textAnchor="start"
                           fontSize="11"
@@ -817,7 +805,7 @@ export default function SalesReportPage() {
                   })}
 
                   {/* X-axis baseline */}
-                  <line x1="60" y1="280" x2="940" y2="280" stroke="#cbd5e1" strokeWidth="1.5" />
+                  <line x1="135" y1="350" x2="1350" y2="350" stroke="#cbd5e1" strokeWidth="1.5" />
 
                   {/* GROUPED SIDE-BY-SIDE BARS */}
                   {chartType === 'bar' &&
@@ -840,10 +828,17 @@ export default function SalesReportPage() {
                             className="transition-all duration-300 hover:opacity-80"
                           />
                         ))}
-                        {/* Render EVERY single date label explicitly (No skipping!) */}
+                        <line
+                          x1={group.centerX}
+                          y1="350"
+                          x2={group.centerX}
+                          y2="358"
+                          stroke="#94a3b8"
+                          strokeWidth="1.5"
+                        />
                         <text
                           x={group.centerX}
-                          y="304"
+                          y="378"
                           textAnchor="middle"
                           fontSize="11"
                           fontWeight="700"
@@ -874,6 +869,14 @@ export default function SalesReportPage() {
                           onMouseEnter={() => setHoveredPoint(p.item)}
                           onMouseLeave={() => setHoveredPoint(null)}
                         >
+                          <line
+                            x1={p.x}
+                            y1="350"
+                            x2={p.x}
+                            y2="358"
+                            stroke="#94a3b8"
+                            strokeWidth="1.5"
+                          />
                           <circle
                             cx={p.x}
                             cy={p.y}
@@ -885,7 +888,7 @@ export default function SalesReportPage() {
                           />
                           <text
                             x={p.x}
-                            y="304"
+                            y="378"
                             textAnchor="middle"
                             fontSize="11"
                             fontWeight="700"

@@ -878,6 +878,11 @@ export default function Outbound({
   };
 
   const handleEditOrder = (ord: OutboundOrder) => {
+    const statusLower = (ord.status || '').toLowerCase();
+    if (['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed'].includes(statusLower)) {
+      setToast({ message: 'Phiếu đã giao hàng / xuất hủy không thể chỉnh sửa!', type: 'error' });
+      return;
+    }
     const existingDetails: FormDetailRow[] = ord.details && ord.details.length > 0
       ? ord.details.map((d, idx) => ({
         rowId: `row-edit-${idx}-${Date.now()}`,
@@ -1500,16 +1505,24 @@ export default function Outbound({
                             )}
                             <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200">
                               <div className="flex items-center justify-center gap-1.5">
-                                {canEdit && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleEditOrder(ord)}
-                                    title={isDisposal ? "Sửa phiếu xuất hủy" : "Sửa phiếu xuất"}
-                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                                  >
-                                    <Pencil size={16} strokeWidth={2.5} />
-                                  </button>
-                                )}
+                                {canEdit && (() => {
+                                  const isFinalized = ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed'].includes((ord.status || '').toLowerCase());
+                                  return (
+                                    <button
+                                      type="button"
+                                      disabled={isFinalized}
+                                      onClick={() => handleEditOrder(ord)}
+                                      title={isFinalized ? 'Phiếu đã giao hàng - Không được phép sửa' : isDisposal ? 'Sửa phiếu xuất hủy' : 'Sửa phiếu xuất'}
+                                      className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                        isFinalized
+                                          ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed opacity-40'
+                                          : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                                      }`}
+                                    >
+                                      <Pencil size={16} strokeWidth={2.5} />
+                                    </button>
+                                  );
+                                })()}
                                 <button
                                   type="button"
                                   onClick={() => {

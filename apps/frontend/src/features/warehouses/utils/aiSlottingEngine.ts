@@ -1,4 +1,4 @@
-import { SubWarehouse, WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
+import { SubWarehouse, WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex } from '../../../shared/utils/warehouseAssignments';
 
 export type ProductSlotInput = {
   productName: string;
@@ -11,7 +11,7 @@ export type ProductSlotInput = {
 };
 
 export type BinCellInfo = {
-  binCode: string; // e.g. ZA-R01-S02-C03
+  binCode: string; // e.g. A1, B1, ZA-R01-A1
   zoneId: string;
   zoneCode: string;
   zoneName: string;
@@ -56,47 +56,44 @@ export function generateWarehouseBinCells(warehouse: WarehouseRecord): BinCellIn
       const rackObj = racksList?.find((rk) => rk.rackCode === rackCode || rk.id === `rack-${r}`);
 
       const shelvesCount = rackObj?.shelvesCount || defaultShelves;
-      const binsPerShelfCount = rackObj?.binsPerShelf || defaultBinsPerShelf;
-      const baysCount = rackObj?.baysCount || 1;
+      const baysCount = Math.max(1, (rackObj?.verticalPartitions || defaultBinsPerShelf) - 1);
 
-      for (let b = 1; b <= baysCount; b++) {
-        const bayCode = baysCount > 1 ? `B${String(b).padStart(2, '0')}-` : '';
+      for (let s = 1; s <= shelvesCount; s++) {
+        const globalShelfIndex = calculateGlobalShelfIndex(subWarehouses, zone.id, rackObj?.id || `rack-${r}`, s);
+        const shelfPrefix = getRackLetterPrefix(globalShelfIndex);
 
-        for (let s = 1; s <= shelvesCount; s++) {
-          for (let c = 1; c <= binsPerShelfCount; c++) {
-            const shelfCode = `S${String(s).padStart(2, '0')}`;
-            const cellCode = `C${String(c).padStart(2, '0')}`;
-            const fullBinCode = `${zone.code || 'ZONE'}-${rackCode}-${bayCode}${shelfCode}-${cellCode}`;
+        for (let c = 1; c <= baysCount; c++) {
+          const binShortCode = `${shelfPrefix}${c}`;
+          const fullBinCode = `${zone.code || 'ZONE'}-${rackCode}-${binShortCode}`;
 
-            // Check if custom bin configuration exists
-            const customBin = rackObj?.customBins?.[fullBinCode];
+          // Check if custom bin configuration exists
+          const customBin = rackObj?.customBins?.[fullBinCode] || rackObj?.customBins?.[binShortCode];
 
-            const cellL = customBin?.length || rackObj?.defaultBinLength || defaultCellL;
-            const cellW = customBin?.width || rackObj?.defaultBinWidth || defaultCellW;
-            const cellH = customBin?.height || rackObj?.defaultBinHeight || defaultCellH;
-            const maxWeight = customBin?.maxWeight || rackObj?.defaultBinMaxWeight || defaultMaxWeight;
+          const cellL = customBin?.length || rackObj?.defaultBinLength || defaultCellL;
+          const cellW = customBin?.width || rackObj?.defaultBinWidth || defaultCellW;
+          const cellH = customBin?.height || rackObj?.defaultBinHeight || defaultCellH;
+          const maxWeight = customBin?.maxWeight || rackObj?.defaultBinMaxWeight || defaultMaxWeight;
 
-            // Simulated occupancy status
-            const simulatedOccupancy = (r * s * c * b) % 5 === 0 ? 'FULL' : (r * s * c * b) % 3 === 0 ? 'PARTIAL' : 'EMPTY';
-            const currentW = simulatedOccupancy === 'FULL' ? maxWeight : simulatedOccupancy === 'PARTIAL' ? Math.round(maxWeight * 0.4) : 0;
+          // Simulated occupancy status
+          const simulatedOccupancy = (r * s * c) % 5 === 0 ? 'FULL' : (r * s * c) % 3 === 0 ? 'PARTIAL' : 'EMPTY';
+          const currentW = simulatedOccupancy === 'FULL' ? maxWeight : simulatedOccupancy === 'PARTIAL' ? Math.round(maxWeight * 0.4) : 0;
 
-            bins.push({
-              binCode: fullBinCode,
-              zoneId: zone.id,
-              zoneCode: zone.code || 'ZONE',
-              zoneName: zone.name || 'Phân khu',
-              zoneType,
-              rackNumber: r,
-              shelfLevel: s,
-              cellIndex: c,
-              cellLength: cellL,
-              cellWidth: cellW,
-              cellHeight: cellH,
-              maxWeightCapacity: maxWeight,
-              currentWeight: currentW,
-              status: simulatedOccupancy,
-            });
-          }
+          bins.push({
+            binCode: `${binShortCode} (${zone.code || 'ZONE'})`,
+            zoneId: zone.id,
+            zoneCode: zone.code || 'ZONE',
+            zoneName: zone.name || 'Phân khu',
+            zoneType,
+            rackNumber: r,
+            shelfLevel: s,
+            cellIndex: c,
+            cellLength: cellL,
+            cellWidth: cellW,
+            cellHeight: cellH,
+            maxWeightCapacity: maxWeight,
+            currentWeight: currentW,
+            status: simulatedOccupancy,
+          });
         }
       }
     }

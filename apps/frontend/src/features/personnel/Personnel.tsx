@@ -359,8 +359,10 @@ export default function Personnel() {
               ...existing,
               ...u,
               roles: u.roles && u.roles.length > 0 ? u.roles : (existing?.roles || [{ name: 'staff' }]),
-              groupIds: u.groupIds && u.groupIds.length > 0 ? u.groupIds : (existing?.groupIds || []),
-              warehouseIds: u.warehouseIds && u.warehouseIds.length > 0 ? u.warehouseIds : (existing?.warehouseIds || []),
+              // An empty array is a valid saved value (it means all assignments were removed).
+              // Do not replace it with stale local data after a refresh.
+              groupIds: Array.isArray(u.groupIds) ? u.groupIds : (existing?.groupIds || []),
+              warehouseIds: Array.isArray(u.warehouseIds) ? u.warehouseIds : (existing?.warehouseIds || []),
             });
           });
 
@@ -490,6 +492,19 @@ export default function Personnel() {
         }
         return u;
       });
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      };
+      await Promise.all(
+        nextUsers
+          .filter((u) => selectedUserIds.includes(u.id))
+          .map((u) => fetch(`${API_BASE_URL}/users/${u.id}`, {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ groupIds: u.groupIds || [] }),
+          }))
+      );
       setUsers(nextUsers);
       saveStoredPersonnelUsers(nextUsers);
 
@@ -536,6 +551,18 @@ export default function Personnel() {
           item.id === wh.id ? { ...item, ...payload } : item
         );
       }
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      };
+      await Promise.all(updatedWarehouses.map((warehouse) => fetch(`${API_BASE_URL}/warehouses/${warehouse.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          managerIds: warehouse.managerIds || [],
+          staffIds: (warehouse as any).staffIds || (warehouse as any).storekeeperIds || [],
+        }),
+      })));
       setWarehouses(updatedWarehouses);
       saveStoredWarehouses(updatedWarehouses);
 
@@ -776,6 +803,16 @@ export default function Personnel() {
         );
       }
 
+      // Persist warehouse assignments in the database. Previously this was only
+      // written to localStorage, so a refresh restored the old assignments.
+      await Promise.all(updatedWarehouses.map((warehouse) => fetch(`${API_BASE_URL}/warehouses/${warehouse.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          managerIds: warehouse.managerIds || [],
+          staffIds: (warehouse as any).staffIds || (warehouse as any).storekeeperIds || [],
+        }),
+      })));
       setWarehouses(updatedWarehouses);
       saveStoredWarehouses(updatedWarehouses);
 
