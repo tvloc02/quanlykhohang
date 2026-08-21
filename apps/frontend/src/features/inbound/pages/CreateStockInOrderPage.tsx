@@ -2262,8 +2262,12 @@ export default function CreateStockInOrderPage({
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<InboundTab[]>(() => {
     try {
+      const isCreateAction = typeof window !== 'undefined' && (
+        window.location.search.includes('action=create') ||
+        window.location.search.includes('mode=create')
+      );
       const savedDraft = sessionStorage.getItem('inbound_tabs_draft');
-      if (savedDraft) {
+      if (savedDraft && !isCreateAction) {
         const parsed = JSON.parse(savedDraft);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;

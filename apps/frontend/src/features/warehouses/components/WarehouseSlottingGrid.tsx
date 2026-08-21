@@ -222,7 +222,7 @@ export async function fetchWarehouseOccupiedBins(
           list[existingIdx] = {
             ...list[existingIdx],
             ...detail,
-            quantity: Math.min(list[existingIdx].quantity || detail.quantity, detail.quantity),
+            quantity: detail.quantity,
           };
         } else {
           list.push(detail);
@@ -341,14 +341,25 @@ export async function fetchWarehouseOccupiedBins(
           const pQty = Number(item.receivedQty || item.expectedQty || item.qty || item.quantity || 1);
           const pUnit = item.unit || item.product?.unit || 'Cái';
 
-          let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
-          if (bins.length === 0 && item.locationBin)
-            bins = String(item.locationBin).split(',').map((s: string) => s.trim());
-          if (bins.length === 0 && item.note) {
+          let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+          if (rawBins.length === 0 && item.locationBin)
+            rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
+          if (rawBins.length === 0 && item.note) {
             const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-            if (match) bins = match[1].split(',').map((s: string) => s.trim());
+            if (match) rawBins = match[1].split(',').map((s: string) => s.trim());
           }
 
+          // Deduplicate bin list so duplicate formatting does not divide target qty
+          const uniqueBinsMap = new Map<string, string>();
+          rawBins.forEach((b) => {
+            if (!b) return;
+            const cleanCode = b.split('(')[0].trim();
+            const normKey = normalizeBinKey(cleanCode);
+            if (cleanCode && (!normKey || !uniqueBinsMap.has(normKey))) {
+              uniqueBinsMap.set(normKey || cleanCode, b);
+            }
+          });
+          const bins = Array.from(uniqueBinsMap.values());
           const pQtyPerBin = Math.max(1, Math.round(pQty / Math.max(1, bins.length)));
 
           bins.forEach((bCode) => {
@@ -393,15 +404,25 @@ export async function fetchWarehouseOccupiedBins(
               const pQty = Number(item.qty || 1);
               const pUnit = item.unit || 'Cái';
 
-              let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
-              if (bins.length === 0 && item.locationBin) {
-                bins = String(item.locationBin).split(',').map((s: string) => s.trim());
+              let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+              if (rawBins.length === 0 && item.locationBin) {
+                rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
               }
-              if (bins.length === 0 && item.note) {
+              if (rawBins.length === 0 && item.note) {
                 const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match) bins = match[1].split(',').map((s: string) => s.trim());
+                if (match) rawBins = match[1].split(',').map((s: string) => s.trim());
               }
 
+              const uniqueBinsMap = new Map<string, string>();
+              rawBins.forEach((b) => {
+                if (!b) return;
+                const cleanCode = b.split('(')[0].trim();
+                const normKey = normalizeBinKey(cleanCode);
+                if (cleanCode && (!normKey || !uniqueBinsMap.has(normKey))) {
+                  uniqueBinsMap.set(normKey || cleanCode, b);
+                }
+              });
+              const bins = Array.from(uniqueBinsMap.values());
               const pQtyPerBin = Math.max(1, Math.round(pQty / Math.max(1, bins.length)));
 
               bins.forEach((bCode) => {
@@ -465,11 +486,21 @@ export async function fetchWarehouseOccupiedBins(
         const pQty = Number(item.quantity || item.qty || 1);
         const pUnit = item.unit || 'Cái';
 
-        let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
-        if (bins.length === 0 && item.locationBin) {
-          bins = String(item.locationBin).split(',').map((s: string) => s.trim());
+        let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+        if (rawBins.length === 0 && item.locationBin) {
+          rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
         }
 
+        const uniqueBinsMap = new Map<string, string>();
+        rawBins.forEach((b) => {
+          if (!b) return;
+          const cleanCode = b.split('(')[0].trim();
+          const normKey = normalizeBinKey(cleanCode);
+          if (cleanCode && (!normKey || !uniqueBinsMap.has(normKey))) {
+            uniqueBinsMap.set(normKey || cleanCode, b);
+          }
+        });
+        const bins = Array.from(uniqueBinsMap.values());
         const pQtyPerBin = Math.max(1, Math.round(pQty / Math.max(1, bins.length)));
 
         bins.forEach((bCode) => {
@@ -505,6 +536,10 @@ export async function fetchWarehouseOccupiedBins(
                 }
                 bins.forEach((bCode) => {
                   if (!bCode) return;
+                  const cleanCode = bCode.split('(')[0].trim();
+                  const normKey = normalizeBinKey(cleanCode);
+                  if (map.has(cleanCode) || (normKey && map.has(normKey))) return;
+
                   const info: BinOccupiedInfo = {
                     totalPhysical: Number(sb.totalPhysical || sb.available || p.stockQty || 1),
                     allocated: 0,

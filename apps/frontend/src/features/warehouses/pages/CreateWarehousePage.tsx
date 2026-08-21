@@ -1679,128 +1679,104 @@ export default function CreateWarehousePage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-300 dark:divide-slate-700 font-normal text-slate-700 dark:text-slate-200">
-                            {groupedGoodsList.map((group, gIdx) => {
-                              const txs = group.transactions;
-                              const rowSpanCount = txs.length;
+                            {(() => {
+                              let sttCounter = 1;
+                              return groupedGoodsList.flatMap((group, gIdx) => {
+                                return group.transactions.map((tx: any, txIdx: number) => {
+                                  const currentStt = sttCounter++;
+                                  const isOutbound = Boolean(
+                                    tx.isOutbound ||
+                                    Number(tx.quantity || 0) < 0 ||
+                                    (tx.orderCode && (
+                                      tx.orderCode.startsWith('PX') ||
+                                      tx.orderCode.startsWith('XK') ||
+                                      tx.orderCode.startsWith('XH') ||
+                                      tx.orderCode.startsWith('XBL') ||
+                                      tx.orderCode.startsWith('XBH') ||
+                                      tx.orderCode.includes('XUẤT') ||
+                                      tx.orderCode.includes('XUAT') ||
+                                      tx.orderCode === 'ĐANG-XUẤT'
+                                    )) ||
+                                    (tx.supplierName && (
+                                      tx.supplierName.includes('Đơn xuất') ||
+                                      tx.supplierName.includes('Xuất kho')
+                                    ))
+                                  );
+                                  const qtyNum = Math.abs(Number(tx.quantity || tx.totalPhysical || tx.qty || 0));
+                                  const realOrderCode = tx.orderCode && tx.orderCode !== 'ĐANG-XẾP'
+                                    ? tx.orderCode
+                                    : (tx.id ? `${isOutbound ? 'PXK' : 'PNK'}-${String(tx.id).padStart(4, '0')}` : (isOutbound ? 'PXK-DRAFT' : 'PNK-TỒN-KHO'));
 
-                              return txs.map((tx: any, txIdx: number) => {
-                                const isOutbound = Boolean(
-                                  tx.isOutbound ||
-                                  Number(tx.quantity || 0) < 0 ||
-                                  (tx.orderCode && (
-                                    tx.orderCode.startsWith('PX') ||
-                                    tx.orderCode.startsWith('XK') ||
-                                    tx.orderCode.startsWith('XH') ||
-                                    tx.orderCode.startsWith('XBL') ||
-                                    tx.orderCode.startsWith('XBH') ||
-                                    tx.orderCode.includes('XUẤT') ||
-                                    tx.orderCode.includes('XUAT') ||
-                                    tx.orderCode === 'ĐANG-XUẤT'
-                                  )) ||
-                                  (tx.supplierName && (
-                                    tx.supplierName.includes('Đơn xuất') ||
-                                    tx.supplierName.includes('Xuất kho')
-                                  ))
-                                );
-                                const qtyNum = Math.abs(Number(tx.quantity || tx.totalPhysical || tx.qty || 0));
-                                const realOrderCode = tx.orderCode && tx.orderCode !== 'TỒN-KHO' && tx.orderCode !== 'ĐANG-XẾP'
-                                  ? tx.orderCode
-                                  : (tx.id ? `${isOutbound ? 'PXK' : 'PNK'}-${String(tx.id).padStart(4, '0')}` : (isOutbound ? 'PXK-DRAFT' : 'PNK-20260819-001'));
-
-                                return (
-                                  <tr
-                                    key={`${gIdx}-${txIdx}`}
-                                    className={`hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors ${isOutbound ? 'bg-rose-50/20 dark:bg-rose-950/20' : ''
-                                      }`}
-                                  >
-                                    {txIdx === 0 && (
-                                      <td
-                                        rowSpan={rowSpanCount}
-                                        className="py-2.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
-                                      >
-                                        {gIdx + 1}
-                                      </td>
-                                    )}
-
-                                    <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
-                                      {isOutbound ? (
-                                        <span className="px-2 py-0.5 rounded font-black text-[10px] bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
-                                          XUẤT KHO
-                                        </span>
-                                      ) : (
-                                        <span className="px-2 py-0.5 rounded font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
-                                          NHẬP KHO
-                                        </span>
-                                      )}
-                                    </td>
-
-                                    {txIdx === 0 && (
-                                      <td
-                                        rowSpan={rowSpanCount}
-                                        className="py-2.5 px-3 text-center font-mono font-bold text-cyan-700 dark:text-cyan-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
-                                      >
-                                        {group.sku}
-                                      </td>
-                                    )}
-
-                                    <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
-                                      <span
-                                        className={`px-2.5 py-1 rounded border font-bold text-xs ${isOutbound
-                                            ? 'bg-rose-50 text-rose-900 border-rose-300'
-                                            : 'bg-cyan-50 text-cyan-950 border-cyan-300'
-                                          }`}
-                                      >
-                                        {realOrderCode}
-                                      </span>
-                                    </td>
-
-                                    {txIdx === 0 && (
-                                      <td
-                                        rowSpan={rowSpanCount}
-                                        className="py-2.5 px-3 text-center font-bold text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 align-middle"
-                                      >
-                                        {group.productName}
-                                      </td>
-                                    )}
-
-                                    {txIdx === 0 && (
-                                      <td
-                                        rowSpan={rowSpanCount}
-                                        className="py-2.5 px-3 text-center font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
-                                      >
-                                        {group.unit}
-                                      </td>
-                                    )}
-
-                                    <td
-                                      className={`py-2.5 px-3 text-center font-black border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle ${isOutbound ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                                  return (
+                                    <tr
+                                      key={`${gIdx}-${txIdx}`}
+                                      className={`hover:bg-cyan-50/40 dark:hover:bg-slate-800/50 transition-colors ${isOutbound ? 'bg-rose-50/20 dark:bg-rose-950/20' : ''
                                         }`}
                                     >
-                                      {isOutbound ? `-${qtyNum.toLocaleString('vi-VN')}` : `+${qtyNum.toLocaleString('vi-VN')}`}
-                                    </td>
+                                      <td className="py-2.5 px-3 text-center font-bold text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle">
+                                        {currentStt}
+                                      </td>
 
-                                    <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
-                                      {tx.inboundDate}
-                                    </td>
+                                      <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                        {isOutbound ? (
+                                          <span className="px-2 py-0.5 rounded font-black text-[10px] bg-rose-100 text-rose-800 border border-rose-300 shadow-2xs">
+                                            XUẤT KHO
+                                          </span>
+                                        ) : (
+                                          <span className="px-2 py-0.5 rounded font-black text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
+                                            NHẬP KHO
+                                          </span>
+                                        )}
+                                      </td>
 
-                                    <td className="py-2.5 px-3 text-center font-medium text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 align-middle">
-                                      {tx.supplierName}
-                                    </td>
+                                      <td className="py-2.5 px-3 text-center font-mono font-bold text-cyan-700 dark:text-cyan-400 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle">
+                                        {group.sku}
+                                      </td>
 
-                                    {txIdx === 0 && (
+                                      <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                        <span
+                                          className={`px-2.5 py-1 rounded border font-bold text-xs ${isOutbound
+                                              ? 'bg-rose-50 text-rose-900 border-rose-300'
+                                              : 'bg-cyan-50 text-cyan-950 border-cyan-300'
+                                            }`}
+                                        >
+                                          {realOrderCode}
+                                        </span>
+                                      </td>
+
+                                      <td className="py-2.5 px-3 text-center font-bold text-slate-900 dark:text-white border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 align-middle">
+                                        {group.productName}
+                                      </td>
+
+                                      <td className="py-2.5 px-3 text-center font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle">
+                                        {group.unit}
+                                      </td>
+
                                       <td
-                                        rowSpan={rowSpanCount}
-                                        className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle"
+                                        className={`py-2.5 px-3 text-center font-black border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle ${isOutbound ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                                          }`}
                                       >
+                                        {isOutbound ? `-${qtyNum.toLocaleString('vi-VN')}` : `+${qtyNum.toLocaleString('vi-VN')}`}
+                                      </td>
+
+                                      <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
+                                        {tx.inboundDate}
+                                      </td>
+
+                                      <td className="py-2.5 px-3 text-center font-medium text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 align-middle">
+                                        {tx.supplierName}
+                                      </td>
+
+                                      <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle">
                                         <span className="px-2.5 py-1 rounded-full font-black text-xs bg-cyan-100 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-200 border border-cyan-300 dark:border-cyan-800">
                                           {group.netOccupancyPct}%
                                         </span>
                                       </td>
-                                    )}
-                                  </tr>
-                                );
+                                    </tr>
+                                  );
+                                });
                               });
-                            })}
+                            })()}
                           </tbody>
                         </table>
                       </div>
