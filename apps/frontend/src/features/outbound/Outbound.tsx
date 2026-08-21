@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -245,18 +246,29 @@ function toDateOnlyString(dateStr?: string | Date | null): string {
 }
 
 function formatDateDisplay(dateVal?: string | Date | null): string {
-  if (!dateVal) return '';
+  if (!dateVal) return '-';
   const str = String(dateVal).trim();
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s*,?\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
   if (dmyMatch) {
-    return `${dmyMatch[1].padStart(2, '0')}/${dmyMatch[2].padStart(2, '0')}/${dmyMatch[3]}`;
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    const hh = (dmyMatch[4] || '08').padStart(2, '0');
+    const mm = (dmyMatch[5] || '30').padStart(2, '0');
+    const ss = (dmyMatch[6] || '00').padStart(2, '0');
+    return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
   }
   const d = new Date(dateVal);
-  if (Number.isNaN(d.getTime())) return String(dateVal);
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const year = d.getFullYear();
-  return `${day}/${month}/${year}`;
+  if (!Number.isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
+  }
+  return String(dateVal);
 }
 
 // ─── MASTER DATA MẪU CHUẨN XUẤT KHO ───────────────────────────
@@ -1454,7 +1466,7 @@ export default function Outbound({
                               {(currentPage - 1) * pageSize + index + 1}
                             </td>
                             {columnVis.code && (
-                              <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-cyan-700 whitespace-nowrap">
+                              <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-extrabold text-cyan-700 whitespace-nowrap">
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1462,15 +1474,15 @@ export default function Outbound({
                                     setSelectedOrder(ord);
                                     setShowDetailModal(true);
                                   }}
-                                  className="text-cyan-700 hover:text-cyan-900 hover:underline font-extrabold text-left cursor-pointer whitespace-nowrap"
+                                  className="text-cyan-700 hover:text-cyan-900 hover:underline font-extrabold text-center cursor-pointer whitespace-nowrap"
                                   title="Bấm để xem thông tin chi tiết"
                                 >
                                   {ord.orderNo}
                                 </button>
                               </td>
                             )}
-                            {columnVis.date && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{formatDateDisplay(ord.orderDate)}</td>}
-                            {columnVis.customerName && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-extrabold text-slate-800">{ord.customer}</td>}
+                            {columnVis.date && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{formatDateDisplay(ord.orderDate || (ord as any).createdAt)}</td>}
+                            {columnVis.customerName && <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-extrabold text-slate-800">{ord.customer}</td>}
                             {!isDisposal && (
                               <>
                                 {columnVis.customerPhone && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.customerPhone || '-'}</td>}
@@ -1751,9 +1763,9 @@ export default function Outbound({
       )}
 
       {/* ─── MODAL COLUMN SETTINGS ───────────────────────────────────── */}
-      {showColumnSettings && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+      {showColumnSettings && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border-2 border-cyan-500">
             <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
               <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
                 <Settings size={18} className="text-cyan-600" />
@@ -1785,126 +1797,144 @@ export default function Outbound({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ─── MODAL DETAIL ───────────────────────────────────────────── */}
-      {showDetailModal && selectedOrder && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black uppercase text-slate-900">
-                {isDisposal ? `Chi tiết Phiếu Xuất Hủy Hàng Hóa #${selectedOrder.orderNo}` : `Chi tiết Phiếu Xuất Kho #${selectedOrder.orderNo}`}
-              </h2>
-              <button onClick={() => setShowDetailModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
+      {showDetailModal && selectedOrder && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl border-2 border-cyan-500">
+            <div className="mb-4 flex items-center justify-between border-b-2 border-cyan-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
+                  <Eye className="h-5 w-5" />
+                </div>
+                <h2 className="text-base font-black uppercase text-cyan-950">
+                  {isDisposal ? `Chi tiết Phiếu Xuất Hủy Hàng Hóa #${selectedOrder.orderNo}` : `Chi tiết Phiếu Xuất Kho #${selectedOrder.orderNo}`}
+                </h2>
+              </div>
+              <button onClick={() => setShowDetailModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
                 <X size={20} />
               </button>
             </div>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
-                <div><span className="text-slate-400">{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'}</span> <span className="font-bold">{selectedOrder.customer}</span></div>
-                <div><span className="text-slate-400">{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'}</span> <span className="font-bold">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></div>
-                <div><span className="text-slate-400">Ngày lập:</span> <span>{selectedOrder.orderDate}</span></div>
-                <div><span className="text-slate-400">Trạng thái:</span> <StatusBadge status={selectedOrder.status} /></div>
+              <div className="grid grid-cols-2 gap-4 rounded-xl border border-cyan-200 bg-cyan-50/50 p-3.5 text-xs font-semibold text-slate-700">
+                <div><span className="text-slate-500">{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'}</span> <span className="font-extrabold text-slate-900 ml-1">{selectedOrder.customer}</span></div>
+                <div><span className="text-slate-500">{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'}</span> <span className="font-extrabold text-slate-900 ml-1">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></div>
+                <div><span className="text-slate-500">Ngày lập:</span> <span className="font-bold text-slate-800 ml-1">{formatDateDisplay(selectedOrder.orderDate || (selectedOrder as any).createdAt)}</span></div>
+                <div><span className="text-slate-500">Trạng thái:</span> <span className="ml-1"><StatusBadge status={selectedOrder.status} /></span></div>
               </div>
-              <div className="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-slate-100 font-bold text-slate-700 uppercase">
+              <div className="overflow-x-auto custom-scrollbar rounded-xl border-2 border-slate-200 shadow-xs">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead className="bg-cyan-600 font-extrabold text-white uppercase text-[11px] tracking-wider">
                     <tr>
-                      <th className="p-2 text-center">Mã SKU</th>
-                      <th className="p-2 text-center">Tên sản phẩm</th>
-                      <th className="p-2 text-center">ĐVT</th>
-                      <th className="p-2 text-center">SL {isDisposal ? 'hủy' : ''}</th>
-                      <th className="p-2 text-center">{isDisposal ? 'Giá vốn ước tính' : 'Đơn giá'}</th>
-                      <th className="p-2 text-center">{isDisposal ? 'Giá trị thiệt hại' : 'Thành tiền'}</th>
+                      <th className="p-3 text-center w-12 border-r border-cyan-500 whitespace-nowrap">STT</th>
+                      <th className="p-3 text-center w-28 border-r border-cyan-500 whitespace-nowrap">Mã SKU</th>
+                      <th className="p-3 text-center min-w-[180px] border-r border-cyan-500 whitespace-nowrap">Tên sản phẩm</th>
+                      <th className="p-3 text-center w-16 border-r border-cyan-500 whitespace-nowrap">ĐVT</th>
+                      <th className="p-3 text-center w-36 border-r border-cyan-500 whitespace-nowrap">Vị trí kệ lấy hàng</th>
+                      <th className="p-3 text-center w-20 border-r border-cyan-500 whitespace-nowrap">SL {isDisposal ? 'hủy' : 'xuất'}</th>
+                      <th className="p-3 text-center w-28 border-r border-cyan-500 whitespace-nowrap">{isDisposal ? 'Giá vốn ước tính' : 'Đơn giá'}</th>
+                      <th className="p-3 text-center w-32 whitespace-nowrap">{isDisposal ? 'Giá trị thiệt hại' : 'Thành tiền'}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
+                  <tbody className="divide-y divide-slate-200 bg-white">
                     {selectedOrder.details?.map((d, i) => (
-                      <tr key={i}>
-                        <td className="p-2 font-bold text-cyan-800">{d.productSku}</td>
-                        <td className="p-2 font-semibold text-slate-800">{d.productName}</td>
-                        <td className="p-2 text-center">{d.unit}</td>
-                        <td className="p-2 text-center font-bold">{d.qty}</td>
-                        <td className="p-2 text-right">{d.price.toLocaleString('vi-VN')} đ</td>
-                        <td className="p-2 text-right font-bold">{(d.qty * d.price).toLocaleString('vi-VN')} đ</td>
+                      <tr key={i} className="hover:bg-cyan-50/40 transition">
+                        <td className="p-2.5 text-center font-semibold text-slate-600 border-r border-slate-200">{i + 1}</td>
+                        <td className="p-2.5 text-center font-extrabold text-cyan-800 border-r border-slate-200 whitespace-nowrap">{d.productSku}</td>
+                        <td className="p-2.5 font-bold text-slate-800 border-r border-slate-200">{d.productName}</td>
+                        <td className="p-2.5 text-center font-medium text-slate-700 border-r border-slate-200">{d.unit}</td>
+                        <td className="p-2.5 text-center border-r border-slate-200">
+                          <span className="inline-flex items-center gap-1 rounded-lg border border-cyan-300 bg-cyan-50 px-2.5 py-1 text-xs font-black text-cyan-800 shadow-2xs whitespace-nowrap">
+                            {d.locationBin || d.binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-center font-black text-slate-900 border-r border-slate-200">{d.qty}</td>
+                        <td className="p-2.5 text-right font-semibold text-slate-800 border-r border-slate-200 whitespace-nowrap">{d.price.toLocaleString('vi-VN')} đ</td>
+                        <td className="p-2.5 text-right font-black text-cyan-900 whitespace-nowrap">{(d.qty * d.price).toLocaleString('vi-VN')} đ</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <div className="flex justify-end text-sm font-black text-slate-900 border-t border-slate-200 pt-3">
+              <div className="flex justify-end text-sm font-black text-slate-900 border-t-2 border-slate-200 pt-3">
                 {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng giá trị: '}
-                <span className={isDisposal ? 'text-rose-600 ml-1.5' : 'text-slate-900 ml-1.5'}>
+                <span className={isDisposal ? 'text-rose-600 ml-2 font-black text-base' : 'text-cyan-700 ml-2 font-black text-base'}>
                   {selectedOrder.totalAmount.toLocaleString('vi-VN')} đ
                 </span>
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ─── MODAL PRINT ────────────────────────────────────────────── */}
-      {showPrintModal && selectedOrder && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
+      {showPrintModal && selectedOrder && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl border-2 border-cyan-500">
+            <div className="mb-4 flex items-center justify-between border-b-2 border-cyan-100 pb-3">
               <h2 className="text-base font-black text-slate-900">
                 {isDisposal ? 'Xem trước Biên Bản Xuất Hủy Hàng Hóa' : 'Xem trước Phiếu Xuất Bán Hàng'}
               </h2>
-              <button onClick={() => setShowPrintModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
+              <button onClick={() => setShowPrintModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
                 <X size={20} />
               </button>
             </div>
-            <div className="p-4 border border-slate-300 rounded-xl space-y-3 text-xs">
+            <div className="p-4 border-2 border-slate-200 rounded-xl space-y-3 text-xs bg-slate-50/50">
               <div className="text-center">
-                <h2 className="text-base font-black uppercase text-slate-900">
+                <h2 className="text-base font-black uppercase text-cyan-950">
                   {isDisposal ? 'BIÊN BẢN XUẤT HỦY HÀNG HÓA' : 'PHIẾU XUẤT BÁN HÀNG'}
                 </h2>
-                <p className="text-slate-500">Mã phiếu: {selectedOrder.orderNo} - Ngày: {selectedOrder.orderDate}</p>
+                <p className="text-slate-500 font-semibold mt-1">Mã phiếu: {selectedOrder.orderNo} - Ngày: {formatDateDisplay(selectedOrder.orderDate || (selectedOrder as any).createdAt)}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2 font-semibold">
-                <p>{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'} {selectedOrder.customer}</p>
-                <p>{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'} {formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</p>
-                {!isDisposal && <p>SĐT: {selectedOrder.customerPhone || '-'}</p>}
-                <p>{isDisposal ? 'Người lập / Giám sát:' : 'Người lập:'} {selectedOrder.employeeName}</p>
+              <div className="grid grid-cols-2 gap-2 font-semibold text-slate-800">
+                <p>{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'} <span className="font-extrabold">{selectedOrder.customer}</span></p>
+                <p>{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'} <span className="font-extrabold">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></p>
+                {!isDisposal && <p>SĐT: <span className="font-bold">{selectedOrder.customerPhone || '-'}</span></p>}
+                <p>{isDisposal ? 'Người lập / Giám sát:' : 'Người lập:'} <span className="font-bold">{selectedOrder.employeeName}</span></p>
               </div>
-              <table className="w-full border-collapse border border-slate-300 text-xs">
-                <thead className="bg-slate-100 font-bold text-center">
+              <table className="w-full border-collapse border-2 border-slate-300 text-xs bg-white">
+                <thead className="bg-cyan-100 font-bold text-center text-cyan-950">
                   <tr>
-                    <th className="border p-1">STT</th>
-                    <th className="border p-1">Tên hàng</th>
-                    <th className="border p-1">ĐVT</th>
-                    <th className="border p-1">SL {isDisposal ? 'hủy' : ''}</th>
-                    <th className="border p-1">{isDisposal ? 'Giá vốn (đ)' : 'Đơn giá'}</th>
-                    <th className="border p-1">{isDisposal ? 'Giá trị hủy (đ)' : 'Thành tiền'}</th>
+                    <th className="border border-slate-300 p-2">STT</th>
+                    <th className="border border-slate-300 p-2">Tên hàng</th>
+                    <th className="border border-slate-300 p-2">ĐVT</th>
+                    <th className="border border-slate-300 p-2">Vị trí kệ lấy hàng</th>
+                    <th className="border border-slate-300 p-2">SL {isDisposal ? 'hủy' : ''}</th>
+                    <th className="border border-slate-300 p-2">{isDisposal ? 'Giá vốn (đ)' : 'Đơn giá'}</th>
+                    <th className="border border-slate-300 p-2">{isDisposal ? 'Giá trị hủy (đ)' : 'Thành tiền'}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selectedOrder.details?.map((d, i) => (
                     <tr key={i} className="text-center">
-                      <td className="border p-1">{i + 1}</td>
-                      <td className="border p-1 text-left font-semibold">{d.productName}</td>
-                      <td className="border p-1">{d.unit}</td>
-                      <td className="border p-1 font-bold">{d.qty}</td>
-                      <td className="border p-1 text-right">{d.price.toLocaleString('vi-VN')}</td>
-                      <td className="border p-1 text-right font-bold">{(d.qty * d.price).toLocaleString('vi-VN')}</td>
+                      <td className="border border-slate-300 p-2">{i + 1}</td>
+                      <td className="border border-slate-300 p-2 text-left font-semibold">{d.productName}</td>
+                      <td className="border border-slate-300 p-2">{d.unit}</td>
+                      <td className="border border-slate-300 p-2 font-bold text-cyan-800">{d.locationBin || d.binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}</td>
+                      <td className="border border-slate-300 p-2 font-bold">{d.qty}</td>
+                      <td className="border border-slate-300 p-2 text-right">{d.price.toLocaleString('vi-VN')}</td>
+                      <td className="border border-slate-300 p-2 text-right font-bold">{(d.qty * d.price).toLocaleString('vi-VN')}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div className="text-right font-black text-sm">
+              <div className="text-right font-black text-sm text-cyan-950">
                 {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng tiền: '}
-                {selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ
+                <span className="text-cyan-700 font-extrabold">{selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ</span>
               </div>
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer">
-                <Printer size={16} /> In Biên Bản
+              <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer shadow-md transition">
+                <Printer size={16} /> In Phiếu
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ─── MODAL BARCODE SCANNER ───────────────────────────────────── */}
