@@ -1848,7 +1848,7 @@ export default function Outbound({
                         <td className="p-2.5 text-center font-medium text-slate-700 border-r border-slate-200">{d.unit}</td>
                         <td className="p-2.5 text-center border-r border-slate-200">
                           <span className="inline-flex items-center gap-1 rounded-lg border border-cyan-300 bg-cyan-50 px-2.5 py-1 text-xs font-black text-cyan-800 shadow-2xs whitespace-nowrap">
-                            {d.locationBin || d.binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}
+                            {(d as any).locationBin || (d as any).binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}
                           </span>
                         </td>
                         <td className="p-2.5 text-center font-black text-slate-900 border-r border-slate-200">{d.qty}</td>
@@ -1914,7 +1914,7 @@ export default function Outbound({
                       <td className="border border-slate-300 p-2">{i + 1}</td>
                       <td className="border border-slate-300 p-2 text-left font-semibold">{d.productName}</td>
                       <td className="border border-slate-300 p-2">{d.unit}</td>
-                      <td className="border border-slate-300 p-2 font-bold text-cyan-800">{d.locationBin || d.binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}</td>
+                      <td className="border border-slate-300 p-2 font-bold text-cyan-800">{(d as any).locationBin || (d as any).binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}</td>
                       <td className="border border-slate-300 p-2 font-bold">{d.qty}</td>
                       <td className="border border-slate-300 p-2 text-right">{d.price.toLocaleString('vi-VN')}</td>
                       <td className="border border-slate-300 p-2 text-right font-bold">{(d.qty * d.price).toLocaleString('vi-VN')}</td>

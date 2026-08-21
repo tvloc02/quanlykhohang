@@ -153,8 +153,21 @@ export async function fetchWarehouseOccupiedBins(
 
       map.set(cleanCode, updatedInfo);
       if (norm) map.set(norm, updatedInfo);
-      if (short) map.set(short, updatedInfo);
-      if (normShort) map.set(normShort, updatedInfo);
+
+      const parts = cleanCode.split('-');
+      if (parts.length >= 2) {
+        const rackPart = parts[parts.length - 2].trim().toUpperCase();
+        if (rackPart.startsWith('R') || rackPart.length <= 4) {
+          const rackCell = `${rackPart}-${short}`;
+          map.set(rackCell, updatedInfo);
+          map.set(normalizeBinKey(rackCell), updatedInfo);
+        }
+      }
+
+      if (cleanCode === short || !cleanCode.includes('-')) {
+        if (short) map.set(short, updatedInfo);
+        if (normShort) map.set(normShort, updatedInfo);
+      }
 
       const detail: BinGoodsDetail = {
         binCode: cleanCode,
@@ -172,8 +185,6 @@ export async function fetchWarehouseOccupiedBins(
 
       dMap.set(cleanCode, detail);
       if (norm) dMap.set(norm, detail);
-      if (short) dMap.set(short, detail);
-      if (normShort) dMap.set(normShort, detail);
 
       const appendGoods = (key: string) => {
         if (!gMap.has(key)) gMap.set(key, []);
@@ -196,8 +207,28 @@ export async function fetchWarehouseOccupiedBins(
       };
       appendGoods(cleanCode);
       if (norm) appendGoods(norm);
-      if (short) appendGoods(short);
-      if (normShort) appendGoods(normShort);
+
+      if (parts.length >= 2) {
+        const rackPart = parts[parts.length - 2].trim().toUpperCase();
+        if (rackPart.startsWith('R') || rackPart.length <= 4) {
+          const rackCell = `${rackPart}-${short}`;
+          dMap.set(rackCell, detail);
+          dMap.set(normalizeBinKey(rackCell), detail);
+          appendGoods(rackCell);
+          appendGoods(normalizeBinKey(rackCell));
+        }
+      }
+
+      if (cleanCode === short || !cleanCode.includes('-')) {
+        if (short) {
+          dMap.set(short, detail);
+          appendGoods(short);
+        }
+        if (normShort) {
+          dMap.set(normShort, detail);
+          appendGoods(normShort);
+        }
+      }
     };
 
     // 1. Fetch real physical inventory balances from CSDL
@@ -920,17 +951,25 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       if (occupiedGoodsListMap.has(fullBinCode)) return occupiedGoodsListMap.get(fullBinCode)!;
       const normKey = normalizeBinKey(fullBinCode);
       if (normKey && occupiedGoodsListMap.has(normKey)) return occupiedGoodsListMap.get(normKey)!;
-      if (occupiedGoodsListMap.has(binCodeShort)) return occupiedGoodsListMap.get(binCodeShort)!;
-      const normCell = normalizeBinKey(binCodeShort);
-      if (normCell && occupiedGoodsListMap.has(normCell)) return occupiedGoodsListMap.get(normCell)!;
+
       const rackCell = `${rackCode}-${binCodeShort}`;
       if (occupiedGoodsListMap.has(rackCell)) return occupiedGoodsListMap.get(rackCell)!;
       const normRackCell = normalizeBinKey(rackCell);
       if (normRackCell && occupiedGoodsListMap.has(normRackCell)) return occupiedGoodsListMap.get(normRackCell)!;
 
+      const normRack = normalizeBinKey(rackCode);
+      const normCell = normalizeBinKey(binCodeShort);
+
       for (const [key, val] of occupiedGoodsListMap.entries()) {
         const normK = normalizeBinKey(key);
-        if (normK && normCell && normK.endsWith(normCell)) return val;
+        if (!normK) continue;
+        if (normRack && normCell && normK.includes(normRack) && normK.endsWith(normCell)) {
+          return val;
+        }
+      }
+
+      if (!normRack && normCell && occupiedGoodsListMap.has(binCodeShort)) {
+        return occupiedGoodsListMap.get(binCodeShort)!;
       }
     }
 
@@ -966,43 +1005,28 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     const normKey = normalizeBinKey(fullBinCode);
     if (normKey && occupiedMap.has(normKey)) return occupiedMap.get(normKey);
 
-    if (occupiedMap.has(binCodeShort)) return occupiedMap.get(binCodeShort);
-    const normCell = normalizeBinKey(binCodeShort);
-    if (normCell && occupiedMap.has(normCell)) return occupiedMap.get(normCell);
-
     const rackCell = `${rackCode}-${binCodeShort}`;
     if (occupiedMap.has(rackCell)) return occupiedMap.get(rackCell);
     const normRackCell = normalizeBinKey(rackCell);
     if (normRackCell && occupiedMap.has(normRackCell)) return occupiedMap.get(normRackCell);
 
-    const currentWhNorm = normalizeBinKey(whCode);
-    const currentZoneNorm = activeZone?.code ? normalizeBinKey(activeZone.code) : '';
     const normRack = normalizeBinKey(rackCode);
+    const normCell = normalizeBinKey(binCodeShort);
 
     for (const [key, val] of occupiedMap.entries()) {
       const normK = normalizeBinKey(key);
       if (!normK) continue;
-      if (normK === normCell || normK === normRackCell) return val;
-      if (
-        normCell &&
-        normK.endsWith(normCell) &&
-        (!normRack || normK.includes(normRack))
-      ) {
-        return val;
-      }
-      if (
-        currentWhNorm &&
-        currentZoneNorm &&
-        normRack &&
-        normCell &&
-        normK.includes(currentWhNorm) &&
-        normK.includes(currentZoneNorm) &&
-        normK.includes(normRack) &&
-        normK.endsWith(normCell)
-      ) {
-        return val;
+      if (normRack && normCell) {
+        if (normK.includes(normRack) && normK.endsWith(normCell)) {
+          return val;
+        }
       }
     }
+
+    if (!normRack && normCell && occupiedMap.has(binCodeShort)) {
+      return occupiedMap.get(binCodeShort);
+    }
+
     return null;
   };
 

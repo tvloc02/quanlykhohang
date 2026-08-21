@@ -136,9 +136,9 @@ function getPrimaryRole(user: PersonnelUser): string {
 function getRoleLabel(role: string): string {
   const roleMap: Record<string, string> = {
     admin: 'Quản trị viên',
-    manager: 'Quản lý kho',
-    storekeeper: 'Thủ kho',
-    'inventory-checker': 'Nhân viên kiểm kê',
+    manager: 'Người dùng',
+    storekeeper: 'Người dùng',
+    'inventory-checker': 'Người dùng',
     supplier: 'Nhà cung cấp',
     customer: 'Khách hàng',
   };

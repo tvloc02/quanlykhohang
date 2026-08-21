@@ -1471,9 +1471,10 @@ export default function CreateWarehousePage() {
         const binShort = editingBinCode.split('-').pop() || editingBinCode;
         const occupiedInfo = activeBinGoodsDetails?.occupiedInfo;
         const goodsList = activeBinGoodsDetails?.goodsList || [];
+        const validGoodsList = goodsList.filter((item: any) => item.sku !== 'SKU-DRAFT');
         const hasGoods = Boolean(
           (occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0 || (occupiedInfo.occupancyPct && occupiedInfo.occupancyPct > 0))) ||
-          (goodsList && goodsList.length > 0)
+          (validGoodsList && validGoodsList.length > 0)
         );
         const customConfig = activeBinGoodsDetails?.customConfig || (activeZone?.racks || [])
           .flatMap((rk: any) => Object.values(rk.customBins || {}))
@@ -1523,7 +1524,19 @@ export default function CreateWarehousePage() {
                 {goodsList && goodsList.length > 0 ? (() => {
                   const filteredGoodsList = goodsList.filter((item: any) => item.sku !== 'SKU-DRAFT');
 
-                  if (filteredGoodsList.length === 0) return null;
+                  if (filteredGoodsList.length === 0) {
+                    return (
+                      <div className="rounded-2xl border border-cyan-200 dark:border-cyan-900/70 bg-white dark:bg-slate-900 p-5 space-y-2 shadow-sm text-center">
+                        <span className="font-bold text-xs sm:text-sm uppercase tracking-wider text-cyan-900 dark:text-cyan-200 flex items-center justify-center gap-2">
+                          <Boxes className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
+                          Trạng Thái Vị Trí Ô KỆ
+                        </span>
+                        <p className="text-xs font-medium text-slate-500 py-1">
+                          KỆ TRỐNG - Ô chứa này hiện tại chưa có hàng hóa lưu trữ trong CSDL.
+                        </p>
+                      </div>
+                    );
+                  }
 
                   const groupedGoodsMap = new Map<string, {
                     sku: string;
@@ -1575,12 +1588,74 @@ export default function CreateWarehousePage() {
                     };
                   });
 
+                  const grandTotalInbound = groupedGoodsList.reduce((s, g) => s + g.transactions.filter((t) => !t.isOutbound && Number(t.quantity || t.totalPhysical || 0) > 0).reduce((ts, t) => ts + Number(t.quantity || t.totalPhysical || 0), 0), 0);
+                  const grandTotalOutbound = groupedGoodsList.reduce((s, g) => s + g.transactions.filter((t) => t.isOutbound || Number(t.quantity || 0) < 0).reduce((ts, t) => ts + Math.abs(Number(t.quantity || 0)), 0), 0);
+                  const grandNetPhysical = Math.max(0, grandTotalInbound > 0 ? grandTotalInbound - grandTotalOutbound : groupedGoodsList.reduce((s, g) => s + Number(g.transactions[0]?.quantity || g.transactions[0]?.totalPhysical || 1), 0));
+                  const grandOccupancyPct = Math.min(100, groupedGoodsList.reduce((s, g) => s + g.netOccupancyPct, 0));
+
                   return (
-                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3 shadow-sm">
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-4 shadow-sm">
+                      
+                      {/* BIN OVERALL SUMMARY BANNER */}
+                      <div className="rounded-xl border border-cyan-200 dark:border-cyan-800 bg-gradient-to-r from-cyan-50/90 via-slate-50 to-cyan-50/90 dark:from-slate-950 dark:via-cyan-950/40 dark:to-slate-950 p-4 space-y-3 shadow-2xs">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-200/70 dark:border-cyan-800/60 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-xs text-cyan-950 dark:text-cyan-200 uppercase tracking-wide">
+                              Vị Trí Lưu Trữ: <span className="text-cyan-800 dark:text-cyan-300 font-black font-mono">{editingBinCode}</span>
+                            </span>
+                            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                              ({activeZone?.name || 'Phân khu kho'})
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Tổng dung tích chiếm dụng:</span>
+                            <span className="px-3 py-1 rounded-full text-xs font-black bg-cyan-700 text-white shadow-2xs">
+                              {grandOccupancyPct}% {grandOccupancyPct >= 100 ? '(ĐẦY 100%)' : ''}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center text-xs">
+                          <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200">
+                            <span className="block text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">TỔNG HÀNG ĐÃ NHẬP</span>
+                            <span className="font-black text-sm text-emerald-800 dark:text-emerald-300">+{grandTotalInbound.toLocaleString('vi-VN')}</span>
+                          </div>
+                          <div className="p-2.5 rounded-lg border border-rose-200 bg-rose-50/80 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200">
+                            <span className="block text-[11px] font-semibold text-rose-700 dark:text-rose-400">TỔNG HÀNG ĐÃ XUẤT</span>
+                            <span className="font-black text-sm text-rose-800 dark:text-rose-300">-{grandTotalOutbound.toLocaleString('vi-VN')}</span>
+                          </div>
+                          <div className="p-2.5 rounded-lg border border-cyan-300 bg-cyan-100/80 dark:bg-cyan-900/60 text-cyan-950 dark:text-cyan-100">
+                            <span className="block text-[11px] font-semibold text-cyan-800 dark:text-cyan-300">TỒN KHO THỰC TẾ HIỆN TẠI</span>
+                            <span className="font-black text-sm text-cyan-900 dark:text-cyan-100">{grandNetPhysical.toLocaleString('vi-VN')}</span>
+                          </div>
+                        </div>
+
+                        {/* PRODUCT OCCUPANCY PERCENTAGE BREAKDOWN */}
+                        <div className="pt-1">
+                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1.5 uppercase tracking-wider">
+                            Chi tiết phân bổ % sản phẩm trong ô:
+                          </span>
+                          <div className="flex flex-wrap gap-2">
+                            {groupedGoodsList.map((g, idx) => (
+                              <div
+                                key={idx}
+                                className="inline-flex items-center gap-2 px-3 py-1 rounded-lg border border-cyan-300 dark:border-cyan-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-2xs"
+                              >
+                                <span className="font-mono text-cyan-800 dark:text-cyan-300 font-extrabold">[{g.sku}]</span>
+                                <span>{g.productName}:</span>
+                                <span className="px-2 py-0.5 rounded bg-cyan-700 text-white font-black text-[11px]">
+                                  {g.netOccupancyPct}% dung tích
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
                         <span className="font-semibold text-xs sm:text-sm uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
                           <Package className="h-4.5 w-4.5 text-cyan-600 dark:text-cyan-400" />
-                          Lịch sử xuất nhập hàng hóa & phân bổ ô
+                          Nhật ký lịch sử xuất nhập & giao dịch thực tế
                         </span>
                         <span className="text-[11px] font-medium text-cyan-700 bg-cyan-50 dark:bg-cyan-950 dark:text-cyan-300 px-2.5 py-0.5 rounded-full border border-cyan-200 dark:border-cyan-800">
                           {goodsList.length} lượt xuất nhập
