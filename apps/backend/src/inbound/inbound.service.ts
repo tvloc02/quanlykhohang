@@ -718,10 +718,14 @@ export class InboundService {
 
       const assignedStr = (item as any).locationBin || (Array.isArray((item as any).assignedBins) ? (item as any).assignedBins.join(', ') : '');
       let noteContent = item.note ? String(item.note) : '';
-      if (assignedStr && !noteContent.includes('[Vị trí Ô:')) {
-        noteContent = noteContent
-          ? `${noteContent} [Vị trí Ô: ${assignedStr}]`
-          : `[Vị trí Ô: ${assignedStr}]`;
+      if (assignedStr) {
+        if (noteContent.includes('[Vị trí Ô:')) {
+          noteContent = noteContent.replace(/\[Vị trí Ô:\s*[^\]]+\]/g, `[Vị trí Ô: ${assignedStr}]`);
+        } else {
+          noteContent = noteContent
+            ? `${noteContent} [Vị trí Ô: ${assignedStr}]`
+            : `[Vị trí Ô: ${assignedStr}]`;
+        }
       }
 
       const detail = this.detailRepo.create({
@@ -859,8 +863,11 @@ export class InboundService {
         const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
         if (match && match[1]) {
           match[1].split(',').forEach((c) => {
-            const trimmed = c.trim();
-            if (trimmed) specificBins.push(trimmed);
+            const rawCode = c.trim();
+            if (rawCode) {
+              const cleanCode = rawCode.split('(')[0].trim();
+              if (cleanCode) specificBins.push(cleanCode);
+            }
           });
         }
       }
