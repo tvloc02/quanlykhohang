@@ -418,7 +418,17 @@ export default function PermissionGroupsPage() {
 
       if (uRes.ok) {
         const uData = await uRes.json();
-        setUsers(Array.isArray(uData) ? uData : []);
+        const internalOnly = Array.isArray(uData)
+          ? uData.filter((u: any) => {
+              if (!u) return false;
+              const roles = (u.roles || []).map((r: any) => (typeof r === 'string' ? r : r.name || ''));
+              if (roles.includes('supplier') || roles.includes('customer')) return false;
+              if (u.supplier || u.customer) return false;
+              if (u.email && (u.email.endsWith('@supplier.local') || u.email.endsWith('@customer.local'))) return false;
+              return true;
+            })
+          : [];
+        setUsers(internalOnly);
       }
       if (wRes.ok) {
         const wData = await wRes.json();
@@ -466,6 +476,28 @@ export default function PermissionGroupsPage() {
           const finalGroups = Array.from(groupMap.values());
           setGroups(finalGroups);
           saveStoredPermissionGroups(finalGroups);
+
+          // Auto-sync any unsynced local groups to backend MySQL database
+          localGroups.forEach(async (lg) => {
+            if (
+              lg.id.startsWith('group-') ||
+              !apiGroups.some((ag) => ag.id === lg.id || ag.name.trim().toLowerCase() === lg.name.trim().toLowerCase())
+            ) {
+              try {
+                await fetch(`${API_BASE_URL}/project-teams`, {
+                  method: 'POST',
+                  headers: authHeaders(),
+                  body: JSON.stringify({
+                    name: lg.name,
+                    description: lg.description || '',
+                    memberIds: lg.memberIds || [],
+                    generalPermissions: lg.generalPermissions || getDefaultGeneralPermissions(),
+                    menuPermissions: lg.menuPermissions || getDefaultMenuPermissions(true),
+                  }),
+                });
+              } catch {}
+            }
+          });
         }
       }
     } catch {
@@ -614,14 +646,11 @@ export default function PermissionGroupsPage() {
             menuPermissions: data.menuPermissions || getDefaultMenuPermissions(true),
           };
         } else {
-          newGroup = {
-            id: `group-${Date.now()}`,
-            name: payload.name,
-            description: payload.description,
-            memberIds: groupForm.memberIds,
-            generalPermissions: getDefaultGeneralPermissions(),
-            menuPermissions: getDefaultMenuPermissions(true),
-          };
+          const errData = await res.json().catch(() => null);
+          const errMsg = errData?.message || 'Không thể lưu nhóm quyền vào CSDL backend';
+          setError(Array.isArray(errMsg) ? errMsg.join(', ') : errMsg);
+          setSaving(false);
+          return;
         }
 
         setGroups((prev) => {
@@ -634,7 +663,7 @@ export default function PermissionGroupsPage() {
       }
       closeGroupModal();
     } catch {
-      setError('Có lỗi xảy ra khi lưu nhóm quyền.');
+      setError('Có lỗi xảy ra khi lưu nhóm quyền vào CSDL.');
     } finally {
       setSaving(false);
     }
@@ -682,6 +711,38 @@ export default function PermissionGroupsPage() {
         },
         ...prev,
       ]);
+
+      // Sync groupIds for users on backend
+      const allUsersRes = await fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(() => null);
+      if (allUsersRes && allUsersRes.ok) {
+        const allUsers: any[] = await allUsersRes.json();
+        const currentGroupId = assignPersonnelGroup.id;
+
+        await Promise.all(
+          allUsers.map((u) => {
+            const isMember = tempAssignMemberIds.includes(u.id) || tempAssignMemberIds.includes(u.email);
+            let userGroupIds: string[] = Array.isArray(u.groupIds) ? u.groupIds : [];
+            const hasGroup = userGroupIds.includes(currentGroupId);
+
+            if (isMember && !hasGroup) {
+              userGroupIds = [...userGroupIds, currentGroupId];
+            } else if (!isMember && hasGroup) {
+              userGroupIds = userGroupIds.filter((gid) => gid !== currentGroupId);
+            } else {
+              return Promise.resolve();
+            }
+
+            return fetch(`${API_BASE_URL}/users/${u.id}`, {
+              method: 'PATCH',
+              headers: authHeaders(),
+              body: JSON.stringify({ groupIds: userGroupIds }),
+            }).catch(() => null);
+          })
+        );
+      }
+
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new Event('permissions-updated'));
 
       setSuccess(`Đã gán nhân sự cho nhóm "${assignPersonnelGroup.name}".`);
       setAssignPersonnelGroup(null);

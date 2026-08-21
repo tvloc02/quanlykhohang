@@ -604,7 +604,7 @@ export class DashboardService {
       if (amt > 0) {
         logs.push({
           id: `in-${o.id}`,
-          date: o.orderDate ? new Date(o.orderDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          date: new Date((o as any).createdAt || o.orderDate || Date.now()).toISOString(),
           type: 'THU',
           code: o.orderNo || `XBH-${o.id}`,
           partner: o.customerName || 'Khách bán lẻ',
@@ -619,7 +619,7 @@ export class DashboardService {
       if (amt > 0) {
         logs.push({
           id: `out-${i.id}`,
-          date: i.orderDate ? new Date(i.orderDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          date: new Date((i as any).createdAt || i.orderDate || Date.now()).toISOString(),
           type: 'CHI',
           code: i.poNumber || `PNK-${i.id}`,
           partner: i.supplierName || 'Nhà cung cấp',

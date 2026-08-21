@@ -110,7 +110,6 @@ export function readStoredPersonnelUsers(): PersonnelUser[] {
 
 export function saveStoredPersonnelUsers(users: PersonnelUser[]) {
   localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-  window.dispatchEvent(new Event('storage'));
 }
 
 export function readStoredPersonnelProfiles(): Record<string, PersonnelProfile> {
@@ -371,7 +370,6 @@ export default function Personnel() {
       }
 
       setUsers(mergedUsers);
-      saveStoredPersonnelUsers(mergedUsers);
 
       if (wRes.ok) {
         const remoteWarehouses = (await wRes.json()) as WarehouseRecord[];
@@ -392,6 +390,15 @@ export default function Personnel() {
 
   React.useEffect(() => {
     void loadData();
+
+    const handlePermissionUpdate = () => {
+      setPermissionGroups(readStoredPermissionGroups());
+    };
+
+    window.addEventListener('permissions-updated', handlePermissionUpdate);
+    return () => {
+      window.removeEventListener('permissions-updated', handlePermissionUpdate);
+    };
   }, [loadData]);
 
   // Reset pagination when filters change
@@ -931,10 +938,15 @@ export default function Personnel() {
         ? [(user as any).groupId]
         : [];
 
-    if (gIds.length === 0) return [];
-    return permissionGroups
-      .filter((g) => gIds.includes(g.id))
-      .map((g) => g.name);
+    const matchedGroups = permissionGroups.filter((g) => {
+      const isMemberInGroup =
+        Array.isArray(g.memberIds) &&
+        (g.memberIds.includes(user.id) || g.memberIds.includes(user.email));
+      const isGroupInUser = gIds.includes(g.id);
+      return isMemberInGroup || isGroupInUser;
+    });
+
+    return Array.from(new Set(matchedGroups.map((g) => g.name)));
   };
 
   const genderOptions: SelectOption[] = [
