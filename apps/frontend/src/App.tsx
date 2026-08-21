@@ -23,8 +23,12 @@ import Reports from './features/reports/Reports';
 import SalesReportPage from './features/reports/pages/SalesReportPage';
 import RevenueReportPage from './features/reports/pages/RevenueReportPage';
 import CashflowReportPage from './features/reports/pages/CashflowReportPage';
+import FundBalanceReportPage from './features/reports/pages/FundBalanceReportPage';
+import BusinessSummaryReportPage from './features/reports/pages/BusinessSummaryReportPage';
+import BelowMinStockReportPage from './features/reports/pages/BelowMinStockReportPage';
 import InventoryReportPage from './features/reports/pages/InventoryReportPage';
 import InventoryBaseUnitReportPage from './features/reports/pages/InventoryBaseUnitReportPage';
+import InventorySummaryReportPage from './features/reports/pages/InventorySummaryReportPage';
 import GenericReportPage from './features/reports/pages/GenericReportPage';
 import BillProfitReportPage from './features/reports/pages/BillProfitReportPage';
 import CategoryProfitReportPage from './features/reports/pages/CategoryProfitReportPage';
@@ -883,7 +887,7 @@ function App() {
           element={
             <RoleRoute menuId="report-inventory-summary">
               <MainLayout>
-                <GenericReportPage reportType="inventory-summary-report" title="Hàng tồn Tổng hợp" description="Báo cáo tổng hợp số lượng tồn kho toàn hệ thống" />
+                <InventorySummaryReportPage />
               </MainLayout>
             </RoleRoute>
           }
@@ -926,7 +930,7 @@ function App() {
           element={
             <RoleRoute menuId="report-fund-balance">
               <MainLayout>
-                <GenericReportPage reportType="fund-balance" title="Tồn quỹ" description="Báo cáo theo dõi số dư tồn quỹ tiền mặt và tài khoản" />
+                <FundBalanceReportPage />
               </MainLayout>
             </RoleRoute>
           }
@@ -1006,7 +1010,7 @@ function App() {
           element={
             <RoleRoute menuId="report-business-summary">
               <MainLayout>
-                <GenericReportPage title="Tổng hợp Kinh doanh" description="Báo cáo kết quả kinh doanh tổng hợp toàn công ty" />
+                <BusinessSummaryReportPage />
               </MainLayout>
             </RoleRoute>
           }
@@ -1016,7 +1020,7 @@ function App() {
           element={
             <RoleRoute menuId="report-below-min-stock">
               <MainLayout>
-                <GenericReportPage title="Hàng tồn dưới định mức" description="Cảnh báo các sản phẩm đang có số lượng tồn kho dưới định mức tối thiểu" />
+                <BelowMinStockReportPage />
               </MainLayout>
             </RoleRoute>
           }

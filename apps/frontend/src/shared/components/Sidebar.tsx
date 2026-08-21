@@ -174,18 +174,6 @@ const menuItems: MenuItem[] = [
       { id: 'report-customer-profit', icon: Users, label: 'Lợi nhuận theo Khách hàng', path: '/reports/customer-profit' },
     ],
   },
-  // 6. Sổ sách kế toán
-  {
-    id: 'so-sach-ke-toan',
-    icon: BookOpen,
-    label: 'Sổ sách kế toán',
-    path: '/reports/cashbook',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'accounting-cashbook', icon: Landmark, label: 'Sổ quỹ tiền mặt', path: '/reports/cashbook' },
-      { id: 'accounting-sales-journal', icon: Receipt, label: 'Nhật ký bán hàng', path: '/reports/sales-detail' },
-    ],
-  },
   // 7. Danh mục
   {
     id: 'danh-muc',

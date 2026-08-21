@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   FileSpreadsheet,
@@ -13,6 +13,7 @@ import {
   Building2,
   RefreshCw,
   ChevronDown,
+  Check,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -44,6 +45,18 @@ export default function CustomerProfitReportPage() {
 
   // Filters
   const [selectedBranch, setSelectedBranch] = useState('ALL');
+  const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);
+  const warehouseDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (warehouseDropdownRef.current && !warehouseDropdownRef.current.contains(event.target as Node)) {
+        setIsWarehouseDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
@@ -232,30 +245,32 @@ export default function CustomerProfitReportPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={fetchCustomerProfitReport}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`h-4 w-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
             Làm mới
           </button>
+
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Printer size={15} className="text-slate-600" />
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
             In báo cáo
           </button>
+
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <FileSpreadsheet size={15} className="text-slate-600" />
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
             Export Excel
           </button>
         </div>
@@ -265,20 +280,62 @@ export default function CustomerProfitReportPage() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm text-xs font-bold">
         {/* Left Filters */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Kho:</span>
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[150px]"
+          {/* Filter Kho hàng (Custom Styled Popover Dropdown) */}
+          <div ref={warehouseDropdownRef} className="relative inline-block">
+            <button
+              type="button"
+              onClick={() => setIsWarehouseDropdownOpen(!isWarehouseDropdownOpen)}
+              className="inline-flex h-12 items-center gap-2.5 rounded-xl border-2 border-cyan-600/40 bg-slate-50 px-4 py-2 shadow-2xs transition hover:bg-slate-100 hover:border-cyan-600 active:scale-95 cursor-pointer"
             >
-              <option value="ALL">Tất cả chi nhánh</option>
-              {branchOptions.filter((b) => b !== 'ALL').map((br) => (
-                <option key={br} value={br}>
-                  {br}
-                </option>
-              ))}
-            </select>
+              <Building2 className="h-5 w-5 text-cyan-600 shrink-0" />
+              <span className="text-xs sm:text-sm font-extrabold uppercase text-cyan-950 tracking-wide">KHO HÀNG:</span>
+              <div className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-bold text-slate-800 shadow-2xs hover:border-cyan-600 min-w-[220px] justify-between">
+                <span className="truncate max-w-[190px]">
+                  {selectedBranch === 'ALL' ? 'Tất cả chi nhánh' : selectedBranch}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform duration-200 ${isWarehouseDropdownOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {/* Custom Styled Menu với Bo góc tròn Rounded-2xl */}
+            {isWarehouseDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 w-full min-w-[280px] rounded-2xl border-2 border-cyan-500 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBranch('ALL');
+                    setIsWarehouseDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                    selectedBranch === 'ALL'
+                      ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                      : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                  }`}
+                >
+                  <span>Tất cả chi nhánh</span>
+                  {selectedBranch === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
+                </button>
+
+                {branchOptions.filter((b) => b !== 'ALL').map((br) => (
+                  <button
+                    key={br}
+                    type="button"
+                    onClick={() => {
+                      setSelectedBranch(br);
+                      setIsWarehouseDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                      selectedBranch === br
+                        ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                        : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                    }`}
+                  >
+                    <span>{br}</span>
+                    {selectedBranch === br && <Check className="h-4 w-4 text-white shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">

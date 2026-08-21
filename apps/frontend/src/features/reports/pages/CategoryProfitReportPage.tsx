@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   FileSpreadsheet,
@@ -16,6 +16,7 @@ import {
   Settings,
   Maximize2,
   Minimize2,
+  Check,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -52,6 +53,26 @@ export default function CategoryProfitReportPage() {
   // Filters
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedBranch, setSelectedBranch] = useState('ALL');
+
+  // Custom Dropdown States
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
+  const warehouseDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
+        setIsCategoryDropdownOpen(false);
+      }
+      if (warehouseDropdownRef.current && !warehouseDropdownRef.current.contains(event.target as Node)) {
+        setIsWarehouseDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
@@ -295,52 +316,52 @@ export default function CategoryProfitReportPage() {
           </div>
         </div>
 
-        {/* Action Buttons styled like sample image: cyan border, text, icons */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Action Buttons styled like standard: cyan border-2, text, icons */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={fetchCategoryProfitReport}
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
+            Làm mới
+          </button>
+
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl border border-cyan-700 bg-white text-cyan-800 font-bold text-xs shadow-2xs hover:bg-cyan-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Printer className="h-4 w-4 text-cyan-700" />
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
             <span>In báo cáo</span>
           </button>
 
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl border border-cyan-700 bg-white text-cyan-800 font-bold text-xs shadow-2xs hover:bg-cyan-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <FileSpreadsheet className="h-4 w-4 text-cyan-700" />
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
             <span>Export Excel</span>
           </button>
 
           <button
             type="button"
             onClick={() => showToast('Đang bật cấu hình hiển thị cột!')}
-            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-xl border border-cyan-700 bg-white text-cyan-800 font-bold text-xs shadow-2xs hover:bg-cyan-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Settings className="h-4 w-4 text-cyan-700" />
+            <Settings className="h-4.5 w-4.5 text-cyan-700" />
             <span>Hiển thị</span>
           </button>
 
           <button
             type="button"
             onClick={toggleBrowserFullscreen}
-            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs hover:bg-cyan-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Toàn màn hình"
           >
-            {isFullScreen ? <Minimize2 className="h-4 w-4 text-cyan-700" /> : <Maximize2 className="h-4 w-4 text-cyan-700" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={fetchCategoryProfitReport}
-            disabled={loading}
-            className="inline-flex items-center justify-center h-9 w-9 rounded-xl border border-cyan-700 bg-white text-cyan-800 shadow-2xs hover:bg-cyan-50 transition cursor-pointer disabled:opacity-50"
-            title="Làm mới"
-          >
-            <RefreshCw className={`h-4 w-4 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
+            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
           </button>
         </div>
       </div>
@@ -361,36 +382,118 @@ export default function CategoryProfitReportPage() {
 
         {/* Right: Filters (Nhóm, Kho, Từ ngày, Đến ngày) */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-700 font-extrabold">Nhóm:</span>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="h-9 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[130px]"
+          {/* Filter Nhóm hàng (Custom Styled Popover Dropdown) */}
+          <div ref={categoryDropdownRef} className="relative inline-block">
+            <button
+              type="button"
+              onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
+              className="inline-flex h-12 items-center gap-2.5 rounded-xl border-2 border-cyan-600/40 bg-slate-50 px-4 py-2 shadow-2xs transition hover:bg-slate-100 hover:border-cyan-600 active:scale-95 cursor-pointer"
             >
-              <option value="ALL">Tất cả nhóm</option>
-              {categoriesList.map((cat) => (
-                <option key={cat.id} value={cat.name}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+              <FolderTree className="h-5 w-5 text-cyan-600 shrink-0" />
+              <span className="text-xs sm:text-sm font-extrabold uppercase text-cyan-950 tracking-wide">NHÓM:</span>
+              <div className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-bold text-slate-800 shadow-2xs hover:border-cyan-600 min-w-[180px] justify-between">
+                <span className="truncate max-w-[150px]">
+                  {selectedCategory === 'ALL' ? 'Tất cả nhóm' : selectedCategory}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform duration-200 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {isCategoryDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 w-full min-w-[240px] rounded-2xl border-2 border-cyan-500 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory('ALL');
+                    setIsCategoryDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                    selectedCategory === 'ALL'
+                      ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                      : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                  }`}
+                >
+                  <span>Tất cả nhóm</span>
+                  {selectedCategory === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
+                </button>
+
+                {categoriesList.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategory(cat.name);
+                      setIsCategoryDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                      selectedCategory === cat.name
+                        ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                        : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                    }`}
+                  >
+                    <span>{cat.name}</span>
+                    {selectedCategory === cat.name && <Check className="h-4 w-4 text-white shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-700 font-extrabold">Kho:</span>
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="h-9 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[130px]"
+          {/* Filter Kho hàng (Custom Styled Popover Dropdown) */}
+          <div ref={warehouseDropdownRef} className="relative inline-block">
+            <button
+              type="button"
+              onClick={() => setIsWarehouseDropdownOpen(!isWarehouseDropdownOpen)}
+              className="inline-flex h-12 items-center gap-2.5 rounded-xl border-2 border-cyan-600/40 bg-slate-50 px-4 py-2 shadow-2xs transition hover:bg-slate-100 hover:border-cyan-600 active:scale-95 cursor-pointer"
             >
-              <option value="ALL">Tất cả chi nhánh</option>
-              {branchOptions.filter((b) => b !== 'ALL').map((br) => (
-                <option key={br} value={br}>
-                  {br}
-                </option>
-              ))}
-            </select>
+              <Building2 className="h-5 w-5 text-cyan-600 shrink-0" />
+              <span className="text-xs sm:text-sm font-extrabold uppercase text-cyan-950 tracking-wide">KHO HÀNG:</span>
+              <div className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-bold text-slate-800 shadow-2xs hover:border-cyan-600 min-w-[220px] justify-between">
+                <span className="truncate max-w-[190px]">
+                  {selectedBranch === 'ALL' ? 'Tất cả chi nhánh' : selectedBranch}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform duration-200 ${isWarehouseDropdownOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {isWarehouseDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 w-full min-w-[280px] rounded-2xl border-2 border-cyan-500 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBranch('ALL');
+                    setIsWarehouseDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                    selectedBranch === 'ALL'
+                      ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                      : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                  }`}
+                >
+                  <span>Tất cả chi nhánh</span>
+                  {selectedBranch === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
+                </button>
+
+                {branchOptions.filter((b) => b !== 'ALL').map((br) => (
+                  <button
+                    key={br}
+                    type="button"
+                    onClick={() => {
+                      setSelectedBranch(br);
+                      setIsWarehouseDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                      selectedBranch === br
+                        ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                        : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                    }`}
+                  >
+                    <span>{br}</span>
+                    {selectedBranch === br && <Check className="h-4 w-4 text-white shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">
