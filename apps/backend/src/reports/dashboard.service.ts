@@ -346,10 +346,13 @@ export class DashboardService {
     const qb = this.outboundRepo.createQueryBuilder('o')
       .leftJoin('o.details', 'd')
       .leftJoin('o.customer', 'c')
-      .select("COALESCE(d.warehouseCode, 'Chi nhánh chính')", 'groupName')
+      .leftJoin('warehouses', 'w', 'w.code = d.warehouseCode')
+      .select("COALESCE(w.name, d.warehouseCode, 'Kho không xác định')", 'groupName')
+      .addSelect("COALESCE(w.code, d.warehouseCode, '')", 'groupCode')
       .addSelect("COALESCE(c.name, 'Khách hàng')", 'staffName')
       .addSelect('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'revenue')
-      .groupBy("COALESCE(d.warehouseCode, 'Chi nhánh chính')")
+      .groupBy("COALESCE(w.name, d.warehouseCode, 'Kho không xác định')")
+      .addGroupBy("COALESCE(w.code, d.warehouseCode, '')")
       .addGroupBy("COALESCE(c.name, 'Khách hàng')");
 
     if (startDate) {
@@ -363,9 +366,11 @@ export class DashboardService {
     const groupsMap = new Map<string, any[]>();
     
     rows.forEach((r, idx) => {
-      const gName = r.groupName || 'Chi nhánh chính';
-      if (!groupsMap.has(gName)) groupsMap.set(gName, []);
-      groupsMap.get(gName)?.push({
+      const gName = r.groupName || 'Kho không xác định';
+      const gCode = r.groupCode || '';
+      const groupKey = `${gName}::${gCode}`;
+      if (!groupsMap.has(groupKey)) groupsMap.set(groupKey, []);
+      groupsMap.get(groupKey)?.push({
         id: String(idx + 1),
         staffName: r.staffName,
         revenue: Number(r.revenue || 0),
@@ -375,10 +380,10 @@ export class DashboardService {
       });
     });
 
-    return Array.from(groupsMap.entries()).map(([groupName, items]) => ({
-      groupName,
-      items,
-    }));
+    return Array.from(groupsMap.entries()).map(([groupKey, items]) => {
+      const [groupName, groupCode = ''] = groupKey.split('::');
+      return { groupName, groupCode, items };
+    });
   }
 
   /**
@@ -434,16 +439,28 @@ export class DashboardService {
 
     const rows = await qb.getRawMany();
     const groupsMap = new Map<string, any[]>();
+    const productMap = new Map<string, any>();
 
+    // A product can have several stock-balance rows (for example one per
+    // warehouse). Aggregate those rows by SKU before returning the report.
     rows.forEach((r, idx) => {
-      const catName = `Nhóm hàng: ${r.categoryName || 'Mặc định'}`;
-      if (!groupsMap.has(catName)) groupsMap.set(catName, []);
+      const sku = String(r.sku || `SKU-${idx + 1}`).trim();
       const finalStock = Number(r.finalStock || 0);
       const price = Number(r.unitPrice || 0);
-      groupsMap.get(catName)?.push({
+      const current = productMap.get(sku);
+      if (current) {
+        current.initialStock += Number(r.totalPhysical || 0);
+        current.finalStock += finalStock;
+        current.pendingExportQty += Number(r.allocated || 0);
+        current.totalValue += finalStock * price;
+        return;
+      }
+
+      productMap.set(sku, {
         id: String(idx + 1),
-        sku: r.sku || `SKU-${idx + 1}`,
+        sku,
         name: r.name,
+        categoryName: r.categoryName || 'Mặc định',
         initialStock: Number(r.totalPhysical || 0),
         importQty: 0,
         exportQty: 0,
@@ -453,6 +470,13 @@ export class DashboardService {
         pendingExportQty: Number(r.allocated || 0),
         pendingOrderQty: 0,
       });
+    });
+
+    Array.from(productMap.values()).forEach((item) => {
+      const catName = `Nhóm hàng: ${item.categoryName}`;
+      if (!groupsMap.has(catName)) groupsMap.set(catName, []);
+      delete item.categoryName;
+      groupsMap.get(catName)?.push(item);
     });
 
     if (groupsMap.size === 0) {

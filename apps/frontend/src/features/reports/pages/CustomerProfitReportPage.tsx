@@ -12,6 +12,7 @@ import {
   Users,
   Building2,
   RefreshCw,
+  ChevronDown,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -260,25 +261,6 @@ export default function CustomerProfitReportPage() {
         </div>
       </div>
 
-      {/* ═══ 3 BUTTON TỔNG HỢP (LẤY MẪU TỪ TRANG HÀNG HÓA) ═══ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG DOANH THU KHÁCH HÀNG: <span className="text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</span>
-          </p>
-        </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG VỐN HÀNG XUẤT: <span className="text-slate-900">{totalCostSum.toLocaleString('vi-VN')} đ</span>
-          </p>
-        </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG LỢI NHUẬN KHÁCH HÀNG: <span className={totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)</span>
-          </p>
-        </div>
-      </div>
-
       {/* ═══ FILTER & CONTROL TOOLBAR - CLEAN WHITE ═══ */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm text-xs font-bold">
         {/* Left Filters */}
@@ -333,39 +315,39 @@ export default function CustomerProfitReportPage() {
         </div>
       </div>
 
-      {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE ═══ */}
-      <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-hidden">
-          <table className="w-full table-fixed border-collapse text-left text-xs">
-            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700 [&_th]:text-white [&_th]:border-cyan-500/40">
-              <tr className="text-[10px] tracking-normal [&>th]:text-center">
-                <th className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 w-14 whitespace-nowrap">
-                  No.
+      {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE WITH CRISP GRID BORDERS ═══ */}
+      <div className="overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700">
+              <tr className="text-xs font-extrabold uppercase tracking-tight">
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-center w-12 whitespace-nowrap">
+                  NO.
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Khu vực
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-left w-28 whitespace-nowrap">
+                  KHU VỰC
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Mã KH
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-left w-32 whitespace-nowrap">
+                  MÃ KH
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Tên Khách hàng
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-left min-w-[200px]">
+                  TÊN KHÁCH HÀNG
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Doanh thu
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-right w-36 whitespace-nowrap">
+                  DOANH THU
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Tổng vốn
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-right w-36 whitespace-nowrap">
+                  TỔNG VỐN
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Lợi nhuận
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-right w-36 whitespace-nowrap">
+                  LỢI NHUẬN
                 </th>
-                <th className="px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 w-32 whitespace-nowrap">
-                  % Lợi nhuận
+                <th className="px-4 py-3 text-right w-28 whitespace-nowrap">
+                  % LỢI NHUẬN
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 bg-white text-xs font-semibold text-slate-800 [&_td]:text-center">
+            <tbody className="divide-y divide-slate-200 bg-white text-xs text-slate-800">
               {loading ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-500 font-semibold">
@@ -387,51 +369,45 @@ export default function CustomerProfitReportPage() {
                   return (
                     <React.Fragment key={branchName}>
                       {/* BRANCH SECTION HEADER */}
-                      <tr className="bg-slate-100/90 font-black text-slate-900 border-t-2 border-slate-300">
-                        <td colSpan={8} className="px-4 py-2.5 font-black uppercase text-xs tracking-wider text-center">
-                          <Building2 size={15} className="text-slate-600" />
-                          ▲ Kho: {branchName}
+                      <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300 border-b border-slate-300">
+                        <td colSpan={8} className="px-4 py-2.5 text-left font-black uppercase text-xs tracking-wider border-r border-slate-300">
+                          <div className="flex items-center gap-2">
+                            <ChevronDown size={16} className="text-slate-700" />
+                            <Building2 size={16} className="text-cyan-700" />
+                            <span>KHO: {branchName}</span>
+                          </div>
                         </td>
                       </tr>
 
                       {/* BRANCH CUSTOMER ROWS */}
-                      {items.map((item, idx) => {
-                        const isNegative = item.profit < 0;
+                      {items.map((item) => {
                         return (
                           <tr
                             key={item.id}
                             className="group border-b border-slate-200 transition hover:bg-slate-50"
                           >
-                            <td className="border-r border-slate-200 px-3 py-3 text-center font-bold text-slate-500">
+                            <td className="border-r border-slate-300 px-3 py-3 text-center font-bold text-slate-500 text-sm">
                               {item.stt}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-center text-slate-600">
+                            <td className="border-r border-slate-300 px-3 py-3 text-left font-bold text-slate-600 text-sm">
                               {item.region}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-bold text-slate-800">
+                            <td className="border-r border-slate-300 px-3 py-3 text-left font-bold text-slate-800 text-sm">
                               {item.customerCode}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 font-bold text-slate-900">
+                            <td className="border-r border-slate-300 px-4 py-3 text-left font-bold text-slate-900 text-sm">
                               {item.customerName}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-bold text-slate-900">
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.revenue.toLocaleString('vi-VN')}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-bold text-slate-700">
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.totalCost.toLocaleString('vi-VN')}
                             </td>
-                            <td
-                              className={`border-r border-slate-200 px-4 py-3 text-right font-mono font-black ${
-                                isNegative ? 'text-rose-600' : 'text-emerald-600'
-                              }`}
-                            >
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.profit.toLocaleString('vi-VN')}
                             </td>
-                            <td
-                              className={`px-4 py-3 text-right font-mono font-black ${
-                                isNegative ? 'text-rose-600' : 'text-emerald-600'
-                              }`}
-                            >
+                            <td className="px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.profitMargin.toFixed(2)}%
                             </td>
                           </tr>
@@ -439,24 +415,22 @@ export default function CustomerProfitReportPage() {
                       })}
 
                       {/* BRANCH SUB-TOTAL ROW */}
-                      <tr className="bg-slate-100 font-bold text-slate-900 border-b-2 border-slate-300">
-                        <td colSpan={4} className="px-4 py-2 text-right text-xs uppercase font-extrabold">
-                          Tổng chi nhánh ({items.length} KH):
+                      <tr className="bg-slate-100 font-extrabold text-slate-900 border-y-2 border-slate-300 text-sm">
+                        <td colSpan={4} className="border-r border-slate-300 px-4 py-2.5 text-right text-xs uppercase font-black">
+                          TỔNG CHI NHÁNH ({items.length} KH):
                         </td>
-                        <td className="px-4 py-2 text-right font-mono font-black text-slate-900">
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchRev.toLocaleString('vi-VN')}
                         </td>
-                        <td className="px-4 py-2 text-right font-mono font-black text-slate-800">
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchCost.toLocaleString('vi-VN')}
                         </td>
-                        <td
-                          className={`px-4 py-2 text-right font-mono font-black ${
-                            branchProf >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                          }`}
-                        >
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchProf.toLocaleString('vi-VN')}
                         </td>
-                        <td className="px-4 py-2"></td>
+                        <td className="px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
+                          -
+                        </td>
                       </tr>
                     </React.Fragment>
                   );
@@ -467,28 +441,20 @@ export default function CustomerProfitReportPage() {
             {/* GRAND TOTAL ROW */}
             {filteredData.length > 0 && (
               <tfoot>
-                <tr className="border-t-2 border-slate-300 bg-slate-200/80 font-black text-slate-900 text-xs">
-                  <td colSpan={4} className="p-3.5 text-right uppercase tracking-wider text-slate-900 font-black">
+                <tr className="border-t-2 border-slate-400 bg-slate-200/90 font-black text-slate-900 text-sm">
+                  <td colSpan={4} className="border-r border-slate-300 p-3.5 text-right uppercase tracking-wider font-black text-xs text-slate-900">
                     TỔNG CỘNG TOÀN BỘ KHÁCH HÀNG:
                   </td>
-                  <td className="p-3.5 text-right font-mono font-black text-slate-900 text-sm">
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalRevenue.toLocaleString('vi-VN')}
                   </td>
-                  <td className="p-3.5 text-right font-mono font-black text-slate-800 text-sm">
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalCostSum.toLocaleString('vi-VN')}
                   </td>
-                  <td
-                    className={`p-3.5 text-right font-mono font-black text-sm ${
-                      totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalProfitSum.toLocaleString('vi-VN')}
                   </td>
-                  <td
-                    className={`p-3.5 text-right font-mono font-black text-sm ${
-                      overallMargin >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
+                  <td className="p-3.5 text-right font-bold text-slate-900 text-sm">
                     {overallMargin.toFixed(2)}%
                   </td>
                 </tr>

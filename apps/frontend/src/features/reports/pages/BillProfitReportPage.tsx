@@ -419,82 +419,82 @@ export default function BillProfitReportPage() {
         </div>
       )}
 
-      {/* ═══ TABLE DISPLAY WITH BRANCH COLUMN & PLAIN CODE STYLES ═══ */}
-      <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-xs">
-        <div className="overflow-x-hidden">
-          <table className="w-full table-fixed border-collapse text-left text-xs">
-            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs">
-              <tr className="border-b-2 border-cyan-700 text-white font-bold uppercase text-[10px] tracking-normal whitespace-nowrap [&>th]:text-center">
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-10 whitespace-nowrap">
+      {/* ═══ TABLE DISPLAY WITH COMPACT IDENTIFIERS & EXPANDED FINANCIAL COLUMNS ═══ */}
+      <div className="overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700">
+              <tr className="text-xs font-extrabold uppercase tracking-tight whitespace-nowrap">
+                <th className="border-r border-cyan-500/50 px-2 py-3 text-center w-12 whitespace-nowrap">
                   STT
                 </th>
                 {columnVis.billCode && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap">
-                    Mã HĐ
+                  <th className="border-r border-cyan-500/50 px-2.5 py-3 text-center w-28 whitespace-nowrap">
+                    MÃ HĐ
                   </th>
                 )}
                 {columnVis.branchName && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[14%] whitespace-nowrap">
-                    Chi nhánh
+                  <th className="border-r border-cyan-500/50 px-3 py-3 text-center w-44 whitespace-nowrap">
+                    CHI NHÁNH
                   </th>
                 )}
                 {columnVis.productCode && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap">
-                    Mã SP
+                  <th className="border-r border-cyan-500/50 px-2.5 py-3 text-center w-28 whitespace-nowrap">
+                    MÃ SP
                   </th>
                 )}
                 {columnVis.productName && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[14%] whitespace-nowrap">
-                    Tên hàng hóa
+                  <th className="border-r border-cyan-500/50 px-3 py-3 text-center w-48 min-w-[140px]">
+                    TÊN HÀNG HÓA
                   </th>
                 )}
                 {columnVis.exportQty && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-center w-[8%] whitespace-nowrap text-[11px]">
-                    Số lượng
+                  <th className="border-r border-cyan-500/50 px-2.5 py-3 text-center w-24 whitespace-nowrap">
+                    SỐ LƯỢNG
                   </th>
                 )}
                 {columnVis.exportPrice && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
-                    Giá xuất (VNĐ)
+                  <th className="border-r border-cyan-500/50 px-4 py-3 text-center min-w-[135px] whitespace-nowrap">
+                    GIÁ XUẤT (VNĐ)
                   </th>
                 )}
                 {columnVis.revenue && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
-                    Doanh thu (VNĐ)
+                  <th className="border-r border-cyan-500/50 px-4 py-3 text-center min-w-[145px] whitespace-nowrap">
+                    DOANH THU (VNĐ)
                   </th>
                 )}
                 {columnVis.importPrice && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
-                    Giá nhập (VNĐ)
+                  <th className="border-r border-cyan-500/50 px-4 py-3 text-center min-w-[135px] whitespace-nowrap">
+                    GIÁ NHẬP (VNĐ)
                   </th>
                 )}
                 {columnVis.totalCost && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
-                    Tổng vốn (VNĐ)
+                  <th className="border-r border-cyan-500/50 px-4 py-3 text-center min-w-[145px] whitespace-nowrap">
+                    TỔNG VỐN (VNĐ)
                   </th>
                 )}
                 {columnVis.profit && (
-                  <th className="border-r border-cyan-500/40 px-2 py-2 text-right whitespace-nowrap">
-                    Lợi nhuận (VNĐ)
+                  <th className="border-r border-cyan-500/50 px-4 py-3 text-center min-w-[145px] whitespace-nowrap">
+                    LỢI NHUẬN (VNĐ)
                   </th>
                 )}
                 {columnVis.profitMargin && (
-                  <th className="px-2 py-2 text-center w-20 whitespace-nowrap">
-                    % Lợi nhuận
+                  <th className="px-4 py-3 text-center min-w-[110px] whitespace-nowrap">
+                    % LỢI NHUẬN
                   </th>
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 bg-white text-sm font-medium text-slate-800 [&_td]:text-center">
+            <tbody className="divide-y divide-slate-200 bg-white text-xs text-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-500 font-bold text-sm">
+                  <td colSpan={12} className="py-12 text-center text-slate-500 font-semibold">
                     Đang tính toán dữ liệu báo cáo lợi nhuận theo hóa đơn...
                   </td>
                 </tr>
               ) : paginatedData.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-500 font-bold text-sm">
+                  <td colSpan={12} className="py-12 text-center text-slate-500 font-semibold">
                     Không tìm thấy bản ghi hóa đơn phù hợp.
                   </td>
                 </tr>
@@ -506,59 +506,59 @@ export default function BillProfitReportPage() {
                   return (
                     <tr
                       key={item.id}
-                      className="group border-b border-slate-200 transition hover:bg-cyan-50/50"
+                      className="group border-b border-slate-200 transition hover:bg-slate-50"
                     >
-                      <td className="border-r border-slate-200 px-3.5 py-3 text-center font-medium text-slate-500 text-sm">
+                      <td className="border-r border-slate-300 px-2 py-3 text-center font-bold text-slate-500 text-sm">
                         {globalIndex}
                       </td>
                       {columnVis.billCode && (
-                        <td className="border-r border-slate-200 px-3 py-3 text-center font-mono font-semibold text-slate-800 text-xs">
+                        <td className="border-r border-slate-300 px-2.5 py-3 text-center font-bold text-slate-800 text-sm">
                           {item.billCode}
                         </td>
                       )}
                       {columnVis.branchName && (
-                        <td className="border-r border-slate-200 px-3 py-3 text-left font-semibold text-slate-800 text-xs">
+                        <td className="border-r border-slate-300 px-3 py-3 text-left font-bold text-slate-800 text-sm">
                           {item.branchName}
                         </td>
                       )}
                       {columnVis.productCode && (
-                        <td className="border-r border-slate-200 px-3 py-3 text-center font-mono font-semibold text-slate-800 text-xs">
+                        <td className="border-r border-slate-300 px-2.5 py-3 text-center font-bold text-slate-800 text-sm">
                           {item.productCode}
                         </td>
                       )}
                       {columnVis.productName && (
-                        <td className="border-r border-slate-200 px-4 py-3 font-semibold text-slate-900 text-sm">
+                        <td className="border-r border-slate-300 px-3 py-3 text-left font-bold text-slate-900 text-sm">
                           {item.productName}
                         </td>
                       )}
                       {columnVis.exportQty && (
-                        <td className="border-r border-slate-200 px-3.5 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                        <td className="border-r border-slate-300 px-2.5 py-3 text-center font-bold text-slate-800 text-sm">
                           {fmt(item.exportQty)}
                         </td>
                       )}
                       {columnVis.exportPrice && (
-                        <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                        <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                           {fmt(item.exportPrice)}
                         </td>
                       )}
                       {columnVis.revenue && (
-                        <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                        <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                           {fmt(item.revenue)}
                         </td>
                       )}
                       {columnVis.importPrice && (
-                        <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                        <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                           {fmt(item.importPrice)}
                         </td>
                       )}
                       {columnVis.totalCost && (
-                        <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-slate-800 text-sm">
+                        <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                           {fmt(item.totalCost)}
                         </td>
                       )}
                       {columnVis.profit && (
                         <td
-                          className={`border-r border-slate-200 px-4 py-3 text-right font-mono font-semibold text-sm ${
+                          className={`border-r border-slate-300 px-4 py-3 text-right font-bold text-sm ${
                             isNegative ? 'text-rose-600' : 'text-slate-800'
                           }`}
                         >
@@ -567,7 +567,7 @@ export default function BillProfitReportPage() {
                       )}
                       {columnVis.profitMargin && (
                         <td
-                          className={`px-4 py-3 text-right font-mono font-semibold text-sm ${
+                          className={`px-4 py-3 text-right font-bold text-sm ${
                             isNegative ? 'text-rose-600' : 'text-slate-800'
                           }`}
                         >
@@ -583,31 +583,31 @@ export default function BillProfitReportPage() {
             {/* TOTALS SUMMARY ROW WITH UNIFORM TEXT COLOR & BOLD WEIGHT */}
             {filteredData.length > 0 && (
               <tfoot>
-                <tr className="border-t-2 border-cyan-200 bg-cyan-50/60 font-bold text-slate-800 text-sm">
-                  <td colSpan={labelColSpan} className="p-3.5 text-right uppercase tracking-wider font-bold text-slate-800 text-sm">
+                <tr className="border-t-2 border-slate-400 bg-slate-200/90 font-black text-slate-900 text-sm">
+                  <td colSpan={labelColSpan} className="border-r border-slate-300 p-3.5 text-left uppercase tracking-wider font-black text-xs text-slate-900">
                     TỔNG CỘNG HÓA ĐƠN:
                   </td>
                   {columnVis.exportQty && (
-                    <td className="p-3.5 text-right font-mono font-bold text-slate-800 text-sm border-r border-cyan-100">
+                    <td className="border-r border-slate-300 p-3.5 text-center font-bold text-slate-900 text-sm">
                       {fmt(totalExportQty)}
                     </td>
                   )}
-                  {columnVis.exportPrice && <td className="p-3.5 border-r border-cyan-100"></td>}
+                  {columnVis.exportPrice && <td className="border-r border-slate-300 p-3.5 text-center font-bold text-slate-900 text-sm">-</td>}
                   {columnVis.revenue && (
-                    <td className="p-3.5 text-right font-mono font-bold text-slate-800 text-sm border-r border-cyan-100">
+                    <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                       {fmt(totalRevenue)}
                     </td>
                   )}
-                  {columnVis.importPrice && <td className="p-3.5 border-r border-cyan-100"></td>}
+                  {columnVis.importPrice && <td className="border-r border-slate-300 p-3.5 text-center font-bold text-slate-900 text-sm">-</td>}
                   {columnVis.totalCost && (
-                    <td className="p-3.5 text-right font-mono font-bold text-slate-800 text-sm border-r border-cyan-100">
+                    <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                       {fmt(totalCostSum)}
                     </td>
                   )}
                   {columnVis.profit && (
                     <td
-                      className={`p-3.5 text-right font-mono font-bold text-sm border-r border-cyan-100 ${
-                        totalProfitSum >= 0 ? 'text-slate-800' : 'text-rose-600'
+                      className={`border-r border-slate-300 p-3.5 text-right font-bold text-sm ${
+                        totalProfitSum >= 0 ? 'text-slate-900' : 'text-rose-600'
                       }`}
                     >
                       {fmt(totalProfitSum)}
@@ -615,8 +615,8 @@ export default function BillProfitReportPage() {
                   )}
                   {columnVis.profitMargin && (
                     <td
-                      className={`p-3.5 text-right font-mono font-bold text-sm ${
-                        overallMargin >= 0 ? 'text-slate-800' : 'text-rose-600'
+                      className={`p-3.5 text-right font-bold text-sm ${
+                        overallMargin >= 0 ? 'text-slate-900' : 'text-rose-600'
                       }`}
                     >
                       {overallMargin.toFixed(2)}%

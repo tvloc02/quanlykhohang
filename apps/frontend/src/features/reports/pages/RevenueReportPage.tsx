@@ -38,6 +38,7 @@ interface RevenueItem {
 
 interface RevenueGroup {
   groupName: string;
+  groupCode?: string;
   items: RevenueItem[];
 }
 
@@ -321,7 +322,9 @@ export default function RevenueReportPage() {
                     <React.Fragment key={group.groupName}>
                       {/* GROUP HEADER ROW */}
                       <tr className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-slate-200">
-                        <td colSpan={6} className="py-2.5 px-4 text-left uppercase tracking-wider">{group.groupName}</td>
+                        <td colSpan={6} className="py-2.5 px-4 text-left uppercase tracking-wider">
+                          {group.groupName}{group.groupCode ? ` (${group.groupCode})` : ''}
+                        </td>
                       </tr>
                       {group.items.map((row, idx) => (
                         <tr key={row.id || idx} className="hover:bg-slate-50 transition group">

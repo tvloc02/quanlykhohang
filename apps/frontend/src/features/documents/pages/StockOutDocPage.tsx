@@ -136,9 +136,15 @@ export default function StockOutDocPage() {
   React.useEffect(() => {
     async function loadData() {
       setLoading(true);
-      const data = await documentsApi.getStockOutNotes();
-      setDocs(data);
-      setLoading(false);
+      try {
+        const data = await documentsApi.getStockOutNotes();
+        setDocs(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error('Không tải được danh sách phiếu xuất kho', error);
+        setDocs([]);
+      } finally {
+        setLoading(false);
+      }
     }
     loadData();
   }, []);

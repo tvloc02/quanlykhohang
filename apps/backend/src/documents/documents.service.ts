@@ -81,10 +81,10 @@ export class DocumentsService {
 
     return orders.map((order, idx) => ({
       id: order.id,
-      noteNo: `PXK-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
+      noteNo: order.orderNo || `PXK-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
       receiverName: order.customer?.name || 'Người nhận hàng',
       destinationAddress: order.customer?.address || 'Địa chỉ giao hàng',
-      exportWarehouse: 'Kho xuất hàng tổng',
+      exportWarehouse: order.details?.[0]?.warehouseCode || order.branchCode || '',
       createdDate: order.expectedDate ? new Date(order.expectedDate).toISOString() : new Date().toISOString(),
       reason: order.description || 'Xuất kho bán hàng theo hóa đơn',
       status: order.status || 'COMPLETED',
