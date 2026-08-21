@@ -80,6 +80,19 @@ export class StockInReceiptsService {
       sourceReferenceNo: reloaded.sourceReferenceNo,
     });
 
+    try {
+      await this.notificationsService.createBroadcastNotification({
+        title: `Phiếu nhập kho mới ${reloaded.receiptCode}`,
+        message: `Phiếu nhập kho ${reloaded.receiptCode} (${reloaded.warehouseCode || 'KHO-NVL'}) vừa được tạo thành công. Vui lòng kiểm tra và duyệt.`,
+        link: '/inbound/receipts',
+        priority: 'high',
+        referenceType: 'STOCK_IN_RECEIPT',
+        referenceId: reloaded.id,
+      });
+    } catch {
+      // Ignore notification creation errors to preserve core business flow.
+    }
+
     if (reloaded.status === 'ASSIGNED') {
       await this.notifyAssignedStaff(reloaded);
     }

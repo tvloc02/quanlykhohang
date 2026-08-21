@@ -35,14 +35,18 @@ export class NotificationsService {
     const role = getPrimaryRole(user);
 
     const notifications = await this.notificationRepo.find({
-      where: [
-        userId ? { recipientUserId: userId } : undefined,
-        role ? { recipientRole: role } : undefined,
-      ].filter(Boolean) as Array<Partial<Notification>>,
       order: { createdAt: 'DESC' },
+      take: 50,
     });
 
-    return notifications.map((notification) => this.serialize(notification));
+    const filtered = notifications.filter((n) => {
+      if (!n.recipientUserId && !n.recipientRole) return true;
+      if (userId && n.recipientUserId === userId) return true;
+      if (role && n.recipientRole && n.recipientRole.toLowerCase() === role.toLowerCase()) return true;
+      return true; // Cho phép tất cả thông báo hệ thống hiển thị
+    });
+
+    return filtered.map((notification) => this.serialize(notification));
   }
 
   async markRead(id: string, user?: { id?: string; role?: string; roles?: Array<{ name?: string }> }) {
@@ -66,6 +70,20 @@ export class NotificationsService {
       .execute();
 
     return { updated: ids.length };
+  }
+
+  async createBroadcastNotification(input: NotificationInput) {
+    return this.notificationRepo.save(
+      this.notificationRepo.create({
+        title: input.title,
+        message: input.message,
+        link: input.link,
+        referenceType: input.referenceType,
+        referenceId: input.referenceId,
+        priority: input.priority || 'normal',
+        isUnread: true,
+      }),
+    );
   }
 
   async notifyUser(userId: string, input: NotificationInput) {

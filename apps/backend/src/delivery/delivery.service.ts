@@ -43,11 +43,14 @@ function summarizeItems(items: TransferOrderItem[]) {
   };
 }
 
+import { NotificationsService } from '../notifications/notifications.service';
+
 @Injectable()
 export class DeliveryService implements OnModuleInit {
   constructor(
     @InjectRepository(TransferOrder)
     private readonly transferOrderRepo: Repository<TransferOrder>,
+    private readonly notificationsService: NotificationsService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
   ) {}
@@ -121,6 +124,20 @@ export class DeliveryService implements OnModuleInit {
 
     const saved = await this.transferOrderRepo.save(entity);
     await this.applyTransferStockMovement(saved);
+
+    try {
+      await this.notificationsService.createBroadcastNotification({
+        title: `Đơn chuyển kho mới ${saved.transferNo}`,
+        message: `Đơn chuyển kho ${saved.transferNo} từ ${saved.sourceWarehouse} đến ${saved.destinationWarehouse} vừa được khởi tạo thành công.`,
+        link: '/delivery/transfer-requests',
+        priority: 'normal',
+        referenceType: 'TRANSFER_ORDER',
+        referenceId: saved.id,
+      });
+    } catch {
+      // Ignore notification creation error.
+    }
+
     return this.serialize(saved);
   }
 
