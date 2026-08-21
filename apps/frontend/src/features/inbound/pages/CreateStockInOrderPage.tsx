@@ -3004,6 +3004,8 @@ export default function CreateStockInOrderPage({
         volume: safeNum(r.volume, 99999.9999),
         volumetricWeight: safeNum(r.volumetricWeight),
         note: r.note || '',
+        locationBin: r.locationBin || (Array.isArray(r.assignedBins) ? r.assignedBins.join(', ') : ''),
+        assignedBins: r.assignedBins || [],
       })),
     };
 
@@ -3031,7 +3033,14 @@ export default function CreateStockInOrderPage({
       if (activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0) {
         try {
           const fullWhList = getStoredWarehouses();
-          const matchedWh = fullWhList.find((w) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode);
+          let matchedWh = fullWhList.find((w) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode);
+          if (!matchedWh) {
+            const remoteRes = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null);
+            if (remoteRes && remoteRes.ok) {
+              const remoteList = await remoteRes.json();
+              matchedWh = remoteList.find((w: any) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode);
+            }
+          }
           if (matchedWh) {
             const updatedWh: WarehouseRecord = {
               ...matchedWh,
@@ -3059,6 +3068,13 @@ export default function CreateStockInOrderPage({
           body: JSON.stringify(stockInPayload),
         }).catch(() => null);
       }
+
+      const whCodeToClean = (activeTab.warehouseCode || '').trim().toUpperCase();
+      if (whCodeToClean) {
+        localStorage.removeItem(`cleared_warehouse_goods_${whCodeToClean}`);
+      }
+      window.dispatchEvent(new Event('warehouse-goods-cleared'));
+      window.dispatchEvent(new Event('storage'));
 
       setToast({
         message: `Đã lưu thành công phiếu nhập kho ${generatedNo}!`,

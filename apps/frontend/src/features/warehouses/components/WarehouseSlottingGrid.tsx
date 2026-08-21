@@ -102,10 +102,6 @@ export async function fetchWarehouseOccupiedBins(
     const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
     const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
 
-    if (currentWhCode && localStorage.getItem(`cleared_warehouse_goods_${currentWhCode}`) === 'true') {
-      return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
-    }
-
     const isWhMatch = (wCode?: string, wId?: string, binCodeStr?: string) => {
       const cCode = String(wCode || '').trim().toUpperCase();
       const cId = String(wId || '').trim().toLowerCase();
@@ -121,6 +117,33 @@ export async function fetchWarehouseOccupiedBins(
       if ((currentWhCode === 'KH002' || currentWhId === 'wh_default_2') && (cCode === 'KH002' || cId === 'wh_default_2' || cCode.includes('HCM'))) return true;
       return false;
     };
+
+    if (currentWhCode && localStorage.getItem(`cleared_warehouse_goods_${currentWhCode}`) === 'true') {
+      const [testBalRes, testPoRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null),
+        fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null),
+      ]);
+      let hasRealGoodsInBackend = false;
+      if (testBalRes && testBalRes.ok) {
+        const balData: any[] = await testBalRes.json().catch(() => []);
+        if (Array.isArray(balData) && balData.some((b) => isWhMatch(b.warehouseCode || b.warehouse?.code, b.warehouseId || b.warehouse?.id, b.locationCode))) {
+          hasRealGoodsInBackend = true;
+        }
+      }
+      if (!hasRealGoodsInBackend && testPoRes && testPoRes.ok) {
+        const poData = await testPoRes.json().catch(() => []);
+        const poList: any[] = Array.isArray(poData) ? poData : poData.data || [];
+        if (poList.some((po) => isWhMatch(po.warehouseCode || po.warehouse?.code, po.warehouseId || po.warehouse?.id))) {
+          hasRealGoodsInBackend = true;
+        }
+      }
+
+      if (hasRealGoodsInBackend) {
+        localStorage.removeItem(`cleared_warehouse_goods_${currentWhCode}`);
+      } else {
+        return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
+      }
+    }
 
     const addBinOccupied = (bCode: string, info: BinOccupiedInfo) => {
       if (!bCode) return;
@@ -736,26 +759,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
     const assigned: Array<{ rowId: string; productName: string; qty: number; occupancyPct: number }> = [];
 
-    if (storedGoods && storedGoods.length > 0) {
-      storedGoods.forEach((g) => {
-        assigned.push({
-          rowId: `stored-${g.sku || 'sku'}`,
-          productName: g.productName || 'Sản phẩm tồn kho',
-          qty: Number(g.quantity || 1),
-          occupancyPct: g.occupancyPct || Math.round(100 / storedGoods.length),
-        });
-      });
-    } else if (storedInfo) {
-      assigned.push({
-        rowId: 'stored-info',
-        productName: storedInfo.productName || 'Sản phẩm tồn kho',
-        qty: Number(storedInfo.totalPhysical || storedInfo.allocated || 1),
-        occupancyPct: storedInfo.occupancyPct || editingBinConfig.currentPct || 100,
-      });
-    }
-
     if (orderItems && orderItems.length > 0) {
-      let allocatedSoFar = 0;
+      const matchingRows: Array<{ rowId: string; productName: string; qty: number; explicitPct?: number }> = [];
 
       orderItems.forEach((it: any, idx: number) => {
         const rowId = it.rowId || String(idx);
@@ -767,16 +772,11 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
         });
 
         if (matchedBinStr) {
-          let itemPct = 0;
+          let explicitPct: number | undefined = undefined;
           const match = matchedBinStr.match(/\((\d+)%\)/);
           if (match) {
-            itemPct = Number(match[1]);
-          } else {
-            itemPct = Math.max(0, 100 - allocatedSoFar);
+            explicitPct = Number(match[1]);
           }
-
-          itemPct = Math.min(100, Math.max(0, itemPct));
-          allocatedSoFar += itemPct;
 
           const totalItemQty = it.qty && Number(it.qty) > 0 ? Number(it.qty) : 1;
           const numSelectedBins = bList.length > 0 ? bList.length : 1;
@@ -784,39 +784,81 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
             ? Math.round(totalItemQty / numSelectedBins)
             : totalItemQty;
 
-          const existingMatch = assigned.find((a) => a.productName.toLowerCase() === (it.productName || '').toLowerCase());
-          if (existingMatch) {
-            existingMatch.rowId = rowId;
-            if (it.qty && Number(it.qty) > 0) {
-              existingMatch.qty = dividedQty;
-            }
-            if (itemPct > 0) {
-              existingMatch.occupancyPct = itemPct;
-            }
-          } else {
-            assigned.push({
-              rowId,
-              productName: it.productName || `Hàng hóa #${idx + 1}`,
-              qty: dividedQty,
-              occupancyPct: itemPct,
-            });
-          }
+          matchingRows.push({
+            rowId,
+            productName: it.productName || `Hàng hóa #${idx + 1}`,
+            qty: dividedQty,
+            explicitPct,
+          });
         }
       });
+
+      if (matchingRows.length > 0) {
+        const explicitSum = matchingRows.reduce((acc, r) => acc + (r.explicitPct || 0), 0);
+        const unassignedRows = matchingRows.filter((r) => r.explicitPct === undefined);
+        const availablePct = Math.max(0, 100 - explicitSum);
+        const defaultEach = unassignedRows.length > 0 ? Math.floor(availablePct / unassignedRows.length) : 0;
+
+        let lastUnassignedIdx = -1;
+        for (let idx = matchingRows.length - 1; idx >= 0; idx--) {
+          if (matchingRows[idx].explicitPct === undefined) {
+            lastUnassignedIdx = idx;
+            break;
+          }
+        }
+
+        matchingRows.forEach((r, i) => {
+          let pct = r.explicitPct;
+          if (pct === undefined) {
+            const isLastUnassigned = i === lastUnassignedIdx;
+            if (isLastUnassigned) {
+              const allocatedSoFar = (unassignedRows.length - 1) * defaultEach;
+              pct = Math.max(0, availablePct - allocatedSoFar);
+            } else {
+              pct = defaultEach;
+            }
+          }
+
+          assigned.push({
+            rowId: r.rowId,
+            productName: r.productName,
+            qty: r.qty,
+            occupancyPct: Math.min(100, Math.max(0, pct)),
+          });
+        });
+      }
     }
 
     if (assigned.length === 0) {
-      const firstItem = orderItems && orderItems.length > 0 ? orderItems[0] : null;
-      const totalFirstQty = firstItem?.qty && Number(firstItem.qty) > 0 ? Number(firstItem.qty) : 0;
-      const numFirstBins = selectedBinCodes && selectedBinCodes.length > 0 ? selectedBinCodes.length : 1;
-      const dividedFirstQty = !isOutbound ? Math.round(totalFirstQty / numFirstBins) : totalFirstQty;
+      if (storedGoods && storedGoods.length > 0) {
+        storedGoods.forEach((g) => {
+          assigned.push({
+            rowId: `stored-${g.sku || 'sku'}`,
+            productName: g.productName || 'Sản phẩm tồn kho',
+            qty: Number(g.quantity || 1),
+            occupancyPct: g.occupancyPct || Math.round(100 / storedGoods.length),
+          });
+        });
+      } else if (storedInfo) {
+        assigned.push({
+          rowId: 'stored-info',
+          productName: storedInfo.productName || 'Sản phẩm tồn kho',
+          qty: Number(storedInfo.totalPhysical || storedInfo.allocated || 1),
+          occupancyPct: storedInfo.occupancyPct || editingBinConfig.currentPct || 100,
+        });
+      } else {
+        const firstItem = orderItems && orderItems.length > 0 ? orderItems[0] : null;
+        const totalFirstQty = firstItem?.qty && Number(firstItem.qty) > 0 ? Number(firstItem.qty) : 0;
+        const numFirstBins = selectedBinCodes && selectedBinCodes.length > 0 ? selectedBinCodes.length : 1;
+        const dividedFirstQty = !isOutbound ? Math.round(totalFirstQty / numFirstBins) : totalFirstQty;
 
-      assigned.push({
-        rowId: firstItem?.rowId || 'row-0',
-        productName: firstItem?.productName || 'Hàng hóa',
-        qty: dividedFirstQty,
-        occupancyPct: editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : 100,
-      });
+        assigned.push({
+          rowId: firstItem?.rowId || 'row-0',
+          productName: firstItem?.productName || 'Hàng hóa',
+          qty: dividedFirstQty,
+          occupancyPct: editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : 100,
+        });
+      }
     }
 
     setEditableBinItems(assigned);
@@ -1177,7 +1219,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             (activeRack.customBins as any)?.[fullBinCode] ||
                             (activeRack.customBins as any)?.[binCodeShort] ||
                             (normFull ? (activeRack.customBins as any)?.[normFull] : null);
-                          const customConfig = rawCustomConfig && Number(rawCustomConfig.occupancyPct || 0) > 0 ? rawCustomConfig : null;
+                          const customConfig = rawCustomConfig && rawCustomConfig.occupancyPct !== undefined && rawCustomConfig.occupancyPct !== null ? rawCustomConfig : null;
 
                           const matchingSelectedCode = selectedBinCodes.find((s) => normalizeBinKey(s) === normFull);
                           let embeddedPct: number | undefined;
