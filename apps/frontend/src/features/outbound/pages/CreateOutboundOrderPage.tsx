@@ -1217,21 +1217,23 @@ export default function CreateOutboundOrderPage({
                         const oldPct = Number(curr?.occupancyPct ?? 100);
                         const exportQty = Number(r.qty || 0);
 
-                        let deductPct = 100;
+                        let deductPct = 0;
                         const pctMatch = bCode.match(/\((\d+)%\)/);
                         if (pctMatch) {
                           deductPct = Number(pctMatch[1]);
                         } else {
-                          const stockQty = Number((r as any).stockQty || (r as any).totalQty || (r as any).stock || exportQty);
+                          const stockQty = Number((r as any).stockQty || (r as any).totalQty || (r as any).stock || 500);
                           if (stockQty > 0) {
                             deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / stockQty) * oldPct)));
+                          } else {
+                            deductPct = Math.min(oldPct, Math.round((exportQty / 500) * 100));
                           }
                         }
                         const newPct = Math.max(0, oldPct - deductPct);
                         customBins[k] = {
                           ...curr,
                           occupancyPct: newPct,
-                          notes: newPct === 0 ? 'Ô Trống' : `Đã xuất ${exportQty} cái (Còn trống ${100 - newPct}%)`,
+                          notes: newPct === 0 ? 'Ô Trống' : `Đã xuất ${exportQty} cái (Còn lại ${newPct}%)`,
                         };
                         changed = true;
                       }

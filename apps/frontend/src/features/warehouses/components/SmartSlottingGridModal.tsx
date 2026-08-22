@@ -1645,6 +1645,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 maxBinsAllowed={Math.max(1, Math.ceil(((items.find((i) => i.rowId === activeRowId) || items[0])?.qty || 1) / 100))}
                 orderItems={items}
                 selectedBinsMap={selectedBinsMap}
+                activeRowId={activeRowId}
                 onSelectBin={(fullBinCode) => {
                   toggleBinSelection({ binCode: fullBinCode, cellCode: fullBinCode } as any);
                 }}
