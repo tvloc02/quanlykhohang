@@ -3005,28 +3005,72 @@ export default function CreateStockInOrderPage({
       const savedPO = await res.json();
 
       // Persist staged warehouse subWarehouses topology to CSDL ONLY when user actually saves the order
-      if (activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0) {
-        try {
-          const fullWhList = getStoredWarehouses();
-          let matchedWh = fullWhList.find((w) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode);
-          if (!matchedWh) {
-            const remoteRes = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null);
-            if (remoteRes && remoteRes.ok) {
-              const remoteList = await remoteRes.json();
-              matchedWh = remoteList.find((w: any) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode);
-            }
-          }
-          if (matchedWh) {
+      try {
+        const fullWhList = getStoredWarehouses();
+        let matchedWh = fullWhList.find((w) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode) || fullWhList[0];
+        if (matchedWh) {
+          const currentSubWarehouses = activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0 
+            ? activeTab.stagedSubWarehouses 
+            : (matchedWh.subWarehouses || []);
+
+          let whChanged = false;
+          const updatedSubs = currentSubWarehouses.map((sub: any) => {
+            const racks = (sub.racks || []).map((rk: any) => {
+              const custom = { ...(rk.customBins || {}) };
+              activeValidItems.forEach((r) => {
+                let assignedList: string[] = Array.isArray(r.assignedBins) ? r.assignedBins : [];
+                if (assignedList.length === 0 && r.locationBin) {
+                  assignedList = r.locationBin.split(',').map((s: string) => s.trim());
+                }
+                assignedList.forEach((bCode) => {
+                  if (!bCode) return;
+                  const cleanCode = bCode.split('(')[0].trim();
+                  const normTarget = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                  const shortBin = (cleanCode.split('-').pop() || cleanCode).toUpperCase();
+
+                  if (cleanCode.includes(rk.id || rk.rackCode) || rk.rackCode === (cleanCode.split('-')[1] || '') || cleanCode.startsWith(rk.rackCode)) {
+                    const pctMatch = bCode.match(/\((\d+)%\)/);
+                    const addedPct = pctMatch ? Number(pctMatch[1]) : 100;
+                    const addedQty = Number(r.qty || 0);
+
+                    const existing = custom[cleanCode] || custom[normTarget] || { occupancyPct: 0, totalPhysical: 0 };
+                    const oldPct = Number(existing.occupancyPct || 0);
+                    const oldQty = Number(existing.totalPhysical || 0);
+                    const newPct = Math.min(100, oldPct + addedPct);
+                    const newQty = oldQty + addedQty;
+
+                    const updatedEntry = {
+                      ...existing,
+                      occupancyPct: newPct,
+                      totalPhysical: newQty,
+                      notes: `Đã chứa: ${newPct}% (${newQty} cái)`,
+                      productName: r.productName,
+                      unit: r.unit,
+                    };
+
+                    custom[cleanCode] = updatedEntry;
+                    custom[shortBin] = updatedEntry;
+                    if (normTarget) custom[normTarget] = updatedEntry;
+                    whChanged = true;
+                  }
+                });
+              });
+              return { ...rk, customBins: custom };
+            });
+            return { ...sub, racks };
+          });
+
+          if (whChanged || (activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0)) {
             const updatedWh: WarehouseRecord = {
               ...matchedWh,
-              subWarehouses: activeTab.stagedSubWarehouses,
+              subWarehouses: updatedSubs,
             };
             saveStoredWarehouses(fullWhList.map((w) => (w.id === updatedWh.id || w.code === updatedWh.code ? updatedWh : w)));
-            await upsertWarehouseToApi(updatedWh).catch((err: any) => console.error('Lỗi lưu CSDL kho:', err));
+            upsertWarehouseToApi(updatedWh).catch((err: any) => console.error('Lỗi lưu CSDL kho:', err));
           }
-        } catch (err) {
-          console.error('Error persisting staged warehouse topology:', err);
         }
+      } catch (err) {
+        console.error('Error persisting staged warehouse topology:', err);
       }
 
       if (!isEditing) {

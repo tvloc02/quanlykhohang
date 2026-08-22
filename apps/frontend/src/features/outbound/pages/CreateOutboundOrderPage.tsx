@@ -1215,25 +1215,26 @@ export default function CreateOutboundOrderPage({
                       if (normK === normKey || k === cleanCode || k.includes(cleanCode)) {
                         const curr = customBins[k];
                         const oldPct = Number(curr?.occupancyPct ?? 100);
+                        const oldQty = Number(curr?.totalPhysical || (r as any).stockQty || (r as any).totalQty || (r as any).stock || 0);
                         const exportQty = Number(r.qty || 0);
 
                         let deductPct = 0;
                         const pctMatch = bCode.match(/\((\d+)%\)/);
                         if (pctMatch) {
                           deductPct = Number(pctMatch[1]);
+                        } else if (oldQty > 0) {
+                          deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / oldQty) * oldPct)));
                         } else {
-                          const stockQty = Number((r as any).stockQty || (r as any).totalQty || (r as any).stock || 500);
-                          if (stockQty > 0) {
-                            deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / stockQty) * oldPct)));
-                          } else {
-                            deductPct = Math.min(oldPct, Math.round((exportQty / 500) * 100));
-                          }
+                          deductPct = Math.min(oldPct, 50);
                         }
+
                         const newPct = Math.max(0, oldPct - deductPct);
+                        const newQty = Math.max(0, oldQty - exportQty);
                         customBins[k] = {
                           ...curr,
                           occupancyPct: newPct,
-                          notes: newPct === 0 ? 'Ô Trống' : `Đã xuất ${exportQty} cái (Còn lại ${newPct}%)`,
+                          totalPhysical: newQty,
+                          notes: newPct === 0 ? 'Ô Trống' : `Đã chứa: ${newPct}% (${newQty} cái)`,
                         };
                         changed = true;
                       }

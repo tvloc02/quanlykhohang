@@ -98,6 +98,8 @@ export async function fetchWarehouseOccupiedBins(
   const map = new Map<string, BinOccupiedInfo>();
   const dMap = new Map<string, BinGoodsDetail>();
   const gMap = new Map<string, BinGoodsDetail[]>();
+  let allStockInOrders: any[] = [];
+  let allOutboundOrders: any[] = [];
 
   try {
     const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
@@ -332,7 +334,7 @@ export async function fetchWarehouseOccupiedBins(
         fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null),
       ]);
 
-      let allStockInOrders: any[] = [];
+      allStockInOrders = [];
       if (apiOrdersRes && apiOrdersRes.ok) {
         const apiData = await apiOrdersRes.json();
         const list = Array.isArray(apiData) ? apiData : apiData.data || [];
@@ -430,6 +432,12 @@ export async function fetchWarehouseOccupiedBins(
         const draftTabs: any[] = JSON.parse(draftTabsStr);
         if (Array.isArray(draftTabs)) {
           draftTabs.forEach((tab) => {
+            const isAlreadySaved = allStockInOrders.some((ao: any) =>
+              (tab.orderNo && (ao.poNumber === tab.orderNo || ao.receiptNo === tab.orderNo || ao.orderCode === tab.orderNo)) ||
+              (tab.id && String(ao.id) === String(tab.id))
+            );
+            if (isAlreadySaved) return;
+
             const tabWhCode = String(tab.branchCode || tab.warehouseCode || '').trim().toUpperCase();
             (tab.details || []).forEach((item: any) => {
               const pName = item.productName || 'Sản phẩm nhập kho';
@@ -603,7 +611,7 @@ export async function fetchWarehouseOccupiedBins(
         fetch(`${API_BASE_URL}/outbounds`, { headers }).catch(() => null),
       ]);
 
-      let allOutboundOrders: any[] = [];
+      allOutboundOrders = [];
       if (apiOutboundRes && apiOutboundRes.ok) {
         const apiData = await apiOutboundRes.json();
         const list = Array.isArray(apiData) ? apiData : apiData.data || [];
@@ -700,6 +708,12 @@ export async function fetchWarehouseOccupiedBins(
         const draftTabs: any[] = JSON.parse(draftOutboundTabsStr);
         if (Array.isArray(draftTabs)) {
           draftTabs.forEach((tab) => {
+            const isAlreadySaved = allOutboundOrders.some((ao: any) =>
+              (tab.orderNo && (ao.orderNo === tab.orderNo || ao.orderCode === tab.orderNo)) ||
+              (tab.id && String(ao.id) === String(tab.id))
+            );
+            if (isAlreadySaved) return;
+
             const tabWhCode = String(tab.branchCode || tab.warehouseCode || '').trim().toUpperCase();
             (tab.details || []).forEach((item: any) => {
               const pName = item.productName || 'Sản phẩm xuất kho';
@@ -767,6 +781,42 @@ export async function fetchWarehouseOccupiedBins(
         }
       }
     });
+
+    // 3. Reconcile customBins from stored warehouses so manually saved / updated bin configurations are always honored
+    try {
+      const storedWhs = JSON.parse(localStorage.getItem('smart-wms-warehouses') || '[]');
+      if (Array.isArray(storedWhs)) {
+        storedWhs.forEach((wh: any) => {
+          const wCode = String(wh.code || wh.id || '').trim().toUpperCase();
+          if (isWhMatch(wCode)) {
+            (wh.subWarehouses || []).forEach((sub: any) => {
+              (sub.racks || []).forEach((rk: any) => {
+                if (rk.customBins) {
+                  Object.entries(rk.customBins).forEach(([bKey, cfg]: [string, any]) => {
+                    if (cfg && (cfg.occupancyPct !== undefined || cfg.totalPhysical !== undefined)) {
+                      const cleanCode = bKey.split('(')[0].trim();
+                      const normKey = normalizeBinKey(cleanCode);
+                      const existing = map.get(cleanCode) || (normKey ? map.get(normKey) : null);
+                      if (existing) {
+                        const updatedInfo = {
+                          ...existing,
+                          occupancyPct: Number(cfg.occupancyPct ?? existing.occupancyPct),
+                          totalPhysical: Number(cfg.totalPhysical ?? existing.totalPhysical),
+                        };
+                        map.set(cleanCode, updatedInfo);
+                        if (normKey) map.set(normKey, updatedInfo);
+                      }
+                    }
+                  });
+                }
+              });
+            });
+          }
+        });
+      }
+    } catch (eCustom) {
+      console.error('Error loading customBins in fetchWarehouseOccupiedBins:', eCustom);
+    }
   } catch (err) {
     console.error('Error in fetchWarehouseOccupiedBins:', err);
   }
