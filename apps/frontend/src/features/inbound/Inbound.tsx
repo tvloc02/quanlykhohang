@@ -38,6 +38,13 @@ import {
   MapPin,
   Boxes,
   Warehouse,
+  TrendingDown,
+  CornerUpRight,
+  CornerDownLeft,
+  Repeat,
+  PlusCircle,
+  PackageCheck,
+  Link as LinkIcon,
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import { usePermissions } from '../../shared/hooks/usePermissions';
@@ -503,7 +510,7 @@ export default function Inbound({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const isReturnSupplier = featureMode === 'return-supplier';
+      const isReturnSupplier = featureMode === 'return-supplier' || location.pathname.includes('/inbound/return-requests');
       const orderEndpoint = isReturnSupplier
         ? `${API_BASE_URL}/outbounds`
         : `${API_BASE_URL}/inbound/purchase-orders`;
@@ -718,11 +725,22 @@ export default function Inbound({
     } finally {
       setLoading(false);
     }
-  }, [currentUserName]);
+  }, [currentUserName, featureMode, location.pathname]);
+
+  // Reset state and reload data when route or featureMode changes
+  useEffect(() => {
+    setSearch('');
+    setStatusFilter('all');
+    setSelectedIds(new Set());
+    setCurrentPage(1);
+    setShowDetailModal(false);
+    setSelectedOrder(null);
+    loadData();
+  }, [location.pathname, featureMode]);
 
   useEffect(() => {
     loadData();
-  }, [loadData, showFormModal, location.pathname, location.search]);
+  }, [loadData, showFormModal]);
 
   // Click outside to close dropdowns
   useEffect(() => {
@@ -1352,7 +1370,21 @@ export default function Inbound({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
-              <Package className="h-5 w-5" />
+              {featureMode === 'return-supplier' ? (
+                <CornerUpRight className="h-5 w-5" />
+              ) : featureMode === 'return-customer' ? (
+                <CornerDownLeft className="h-5 w-5" />
+              ) : featureMode === 'transfer-in' ? (
+                <Repeat className="h-5 w-5" />
+              ) : featureMode === 'initial-stock' ? (
+                <PlusCircle className="h-5 w-5" />
+              ) : featureMode === 'purchase-order' ? (
+                <PackageCheck className="h-5 w-5" />
+              ) : featureMode === 'assembly' ? (
+                <LinkIcon className="h-5 w-5" />
+              ) : (
+                <TrendingDown className="h-5 w-5" />
+              )}
               <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
             </div>
           </div>

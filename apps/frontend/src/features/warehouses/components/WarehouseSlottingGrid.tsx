@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Boxes,
   Package,
@@ -1510,8 +1511,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       })()}
 
       {/* Mini Capacity Percentage / Quantity Configuration Dialog */}
-      {editingBinConfig && (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-900/60 backdrop-blur-2xs p-3 animate-in fade-in duration-150">
+      {editingBinConfig &&
+        createPortal(
+          <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 border-2 border-cyan-500 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-3.5">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
               <h5 className="text-xs font-black text-cyan-900 dark:text-cyan-100 flex items-center gap-2 uppercase tracking-wide">
@@ -1717,7 +1719,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

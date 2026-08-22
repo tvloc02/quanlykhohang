@@ -33,8 +33,12 @@ import {
   Layers,
   AlertCircle,
   Eye,
+  Calendar,
+  Hash,
+  TrendingDown,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
+import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, buildWarehouseRackTopology, upsertWarehouseToApi, type WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig } from '../../../shared/utils/warehouseAssignments';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
@@ -1758,7 +1762,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                           const activeItem = items.find((it) => it.rowId === activeRowId);
                           const importQty = Number(activeItem?.qty || 1);
                           const maxBinCap = calculateEffectiveBinCapacity(activeItem).capacity || 100;
-                          const currentStock = cell.stockQty || 0;
+                          const currentStock = (cell as any).stockQty || 0;
                           const remainingFreeCap = Math.max(0, maxBinCap - currentStock);
                           const hasEnoughCap = remainingFreeCap >= importQty;
 
@@ -1767,9 +1771,9 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                           const activeSku = (activeItem?.productSku || '').trim();
                           const activeId = String(activeItem?.productId || '').trim();
 
-                          const storedName = (cell.productName || '').trim().toLowerCase();
-                          const storedSku = (cell.productSku || '').trim();
-                          const storedId = String(cell.productId || '').trim();
+                          const storedName = ((cell as any).productName || '').trim().toLowerCase();
+                          const storedSku = ((cell as any).productSku || '').trim();
+                          const storedId = String((cell as any).productId || '').trim();
 
                           const isSameProduct = !cell.isOccupied || (
                             (storedName && activeName && storedName === activeName) ||
@@ -1837,7 +1841,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
                               <div className="my-1 text-[10px]">
                                 {cell.isOccupied ? (
                                   <div className="line-clamp-1 font-bold text-amber-900">
-                                    📦 {cell.productName || 'Hàng kho có sẵn'}
+                                    📦 {(cell as any).productName || 'Hàng kho có sẵn'}
                                   </div>
                                 ) : (
                                   <span className={`font-medium block ${isSelected ? 'text-cyan-100' : isOccupiedByOther ? 'text-amber-800' : 'text-slate-500'}`}>
@@ -3089,7 +3093,7 @@ export default function CreateStockInOrderPage({
     <div
       className={`animate-[fadeIn_0.2s_ease-out] flex flex-col gap-2.5 ${isFullscreen
         ? 'fixed inset-0 z-[9999] bg-slate-100 p-2.5 sm:p-3 h-screen overflow-hidden'
-        : 'p-3 bg-slate-50 min-h-[calc(100vh-64px)]'
+        : 'w-full'
         }`}
     >
       {/* Toast Alert */}
@@ -3207,7 +3211,7 @@ export default function CreateStockInOrderPage({
       {!isFullscreen && (
         <div className="flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
           <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
-            <Workflow className="h-5 w-5 text-cyan-100" />
+            <TrendingDown className="h-5 w-5 text-cyan-100" />
             <h1 className="text-base font-black tracking-tight uppercase">
               {isViewMode
                 ? 'XEM CHI TIẾT PHIẾU NHẬP HÀNG HÓA'
@@ -3288,26 +3292,32 @@ export default function CreateStockInOrderPage({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 items-center">
           {/* Ngày nhập hàng */}
           <div>
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">Ngày nhập hàng</label>
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
+              <Calendar className="h-4 w-4 text-cyan-600" />
+              <span>Ngày nhập hàng</span>
+            </label>
             <input
               type="datetime-local"
               disabled={isReadOnly}
               value={activeTab?.orderDate || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed shadow-2xs"
             />
           </div>
 
           {/* Mã phiếu nhập */}
           <div>
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">Mã phiếu / Lệnh</label>
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
+              <Hash className="h-4 w-4 text-cyan-600" />
+              <span>Mã phiếu / Lệnh</span>
+            </label>
             <input
               type="text"
               disabled={isReadOnly}
               value={activeTab?.orderNo || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderNo: e.target.value }))}
               placeholder="TẠO TỰ ĐỘNG (PNK...)"
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-slate-50 px-3 text-sm font-extrabold text-cyan-900 uppercase outline-none focus:border-cyan-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-extrabold text-cyan-900 uppercase outline-none focus:border-cyan-600 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed shadow-2xs"
             />
           </div>
 
@@ -3352,7 +3362,7 @@ export default function CreateStockInOrderPage({
                 setShowSupplierDropdown(true);
               }}
               placeholder="Tìm theo tên, mã NCC, SĐT..."
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text disabled:bg-slate-100 disabled:text-slate-600 disabled:cursor-not-allowed shadow-2xs"
             />
 
             {!isReadOnly && showSupplierDropdown && (
@@ -3403,7 +3413,7 @@ export default function CreateStockInOrderPage({
                 if (isReadOnly) return;
                 setShowWarehouseDropdown((prev) => !prev);
               }}
-              className={`h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 flex items-center justify-between shadow-xs transition ${isReadOnly ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:bg-cyan-100/70'
+              className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 flex items-center justify-between shadow-2xs transition ${isReadOnly ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-600'
                 }`}
             >
               <span className="truncate">
@@ -3413,7 +3423,7 @@ export default function CreateStockInOrderPage({
               </span>
               <ChevronDown
                 size={16}
-                className={`text-cyan-700 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`}
+                className={`text-slate-500 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`}
               />
             </div>
 

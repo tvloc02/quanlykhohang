@@ -216,18 +216,10 @@ const menuItems: MenuItem[] = [
       { id: 'change-password', icon: Lock, label: 'Đổi mật khẩu', path: '/profile' },
       { id: 'personnel', icon: User, label: 'Người dùng / Nhân viên', path: '/personnel', allowedRoles: ['admin'] },
       { id: 'permission-groups', icon: ShieldCheck, label: 'Nhóm quyền', path: '/personnel/permission-groups', allowedRoles: ['admin'] },
-      { id: 'sys-info', icon: Info, label: 'Thông tin sử dụng', path: '/system/usage-info' },
       { id: 'audit-log', icon: History, label: 'Lịch sử thao tác', path: '/audit-log', allowedRoles: ['admin'] },
-      { id: 'deposit', icon: Wallet, label: 'Nạp tiền', path: '/system/usage-info' },
       { id: 'print-barcode', icon: ScanLine, label: 'In Barcode + QRCode', path: '/scanner' },
-      { id: 'print-template-edit', icon: FileEdit, label: 'Chỉnh sửa mẫu in', path: '/documents' },
-      { id: 'print-templates', icon: Printer, label: 'Chỉnh mẫu in', path: '/documents' },
-      { id: 'data-maintenance', icon: Database, label: 'Bảo trì Dữ liệu', path: '/sync-conflicts', allowedRoles: ['admin', 'manager'] },
-      { id: 'sys-config', icon: Settings, label: 'Cấu hình hệ thống', path: '/settings', allowedRoles: ['admin'] },
       { id: 'zalo-config', icon: MessageCircle, label: 'Cấu hình Zalo OA', path: '/settings' },
       { id: 'evat-config', icon: Receipt, label: 'Cấu hình e-VAT', path: '/vat/config' },
-      { id: 'data-transfer', icon: Database, label: 'Kết chuyển dữ liệu', path: '/settings' },
-      { id: 'data-transfer-view', icon: Download, label: 'Xem dữ liệu đã Kết chuyển', path: '/settings' },
     ],
   },
   // 10. Shipper
@@ -254,26 +246,7 @@ const menuItems: MenuItem[] = [
       { id: 'vat-config', icon: Settings, label: 'Thiết lập thông tin VAT', path: '/vat/config' },
     ],
   },
-  // 12. Ghi đơn Thị trường
-  {
-    id: 'ghi-don-thi-truong',
-    icon: Edit3,
-    label: 'Ghi đơn Thị trường',
-    path: '/outbound/sales-orders',
-    allowedRoles: ['admin', 'manager', 'staff'],
-  },
-  // 13. Trợ giúp
-  {
-    id: 'tro-giup',
-    icon: HelpCircle,
-    label: 'Trợ giúp',
-    path: '/settings',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'help-support', icon: Info, label: 'Hỗ trợ hệ thống', path: '/settings' },
-    ],
-  },
-  // 14. Hướng dẫn sử dụng
+  // 12. Hướng dẫn sử dụng
   {
     id: 'huong-dan-su-dung',
     icon: BookMarked,

@@ -1029,7 +1029,7 @@ export default function Products() {
     (category) => category.type === 'storage-position' && category.status === 'active',
   );
   const existingProductCatNames = Array.from(
-    new Set(products.map((p) => (typeof p.category === 'string' ? p.category : p.category?.name)).filter(Boolean) as string[])
+    new Set(products.map((p) => (typeof p.category === 'string' ? p.category : (p.category as any)?.name)).filter(Boolean) as string[])
   );
 
   const rawCategoryOptionsList = [

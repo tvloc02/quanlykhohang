@@ -26,6 +26,13 @@ import {
   Layers,
   MapPin,
   PlusCircle,
+  ChevronDown,
+  Check,
+  Calendar,
+  Hash,
+  TrendingUp,
+  TrendingDown,
+  FileX,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -64,12 +71,18 @@ export interface ProductOption {
 export function getProductWarehouseStock(p?: ProductOption | null, whCode?: string, allInboundOrders: any[] = []): number {
   if (!p) return 0;
   const targetCode = (whCode || '').trim().toLowerCase();
+  const normTarget = targetCode.replace(/[^a-z0-9]/g, '');
 
+  // 1. Check stockBalances array attached to product
   if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
     if (targetCode) {
       const match = p.stockBalances.find((b) => {
-        const bCode = (b.locationCode || '').trim().toLowerCase();
+        const bCode = (b.locationCode || (b as any).warehouseCode || (b as any).branchCode || '').trim().toLowerCase();
+        if (!bCode) return false;
         if (bCode === targetCode) return true;
+        const normB = bCode.replace(/[^a-z0-9]/g, '');
+        if (normB && normTarget && (normB === normTarget || normB.includes(normTarget) || normTarget.includes(normB))) return true;
+
         if (
           (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
           (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl' || bCode === 'kho-tong')
@@ -90,7 +103,9 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
     }
   }
 
-  let whSum = 0;
+  // 2. Check inbound & outbound orders history for specific target warehouse
+  let whInboundSum = 0;
+  let whOutboundSum = 0;
   let foundInWh = false;
   let ordersList = allInboundOrders;
 
@@ -106,7 +121,9 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
   if (Array.isArray(ordersList) && ordersList.length > 0) {
     ordersList.forEach((ord: any) => {
       const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
-      const isWhMatch = !targetCode || !oWh || oWh.includes(targetCode) || targetCode.includes(oWh) ||
+      const normOWh = oWh.replace(/[^a-z0-9]/g, '');
+
+      const isWhMatch = !targetCode || oWh === targetCode || (normOWh && normTarget && (normOWh === normTarget || normOWh.includes(normTarget) || normTarget.includes(normOWh))) ||
         ((targetCode === 'kh006' || targetCode === 'kho thanh trì') && (oWh === 'kh006' || oWh === 'kho thanh trì' || oWh === 'kho-nvl' || oWh === 'kho-tong'));
 
       if (!isWhMatch) return;
@@ -114,7 +131,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
       const details = ord.details || ord.items || [];
       details.forEach((item: any) => {
         const itemProdId = String(item.product?.id || item.productId || '');
-        const itemSku = String(item.product?.internalSku || item.productSku || '').toLowerCase();
+        const itemSku = String(item.product?.internalSku || item.productSku || item.sku || '').toLowerCase();
         const itemName = String(item.product?.name || item.productName || '').toLowerCase();
 
         if (
@@ -122,22 +139,55 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
           (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase()) ||
           (itemName && p.name && itemName === p.name.toLowerCase())
         ) {
-          whSum += Number(item.receivedQty ?? item.expectedQty ?? item.qty ?? 0);
+          whInboundSum += Number(item.receivedQty ?? item.expectedQty ?? item.qty ?? item.quantity ?? 0);
           foundInWh = true;
         }
       });
     });
-
-    if (foundInWh && whSum > 0) {
-      return whSum;
-    }
   }
 
+  // Deduct local outbound orders for target warehouse
+  try {
+    const rawOutbound = localStorage.getItem('stored_outbound_orders');
+    if (rawOutbound) {
+      const outboundList = JSON.parse(rawOutbound);
+      if (Array.isArray(outboundList)) {
+        outboundList.forEach((ord: any) => {
+          const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
+          const normOWh = oWh.replace(/[^a-z0-9]/g, '');
+
+          const isWhMatch = !targetCode || oWh === targetCode || (normOWh && normTarget && (normOWh === normTarget || normOWh.includes(normTarget) || normTarget.includes(normOWh)));
+
+          if (!isWhMatch) return;
+
+          const details = ord.details || ord.items || [];
+          details.forEach((item: any) => {
+            const itemProdId = String(item.productId || item.product?.id || '');
+            const itemSku = String(item.productSku || item.sku || item.product?.internalSku || '').toLowerCase();
+            if (
+              (itemProdId && itemProdId === String(p.id)) ||
+              (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase())
+            ) {
+              whOutboundSum += Number(item.qty ?? item.quantity ?? 0);
+              foundInWh = true;
+            }
+          });
+        });
+      }
+    }
+  } catch {}
+
+  if (foundInWh) {
+    return Math.max(0, whInboundSum - whOutboundSum);
+  }
+
+  // If no target warehouse code was provided, return overall system total stock
   if (!targetCode) {
     return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
   }
 
-  return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
+  // When target warehouse IS selected but has no stock recorded for this product, strictly return 0!
+  return 0;
 }
 
 
@@ -376,14 +426,27 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT): FormDetailRow[] {
   return Array.from({ length: count }, (_, i) => makeEmptyRow(i));
 }
 
-function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administrator', isDisposal = false, isReturnSupplier = false): OutboundTab {
+function formatFullDateTime(d = new Date()): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function generateOutboundCode(prefix = 'PXK'): string {
   const d = new Date();
-  const dateFormatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+  const dateStr = `${d.getFullYear()}${(d.getMonth() + 1).toString().padStart(2, '0')}${d.getDate().toString().padStart(2, '0')}`;
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  return `${prefix}${dateStr}-${randomNum}`;
+}
+
+function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administrator', isDisposal = false, isReturnSupplier = false, codePrefix = 'PXK'): OutboundTab {
+  const dateFormatted = formatFullDateTime();
+  const defaultPrefix = isDisposal ? 'XH' : (isReturnSupplier ? 'XTR' : (codePrefix || 'PXK'));
+  const defaultOrderNo = generateOutboundCode(defaultPrefix);
 
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
     title: `# ${tabIndex}`,
-    orderNo: '',
+    orderNo: defaultOrderNo,
     branchCode: 'KHO-TONG',
     employeeName: currentUserName || 'System Administrator',
     customer: isReturnSupplier ? '' : (isDisposal ? 'Hàng hết hạn sử dụng (HSD)' : 'Khách hàng bán lẻ'),
@@ -573,14 +636,62 @@ export default function CreateOutboundOrderPage({
     }
   }, [tabs, activeTabId, featureMode]);
 
+  // Ensure active tab has auto-filled Order No & Full Date Time (HH:mm:ss)
+  useEffect(() => {
+    if (activeTab) {
+      let updated = false;
+      let newOrderNo = activeTab.orderNo;
+      let newOrderDate = activeTab.orderDate;
+
+      if (!newOrderNo) {
+        const prefix = isDisposal ? 'XH' : (isReturnSupplier ? 'XTR' : (codePrefix || 'PXK'));
+        newOrderNo = generateOutboundCode(prefix);
+        updated = true;
+      }
+
+      if (!newOrderDate || !newOrderDate.includes(':')) {
+        newOrderDate = formatFullDateTime();
+        updated = true;
+      }
+
+      if (updated) {
+        updateActiveTab((t) => ({
+          ...t,
+          orderNo: newOrderNo,
+          orderDate: newOrderDate,
+        }));
+      }
+    }
+  }, [activeTabId, isDisposal, isReturnSupplier, codePrefix, activeTab?.orderNo, activeTab?.orderDate]);
+
+  const [showWarehouseDropdown, setShowWarehouseDropdown] = useState(false);
+  const [warehouseSearch, setWarehouseSearch] = useState('');
+
+  const selectedWarehouse = useMemo(() => {
+    const curCode = activeTab?.branchCode || 'KHO-TONG';
+    return warehouses.find((w) => w.code === curCode || w.id === curCode) || warehouses[0] || { code: curCode, name: `Kho ${curCode}` };
+  }, [warehouses, activeTab?.branchCode]);
+
+  const filteredWarehousesList = useMemo(() => {
+    const kw = warehouseSearch.trim().toLowerCase();
+    if (!kw) return warehouses;
+    return warehouses.filter((w) => w.name.toLowerCase().includes(kw) || w.code.toLowerCase().includes(kw));
+  }, [warehouses, warehouseSearch]);
+
   // Click outside listener for dropdowns
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as HTMLElement;
-      if (!target.closest('.customer-dropdown-box') && !target.closest('.product-table-dropdown') && !target.closest('.quick-search-box')) {
+      if (
+        !target.closest('.customer-dropdown-box') &&
+        !target.closest('.product-table-dropdown') &&
+        !target.closest('.quick-search-box') &&
+        !target.closest('.warehouse-dropdown-box')
+      ) {
         setShowCustomerDropdown(false);
         setActiveProductDropdownRowId(null);
         setShowQuickSearchDropdown(false);
+        setShowWarehouseDropdown(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -1311,6 +1422,19 @@ export default function CreateOutboundOrderPage({
     );
   }, [customers, customerSearch]);
 
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState('');
+
+  const filteredEmployees = useMemo(() => {
+    const kw = employeeSearch.trim().toLowerCase();
+    const allEmps = [
+      { id: 'curr', name: currentUserName, email: '' },
+      ...users.map((u) => ({ id: u.id, name: u.fullName || u.email, email: u.email }))
+    ];
+    if (!kw) return allEmps;
+    return allEmps.filter((e) => e.name.toLowerCase().includes(kw) || e.email.toLowerCase().includes(kw));
+  }, [users, currentUserName, employeeSearch]);
+
   const contentMarkup = (
     <div
       className={`animate-[fadeIn_0.2s_ease-out] ${isFullScreen
@@ -1420,7 +1544,11 @@ export default function CreateOutboundOrderPage({
       {!isFullScreen && (
         <div className="flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
           <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
-            <Package className="h-5 w-5 text-cyan-100" />
+            {isDisposal ? (
+              <FileX className="h-5 w-5 text-cyan-100" />
+            ) : (
+              <TrendingUp className="h-5 w-5 text-cyan-100" />
+            )}
             <h1 className="text-base font-black tracking-tight uppercase">
               {isDisposal ? (title || 'TẠO PHIẾU XUẤT HỦY HÀNG HÓA') : 'TẠO PHIẾU XUẤT HÀNG HÓA'}
             </h1>
@@ -1495,31 +1623,33 @@ export default function CreateOutboundOrderPage({
       {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (Horizontal bar spanning full width across page) ═══ */}
       <div className="w-full rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md flex-shrink-0">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 items-center">
-          {/* Ngày xuất hàng / Ngày xuất hủy */}
+          {/* Ngày xuất hàng / Ngày xuất hủy (Kèm Giờ Phút Giây) */}
           <div>
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">
-              {isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất hàng'}
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
+              <Calendar className="h-4 w-4 text-cyan-600" />
+              <span>{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất hàng'}</span>
             </label>
             <input
               type="text"
-              value={activeTab?.orderDate || ''}
+              value={activeTab?.orderDate || formatFullDateTime()}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
-              placeholder="DD/MM/YYYY"
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20"
+              placeholder="DD/MM/YYYY HH:mm:ss"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
             />
           </div>
 
-          {/* Mã phiếu / Lệnh */}
+          {/* Mã phiếu / Lệnh (Đã điền tự động) */}
           <div>
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700">
-              {isDisposal ? 'Mã phiếu xuất hủy' : 'Mã phiếu / Lệnh'}
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
+              <Hash className="h-4 w-4 text-cyan-600" />
+              <span>{isDisposal ? 'Mã phiếu xuất hủy' : 'Mã phiếu / Lệnh'}</span>
             </label>
             <input
               type="text"
               value={activeTab?.orderNo || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderNo: e.target.value }))}
-              placeholder={isDisposal ? 'TẠO TỰ ĐỘNG (XH...)' : 'TẠO TỰ ĐỘNG (PXK...)'}
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-slate-50 px-3 text-sm font-extrabold text-cyan-900 uppercase outline-none focus:border-cyan-600"
+              placeholder={isDisposal ? 'XH20260822-1001' : 'PXK20260822-1001'}
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 uppercase outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
             />
           </div>
 
@@ -1548,7 +1678,7 @@ export default function CreateOutboundOrderPage({
                   setDisposalReasonSelect(val);
                   updateActiveTab((t) => ({ ...t, customer: val, description: val }));
                 }}
-                className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-xs font-bold text-cyan-950 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs rounded-xl"
+                className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs rounded-xl"
               >
                 {disposalReasons.map((reason) => (
                   <option key={reason} value={reason} className="py-1.5 px-2 bg-white text-slate-800 font-semibold rounded-lg">
@@ -1592,7 +1722,7 @@ export default function CreateOutboundOrderPage({
                 }}
                 onClick={() => setShowCustomerDropdown(true)}
                 placeholder={isReturnSupplier ? "Tìm theo tên NCC, mã NCC, SĐT..." : "Tìm theo tên, mã KH, SĐT..."}
-                className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text"
+                className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text"
               />
 
               {showCustomerDropdown && (
@@ -1635,41 +1765,92 @@ export default function CreateOutboundOrderPage({
             </div>
           )}
 
-          {/* Chọn Kho xuất hàng / Kho xuất hủy */}
-          <div>
+          {/* Custom Styled Dropdown - Chọn Kho xuất hàng / Kho xuất hủy */}
+          <div className="relative warehouse-dropdown-box">
             <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
               <WarehouseIcon className="h-4 w-4 text-cyan-600" />
               <span>{isDisposal ? 'Kho xuất hủy' : 'Kho xuất hàng'}</span>
             </label>
-            <select
-              value={activeTab?.branchCode || (warehouses[0]?.code || 'KHO-TONG')}
-              onChange={(e) => {
-                const newWhCode = e.target.value;
-                updateActiveTab((t) => ({
-                  ...t,
-                  branchCode: newWhCode,
-                  details: t.details.map((d) => ({
-                    ...d,
-                    warehouseCode: d.warehouseCode || newWhCode,
-                  })),
-                }));
-              }}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-sm font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs rounded-xl"
+
+            <button
+              type="button"
+              onClick={() => setShowWarehouseDropdown(!showWarehouseDropdown)}
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 flex items-center justify-between text-xs sm:text-sm font-bold text-slate-800 outline-none transition hover:border-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer shadow-xs"
             >
-              {warehouses.length > 0 ? (
-                warehouses.map((wh) => (
-                  <option key={wh.id || wh.code} value={wh.code} className="py-1.5 px-2 bg-white text-slate-800 font-semibold rounded-lg">
-                    [{wh.code}] {wh.name}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="KHO-TONG" className="py-1.5 px-2 bg-white text-slate-800 font-semibold">KHO-TONG - Kho tổng chính</option>
-                  <option value="KH001" className="py-1.5 px-2 bg-white text-slate-800 font-semibold">KH001 - Kho Hàng Hóa HCM</option>
-                  <option value="KH002" className="py-1.5 px-2 bg-white text-slate-800 font-semibold">KH002 - Kho Chi Nhánh Hà Nội</option>
-                </>
-              )}
-            </select>
+              <span className="font-bold text-slate-800 text-xs sm:text-sm truncate">
+                [{selectedWarehouse?.code || activeTab?.branchCode || 'KHO-TONG'}] {selectedWarehouse?.name || `Kho ${activeTab?.branchCode || 'KHO-TONG'}`}
+              </span>
+              <ChevronDown className={`h-4 w-4 text-slate-500 shrink-0 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showWarehouseDropdown && (
+              <div className="absolute left-0 top-full z-[120] mt-1 w-full min-w-[300px] max-h-72 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+                <div className="p-2.5 bg-slate-100 border-b border-slate-200 text-slate-700 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <WarehouseIcon className="h-4 w-4 text-slate-600" />
+                    <span className="text-xs font-extrabold uppercase text-slate-800 tracking-wide">
+                      {isDisposal ? 'Chọn Kho Xuất Hủy' : 'Chọn Kho Xuất Hàng'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-300">
+                    {warehouses.length} Kho
+                  </span>
+                </div>
+
+                {warehouses.length > 3 && (
+                  <div className="p-2 bg-slate-50 border-b border-slate-200 shrink-0">
+                    <input
+                      type="text"
+                      value={warehouseSearch}
+                      onChange={(e) => setWarehouseSearch(e.target.value)}
+                      placeholder="Tìm tên hoặc mã kho..."
+                      className="w-full h-8 px-2.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-cyan-600"
+                    />
+                  </div>
+                )}
+
+                <div className="overflow-y-auto flex-1 divide-y divide-slate-100 p-1 space-y-0.5 custom-scrollbar">
+                  {filteredWarehousesList.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-slate-500 font-semibold">
+                      Không tìm thấy kho phù hợp
+                    </div>
+                  ) : (
+                    filteredWarehousesList.map((wh) => {
+                      const isSelected = (activeTab?.branchCode || '').toUpperCase() === (wh.code || '').toUpperCase();
+                      return (
+                        <div
+                          key={wh.id || wh.code}
+                          onClick={() => {
+                            const newWhCode = wh.code;
+                            updateActiveTab((t) => ({
+                              ...t,
+                              branchCode: newWhCode,
+                              details: t.details.map((d) => ({
+                                ...d,
+                                warehouseCode: d.warehouseCode || newWhCode,
+                              })),
+                            }));
+                            setShowWarehouseDropdown(false);
+                          }}
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${
+                            isSelected
+                              ? 'bg-cyan-50 text-cyan-950 font-black'
+                              : 'hover:bg-slate-100 text-slate-800 font-bold'
+                          }`}
+                        >
+                          <span className="truncate pr-2">
+                            [{wh.code}] {wh.name}
+                          </span>
+                          {isSelected && (
+                            <Check className="h-4 w-4 text-cyan-600 shrink-0 ml-2" />
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Card 5: Người tạo phiếu */}
@@ -1683,7 +1864,7 @@ export default function CreateOutboundOrderPage({
               value={activeTab?.employeeName || currentUserName || 'Dương Ngọc Anh'}
               onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
               placeholder="Nhập tên người tạo phiếu..."
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text shadow-xs"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-text shadow-xs"
             />
           </div>
         </div>
@@ -1842,7 +2023,7 @@ export default function CreateOutboundOrderPage({
                         </td>
 
                         {/* TÊN HÀNG HÓA */}
-                        <td className="p-0 border-r border-slate-200 relative product-table-dropdown">
+                        <td className="p-1 border-r border-slate-200 relative product-table-dropdown">
                           <input
                             type="text"
                             value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
@@ -1854,7 +2035,7 @@ export default function CreateOutboundOrderPage({
                             onFocus={() => setActiveProductDropdownRowId(row.rowId)}
                             onClick={() => setActiveProductDropdownRowId(row.rowId)}
                             placeholder="Chọn hoặc nhập tên hàng..."
-                            className="w-full h-8 px-2 bg-transparent font-semibold text-slate-800 outline-none focus:bg-cyan-100/50 text-xs cursor-text"
+                            className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white font-semibold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs cursor-text"
                           />
 
                           {/* Interactive Table Dropdown for this row */}
@@ -1923,36 +2104,33 @@ export default function CreateOutboundOrderPage({
                         </td>
 
                         {/* KỆ XUẤT HÀNG / KỆ XUẤT HỦY */}
-                        <td className="p-1.5 border-r border-slate-200 text-center w-32">
+                        <td className="p-1 border-r border-slate-200 text-center w-32">
                           {row.assignedBins && row.assignedBins.length > 0 ? (
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="inline-flex items-center justify-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer w-full"
+                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white border border-cyan-600 font-extrabold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
                               title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
-                              <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                              <span className="truncate max-w-[90px]">{row.assignedBins.join(', ')}</span>
+                              <span className="truncate max-w-[100px]">{row.assignedBins.join(', ')}</span>
                             </button>
                           ) : row.locationBin ? (
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="inline-flex items-center justify-center gap-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-950 border border-cyan-300 font-extrabold px-2 py-1 rounded-lg text-xs shadow-2xs transition cursor-pointer w-full"
+                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white border border-cyan-600 font-extrabold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
                               title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
-                              <Layers className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                              <span className="truncate max-w-[90px]">{row.locationBin}</span>
+                              <span className="truncate max-w-[100px]">{row.locationBin}</span>
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="inline-flex items-center justify-center gap-1 bg-white hover:bg-cyan-50 text-cyan-700 border border-cyan-400 font-bold px-2 py-1 rounded-lg text-xs transition cursor-pointer w-full"
+                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-50 hover:bg-cyan-600 text-cyan-700 hover:text-white border-2 border-cyan-400 hover:border-cyan-600 font-bold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
                               title="Bấm mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
-                              <MapPin className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-                              <span>+ Kệ</span>
+                              <span>Chọn Kệ</span>
                             </button>
                           )}
                         </td>
@@ -1963,7 +2141,7 @@ export default function CreateOutboundOrderPage({
                             type="text"
                             value={row.unit}
                             onChange={(e) => updateRow(row.rowId, { unit: e.target.value })}
-                            className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium outline-none focus:border-cyan-500"
+                            className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
 
@@ -1975,7 +2153,7 @@ export default function CreateOutboundOrderPage({
                             value={row.qty === 0 ? '' : row.qty}
                             onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
                             placeholder="0"
-                            className="w-full h-8 px-2 text-center rounded border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-500"
+                            className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
 
@@ -1989,7 +2167,7 @@ export default function CreateOutboundOrderPage({
                               updateRow(row.rowId, { price: parsed });
                             }}
                             placeholder="0"
-                            className="w-full h-8 px-2 text-right rounded border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-500"
+                            className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
 
@@ -2004,7 +2182,7 @@ export default function CreateOutboundOrderPage({
                                 value={row.discountPercent === 0 ? '' : row.discountPercent}
                                 onChange={(e) => updateRow(row.rowId, { discountPercent: Number(e.target.value) })}
                                 placeholder="0"
-                                className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium outline-none focus:border-cyan-500"
+                                className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-semibold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                               />
                             </td>
 
@@ -2017,7 +2195,7 @@ export default function CreateOutboundOrderPage({
                                 value={row.vatPercent === 0 ? '' : row.vatPercent}
                                 onChange={(e) => updateRow(row.rowId, { vatPercent: Number(e.target.value) })}
                                 placeholder="0"
-                                className="w-full h-8 text-center rounded border border-slate-300 bg-white font-medium outline-none focus:border-cyan-500"
+                                className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-semibold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                               />
                             </td>
                           </>
@@ -2035,7 +2213,7 @@ export default function CreateOutboundOrderPage({
                             value={row.note}
                             onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
                             placeholder={isDisposal ? "Lý do: Hết hạn, vỡ móp, mốc ẩm..." : "Ghi chú..."}
-                            className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-normal text-slate-700 outline-none focus:border-cyan-500"
+                            className="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
 
@@ -2046,7 +2224,7 @@ export default function CreateOutboundOrderPage({
                               value={activeTab.description || ''}
                               onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
                               placeholder="Biên bản số..."
-                              className="w-full h-8 px-2 rounded border border-slate-300 bg-white font-normal text-slate-700 outline-none focus:border-cyan-500 text-[11px]"
+                              className="w-full h-9 px-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                             />
                           </td>
                         )}
@@ -2057,7 +2235,7 @@ export default function CreateOutboundOrderPage({
                             <button
                               type="button"
                               onClick={() => handleDuplicateRow(idx)}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400 bg-cyan-50 text-cyan-700 shadow-2xs transition hover:bg-cyan-600 hover:text-white hover:border-cyan-600 cursor-pointer"
+                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-400 bg-cyan-50 text-cyan-700 shadow-2xs transition hover:bg-cyan-600 hover:text-white hover:border-cyan-600 cursor-pointer"
                               title="Nhân đôi dòng"
                             >
                               <Copy size={16} strokeWidth={2.2} />
@@ -2065,7 +2243,7 @@ export default function CreateOutboundOrderPage({
                             <button
                               type="button"
                               onClick={() => handleRemoveRow(row.rowId)}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-300 bg-rose-50 text-rose-600 shadow-2xs transition hover:bg-rose-600 hover:text-white hover:border-rose-600 cursor-pointer"
+                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 bg-rose-50 text-rose-600 shadow-2xs transition hover:bg-rose-600 hover:text-white hover:border-rose-600 cursor-pointer"
                               title="Xóa dòng"
                             >
                               <Trash2 size={16} strokeWidth={2.2} />
@@ -2195,26 +2373,67 @@ export default function CreateOutboundOrderPage({
               </div>
 
               {/* Nhân viên xuất kho */}
-              <div>
+              <div className="relative employee-dropdown-box">
                 <label className="mb-1 block text-xs font-bold text-slate-700">Nhân viên xuất kho</label>
-                <select
-                  value={activeTab?.employeeName || currentUserName}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
-                  className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-600 cursor-pointer"
-                >
-                  <option value={currentUserName}>{currentUserName}</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.fullName || u.email}>
-                      {u.fullName || u.email}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={showEmployeeDropdown ? employeeSearch : (activeTab?.employeeName || currentUserName)}
+                    onChange={(e) => {
+                      setEmployeeSearch(e.target.value);
+                      setShowEmployeeDropdown(true);
+                    }}
+                    onFocus={() => {
+                      setEmployeeSearch('');
+                      setShowEmployeeDropdown(true);
+                    }}
+                    onClick={() => setShowEmployeeDropdown(true)}
+                    placeholder="Tìm tên nhân viên..."
+                    className="h-9 w-full rounded-xl border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 shadow-2xs cursor-text"
+                  />
+                  <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+                </div>
+
+                {showEmployeeDropdown && (
+                  <div className="absolute left-0 top-full z-[100] mt-1 w-full max-h-48 overflow-y-auto rounded-xl border-2 border-slate-200 bg-white shadow-xl custom-scrollbar p-1">
+                    {filteredEmployees.length === 0 ? (
+                      <div className="p-2 text-center text-xs text-slate-400 font-medium">Không tìm thấy nhân viên</div>
+                    ) : (
+                      filteredEmployees.map((emp) => (
+                        <div
+                          key={emp.id}
+                          onClick={() => {
+                            updateActiveTab((t) => ({ ...t, employeeName: emp.name }));
+                            setShowEmployeeDropdown(false);
+                          }}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            (activeTab?.employeeName || currentUserName) === emp.name
+                              ? 'bg-cyan-600 text-white'
+                              : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
+                          }`}
+                        >
+                          <span>{emp.name}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
 
-
+              {/* Ghi chú phiếu xuất */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700">Ghi chú phiếu xuất</label>
+                <textarea
+                  rows={2}
+                  value={activeTab?.description || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
+                  placeholder="Ghi chú phiếu xuất..."
+                  className="w-full rounded-xl border-2 border-slate-300 bg-white p-2 text-xs font-medium text-slate-800 outline-none focus:border-cyan-600 shadow-2xs"
+                />
+              </div>
 
               {/* Hình thức thanh toán Radios */}
-              <div className="space-y-1 text-xs font-semibold text-slate-800 border-t border-slate-200 pt-1.5">
+              <div className="space-y-1.5 text-xs font-semibold text-slate-800 border-t border-slate-200 pt-1.5">
                 <label className="block font-bold">Hình thức thanh toán:</label>
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-1 cursor-pointer">
@@ -2254,9 +2473,9 @@ export default function CreateOutboundOrderPage({
                 <select
                   value={activeTab?.paymentAccount || ''}
                   onChange={(e) => updateActiveTab((t) => ({ ...t, paymentAccount: e.target.value }))}
-                  className="h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer"
+                  className="h-9 w-full rounded-xl border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
                 >
-                  <option value="">Chọn tài khoản-</option>
+                  <option value="">Chọn tài khoản thanh toán-</option>
                   <option value="TK-01">Vietcombank - 1012345678 (Hà Nội)</option>
                   <option value="TK-02">Techcombank - 1903456789 (HCM)</option>
                   <option value="TK-03">MBBank - 999988887777 (Công ty)</option>
@@ -2301,7 +2520,7 @@ export default function CreateOutboundOrderPage({
                     value={activeTab?.amountPaid || ''}
                     onChange={(e) => updateActiveTab((t) => ({ ...t, amountPaid: Number(e.target.value) }))}
                     placeholder={grandTotal.toString()}
-                    className="h-7 w-24 rounded bg-white px-2 text-right font-extrabold text-emerald-700 text-xs outline-none border border-slate-300 focus:border-cyan-600 shadow-xs"
+                    className="h-8 w-28 rounded-xl bg-white px-2.5 text-right font-extrabold text-emerald-700 text-xs outline-none border-2 border-slate-300 focus:border-cyan-600 shadow-2xs"
                   />
                 </div>
 

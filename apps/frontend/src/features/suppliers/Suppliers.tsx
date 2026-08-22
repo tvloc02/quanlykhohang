@@ -2,7 +2,6 @@ import React from 'react';
 import {
   BadgeDollarSign,
   Building2,
-  Clock,
   Eye,
   Mail,
   Pencil,
@@ -425,7 +424,6 @@ export default function Suppliers() {
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Người liên hệ</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">SĐT</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Email</th>
-                <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Số lượng SP</th>
                 <th className="border-x border-slate-200 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800">Trạng thái</th>
                 <th className="sticky right-0 w-36 border-l border-slate-200 bg-cyan-50 px-3 py-4 text-center text-sm font-bold uppercase text-slate-800 shadow-[-4px_0_12px_rgba(0,0,0,0.03)]">
                   Thao tác
@@ -435,13 +433,13 @@ export default function Suppliers() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
                     Đang tải dữ liệu nhà cung cấp...
                   </td>
                 </tr>
               ) : paginatedSuppliers.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+                  <td colSpan={9} className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
                     Chưa có nhà cung cấp phù hợp.
                   </td>
                 </tr>
@@ -457,12 +455,6 @@ export default function Suppliers() {
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.contactPerson || '-'}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.phone || '-'}</td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">{supplier.email || '-'}</td>
-                    <td className="border-x border-slate-200 px-3 py-4 text-center text-sm font-semibold text-slate-700">
-                      <span className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">
-                        <Clock className="h-3.5 w-3.5" />
-                        {supplier.productCount || 0}
-                      </span>
-                    </td>
                     <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
                       <span
                         className={`inline-flex rounded-lg border px-3 py-1 text-xs font-bold ${
