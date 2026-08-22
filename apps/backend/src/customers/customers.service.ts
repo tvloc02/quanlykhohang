@@ -20,16 +20,23 @@ export class CustomersService {
   }
 
   async create(dto: Partial<Customer>) {
-    if (!dto.customerCode?.trim() || !dto.name?.trim()) {
-      throw new BadRequestException('customerCode and name are required');
+    let customerCode = dto.customerCode?.trim();
+    if (!customerCode) {
+      customerCode = 'KH' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 90 + 10);
+    } else {
+      customerCode = customerCode.toUpperCase();
     }
 
-    const existing = await this.repo.findOne({ where: { customerCode: dto.customerCode.trim().toUpperCase() } });
-    if (existing) throw new BadRequestException('Customer code already exists');
+    if (!dto.name?.trim()) {
+      throw new BadRequestException('Tên khách hàng là bắt buộc');
+    }
+
+    const existing = await this.repo.findOne({ where: { customerCode } });
+    if (existing) throw new BadRequestException('Mã khách hàng đã tồn tại');
 
     const customer = this.repo.create({
       ...dto,
-      customerCode: dto.customerCode.trim().toUpperCase(),
+      customerCode,
       name: dto.name.trim(),
     });
     return this.repo.save(customer);

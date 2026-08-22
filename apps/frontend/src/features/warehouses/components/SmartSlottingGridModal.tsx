@@ -1043,20 +1043,34 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     }
   };
 
-  const handleUpdateBinCapacity = (binCode: string, pct: number, notes?: string, targetRowId?: string) => {
+  const handleUpdateBinCapacity = (binCode: string, pct: number, notes?: string, targetRowId?: string, newQty?: number) => {
     const cleanBinCode = binCode.split('(')[0].trim();
     const shortCode = (cleanBinCode.split('-').pop() || cleanBinCode).toUpperCase();
     const normTarget = normalizeBinKey(cleanBinCode);
 
     const rId = targetRowId || activeRowId;
+
+    if (newQty !== undefined && newQty > 0 && rId && items) {
+      const targetItem = items.find((i) => i.rowId === rId);
+      if (targetItem) {
+        targetItem.qty = newQty;
+        if ((targetItem as any).expectedQty !== undefined) (targetItem as any).expectedQty = newQty;
+        if ((targetItem as any).receivedQty !== undefined) (targetItem as any).receivedQty = newQty;
+        if ((targetItem as any).requiredQty !== undefined) (targetItem as any).requiredQty = newQty;
+      }
+    }
+
     if (rId) {
       setSelectedBinsMap((prev) => {
         const currentList = prev[rId] || [];
         const filtered = currentList.filter((b) => normalizeBinKey(b) !== normTarget && !b.startsWith(cleanBinCode));
 
         let newMap: Record<string, string[]>;
-        if (pct > 0) {
-          const entryToSave = pct < 100 ? `${cleanBinCode} (${pct}%)` : cleanBinCode;
+        if (pct >= 100) {
+          const entryToSave = cleanBinCode;
+          newMap = { ...prev, [rId]: [entryToSave] };
+        } else if (pct > 0) {
+          const entryToSave = `${cleanBinCode} (${pct}%)`;
           newMap = { ...prev, [rId]: [...filtered, entryToSave] };
         } else {
           newMap = { ...prev, [rId]: filtered };

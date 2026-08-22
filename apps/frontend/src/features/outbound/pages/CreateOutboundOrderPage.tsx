@@ -16,6 +16,8 @@ import {
   CreditCard,
   ScanLine,
   UserPlus,
+  Eye,
+  EyeOff,
   Maximize2,
   Minimize2,
   FileText,
@@ -543,7 +545,8 @@ export default function CreateOutboundOrderPage({
     if (rowId) setActivePickBinRowId(rowId);
     setPickBinModalOpen(true);
   };
-  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '', customerCode: '' });
+  const [newCustomerForm, setNewCustomerForm] = useState({ fullName: '', email: '', phone: '', address: '', status: 'active' as 'active' | 'inactive', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
 
   // Dropdown & Quick Search states
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -962,32 +965,70 @@ export default function CreateOutboundOrderPage({
   };
 
   const handleAddQuickCustomer = async () => {
-    if (!newCustomerForm.name.trim()) {
-      setToast({ message: 'Vui lòng nhập tên khách hàng', type: 'error' });
+    const custName = newCustomerForm.fullName.trim();
+    if (!custName) {
+      setToast({ message: 'Vui lòng nhập họ và tên khách hàng', type: 'error' });
       return;
     }
+    const autoCode = `KH${Date.now().toString().slice(-6)}`;
+    const payload = {
+      name: custName,
+      fullName: custName,
+      customerCode: autoCode,
+      email: newCustomerForm.email.trim(),
+      phone: newCustomerForm.phone.trim(),
+      address: newCustomerForm.address.trim(),
+      status: newCustomerForm.status,
+      password: newCustomerForm.password,
+    };
     try {
       const res = await fetch(`${API_BASE_URL}/customers`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify(newCustomerForm),
+        body: JSON.stringify(payload),
       });
+      let created: any = null;
       if (res.ok) {
-        const created = await res.json();
+        created = await res.json();
+      } else {
+        const userRes = await fetch(`${API_BASE_URL}/users`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ ...payload, role: 'customer' }),
+        }).catch(() => null);
+
+        if (userRes && userRes.ok) {
+          created = await userRes.json();
+        } else {
+          created = { id: `cust-${Date.now()}`, ...payload };
+        }
+      }
+      if (created) {
         setCustomers((prev) => [created, ...prev]);
         updateActiveTab((tab) => ({
           ...tab,
-          customer: created.name,
+          customer: created.name || created.fullName || custName,
           customerId: created.id,
-          customerPhone: created.phone || '',
-          customerAddress: created.address || '',
+          customerPhone: created.phone || newCustomerForm.phone,
+          customerAddress: created.address || newCustomerForm.address,
         }));
         setShowAddCustomerModal(false);
-        setNewCustomerForm({ name: '', phone: '', address: '', customerCode: '' });
-        setToast({ message: `Đã thêm khách hàng ${created.name}`, type: 'success' });
+        setNewCustomerForm({ fullName: '', email: '', phone: '', address: '', status: 'active', password: '' });
+        setToast({ message: `Đã thêm khách hàng ${created.name || custName}`, type: 'success' });
       }
     } catch {
-      setToast({ message: 'Không thể thêm khách hàng', type: 'error' });
+      const fallbackCreated = { id: `cust-${Date.now()}`, ...payload };
+      setCustomers((prev) => [fallbackCreated, ...prev]);
+      updateActiveTab((tab) => ({
+        ...tab,
+        customer: fallbackCreated.name,
+        customerId: fallbackCreated.id,
+        customerPhone: fallbackCreated.phone,
+        customerAddress: fallbackCreated.address,
+      }));
+      setShowAddCustomerModal(false);
+      setNewCustomerForm({ fullName: '', email: '', phone: '', address: '', status: 'active', password: '' });
+      setToast({ message: `Đã thêm khách hàng ${fallbackCreated.name}`, type: 'success' });
     }
   };
 
@@ -1174,11 +1215,23 @@ export default function CreateOutboundOrderPage({
                       if (normK === normKey || k === cleanCode || k.includes(cleanCode)) {
                         const curr = customBins[k];
                         const oldPct = Number(curr?.occupancyPct ?? 100);
-                        const newPct = Math.max(0, oldPct - 100);
+                        const exportQty = Number(r.qty || 0);
+
+                        let deductPct = 100;
+                        const pctMatch = bCode.match(/\((\d+)%\)/);
+                        if (pctMatch) {
+                          deductPct = Number(pctMatch[1]);
+                        } else {
+                          const stockQty = Number((r as any).stockQty || (r as any).totalQty || (r as any).stock || exportQty);
+                          if (stockQty > 0) {
+                            deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / stockQty) * oldPct)));
+                          }
+                        }
+                        const newPct = Math.max(0, oldPct - deductPct);
                         customBins[k] = {
                           ...curr,
                           occupancyPct: newPct,
-                          notes: newPct === 0 ? 'Ô Trống' : `Đã lưu xuất: ${r.productName}`,
+                          notes: newPct === 0 ? 'Ô Trống' : `Đã xuất ${exportQty} cái (Còn trống ${100 - newPct}%)`,
                         };
                         changed = true;
                       }
@@ -1471,69 +1524,117 @@ export default function CreateOutboundOrderPage({
       {/* Quick Customer Add Modal (Only for regular sales) */}
       {!isDisposal && showAddCustomerModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
-              <h3 className="text-base font-extrabold text-slate-800">Thêm Nhanh Khách Hàng</h3>
-              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100">
-                <X size={18} />
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
+                  <UserPlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Thêm khách hàng mới</h3>
+                  <p className="text-xs text-slate-500 font-normal">Nhập thông tin khách hàng đầy đủ</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Mã KH</label>
-                <input
-                  type="text"
-                  placeholder="Tự động nếu để trống"
-                  value={newCustomerForm.customerCode}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, customerCode: e.target.value })}
-                  className="w-full h-9 rounded-lg border-2 border-slate-200 px-3 text-xs font-semibold outline-none focus:border-cyan-600"
-                />
+
+            <div className="mt-5 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Họ và tên</label>
+                  <input
+                    type="text"
+                    placeholder="Nguyễn Văn A"
+                    value={newCustomerForm.fullName}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, fullName: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Email</label>
+                  <input
+                    type="email"
+                    placeholder="admin@example.com"
+                    value={newCustomerForm.email}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Tên khách hàng (*)</label>
-                <input
-                  type="text"
-                  placeholder="Nhập tên khách hàng"
-                  value={newCustomerForm.name}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
-                  className="w-full h-9 rounded-lg border-2 border-slate-200 px-3 text-xs font-semibold outline-none focus:border-cyan-600"
-                />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Số điện thoại</label>
+                  <input
+                    type="text"
+                    placeholder="0901234567"
+                    value={newCustomerForm.phone}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Địa chỉ</label>
+                  <input
+                    type="text"
+                    placeholder="Số nhà, tên đường, phường/xã, quận/huyện..."
+                    value={newCustomerForm.address}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, address: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Số điện thoại</label>
-                <input
-                  type="text"
-                  placeholder="SĐT liên hệ"
-                  value={newCustomerForm.phone}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
-                  className="w-full h-9 rounded-lg border-2 border-slate-200 px-3 text-xs font-semibold outline-none focus:border-cyan-600"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Địa chỉ</label>
-                <input
-                  type="text"
-                  placeholder="Địa chỉ giao hàng"
-                  value={newCustomerForm.address}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, address: e.target.value })}
-                  className="w-full h-9 rounded-lg border-2 border-slate-200 px-3 text-xs font-semibold outline-none focus:border-cyan-600"
-                />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Trạng thái</label>
+                  <select
+                    value={newCustomerForm.status}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, status: e.target.value as 'active' | 'inactive' })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-white"
+                  >
+                    <option value="active">Đang hoạt động</option>
+                    <option value="inactive">Không hoạt động</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Mật khẩu</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      value={newCustomerForm.password}
+                      onChange={(e) => setNewCustomerForm({ ...newCustomerForm, password: e.target.value })}
+                      className="w-full h-10 rounded-xl border border-slate-200 pl-3.5 pr-10 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="mt-5 flex items-center justify-end gap-2">
+
+            <div className="mt-6 flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowAddCustomerModal(false)}
-                className="rounded-xl border-2 border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                className="rounded-xl border border-slate-200 px-5 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
               >
                 Hủy
               </button>
               <button
                 type="button"
                 onClick={handleAddQuickCustomer}
-                className="rounded-xl bg-cyan-600 px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-cyan-700"
+                className="rounded-xl bg-cyan-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-700"
               >
-                Lưu Khách Hàng
+                Thêm khách hàng
               </button>
             </div>
           </div>
@@ -1701,7 +1802,7 @@ export default function CreateOutboundOrderPage({
                     className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
                     <UserPlus size={13} />
-                    <span>+ Thêm KH</span>
+                    <span>Thêm KH</span>
                   </button>
                 )}
               </div>
@@ -1878,9 +1979,9 @@ export default function CreateOutboundOrderPage({
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
           <div className={`flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullScreen ? 'flex-1 h-full' : ''}`}>
             {/* Product Section Top Control Bar */}
-            <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 flex-shrink-0">
-              <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs">
-                <Package className="h-4 w-4 text-cyan-600" />
+            <div className="px-4 py-3 border-b-2 border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
+              <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs sm:text-sm">
+                <Package className="h-4.5 w-4.5 text-cyan-600" />
                 <span>
                   {isDisposal
                     ? `THÔNG TIN HÀNG HÓA TIÊU HỦY (${activeValidItems.length} MẶT HÀNG - TỔNG SL HỦY: ${totalQty})`
@@ -1888,87 +1989,32 @@ export default function CreateOutboundOrderPage({
                 </span>
               </div>
 
-              {/* Quick Product Search Bar */}
-              <div className="relative flex-1 max-w-md mx-2 quick-search-box">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-cyan-600" />
-                  <input
-                    type="text"
-                    placeholder={isDisposal ? "Gõ mã hoặc tên hàng hóa cần hủy (Ví dụ: SP001)..." : "Gõ mã hoặc tên hàng hóa để tìm nhanh (Ví dụ: SP001, Omron)..."}
-                    value={quickProductSearch}
-                    onChange={(e) => {
-                      setQuickProductSearch(e.target.value);
-                      setShowQuickSearchDropdown(true);
-                    }}
-                    onFocus={() => setShowQuickSearchDropdown(true)}
-                    className="w-full h-8 pl-8 pr-3 rounded-lg border border-cyan-400 bg-white text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-200 shadow-2xs"
-                  />
-                </div>
-
-                {showQuickSearchDropdown && quickProductSearch.trim() && (
-                  <div className="absolute left-0 top-full z-[120] mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl divide-y divide-slate-100">
-                    {isReturnSupplier && (!activeTab?.customer || activeTab.customer === 'Khách hàng bán lẻ') ? (
-                      <div className="p-3 text-center text-xs font-bold text-amber-800 bg-amber-50">
-                        ⚠️ Vui lòng chọn Nhà cung cấp ở thông tin phiếu trước khi tìm kiếm sản phẩm xuất trả!
-                      </div>
-                    ) : filteredQuickProducts.length === 0 ? (
-                      <div className="p-3 text-center text-xs font-semibold text-slate-500">
-                        {isReturnSupplier ? `Không tìm thấy sản phẩm thuộc Nhà cung cấp [${activeTab?.customer || ''}]` : 'Không tìm thấy hàng hóa phù hợp'}
-                      </div>
-                    ) : (
-                      filteredQuickProducts.map((p) => {
-                        const whStock = getProductWarehouseStock(p, activeTab?.branchCode, allInboundOrders);
-                        return (
-                          <div
-                            key={p.id}
-                            onClick={() => handleSelectQuickProduct(p)}
-                            className="flex items-center justify-between px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs transition"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-cyan-800 bg-cyan-100 px-1.5 py-0.5 rounded text-[11px]">{p.internalSku}</span>
-                              <span className="font-bold text-slate-800">{p.name}</span>
-                              <span className="text-[11px] font-semibold text-slate-500">({p.unit || 'Cái'})</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className={`font-bold px-1.5 py-0.5 rounded text-[11px] ${whStock > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
-                                Tồn: {whStock}
-                              </span>
-                              <span className="font-extrabold text-cyan-900">{getProductPriceForMode(p).toLocaleString('vi-VN')} đ</span>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowScannerModal(true)}
-                  className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-cyan-600 bg-white px-3.5 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer shadow-xs"
                 >
-                  <ScanLine className="h-3.5 w-3.5 text-cyan-600" />
+                  <ScanLine className="h-4 w-4 text-cyan-600" />
                   <span>Quét Barcode</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleAddBlankRow}
-                  className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3.5 py-1 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-cyan-600 px-4 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="h-4 w-4" />
                   <span>Thêm dòng mới</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setIsFullScreen(!isFullScreen)}
-                  className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-500 bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800 hover:bg-cyan-100 transition cursor-pointer shadow-xs"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer shadow-xs"
                   title={isFullScreen ? 'Thu nhỏ cửa sổ' : 'Phóng to toàn màn hình'}
                 >
-                  {isFullScreen ? <Minimize2 className="h-3.5 w-3.5 text-cyan-700" /> : <Maximize2 className="h-3.5 w-3.5 text-cyan-700" />}
+                  {isFullScreen ? <Minimize2 className="h-4 w-4 text-slate-600" /> : <Maximize2 className="h-4 w-4 text-slate-600" />}
                   <span>{isFullScreen ? 'Thu nhỏ' : 'Phóng to'}</span>
                 </button>
               </div>

@@ -316,18 +316,18 @@ export default function CashflowReportPage() {
                       </tr>
                       {group.items.map((row, idx) => (
                         <tr key={row.id || idx} className="hover:bg-slate-50 transition group">
-                          <td className="py-3.5 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">{idx + 1}</td>
-                          {columnVis.title && <td className="py-3.5 px-4 text-left border-r border-slate-200 font-extrabold text-slate-900">{row.title}</td>}
-                          {columnVis.income && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-800">{row.income ? `${fmt(row.income)} đ` : '0 đ'}</td>}
-                          {columnVis.expense && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-700">{row.expense ? `${fmt(row.expense)} đ` : '0 đ'}</td>}
-                          {columnVis.balance && <td className="py-3.5 px-4 text-right font-black text-slate-900">{fmt(row.balance)} đ</td>}
+                          <td className="py-3.5 px-3 text-center border-r border-slate-200 font-normal text-slate-900">{idx + 1}</td>
+                          {columnVis.title && <td className="py-3.5 px-4 text-left border-r border-slate-200 font-normal text-slate-900">{row.title}</td>}
+                          {columnVis.income && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{row.income ? `${fmt(row.income)} đ` : '0 đ'}</td>}
+                          {columnVis.expense && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{row.expense ? `${fmt(row.expense)} đ` : '0 đ'}</td>}
+                          {columnVis.balance && <td className="py-3.5 px-4 text-right font-normal text-slate-900">{fmt(row.balance)} đ</td>}
                         </tr>
                       ))}
-                      <tr className="bg-slate-50 font-black text-slate-900 border-b-2 border-slate-200">
-                        <td colSpan={2} className="py-2.5 px-4 text-right border-r border-slate-200 uppercase">Cộng nhóm:</td>
-                        {columnVis.income && <td className="py-2.5 px-3 text-right border-r border-slate-200 text-slate-900">{fmt(grpInc)} đ</td>}
-                        {columnVis.expense && <td className="py-2.5 px-3 text-right border-r border-slate-200 text-slate-800">{fmt(grpExp)} đ</td>}
-                        {columnVis.balance && <td className="py-2.5 px-4 text-right text-slate-900">{fmt(grpBal)} đ</td>}
+                      <tr className="bg-slate-50 font-bold text-slate-900 border-b-2 border-slate-200">
+                        <td colSpan={2} className="py-2.5 px-4 text-left border-r border-slate-200 uppercase font-bold">Cộng nhóm:</td>
+                        {columnVis.income && <td className="py-2.5 px-3 text-right border-r border-slate-200 text-slate-900 font-bold">{fmt(grpInc)} đ</td>}
+                        {columnVis.expense && <td className="py-2.5 px-3 text-right border-r border-slate-200 text-slate-800 font-bold">{fmt(grpExp)} đ</td>}
+                        {columnVis.balance && <td className="py-2.5 px-4 text-right text-slate-900 font-bold">{fmt(grpBal)} đ</td>}
                       </tr>
                     </React.Fragment>
                   );

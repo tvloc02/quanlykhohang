@@ -68,7 +68,7 @@ export interface WarehouseSlottingGridProps {
     occupiedInfo: BinOccupiedInfo | null,
     goodsList?: BinGoodsDetail[]
   ) => void;
-  onUpdateBinCapacity?: (binCode: string, occupancyPct: number, notes?: string) => void;
+  onUpdateBinCapacity?: (binCode: string, occupancyPct: number, notes?: string, targetRowId?: string, newQty?: number) => void;
   mode?: 'view' | 'select'; // 'view' for Edit Warehouse, 'select' for Order picking
   isOutbound?: boolean;
   maxBinsAllowed?: number;
@@ -243,6 +243,15 @@ export async function fetchWarehouseOccupiedBins(
         }
       }
 
+      const cellMatch = cleanCode.match(/([A-Z][0-9]{1,2})/i);
+      if (cellMatch) {
+        const cellKey = cellMatch[1].toUpperCase();
+        if (cellKey) {
+          dMap.set(cellKey, detail);
+          appendGoods(cellKey);
+        }
+      }
+
       if (cleanCode === short || !cleanCode.includes('-')) {
         if (short) {
           dMap.set(short, detail);
@@ -316,9 +325,9 @@ export async function fetchWarehouseOccupiedBins(
           }
         });
       }
-      if (Array.isArray(localStockInOrders)) {
+      if (Array.isArray(localStockInOrders) && (!apiOrdersRes?.ok && !poOrdersRes?.ok)) {
         localStockInOrders.forEach((lo: any) => {
-          if (!allStockInOrders.some((ao: any) => ao.id === lo.id || (ao.code && lo.code && ao.code === lo.code) || (ao.orderNumber && lo.orderNumber && ao.orderNumber === lo.orderNumber))) {
+          if (!allStockInOrders.some((ao: any) => ao.id === lo.id || (ao.code && lo.code && ao.code === lo.code) || (ao.orderNumber && lo.orderNumber && ao.orderNumber === lo.orderNumber) || (ao.poNumber && lo.poNumber && ao.poNumber === lo.poNumber))) {
             allStockInOrders.push(lo);
           }
         });
@@ -339,7 +348,7 @@ export async function fetchWarehouseOccupiedBins(
         (ord.details || ord.items || []).forEach((item: any) => {
           const pName = item.productName || item.product?.name || item.name || 'Sản phẩm nhập kho';
           const pSku = item.productSku || item.sku || item.product?.sku || item.product?.internalSku || 'SKU-001';
-          const pQty = Number(item.receivedQty || item.expectedQty || item.qty || item.quantity || 1);
+          const pQty = Number(item.receivedQty || item.expectedQty || item.qty || item.quantity || item.requiredQty || item.pickedQty || 1);
           const pUnit = item.unit || item.product?.unit || 'Cái';
 
           let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
@@ -371,8 +380,9 @@ export async function fetchWarehouseOccupiedBins(
             if (pctMatch) {
               itemPct = Number(pctMatch[2]);
             }
+            const calcQty = itemPct !== undefined && itemPct > 0 ? Math.round((pQty * itemPct) / 100) : pQtyPerBin;
             const info: BinOccupiedInfo = {
-              totalPhysical: pQtyPerBin,
+              totalPhysical: calcQty,
               allocated: 0,
               productsCount: 1,
               productName: pName,
@@ -402,7 +412,7 @@ export async function fetchWarehouseOccupiedBins(
             (tab.details || []).forEach((item: any) => {
               const pName = item.productName || 'Sản phẩm nhập kho';
               const pSku = item.productSku || item.sku || 'SKU-001';
-              const pQty = Number(item.qty || 1);
+              const pQty = Number(item.qty || item.quantity || item.receivedQty || item.expectedQty || item.requiredQty || item.pickedQty || 1);
               const pUnit = item.unit || 'Cái';
 
               let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
@@ -434,8 +444,9 @@ export async function fetchWarehouseOccupiedBins(
                 if (pctMatch) {
                   itemPct = Number(pctMatch[2]);
                 }
+                const calcQty = itemPct !== undefined && itemPct > 0 ? Math.round((pQty * itemPct) / 100) : pQtyPerBin;
                 const info: BinOccupiedInfo = {
-                  totalPhysical: pQtyPerBin,
+                  totalPhysical: calcQty,
                   allocated: 0,
                   productsCount: 1,
                   productName: pName,
@@ -608,7 +619,7 @@ export async function fetchWarehouseOccupiedBins(
         (ord.details || ord.items || []).forEach((item: any) => {
           const pName = item.productName || item.product?.name || item.name || 'Sản phẩm xuất kho';
           const pSku = item.productSku || item.sku || item.product?.sku || item.product?.internalSku || 'SKU-001';
-          const pQty = Number(item.qty || item.quantity || 1);
+          const pQty = Number(item.qty || item.quantity || item.requiredQty || item.pickedQty || 1);
           const pUnit = item.unit || item.product?.unit || 'Cái';
 
           let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
@@ -661,7 +672,7 @@ export async function fetchWarehouseOccupiedBins(
             (tab.details || []).forEach((item: any) => {
               const pName = item.productName || 'Sản phẩm xuất kho';
               const pSku = item.productSku || item.sku || 'SKU-001';
-              const pQty = Number(item.qty || 1);
+              const pQty = Number(item.qty || item.quantity || item.requiredQty || item.pickedQty || 1);
               const pUnit = item.unit || 'Cái';
 
               let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
@@ -726,11 +737,17 @@ export async function fetchWarehouseOccupiedBins(
         goodsList.forEach((item: any) => {
           if (!item.orderCode || item.sku === 'SKU-DRAFT') return;
           const itemKey = `${item.orderCode}___${item.sku}`;
-          if (itemKey === key && item.quantity && item.quantity > 0) {
+          if (itemKey === key && item.quantity) {
             if (!item._isDivided) {
-              item.quantity = Math.max(1, Math.round(item.quantity / numBins));
-              item.totalPhysical = item.quantity;
-              item._isDivided = true;
+              if (item.occupancyPct === 100) {
+                item._isDivided = true;
+              } else {
+                const sign = item.quantity < 0 ? -1 : 1;
+                const absVal = Math.abs(item.quantity);
+                item.quantity = sign * Math.max(1, Math.round(absVal / numBins));
+                item.totalPhysical = item.quantity;
+                item._isDivided = true;
+              }
             }
           }
         });
@@ -739,12 +756,32 @@ export async function fetchWarehouseOccupiedBins(
       dMap.forEach((item: any) => {
         if (!item.orderCode || item.sku === 'SKU-DRAFT') return;
         const itemKey = `${item.orderCode}___${item.sku}`;
-        if (itemKey === key && item.quantity && item.quantity > 0 && !item._isDivided) {
-          item.quantity = Math.max(1, Math.round(item.quantity / numBins));
+        if (itemKey === key && item.quantity && !item._isDivided) {
+          const sign = item.quantity < 0 ? -1 : 1;
+          const absVal = Math.abs(item.quantity);
+          item.quantity = sign * Math.max(1, Math.round(absVal / numBins));
           item.totalPhysical = item.quantity;
           item._isDivided = true;
         }
       });
+    });
+
+    // Clean up redundant placeholder 'TỒN-KHO' entries when explicit order records exist
+    gMap.forEach((goodsList, binKey) => {
+      const explicitSkus = new Set(
+        goodsList
+          .filter((x) => x.orderCode && x.orderCode !== 'TỒN-KHO')
+          .map((x) => x.sku)
+      );
+      if (explicitSkus.size > 0) {
+        const filtered = goodsList.filter(
+          (x) => x.orderCode !== 'TỒN-KHO' || !explicitSkus.has(x.sku)
+        );
+        gMap.set(binKey, filtered);
+        if (filtered.length > 0) {
+          dMap.set(binKey, filtered[0]);
+        }
+      }
     });
   } catch (err) {
     console.error('Error in fetchWarehouseOccupiedBins:', err);
@@ -816,9 +853,12 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
           const totalItemQty = it.qty && Number(it.qty) > 0 ? Number(it.qty) : 1;
           const numSelectedBins = bList.length > 0 ? bList.length : 1;
-          const dividedQty = !isOutbound
-            ? Math.round(totalItemQty / numSelectedBins)
-            : totalItemQty;
+          let dividedQty = totalItemQty;
+          if (explicitPct !== undefined) {
+            dividedQty = Math.round((totalItemQty * explicitPct) / 100);
+          } else if (numSelectedBins > 1 && !isOutbound) {
+            dividedQty = Math.round(totalItemQty / numSelectedBins);
+          }
 
           matchingRows.push({
             rowId,
@@ -897,7 +937,19 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       }
     }
 
-    setEditableBinItems(assigned);
+    const uniqueAssignedMap = new Map<string, any>();
+    assigned.forEach((item) => {
+      const key = `${(item.productName || '').toUpperCase().trim()}`;
+      if (uniqueAssignedMap.has(key)) {
+        const existing = uniqueAssignedMap.get(key)!;
+        existing.qty = Math.max(existing.qty, item.qty);
+        existing.occupancyPct = Math.max(existing.occupancyPct, item.occupancyPct);
+      } else {
+        uniqueAssignedMap.set(key, { ...item });
+      }
+    });
+
+    setEditableBinItems(Array.from(uniqueAssignedMap.values()));
   }, [editingBinConfig, orderItems, selectedBinsMap]);
 
   const handleSaveBinPct = (binCode: string, pct: number) => {
@@ -1555,61 +1607,119 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900 font-medium">
-                  {editableBinItems.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-cyan-50/50 dark:hover:bg-slate-800/50 transition">
-                      <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">
-                        {item.productName}
-                      </td>
-                      <td className="p-2 text-right">
-                        <input
-                          type="number"
-                          min={0}
-                          value={item.qty > 0 ? item.qty : ''}
-                          placeholder="—"
-                          onChange={(e) => {
-                            const val = Number(e.target.value) || 0;
-                            setEditableBinItems((prev) =>
-                              prev.map((it, i) => (i === idx ? { ...it, qty: val } : it))
-                            );
-                          }}
-                          className="w-20 px-2 py-1 text-right text-xs font-bold border border-slate-300 rounded-lg outline-none focus:border-cyan-600 dark:bg-slate-800 dark:text-white"
-                        />
-                      </td>
-                      <td className="p-2 text-right">
-                        <div className="relative inline-block w-20">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              if (raw === '') {
+                  {editableBinItems.map((item, idx) => {
+                    const origItem = orderItems?.find((o: any) => o.rowId === item.rowId || String(o.productId || o.id) === String(item.rowId));
+                    const origStockQty = origItem?.stockQty || origItem?.stock || origItem?.totalQty || (item.qty > 0 ? item.qty : 1000);
+                    const origStockPct = origItem?.occupancyPct || editingBinConfig.currentPct || 100;
+
+                    return (
+                      <tr key={idx} className={isOutbound ? "bg-rose-50/30 dark:bg-rose-950/20 hover:bg-rose-50/60 dark:hover:bg-rose-950/40 transition border-l-4 border-rose-500" : "hover:bg-cyan-50/50 dark:hover:bg-slate-800/50 transition"}>
+                        <td className="p-2.5">
+                          <div className="font-bold text-slate-800 dark:text-slate-200">
+                            {item.productName}
+                          </div>
+                          {isOutbound && (
+                            <div className="text-[10px] text-slate-500 font-bold mt-0.5 flex items-center gap-1.5">
+                              <span>Tồn kho hiện tại: <strong className="text-slate-700 dark:text-slate-300 font-black">{origStockQty} cái</strong> ({origStockPct}%)</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-2 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {isOutbound && <span className="text-xs font-black text-rose-600 dark:text-rose-400">-</span>}
+                            <input
+                              type="number"
+                              min={0}
+                              max={isOutbound ? origStockQty : undefined}
+                              value={item.qty > 0 ? item.qty : ''}
+                              placeholder="—"
+                              onChange={(e) => {
+                                const val = Number(e.target.value) || 0;
                                 setEditableBinItems((prev) =>
-                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
+                                  prev.map((it, i) => {
+                                    if (i !== idx) return it;
+                                    let calculatedPct = it.occupancyPct;
+                                    if (origStockQty > 0) {
+                                      calculatedPct = Math.min(100, Math.max(0, Math.round((val / origStockQty) * origStockPct)));
+                                    }
+                                    return {
+                                      ...it,
+                                      qty: val,
+                                      occupancyPct: calculatedPct > 0 ? calculatedPct : (val > 0 ? 100 : 0),
+                                    };
+                                  })
                                 );
-                                return;
-                              }
-                              const parsed = parseInt(raw, 10);
-                              const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
-                              setEditableBinItems((prev) =>
-                                prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val } : it))
-                              );
-                            }}
-                            onBlur={() => {
-                              if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined || item.occupancyPct === null) {
+                              }}
+                              className={`w-20 px-2 py-1 text-right text-xs font-bold border rounded-lg outline-none ${
+                                isOutbound
+                                  ? 'border-rose-300 bg-rose-50/80 text-rose-700 focus:border-rose-600 dark:bg-slate-800 dark:text-rose-300 dark:border-rose-900 font-black'
+                                  : 'border-slate-300 focus:border-cyan-600 dark:bg-slate-800 dark:text-white'
+                              }`}
+                            />
+                          </div>
+                          {isOutbound && (
+                            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">
+                              Còn: {Math.max(0, origStockQty - item.qty)} cái
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-2 text-right">
+                          <div className="relative inline-flex items-center justify-end w-20">
+                            {isOutbound && <span className="text-xs font-black text-rose-600 dark:text-rose-400 mr-0.5">-</span>}
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === '') {
+                                  setEditableBinItems((prev) =>
+                                    prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
+                                  );
+                                  return;
+                                }
+                                const parsed = parseInt(raw, 10);
+                                const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
                                 setEditableBinItems((prev) =>
-                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
+                                  prev.map((it, i) => {
+                                    if (i !== idx) return it;
+                                    let calcQty = it.qty;
+                                    if (origStockPct > 0) {
+                                      calcQty = Math.round((origStockQty * val) / origStockPct);
+                                    }
+                                    return {
+                                      ...it,
+                                      occupancyPct: val,
+                                      qty: calcQty > 0 ? calcQty : it.qty,
+                                    };
+                                  })
                                 );
-                              }
-                            }}
-                            className="w-full px-2 py-1 pr-5 text-right text-xs font-bold border border-slate-300 rounded-lg outline-none focus:border-cyan-600 dark:bg-slate-800 dark:text-white"
-                          />
-                          <span className="absolute right-1.5 top-1 text-xs font-black text-slate-400">%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                              }}
+                              onBlur={() => {
+                                if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined || item.occupancyPct === null) {
+                                  setEditableBinItems((prev) =>
+                                    prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
+                                  );
+                                }
+                              }}
+                              className={`w-full px-2 py-1 pr-5 text-right text-xs font-bold border rounded-lg outline-none ${
+                                isOutbound
+                                  ? 'border-rose-300 bg-rose-50/80 text-rose-700 focus:border-rose-600 dark:bg-slate-800 dark:text-rose-300 dark:border-rose-900 font-black'
+                                  : 'border-slate-300 focus:border-cyan-600 dark:bg-slate-800 dark:text-white'
+                              }`}
+                            />
+                            <span className={`absolute right-1.5 top-1 text-xs font-black ${isOutbound ? 'text-rose-500' : 'text-slate-400'}`}>%</span>
+                          </div>
+                          {isOutbound && (
+                            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">
+                              Còn: {Math.max(0, origStockPct - item.occupancyPct)}%
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1622,7 +1732,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               const assignedRowIds = new Set(editableBinItems.map((it) => it.rowId));
               const availableUnassigned = (orderItems || []).filter((it: any, idx: number) => !assignedRowIds.has(it.rowId || String(idx)));
 
-              if (remainingPct > 0 && availableUnassigned.length > 0) {
+              if (!isOutbound && remainingPct > 0 && availableUnassigned.length > 0) {
                 return (
                   <div className="mb-2 flex justify-end">
                     <button
@@ -1652,6 +1762,30 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
             {/* Dynamic Calculation Summary Banner */}
             {(() => {
+              if (isOutbound) {
+                const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
+                const totalExportPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+                const currentBinPct = editingBinConfig.currentPct || 100;
+                const remainingAfterExport = Math.max(0, currentBinPct - totalExportPct);
+
+                return (
+                  <div className="p-2.5 rounded-xl border text-xs bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 text-rose-900 dark:text-rose-200 shadow-2xs space-y-1 my-2">
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-slate-700 dark:text-slate-300">Khấu trừ xuất kho:</span>
+                      <span className="text-rose-600 dark:text-rose-400 font-black text-xs">
+                        -{totalExportQty} cái (-{totalExportPct}% dung tích ô)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between font-bold border-t border-rose-200/80 pt-1">
+                      <span className="text-slate-800 dark:text-slate-200">Sức chứa ô còn lại sau xuất:</span>
+                      <span className="text-emerald-700 dark:text-emerald-300 font-black text-xs">
+                        {remainingAfterExport}% (Còn trống {100 - remainingAfterExport}% ô kệ)
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+
               const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
               const remainingPct = Math.max(0, 100 - sumPct);
               const isOverCap = sumPct > 100;
@@ -1701,13 +1835,19 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                   type="button"
                   onClick={() => {
                     const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-                    if (sumPct > 100) {
+                    if (!isOutbound && sumPct > 100) {
                       alert(`Tổng % độ chứa (${sumPct}%) vượt quá 100%! Vui lòng điều chỉnh lại cho tổng các sản phẩm <= 100%.`);
                       return;
                     }
                     editableBinItems.forEach((item) => {
-                      if (item.rowId && onUpdateBinCapacity) {
-                        (onUpdateBinCapacity as any)(editingBinConfig.binCode, Number(item.occupancyPct) || 0, undefined, item.rowId);
+                      if (onUpdateBinCapacity) {
+                        onUpdateBinCapacity(
+                          editingBinConfig.binCode,
+                          Number(item.occupancyPct) || 0,
+                          undefined,
+                          item.rowId,
+                          item.qty && Number(item.qty) > 0 ? Number(item.qty) : undefined
+                        );
                       }
                     });
                     setEditingBinConfig(null);

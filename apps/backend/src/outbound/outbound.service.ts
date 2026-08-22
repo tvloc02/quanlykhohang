@@ -557,6 +557,7 @@ export class OutboundService implements OnModuleInit {
         productName: item.productName?.trim() || product?.name || undefined,
         unit: item.unit?.trim() || product?.unit || 'Cái',
         warehouseCode: targetWhCode,
+        locationBin: item.locationBin || (item.assignedBins && item.assignedBins.join(', ')) || undefined,
         requiredQty: qty,
         pickedQty: 0,
         unitPrice: unitPrice.toFixed(2),
@@ -755,34 +756,51 @@ export class OutboundService implements OnModuleInit {
       pointsUsed: order.pointsUsed || 0,
       pointsAvailable: order.pointsAvailable || 12217,
       createdAt: toDateString(order.createdAt),
-      details: (order.details || []).map((d) => ({
-        id: d.id,
-        warehouseCode: d.warehouseCode,
-        requiredQty: d.requiredQty,
-        pickedQty: d.pickedQty,
-        unitPrice: parseNumber(d.unitPrice),
-        discountPercent: parseNumber(d.discountPercent),
-        discountAmount: parseNumber(d.discountAmount),
-        vatPercent: parseNumber(d.vatPercent),
-        vatAmount: parseNumber(d.vatAmount),
-        totalLineAmount: parseNumber(d.totalLineAmount),
-        note: d.note,
-        product: d.product
-          ? {
-            id: d.product.id,
-            internalSku: d.productSku || d.product.internalSku,
-            name: d.productName || d.product.name,
-            unit: d.unit || d.product.unit,
-          }
-          : (d.productName || d.productSku)
+      details: (order.details || []).map((d) => {
+        const reqQty = parseNumber(d.requiredQty);
+        const picQty = parseNumber(d.pickedQty);
+        const effectiveQty = reqQty > 0 ? reqQty : (picQty > 0 ? picQty : 1);
+        const locBin = (d as any).locationBin || (d.note ? (d.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/)?.[1] || '') : '');
+        const rawAssigned = (d as any).assignedBins;
+        const binArr = Array.isArray(rawAssigned) && rawAssigned.length > 0
+          ? rawAssigned
+          : (locBin ? locBin.split(',').map((s: string) => s.trim()) : []);
+
+        return {
+          id: d.id,
+          warehouseCode: d.warehouseCode,
+          locationBin: locBin,
+          assignedBins: binArr,
+          requiredQty: reqQty,
+          pickedQty: picQty,
+          qty: effectiveQty,
+          quantity: effectiveQty,
+          unitPrice: parseNumber(d.unitPrice),
+          discountPercent: parseNumber(d.discountPercent),
+          discountAmount: parseNumber(d.discountAmount),
+          vatPercent: parseNumber(d.vatPercent),
+          vatAmount: parseNumber(d.vatAmount),
+          totalLineAmount: parseNumber(d.totalLineAmount),
+          note: d.note,
+          productSku: d.productSku || d.product?.internalSku,
+          productName: d.productName || d.product?.name,
+          product: d.product
             ? {
-              id: '',
-              internalSku: d.productSku || '',
-              name: d.productName || d.productSku || '',
-              unit: d.unit || 'Cái',
+              id: d.product.id,
+              internalSku: d.productSku || d.product.internalSku,
+              name: d.productName || d.product.name,
+              unit: d.unit || d.product.unit,
             }
-            : null,
-      })),
+            : (d.productName || d.productSku)
+              ? {
+                id: '',
+                internalSku: d.productSku || '',
+                name: d.productName || d.productSku || '',
+                unit: d.unit || 'Cái',
+              }
+              : null,
+        };
+      }),
     };
   }
 

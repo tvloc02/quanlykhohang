@@ -2537,7 +2537,7 @@ export default function CreateStockInOrderPage({
     }
 
     loadExistingOrder();
-  }, [editId, actionParam]);
+  }, [editId, actionParam, sourcePoIdParam]);
 
   const handleOpenStorageInfo = async (row: FormDetailRow) => {
     if (!row.productId) {
