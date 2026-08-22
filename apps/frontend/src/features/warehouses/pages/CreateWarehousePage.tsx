@@ -1570,27 +1570,29 @@ export default function CreateWarehousePage() {
                   });
 
                   const groupedGoodsList = Array.from(groupedGoodsMap.values()).map((grp) => {
-                    const totalInbound = grp.transactions
-                      .filter((t) => !t.isOutbound && Number(t.quantity || t.totalPhysical || 0) > 0)
-                      .reduce((s, t) => s + Number(t.quantity || t.totalPhysical || 0), 0);
-                    const totalOutbound = grp.transactions
-                      .filter((t) => t.isOutbound || Number(t.quantity || 0) < 0)
-                      .reduce((s, t) => s + Math.abs(Number(t.quantity || 0)), 0);
+                    const inboundTransactions = grp.transactions.filter((t) => !t.isOutbound && (Number(t.quantity || t.totalPhysical || 0) > 0 || !t.orderCode?.startsWith('PX')));
+                    const outboundTransactions = grp.transactions.filter((t) => t.isOutbound || Number(t.quantity || 0) < 0);
 
-                    const netQty = Math.max(0, totalInbound > 0 ? totalInbound - totalOutbound : Number(grp.transactions[0]?.quantity || grp.transactions[0]?.totalPhysical || 1));
+                    const totalInbound = inboundTransactions.reduce((s, t) => s + Math.abs(Number(t.quantity || t.totalPhysical || 0)), 0) || 500;
+                    const totalOutbound = outboundTransactions.reduce((s, t) => s + Math.abs(Number(t.quantity || 0)), 0);
+
+                    const netQty = Math.max(0, totalInbound - totalOutbound);
                     const netOccupancyPct = totalInbound > 0
                       ? Math.round((netQty / totalInbound) * grp.baseOccupancyPct)
-                      : Math.max(0, grp.baseOccupancyPct - Math.round((totalOutbound / 1000) * grp.baseOccupancyPct));
+                      : Math.max(0, grp.baseOccupancyPct - Math.round((totalOutbound / 500) * grp.baseOccupancyPct));
 
                     return {
                       ...grp,
+                      totalInbound,
+                      totalOutbound,
+                      netQty,
                       netOccupancyPct,
                     };
                   });
 
-                  const grandTotalInbound = groupedGoodsList.reduce((s, g) => s + g.transactions.filter((t) => !t.isOutbound && Number(t.quantity || t.totalPhysical || 0) > 0).reduce((ts, t) => ts + Number(t.quantity || t.totalPhysical || 0), 0), 0);
-                  const grandTotalOutbound = groupedGoodsList.reduce((s, g) => s + g.transactions.filter((t) => t.isOutbound || Number(t.quantity || 0) < 0).reduce((ts, t) => ts + Math.abs(Number(t.quantity || 0)), 0), 0);
-                  const grandNetPhysical = Math.max(0, grandTotalInbound > 0 ? grandTotalInbound - grandTotalOutbound : groupedGoodsList.reduce((s, g) => s + Number(g.transactions[0]?.quantity || g.transactions[0]?.totalPhysical || 1), 0));
+                  const grandTotalInbound = groupedGoodsList.reduce((s, g) => s + g.totalInbound, 0);
+                  const grandTotalOutbound = groupedGoodsList.reduce((s, g) => s + g.totalOutbound, 0);
+                  const grandNetPhysical = Math.max(0, grandTotalInbound - grandTotalOutbound);
                   const grandOccupancyPct = Math.min(100, groupedGoodsList.reduce((s, g) => s + g.netOccupancyPct, 0));
 
                   return (
@@ -1768,8 +1770,8 @@ export default function CreateWarehousePage() {
                                       </td>
 
                                       <td className="py-2.5 px-3 text-center border border-slate-300 dark:border-slate-700 whitespace-nowrap bg-white dark:bg-slate-900 align-middle">
-                                        <span className="px-2.5 py-1 rounded-full font-black text-xs bg-cyan-100 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-200 border border-cyan-300 dark:border-cyan-800">
-                                          {group.netOccupancyPct}%
+                                        <span className={`px-2.5 py-1 rounded-full font-black text-xs border ${isOutbound ? 'bg-rose-100 text-rose-900 border-rose-300 dark:bg-rose-950 dark:text-rose-200' : 'bg-cyan-100 text-cyan-900 border-cyan-300 dark:bg-cyan-950 dark:text-cyan-200'}`}>
+                                          {isOutbound ? `Còn lại ${group.netOccupancyPct}%` : `${tx.occupancyPct || group.baseOccupancyPct || 100}%`}
                                         </span>
                                       </td>
                                     </tr>

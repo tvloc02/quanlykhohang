@@ -696,8 +696,8 @@ export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, {
     const allLocks: DraftSlotLock[] = JSON.parse(raw);
     const result: Record<string, { label: string; occupancyPct: number; isOutbound?: boolean }> = {};
     const now = Date.now();
-    // Exclude locks older than 2 hours to avoid stale locks
-    const validLocks = allLocks.filter((l) => now - l.updatedAt < 2 * 60 * 60 * 1000);
+    // Exclude locks older than 15 minutes to avoid stale locks
+    const validLocks = allLocks.filter((l) => now - l.updatedAt < 15 * 60 * 1000);
 
     validLocks.forEach((l) => {
       if (!excludeTabId || l.tabId !== excludeTabId) {
