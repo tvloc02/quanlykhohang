@@ -55,6 +55,8 @@ export interface ProductOption {
     allocated?: number;
     available?: number;
   }>;
+  warehouseStocks?: Record<string, number>;
+  defaultWarehouse?: string;
 }
 
 export interface ZoneItem {

@@ -22,7 +22,8 @@ import {
   ArrowRight,
   FileText,
   Printer,
-  Pencil
+  Pencil,
+  TrendingDown,
 } from 'lucide-react';
 
 import { PrintableStockInReceipt } from '../components/PrintableStockInReceipt';
@@ -802,7 +803,7 @@ export default function GoodsReceiptsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
-            <Package className="h-5 w-5 text-cyan-100" />
+            <TrendingDown className="h-5 w-5 text-cyan-100" />
             <h1 className="text-lg font-bold tracking-tight text-white">Phiếu nhập kho</h1>
           </div>
         </div>

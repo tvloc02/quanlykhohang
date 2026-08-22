@@ -185,18 +185,10 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'change-password', label: 'Đổi mật khẩu', parentId: 'he-thong' },
   { id: 'personnel', label: 'Người dùng / Nhân viên', parentId: 'he-thong' },
   { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
-  { id: 'sys-info', label: 'Thông tin sử dụng', parentId: 'he-thong' },
   { id: 'audit-log', label: 'Lịch sử thao tác', parentId: 'he-thong' },
-  { id: 'deposit', label: 'Nạp tiền', parentId: 'he-thong' },
   { id: 'print-barcode', label: 'In Barcode + QRCode', parentId: 'he-thong' },
-  { id: 'print-template-edit', label: 'Chỉnh sửa mẫu in', parentId: 'he-thong' },
-  { id: 'print-templates', label: 'Chỉnh mẫu in', parentId: 'he-thong' },
-  { id: 'data-maintenance', label: 'Bảo trì Dữ liệu', parentId: 'he-thong' },
-  { id: 'sys-config', label: 'Cấu hình hệ thống', parentId: 'he-thong' },
   { id: 'zalo-config', label: 'Cấu hình Zalo OA', parentId: 'he-thong' },
   { id: 'evat-config', label: 'Cấu hình e-VAT', parentId: 'he-thong' },
-  { id: 'data-transfer', label: 'Kết chuyển dữ liệu', parentId: 'he-thong' },
-  { id: 'data-transfer-view', label: 'Xem dữ liệu đã Kết chuyển', parentId: 'he-thong' },
 
   // 10. Shipper
   { id: 'shipper', label: 'Shipper', isHeader: true },
@@ -207,14 +199,7 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'vat-management', label: 'Quản lý VAT Điện tử', parentId: 'vat-dien-tu' },
   { id: 'vat-config', label: 'Thiết lập thông tin VAT', parentId: 'vat-dien-tu' },
 
-  // 12. Ghi đơn Thị trường
-  { id: 'ghi-don-thi-truong', label: 'Ghi đơn Thị trường' },
-
-  // 13. Trợ giúp
-  { id: 'tro-giup', label: 'Trợ giúp', isHeader: true },
-  { id: 'help-support', label: 'Hỗ trợ hệ thống', parentId: 'tro-giup' },
-
-  // 14. Hướng dẫn sử dụng
+  // 12. Hướng dẫn sử dụng
   { id: 'huong-dan-su-dung', label: 'Hướng dẫn sử dụng' },
 ];
 

@@ -486,7 +486,7 @@ export default function InventorySummaryReportPage() {
 
               {/* Header Summary Row */}
               <tr className="bg-slate-100 border-b-2 border-slate-300 font-black text-slate-900 text-xs sm:text-sm">
-                <td colSpan={4} className="py-3 px-4 border-r border-slate-200 uppercase tracking-wide text-right">
+                <td colSpan={4} className="py-3 px-4 border-r border-slate-200 uppercase tracking-wide text-left">
                   TỔNG TỒN TOÀN HỆ THỐNG ({filteredItems.length} MỤC):
                 </td>
                 {warehouses.map((wh) => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -37,6 +37,10 @@ import {
   CreditCard,
   TrendingUp,
   PackageCheck,
+  Receipt,
+  FileX,
+  CornerUpRight,
+  Send,
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import CreateOutboundOrderPage from './pages/CreateOutboundOrderPage';
@@ -358,8 +362,11 @@ export default function Outbound({
   partnerLabel = 'Khách hàng',
 }: OutboundProps) {
   const navigate = useNavigate();
-  const isRetail = featureMode === 'retail' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/retail'));
-  const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
+  const location = useLocation();
+  const isRetail = featureMode === 'retail' || location.pathname.includes('/outbound/retail');
+  const isDisposal = featureMode === 'disposal' || location.pathname.includes('/outbound/disposal');
+  const isSalesOrder = featureMode === 'sales-order' || location.pathname.includes('/outbound/sales-orders');
+  const isQuote = featureMode === 'quote' || location.pathname.includes('/documents/quotes');
   const [orders, setOrders] = useState<OutboundOrder[]>(
     isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : (isRetail ? DEFAULT_FALLBACK_RETAIL_ORDERS : DEFAULT_FALLBACK_ORDERS)
   );
@@ -553,7 +560,11 @@ export default function Outbound({
             ? list.filter((item: any) => item.orderType === 'disposal' || (item.orderNo && item.orderNo.startsWith('XH')))
             : isRetail
             ? list.filter((item: any) => item.orderType === 'retail' || item.orderType === 'RETAIL' || (item.orderNo && item.orderNo.startsWith('XBL')))
-            : list.filter((item: any) => item.orderType !== 'disposal' && item.orderType !== 'retail' && item.orderType !== 'RETAIL' && (!item.orderNo || (!item.orderNo.startsWith('XH') && !item.orderNo.startsWith('XBL'))));
+            : isSalesOrder
+            ? list.filter((item: any) => item.orderType === 'sales-order' || (item.orderNo && item.orderNo.startsWith('DDH')))
+            : isQuote
+            ? list.filter((item: any) => item.orderType === 'quote' || (item.orderNo && item.orderNo.startsWith('BG')))
+            : list.filter((item: any) => item.orderType !== 'disposal' && item.orderType !== 'retail' && item.orderType !== 'RETAIL' && item.orderType !== 'sales-order' && item.orderType !== 'quote' && (!item.orderNo || (!item.orderNo.startsWith('XH') && !item.orderNo.startsWith('XBL') && !item.orderNo.startsWith('DDH') && !item.orderNo.startsWith('BG'))));
 
           const formatted: OutboundOrder[] = targetList.map((item: any, idx: number) => ({
             id: String(item.id || idx),
@@ -633,7 +644,7 @@ export default function Outbound({
     } finally {
       setLoading(false);
     }
-  }, [currentUserName, isDisposal]);
+  }, [currentUserName, isDisposal, isRetail, isSalesOrder, isQuote, featureMode, location.pathname]);
 
   const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' = 'create', id?: string) => {
     if (modeAction === 'edit' && id) {
@@ -649,6 +660,17 @@ export default function Outbound({
     setSearchParams({});
     loadData();
   }, [setSearchParams, loadData]);
+
+  // Reset state and reload data when route or featureMode changes
+  useEffect(() => {
+    setSearch('');
+    setStatusFilter('all');
+    setSelectedIds(new Set());
+    setCurrentPage(1);
+    setShowDetailModal(false);
+    setSelectedOrder(null);
+    loadData();
+  }, [location.pathname, featureMode]);
 
   useEffect(() => {
     loadData();
@@ -1229,7 +1251,19 @@ export default function Outbound({
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
-                <Package className="h-5 w-5" />
+                {isDisposal ? (
+                  <FileX className="h-5 w-5" />
+                ) : (featureMode as string) === 'return-supplier' ? (
+                  <CornerUpRight className="h-5 w-5" />
+                ) : featureMode === 'retail' ? (
+                  <Receipt className="h-5 w-5" />
+                ) : featureMode === 'sales-order' ? (
+                  <ShoppingCart className="h-5 w-5" />
+                ) : featureMode === 'transfer-out' ? (
+                  <Send className="h-5 w-5" />
+                ) : (
+                  <TrendingUp className="h-5 w-5" />
+                )}
                 <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
               </div>
             </div>

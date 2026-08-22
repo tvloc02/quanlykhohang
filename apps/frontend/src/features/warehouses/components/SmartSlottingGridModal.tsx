@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   getStoredWarehouses,
   saveStoredWarehouses,
@@ -785,8 +786,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   if (!isOpen) return null;
 
   if (!items || items.length === 0) {
-    return (
-      <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+    return createPortal(
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-4">
         <div className="bg-white rounded-3xl p-6 shadow-xl text-center space-y-4 max-w-md border-2 border-cyan-500">
           <p className="text-sm font-bold text-slate-800">
             Vui lòng chọn hoặc thêm ít nhất 1 sản phẩm trước khi mở Sơ đồ Ô Kệ Kho.
@@ -799,7 +800,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             Đóng
           </button>
         </div>
-      </div>
+      </div>,
+      document.body
     );
   }
 
@@ -1358,8 +1360,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     }, 250);
   };
 
-  return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-1.5 sm:p-3 animate-in fade-in duration-200">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-1.5 sm:p-3 animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl shadow-2xl border-2 border-cyan-500 w-full max-w-[98vw] max-w-[1650px] h-[95vh] flex flex-col overflow-hidden">
         {/* Modal Header - Master Cyan Theme */}
         <div className="bg-cyan-700 text-white px-6 py-3.5 flex items-center justify-between shadow-sm">
@@ -1665,6 +1667,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
