@@ -102,10 +102,6 @@ export async function fetchWarehouseOccupiedBins(
     const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
     const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
 
-    if (currentWhCode && localStorage.getItem(`cleared_warehouse_goods_${currentWhCode}`) === 'true') {
-      return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
-    }
-
     const isWhMatch = (wCode?: string, wId?: string, binCodeStr?: string) => {
       const cCode = String(wCode || '').trim().toUpperCase();
       const cId = String(wId || '').trim().toLowerCase();
@@ -121,6 +117,33 @@ export async function fetchWarehouseOccupiedBins(
       if ((currentWhCode === 'KH002' || currentWhId === 'wh_default_2') && (cCode === 'KH002' || cId === 'wh_default_2' || cCode.includes('HCM'))) return true;
       return false;
     };
+
+    if (currentWhCode && localStorage.getItem(`cleared_warehouse_goods_${currentWhCode}`) === 'true') {
+      const [testBalRes, testPoRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null),
+        fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null),
+      ]);
+      let hasRealGoodsInBackend = false;
+      if (testBalRes && testBalRes.ok) {
+        const balData: any[] = await testBalRes.json().catch(() => []);
+        if (Array.isArray(balData) && balData.some((b) => isWhMatch(b.warehouseCode || b.warehouse?.code, b.warehouseId || b.warehouse?.id, b.locationCode))) {
+          hasRealGoodsInBackend = true;
+        }
+      }
+      if (!hasRealGoodsInBackend && testPoRes && testPoRes.ok) {
+        const poData = await testPoRes.json().catch(() => []);
+        const poList: any[] = Array.isArray(poData) ? poData : poData.data || [];
+        if (poList.some((po) => isWhMatch(po.warehouseCode || po.warehouse?.code, po.warehouseId || po.warehouse?.id))) {
+          hasRealGoodsInBackend = true;
+        }
+      }
+
+      if (hasRealGoodsInBackend) {
+        localStorage.removeItem(`cleared_warehouse_goods_${currentWhCode}`);
+      } else {
+        return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
+      }
+    }
 
     const addBinOccupied = (bCode: string, info: BinOccupiedInfo) => {
       if (!bCode) return;
@@ -153,8 +176,21 @@ export async function fetchWarehouseOccupiedBins(
 
       map.set(cleanCode, updatedInfo);
       if (norm) map.set(norm, updatedInfo);
-      if (short) map.set(short, updatedInfo);
-      if (normShort) map.set(normShort, updatedInfo);
+
+      const parts = cleanCode.split('-');
+      if (parts.length >= 2) {
+        const rackPart = parts[parts.length - 2].trim().toUpperCase();
+        if (rackPart.startsWith('R') || rackPart.length <= 4) {
+          const rackCell = `${rackPart}-${short}`;
+          map.set(rackCell, updatedInfo);
+          map.set(normalizeBinKey(rackCell), updatedInfo);
+        }
+      }
+
+      if (cleanCode === short || !cleanCode.includes('-')) {
+        if (short) map.set(short, updatedInfo);
+        if (normShort) map.set(normShort, updatedInfo);
+      }
 
       const detail: BinGoodsDetail = {
         binCode: cleanCode,
@@ -172,8 +208,6 @@ export async function fetchWarehouseOccupiedBins(
 
       dMap.set(cleanCode, detail);
       if (norm) dMap.set(norm, detail);
-      if (short) dMap.set(short, detail);
-      if (normShort) dMap.set(normShort, detail);
 
       const appendGoods = (key: string) => {
         if (!gMap.has(key)) gMap.set(key, []);
@@ -188,7 +222,7 @@ export async function fetchWarehouseOccupiedBins(
           list[existingIdx] = {
             ...list[existingIdx],
             ...detail,
-            quantity: Math.min(list[existingIdx].quantity || detail.quantity, detail.quantity),
+            quantity: detail.quantity,
           };
         } else {
           list.push(detail);
@@ -196,8 +230,28 @@ export async function fetchWarehouseOccupiedBins(
       };
       appendGoods(cleanCode);
       if (norm) appendGoods(norm);
-      if (short) appendGoods(short);
-      if (normShort) appendGoods(normShort);
+
+      if (parts.length >= 2) {
+        const rackPart = parts[parts.length - 2].trim().toUpperCase();
+        if (rackPart.startsWith('R') || rackPart.length <= 4) {
+          const rackCell = `${rackPart}-${short}`;
+          dMap.set(rackCell, detail);
+          dMap.set(normalizeBinKey(rackCell), detail);
+          appendGoods(rackCell);
+          appendGoods(normalizeBinKey(rackCell));
+        }
+      }
+
+      if (cleanCode === short || !cleanCode.includes('-')) {
+        if (short) {
+          dMap.set(short, detail);
+          appendGoods(short);
+        }
+        if (normShort) {
+          dMap.set(normShort, detail);
+          appendGoods(normShort);
+        }
+      }
     };
 
     // 1. Fetch real physical inventory balances from CSDL
@@ -287,14 +341,25 @@ export async function fetchWarehouseOccupiedBins(
           const pQty = Number(item.receivedQty || item.expectedQty || item.qty || item.quantity || 1);
           const pUnit = item.unit || item.product?.unit || 'Cái';
 
-          let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
-          if (bins.length === 0 && item.locationBin)
-            bins = String(item.locationBin).split(',').map((s: string) => s.trim());
-          if (bins.length === 0 && item.note) {
+          let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+          if (rawBins.length === 0 && item.locationBin)
+            rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
+          if (rawBins.length === 0 && item.note) {
             const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-            if (match) bins = match[1].split(',').map((s: string) => s.trim());
+            if (match) rawBins = match[1].split(',').map((s: string) => s.trim());
           }
 
+          // Deduplicate bin list so duplicate formatting does not divide target qty
+          const uniqueBinsMap = new Map<string, string>();
+          rawBins.forEach((b) => {
+            if (!b) return;
+            const cleanCode = b.split('(')[0].trim();
+            const normKey = normalizeBinKey(cleanCode);
+            if (cleanCode && (!normKey || !uniqueBinsMap.has(normKey))) {
+              uniqueBinsMap.set(normKey || cleanCode, b);
+            }
+          });
+          const bins = Array.from(uniqueBinsMap.values());
           const pQtyPerBin = Math.max(1, Math.round(pQty / Math.max(1, bins.length)));
 
           bins.forEach((bCode) => {
@@ -339,15 +404,25 @@ export async function fetchWarehouseOccupiedBins(
               const pQty = Number(item.qty || 1);
               const pUnit = item.unit || 'Cái';
 
-              let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
-              if (bins.length === 0 && item.locationBin) {
-                bins = String(item.locationBin).split(',').map((s: string) => s.trim());
+              let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+              if (rawBins.length === 0 && item.locationBin) {
+                rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
               }
-              if (bins.length === 0 && item.note) {
+              if (rawBins.length === 0 && item.note) {
                 const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match) bins = match[1].split(',').map((s: string) => s.trim());
+                if (match) rawBins = match[1].split(',').map((s: string) => s.trim());
               }
 
+              const uniqueBinsMap = new Map<string, string>();
+              rawBins.forEach((b) => {
+                if (!b) return;
+                const cleanCode = b.split('(')[0].trim();
+                const normKey = normalizeBinKey(cleanCode);
+                if (cleanCode && (!normKey || !uniqueBinsMap.has(normKey))) {
+                  uniqueBinsMap.set(normKey || cleanCode, b);
+                }
+              });
+              const bins = Array.from(uniqueBinsMap.values());
               const pQtyPerBin = Math.max(1, Math.round(pQty / Math.max(1, bins.length)));
 
               bins.forEach((bCode) => {
@@ -411,11 +486,21 @@ export async function fetchWarehouseOccupiedBins(
         const pQty = Number(item.quantity || item.qty || 1);
         const pUnit = item.unit || 'Cái';
 
-        let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
-        if (bins.length === 0 && item.locationBin) {
-          bins = String(item.locationBin).split(',').map((s: string) => s.trim());
+        let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
+        if (rawBins.length === 0 && item.locationBin) {
+          rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
         }
 
+        const uniqueBinsMap = new Map<string, string>();
+        rawBins.forEach((b) => {
+          if (!b) return;
+          const cleanCode = b.split('(')[0].trim();
+          const normKey = normalizeBinKey(cleanCode);
+          if (cleanCode && (!normKey || !uniqueBinsMap.has(normKey))) {
+            uniqueBinsMap.set(normKey || cleanCode, b);
+          }
+        });
+        const bins = Array.from(uniqueBinsMap.values());
         const pQtyPerBin = Math.max(1, Math.round(pQty / Math.max(1, bins.length)));
 
         bins.forEach((bCode) => {
@@ -451,6 +536,10 @@ export async function fetchWarehouseOccupiedBins(
                 }
                 bins.forEach((bCode) => {
                   if (!bCode) return;
+                  const cleanCode = bCode.split('(')[0].trim();
+                  const normKey = normalizeBinKey(cleanCode);
+                  if (map.has(cleanCode) || (normKey && map.has(normKey))) return;
+
                   const info: BinOccupiedInfo = {
                     totalPhysical: Number(sb.totalPhysical || sb.available || p.stockQty || 1),
                     allocated: 0,
@@ -705,26 +794,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
     const assigned: Array<{ rowId: string; productName: string; qty: number; occupancyPct: number }> = [];
 
-    if (storedGoods && storedGoods.length > 0) {
-      storedGoods.forEach((g) => {
-        assigned.push({
-          rowId: `stored-${g.sku || 'sku'}`,
-          productName: g.productName || 'Sản phẩm tồn kho',
-          qty: Number(g.quantity || 1),
-          occupancyPct: g.occupancyPct || Math.round(100 / storedGoods.length),
-        });
-      });
-    } else if (storedInfo) {
-      assigned.push({
-        rowId: 'stored-info',
-        productName: storedInfo.productName || 'Sản phẩm tồn kho',
-        qty: Number(storedInfo.totalPhysical || storedInfo.allocated || 1),
-        occupancyPct: storedInfo.occupancyPct || editingBinConfig.currentPct || 100,
-      });
-    }
-
     if (orderItems && orderItems.length > 0) {
-      let allocatedSoFar = 0;
+      const matchingRows: Array<{ rowId: string; productName: string; qty: number; explicitPct?: number }> = [];
 
       orderItems.forEach((it: any, idx: number) => {
         const rowId = it.rowId || String(idx);
@@ -736,16 +807,11 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
         });
 
         if (matchedBinStr) {
-          let itemPct = 0;
+          let explicitPct: number | undefined = undefined;
           const match = matchedBinStr.match(/\((\d+)%\)/);
           if (match) {
-            itemPct = Number(match[1]);
-          } else {
-            itemPct = Math.max(0, 100 - allocatedSoFar);
+            explicitPct = Number(match[1]);
           }
-
-          itemPct = Math.min(100, Math.max(0, itemPct));
-          allocatedSoFar += itemPct;
 
           const totalItemQty = it.qty && Number(it.qty) > 0 ? Number(it.qty) : 1;
           const numSelectedBins = bList.length > 0 ? bList.length : 1;
@@ -753,39 +819,81 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
             ? Math.round(totalItemQty / numSelectedBins)
             : totalItemQty;
 
-          const existingMatch = assigned.find((a) => a.productName.toLowerCase() === (it.productName || '').toLowerCase());
-          if (existingMatch) {
-            existingMatch.rowId = rowId;
-            if (it.qty && Number(it.qty) > 0) {
-              existingMatch.qty = dividedQty;
-            }
-            if (itemPct > 0) {
-              existingMatch.occupancyPct = itemPct;
-            }
-          } else {
-            assigned.push({
-              rowId,
-              productName: it.productName || `Hàng hóa #${idx + 1}`,
-              qty: dividedQty,
-              occupancyPct: itemPct,
-            });
-          }
+          matchingRows.push({
+            rowId,
+            productName: it.productName || `Hàng hóa #${idx + 1}`,
+            qty: dividedQty,
+            explicitPct,
+          });
         }
       });
+
+      if (matchingRows.length > 0) {
+        const explicitSum = matchingRows.reduce((acc, r) => acc + (r.explicitPct || 0), 0);
+        const unassignedRows = matchingRows.filter((r) => r.explicitPct === undefined);
+        const availablePct = Math.max(0, 100 - explicitSum);
+        const defaultEach = unassignedRows.length > 0 ? Math.floor(availablePct / unassignedRows.length) : 0;
+
+        let lastUnassignedIdx = -1;
+        for (let idx = matchingRows.length - 1; idx >= 0; idx--) {
+          if (matchingRows[idx].explicitPct === undefined) {
+            lastUnassignedIdx = idx;
+            break;
+          }
+        }
+
+        matchingRows.forEach((r, i) => {
+          let pct = r.explicitPct;
+          if (pct === undefined) {
+            const isLastUnassigned = i === lastUnassignedIdx;
+            if (isLastUnassigned) {
+              const allocatedSoFar = (unassignedRows.length - 1) * defaultEach;
+              pct = Math.max(0, availablePct - allocatedSoFar);
+            } else {
+              pct = defaultEach;
+            }
+          }
+
+          assigned.push({
+            rowId: r.rowId,
+            productName: r.productName,
+            qty: r.qty,
+            occupancyPct: Math.min(100, Math.max(0, pct)),
+          });
+        });
+      }
     }
 
     if (assigned.length === 0) {
-      const firstItem = orderItems && orderItems.length > 0 ? orderItems[0] : null;
-      const totalFirstQty = firstItem?.qty && Number(firstItem.qty) > 0 ? Number(firstItem.qty) : 0;
-      const numFirstBins = selectedBinCodes && selectedBinCodes.length > 0 ? selectedBinCodes.length : 1;
-      const dividedFirstQty = !isOutbound ? Math.round(totalFirstQty / numFirstBins) : totalFirstQty;
+      if (storedGoods && storedGoods.length > 0) {
+        storedGoods.forEach((g) => {
+          assigned.push({
+            rowId: `stored-${g.sku || 'sku'}`,
+            productName: g.productName || 'Sản phẩm tồn kho',
+            qty: Number(g.quantity || 1),
+            occupancyPct: g.occupancyPct || Math.round(100 / storedGoods.length),
+          });
+        });
+      } else if (storedInfo) {
+        assigned.push({
+          rowId: 'stored-info',
+          productName: storedInfo.productName || 'Sản phẩm tồn kho',
+          qty: Number(storedInfo.totalPhysical || storedInfo.allocated || 1),
+          occupancyPct: storedInfo.occupancyPct || editingBinConfig.currentPct || 100,
+        });
+      } else {
+        const firstItem = orderItems && orderItems.length > 0 ? orderItems[0] : null;
+        const totalFirstQty = firstItem?.qty && Number(firstItem.qty) > 0 ? Number(firstItem.qty) : 0;
+        const numFirstBins = selectedBinCodes && selectedBinCodes.length > 0 ? selectedBinCodes.length : 1;
+        const dividedFirstQty = !isOutbound ? Math.round(totalFirstQty / numFirstBins) : totalFirstQty;
 
-      assigned.push({
-        rowId: firstItem?.rowId || 'row-0',
-        productName: firstItem?.productName || 'Hàng hóa',
-        qty: dividedFirstQty,
-        occupancyPct: editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : 100,
-      });
+        assigned.push({
+          rowId: firstItem?.rowId || 'row-0',
+          productName: firstItem?.productName || 'Hàng hóa',
+          qty: dividedFirstQty,
+          occupancyPct: editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : 100,
+        });
+      }
     }
 
     setEditableBinItems(assigned);
@@ -920,17 +1028,25 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       if (occupiedGoodsListMap.has(fullBinCode)) return occupiedGoodsListMap.get(fullBinCode)!;
       const normKey = normalizeBinKey(fullBinCode);
       if (normKey && occupiedGoodsListMap.has(normKey)) return occupiedGoodsListMap.get(normKey)!;
-      if (occupiedGoodsListMap.has(binCodeShort)) return occupiedGoodsListMap.get(binCodeShort)!;
-      const normCell = normalizeBinKey(binCodeShort);
-      if (normCell && occupiedGoodsListMap.has(normCell)) return occupiedGoodsListMap.get(normCell)!;
+
       const rackCell = `${rackCode}-${binCodeShort}`;
       if (occupiedGoodsListMap.has(rackCell)) return occupiedGoodsListMap.get(rackCell)!;
       const normRackCell = normalizeBinKey(rackCell);
       if (normRackCell && occupiedGoodsListMap.has(normRackCell)) return occupiedGoodsListMap.get(normRackCell)!;
 
+      const normRack = normalizeBinKey(rackCode);
+      const normCell = normalizeBinKey(binCodeShort);
+
       for (const [key, val] of occupiedGoodsListMap.entries()) {
         const normK = normalizeBinKey(key);
-        if (normK && normCell && normK.endsWith(normCell)) return val;
+        if (!normK) continue;
+        if (normRack && normCell && normK.includes(normRack) && normK.endsWith(normCell)) {
+          return val;
+        }
+      }
+
+      if (!normRack && normCell && occupiedGoodsListMap.has(binCodeShort)) {
+        return occupiedGoodsListMap.get(binCodeShort)!;
       }
     }
 
@@ -966,43 +1082,28 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     const normKey = normalizeBinKey(fullBinCode);
     if (normKey && occupiedMap.has(normKey)) return occupiedMap.get(normKey);
 
-    if (occupiedMap.has(binCodeShort)) return occupiedMap.get(binCodeShort);
-    const normCell = normalizeBinKey(binCodeShort);
-    if (normCell && occupiedMap.has(normCell)) return occupiedMap.get(normCell);
-
     const rackCell = `${rackCode}-${binCodeShort}`;
     if (occupiedMap.has(rackCell)) return occupiedMap.get(rackCell);
     const normRackCell = normalizeBinKey(rackCell);
     if (normRackCell && occupiedMap.has(normRackCell)) return occupiedMap.get(normRackCell);
 
-    const currentWhNorm = normalizeBinKey(whCode);
-    const currentZoneNorm = activeZone?.code ? normalizeBinKey(activeZone.code) : '';
     const normRack = normalizeBinKey(rackCode);
+    const normCell = normalizeBinKey(binCodeShort);
 
     for (const [key, val] of occupiedMap.entries()) {
       const normK = normalizeBinKey(key);
       if (!normK) continue;
-      if (normK === normCell || normK === normRackCell) return val;
-      if (
-        normCell &&
-        normK.endsWith(normCell) &&
-        (!normRack || normK.includes(normRack))
-      ) {
-        return val;
-      }
-      if (
-        currentWhNorm &&
-        currentZoneNorm &&
-        normRack &&
-        normCell &&
-        normK.includes(currentWhNorm) &&
-        normK.includes(currentZoneNorm) &&
-        normK.includes(normRack) &&
-        normK.endsWith(normCell)
-      ) {
-        return val;
+      if (normRack && normCell) {
+        if (normK.includes(normRack) && normK.endsWith(normCell)) {
+          return val;
+        }
       }
     }
+
+    if (!normRack && normCell && occupiedMap.has(binCodeShort)) {
+      return occupiedMap.get(binCodeShort);
+    }
+
     return null;
   };
 
@@ -1153,7 +1254,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             (activeRack.customBins as any)?.[fullBinCode] ||
                             (activeRack.customBins as any)?.[binCodeShort] ||
                             (normFull ? (activeRack.customBins as any)?.[normFull] : null);
-                          const customConfig = rawCustomConfig && Number(rawCustomConfig.occupancyPct || 0) > 0 ? rawCustomConfig : null;
+                          const customConfig = rawCustomConfig && rawCustomConfig.occupancyPct !== undefined && rawCustomConfig.occupancyPct !== null ? rawCustomConfig : null;
 
                           const matchingSelectedCode = selectedBinCodes.find((s) => normalizeBinKey(s) === normFull);
                           let embeddedPct: number | undefined;

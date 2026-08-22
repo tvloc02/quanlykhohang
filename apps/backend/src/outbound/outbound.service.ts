@@ -13,6 +13,7 @@ import { Product } from '../entities/product.entity';
 import { StockBalance } from '../inventory/entities/stock-balance.entity';
 import { IdempotencyService } from '../erp-integration/idempotency/idempotency.service';
 import { OutboxService } from '../erp-integration/outbox/outbox.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type SerializedOutbound = {
   id: string;
@@ -109,6 +110,7 @@ export class OutboundService implements OnModuleInit {
     @InjectRepository(ShippingNote) private shippingNoteRepo: Repository<ShippingNote>,
     private readonly outboxService: OutboxService,
     private readonly idempotencyService: IdempotencyService,
+    private readonly notificationsService: NotificationsService,
     @InjectDataSource() private readonly dataSource: DataSource,
   ) { }
 
@@ -225,6 +227,19 @@ export class OutboundService implements OnModuleInit {
       const savedDetails = await this.persistDetails(savedOrder.id, dto.details, savedOrder.branchCode);
       // Deduct inventory for outbound sales order
       await this.applyInventoryDeduction(savedOrder, savedDetails);
+    }
+
+    try {
+      await this.notificationsService.createBroadcastNotification({
+        title: `Phiếu xuất kho mới ${savedOrder.orderNo}`,
+        message: `Phiếu xuất kho ${savedOrder.orderNo} (${savedOrder.branchCode || 'KHO-NVL'}) vừa được tạo thành công. Vui lòng chuẩn bị hàng xuất kho.`,
+        link: '/outbound/orders',
+        priority: 'normal',
+        referenceType: 'OUTBOUND_ORDER',
+        referenceId: savedOrder.id,
+      });
+    } catch {
+      // Ignore notification creation error.
     }
 
     return this.serializeOutbound(await this.findOrderEntity(savedOrder.id));

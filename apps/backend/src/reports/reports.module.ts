@@ -14,6 +14,7 @@ import { Customer } from '../entities/customer.entity';
 import { Supplier } from '../entities/supplier.entity';
 import { Role } from '../entities/role.entity';
 import { User } from '../entities/user.entity';
+import { Warehouse } from '../entities/warehouse.entity';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { User } from '../entities/user.entity';
       Supplier,
       Role,
       User,
+      Warehouse,
     ]),
   ],
   controllers: [DashboardController],

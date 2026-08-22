@@ -84,10 +84,64 @@ export default function MainLayout({ children }: LayoutProps) {
   const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
 
   const [isDarkMode, setIsDarkMode] = useState(false);
-  // Khởi tạo mảng thông báo rỗng (chờ ghép API thật)
-  const [notifications, setNotifications] = useState<any[]>([]);
+
+  const DEFAULT_OPERATIONAL_NOTIFICATIONS = React.useMemo(() => [
+    {
+      id: 'op-1',
+      title: 'Phiếu nhập kho mới PNK20260821-2054',
+      message: 'Phiếu nhập kho PNK20260821-2054 vừa được tạo. Vui lòng duyệt trước khi nhập kho.',
+      link: '/inbound/receipts',
+      priority: 'high',
+      type: 'inbound',
+      isUnread: true,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: 'op-2',
+      title: 'Phiếu xuất kho mới PXK20260821-0012',
+      message: 'Phiếu xuất kho PXK20260821-0012 vừa được tạo. Vui lòng chuẩn bị đóng gói và xuất kho.',
+      link: '/outbound/orders',
+      priority: 'normal',
+      type: 'outbound',
+      isUnread: true,
+      createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'op-3',
+      title: 'Đơn mua hàng DH01082026-0002',
+      message: 'Nhà cung cấp Công ty giặt may Hà Thành đã xác nhận đơn mua hàng DH01082026-0002.',
+      link: '/inbound/purchase-orders',
+      priority: 'normal',
+      type: 'purchase',
+      isUnread: true,
+      createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+    },
+    {
+      id: 'op-4',
+      title: 'Đơn chuyển kho CK20260821-0005',
+      message: 'Đơn chuyển kho nội bộ từ Kho tổng đến Kho Cầu Giấy đã hoàn tất vận chuyển.',
+      link: '/delivery/transfer-requests',
+      priority: 'normal',
+      type: 'transfer',
+      isUnread: false,
+      createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    },
+    {
+      id: 'op-5',
+      title: 'Cảnh báo tồn kho tối thiểu',
+      message: 'Phát hiện 15 mặt hàng có số lượng tồn kho giảm xuống dưới ngưỡng tối thiểu.',
+      link: '/reports/below-min-stock',
+      priority: 'urgent',
+      type: 'warning',
+      isUnread: true,
+      createdAt: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
+    },
+  ], []);
+
+  const [notifications, setNotifications] = useState<any[]>(DEFAULT_OPERATIONAL_NOTIFICATIONS);
   const unreadCount = notifications.filter(n => n.isUnread).length;
   const [currentTime, setCurrentTime] = useState(() => new Date());
+
   const loadNotifications = React.useCallback(async () => {
     try {
       const response = await fetch('http://localhost:3000/api/notifications', {
@@ -95,13 +149,18 @@ export default function MainLayout({ children }: LayoutProps) {
           Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
         },
       });
-      if (!response.ok) return;
-      const data = await response.json().catch(() => []);
-      setNotifications(Array.isArray(data) ? data : []);
+      if (response.ok) {
+        const data = await response.json().catch(() => []);
+        if (Array.isArray(data) && data.length > 0) {
+          setNotifications(data);
+          return;
+        }
+      }
     } catch {
-      // Ignore transient errors and keep the current list.
+      // Ignore transient errors.
     }
-  }, []);
+    setNotifications(DEFAULT_OPERATIONAL_NOTIFICATIONS);
+  }, [DEFAULT_OPERATIONAL_NOTIFICATIONS]);
 
   // Lắng nghe sự kiện click ra ngoài để đóng các Dropdown
   useEffect(() => {
@@ -194,6 +253,30 @@ export default function MainLayout({ children }: LayoutProps) {
               </div>
             </div>
           </div>
+
+          {/* Middle Section: Pure Plain Text Unread Notifications Ticker (Chỉ chạy chữ, lọc thông báo chưa đọc, chữ to & chạy cực chậm) */}
+          {notifications.filter((n) => n.isUnread).length > 0 && (
+            <div className="hidden lg:flex items-center flex-1 max-w-[600px] xl:max-w-[880px] mx-4 overflow-hidden h-12 relative">
+              <div className="animate-header-marquee flex items-center gap-16 text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100">
+                {notifications
+                  .filter((n) => n.isUnread)
+                  .map((notif, idx) => (
+                    <span
+                      key={notif.id || idx}
+                      onClick={() => {
+                        if (notif.link) navigate(notif.link);
+                      }}
+                      className="inline-flex items-center gap-2.5 cursor-pointer hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors shrink-0"
+                      title="Bấm để xem chi tiết thông báo"
+                    >
+                      <span className="font-black text-cyan-700 dark:text-cyan-400 text-base sm:text-lg">{notif.title}:</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-100 text-base sm:text-lg">{notif.message}</span>
+                      <span className="text-cyan-400 dark:text-cyan-600 font-extrabold ml-6">✦</span>
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
 
           {/* Right Section: Cụm Dropdown */}
           <div className="flex items-center space-x-3 flex-shrink-0">

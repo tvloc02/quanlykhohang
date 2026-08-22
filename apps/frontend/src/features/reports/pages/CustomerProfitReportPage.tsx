@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   FileSpreadsheet,
@@ -12,6 +12,8 @@ import {
   Users,
   Building2,
   RefreshCw,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -43,6 +45,18 @@ export default function CustomerProfitReportPage() {
 
   // Filters
   const [selectedBranch, setSelectedBranch] = useState('ALL');
+  const [isWarehouseDropdownOpen, setIsWarehouseDropdownOpen] = useState(false);
+  const warehouseDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (warehouseDropdownRef.current && !warehouseDropdownRef.current.contains(event.target as Node)) {
+        setIsWarehouseDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 3);
@@ -231,51 +245,34 @@ export default function CustomerProfitReportPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={fetchCustomerProfitReport}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`h-4 w-4 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
             Làm mới
           </button>
+
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Printer size={15} className="text-slate-600" />
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
             In báo cáo
           </button>
+
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <FileSpreadsheet size={15} className="text-slate-600" />
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
             Export Excel
           </button>
-        </div>
-      </div>
-
-      {/* ═══ 3 BUTTON TỔNG HỢP (LẤY MẪU TỪ TRANG HÀNG HÓA) ═══ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG DOANH THU KHÁCH HÀNG: <span className="text-slate-900">{totalRevenue.toLocaleString('vi-VN')} đ</span>
-          </p>
-        </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG VỐN HÀNG XUẤT: <span className="text-slate-900">{totalCostSum.toLocaleString('vi-VN')} đ</span>
-          </p>
-        </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50 text-center">
-          <p className="text-base font-black text-cyan-700 uppercase">
-            TỔNG LỢI NHUẬN KHÁCH HÀNG: <span className={totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'}>{totalProfitSum.toLocaleString('vi-VN')} đ ({overallMargin.toFixed(1)}%)</span>
-          </p>
         </div>
       </div>
 
@@ -283,20 +280,62 @@ export default function CustomerProfitReportPage() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm text-xs font-bold">
         {/* Left Filters */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-600 font-extrabold">Kho:</span>
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer min-w-[150px]"
+          {/* Filter Kho hàng (Custom Styled Popover Dropdown) */}
+          <div ref={warehouseDropdownRef} className="relative inline-block">
+            <button
+              type="button"
+              onClick={() => setIsWarehouseDropdownOpen(!isWarehouseDropdownOpen)}
+              className="inline-flex h-12 items-center gap-2.5 rounded-xl border-2 border-cyan-600/40 bg-slate-50 px-4 py-2 shadow-2xs transition hover:bg-slate-100 hover:border-cyan-600 active:scale-95 cursor-pointer"
             >
-              <option value="ALL">Tất cả chi nhánh</option>
-              {branchOptions.filter((b) => b !== 'ALL').map((br) => (
-                <option key={br} value={br}>
-                  {br}
-                </option>
-              ))}
-            </select>
+              <Building2 className="h-5 w-5 text-cyan-600 shrink-0" />
+              <span className="text-xs sm:text-sm font-extrabold uppercase text-cyan-950 tracking-wide">KHO HÀNG:</span>
+              <div className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-bold text-slate-800 shadow-2xs hover:border-cyan-600 min-w-[220px] justify-between">
+                <span className="truncate max-w-[190px]">
+                  {selectedBranch === 'ALL' ? 'Tất cả chi nhánh' : selectedBranch}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform duration-200 ${isWarehouseDropdownOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {/* Custom Styled Menu với Bo góc tròn Rounded-2xl */}
+            {isWarehouseDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 w-full min-w-[280px] rounded-2xl border-2 border-cyan-500 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedBranch('ALL');
+                    setIsWarehouseDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                    selectedBranch === 'ALL'
+                      ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                      : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                  }`}
+                >
+                  <span>Tất cả chi nhánh</span>
+                  {selectedBranch === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
+                </button>
+
+                {branchOptions.filter((b) => b !== 'ALL').map((br) => (
+                  <button
+                    key={br}
+                    type="button"
+                    onClick={() => {
+                      setSelectedBranch(br);
+                      setIsWarehouseDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                      selectedBranch === br
+                        ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                        : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                    }`}
+                  >
+                    <span>{br}</span>
+                    {selectedBranch === br && <Check className="h-4 w-4 text-white shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -333,39 +372,39 @@ export default function CustomerProfitReportPage() {
         </div>
       </div>
 
-      {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE ═══ */}
-      <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-hidden">
-          <table className="w-full table-fixed border-collapse text-left text-xs">
-            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700 [&_th]:text-white [&_th]:border-cyan-500/40">
-              <tr className="text-[10px] tracking-normal [&>th]:text-center">
-                <th className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-extrabold uppercase text-slate-800 w-14 whitespace-nowrap">
-                  No.
+      {/* ═══ TABLE DISPLAY - NEUTRAL SLATE / WHITE WITH CRISP GRID BORDERS ═══ */}
+      <div className="overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-cyan-600 text-white sticky top-0 z-20 shadow-xs border-b-2 border-cyan-700">
+              <tr className="text-xs font-extrabold uppercase tracking-tight">
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-center w-12 whitespace-nowrap">
+                  NO.
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Khu vực
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-left w-28 whitespace-nowrap">
+                  KHU VỰC
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Mã KH
+                <th className="border-r border-cyan-500/50 px-3 py-3 text-left w-32 whitespace-nowrap">
+                  MÃ KH
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Tên Khách hàng
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-left min-w-[200px]">
+                  TÊN KHÁCH HÀNG
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Doanh thu
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-right w-36 whitespace-nowrap">
+                  DOANH THU
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Tổng vốn
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-right w-36 whitespace-nowrap">
+                  TỔNG VỐN
                 </th>
-                <th className="border-r border-slate-200 px-2 py-2 text-center text-[10px] font-extrabold uppercase text-slate-800 whitespace-nowrap">
-                  Lợi nhuận
+                <th className="border-r border-cyan-500/50 px-4 py-3 text-right w-36 whitespace-nowrap">
+                  LỢI NHUẬN
                 </th>
-                <th className="px-4 py-3.5 text-right text-xs font-extrabold uppercase text-slate-800 w-32 whitespace-nowrap">
-                  % Lợi nhuận
+                <th className="px-4 py-3 text-right w-28 whitespace-nowrap">
+                  % LỢI NHUẬN
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 bg-white text-xs font-semibold text-slate-800 [&_td]:text-center">
+            <tbody className="divide-y divide-slate-200 bg-white text-xs text-slate-800">
               {loading ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-slate-500 font-semibold">
@@ -387,51 +426,45 @@ export default function CustomerProfitReportPage() {
                   return (
                     <React.Fragment key={branchName}>
                       {/* BRANCH SECTION HEADER */}
-                      <tr className="bg-slate-100/90 font-black text-slate-900 border-t-2 border-slate-300">
-                        <td colSpan={8} className="px-4 py-2.5 font-black uppercase text-xs tracking-wider text-center">
-                          <Building2 size={15} className="text-slate-600" />
-                          ▲ Kho: {branchName}
+                      <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300 border-b border-slate-300">
+                        <td colSpan={8} className="px-4 py-2.5 text-left font-black uppercase text-xs tracking-wider border-r border-slate-300">
+                          <div className="flex items-center gap-2">
+                            <ChevronDown size={16} className="text-slate-700" />
+                            <Building2 size={16} className="text-cyan-700" />
+                            <span>KHO: {branchName}</span>
+                          </div>
                         </td>
                       </tr>
 
                       {/* BRANCH CUSTOMER ROWS */}
-                      {items.map((item, idx) => {
-                        const isNegative = item.profit < 0;
+                      {items.map((item) => {
                         return (
                           <tr
                             key={item.id}
                             className="group border-b border-slate-200 transition hover:bg-slate-50"
                           >
-                            <td className="border-r border-slate-200 px-3 py-3 text-center font-bold text-slate-500">
+                            <td className="border-r border-slate-300 px-3 py-3 text-center font-bold text-slate-500 text-sm">
                               {item.stt}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-center text-slate-600">
+                            <td className="border-r border-slate-300 px-3 py-3 text-left font-bold text-slate-600 text-sm">
                               {item.region}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-center font-mono font-bold text-slate-800">
+                            <td className="border-r border-slate-300 px-3 py-3 text-left font-bold text-slate-800 text-sm">
                               {item.customerCode}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 font-bold text-slate-900">
+                            <td className="border-r border-slate-300 px-4 py-3 text-left font-bold text-slate-900 text-sm">
                               {item.customerName}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-bold text-slate-900">
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.revenue.toLocaleString('vi-VN')}
                             </td>
-                            <td className="border-r border-slate-200 px-4 py-3 text-right font-mono font-bold text-slate-700">
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.totalCost.toLocaleString('vi-VN')}
                             </td>
-                            <td
-                              className={`border-r border-slate-200 px-4 py-3 text-right font-mono font-black ${
-                                isNegative ? 'text-rose-600' : 'text-emerald-600'
-                              }`}
-                            >
+                            <td className="border-r border-slate-300 px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.profit.toLocaleString('vi-VN')}
                             </td>
-                            <td
-                              className={`px-4 py-3 text-right font-mono font-black ${
-                                isNegative ? 'text-rose-600' : 'text-emerald-600'
-                              }`}
-                            >
+                            <td className="px-4 py-3 text-right font-bold text-slate-800 text-sm">
                               {item.profitMargin.toFixed(2)}%
                             </td>
                           </tr>
@@ -439,24 +472,22 @@ export default function CustomerProfitReportPage() {
                       })}
 
                       {/* BRANCH SUB-TOTAL ROW */}
-                      <tr className="bg-slate-100 font-bold text-slate-900 border-b-2 border-slate-300">
-                        <td colSpan={4} className="px-4 py-2 text-right text-xs uppercase font-extrabold">
-                          Tổng chi nhánh ({items.length} KH):
+                      <tr className="bg-slate-100 font-extrabold text-slate-900 border-y-2 border-slate-300 text-sm">
+                        <td colSpan={4} className="border-r border-slate-300 px-4 py-2.5 text-right text-xs uppercase font-black">
+                          TỔNG CHI NHÁNH ({items.length} KH):
                         </td>
-                        <td className="px-4 py-2 text-right font-mono font-black text-slate-900">
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchRev.toLocaleString('vi-VN')}
                         </td>
-                        <td className="px-4 py-2 text-right font-mono font-black text-slate-800">
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchCost.toLocaleString('vi-VN')}
                         </td>
-                        <td
-                          className={`px-4 py-2 text-right font-mono font-black ${
-                            branchProf >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                          }`}
-                        >
+                        <td className="border-r border-slate-300 px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
                           {branchProf.toLocaleString('vi-VN')}
                         </td>
-                        <td className="px-4 py-2"></td>
+                        <td className="px-4 py-2.5 text-right font-bold text-slate-900 text-sm">
+                          -
+                        </td>
                       </tr>
                     </React.Fragment>
                   );
@@ -467,28 +498,20 @@ export default function CustomerProfitReportPage() {
             {/* GRAND TOTAL ROW */}
             {filteredData.length > 0 && (
               <tfoot>
-                <tr className="border-t-2 border-slate-300 bg-slate-200/80 font-black text-slate-900 text-xs">
-                  <td colSpan={4} className="p-3.5 text-right uppercase tracking-wider text-slate-900 font-black">
+                <tr className="border-t-2 border-slate-400 bg-slate-200/90 font-black text-slate-900 text-sm">
+                  <td colSpan={4} className="border-r border-slate-300 p-3.5 text-right uppercase tracking-wider font-black text-xs text-slate-900">
                     TỔNG CỘNG TOÀN BỘ KHÁCH HÀNG:
                   </td>
-                  <td className="p-3.5 text-right font-mono font-black text-slate-900 text-sm">
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalRevenue.toLocaleString('vi-VN')}
                   </td>
-                  <td className="p-3.5 text-right font-mono font-black text-slate-800 text-sm">
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalCostSum.toLocaleString('vi-VN')}
                   </td>
-                  <td
-                    className={`p-3.5 text-right font-mono font-black text-sm ${
-                      totalProfitSum >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
+                  <td className="border-r border-slate-300 p-3.5 text-right font-bold text-slate-900 text-sm">
                     {totalProfitSum.toLocaleString('vi-VN')}
                   </td>
-                  <td
-                    className={`p-3.5 text-right font-mono font-black text-sm ${
-                      overallMargin >= 0 ? 'text-emerald-700' : 'text-rose-600'
-                    }`}
-                  >
+                  <td className="p-3.5 text-right font-bold text-slate-900 text-sm">
                     {overallMargin.toFixed(2)}%
                   </td>
                 </tr>

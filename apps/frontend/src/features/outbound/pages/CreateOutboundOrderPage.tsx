@@ -49,6 +49,9 @@ export interface ProductOption {
   totalStock?: number;
   totalPhysical?: number;
   stockQty?: number;
+  supplierId?: string;
+  supplierName?: string;
+  supplier?: any;
   stockBalances?: Array<{
     id?: string;
     locationCode: string;
@@ -58,7 +61,7 @@ export interface ProductOption {
   }>;
 }
 
-export function getProductWarehouseStock(p?: ProductOption | null, whCode?: string): number {
+export function getProductWarehouseStock(p?: ProductOption | null, whCode?: string, allInboundOrders: any[] = []): number {
   if (!p) return 0;
   const targetCode = (whCode || '').trim().toLowerCase();
 
@@ -69,7 +72,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
         if (bCode === targetCode) return true;
         if (
           (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
-          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl')
+          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl' || bCode === 'kho-tong')
         ) {
           return true;
         }
@@ -84,8 +87,49 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
           return Number(match.totalPhysical);
         }
       }
+    }
+  }
 
-      return 0;
+  let whSum = 0;
+  let foundInWh = false;
+  let ordersList = allInboundOrders;
+
+  if (!ordersList || ordersList.length === 0) {
+    try {
+      const rawInbound = localStorage.getItem('stored_stock_in_orders');
+      if (rawInbound) {
+        ordersList = JSON.parse(rawInbound);
+      }
+    } catch {}
+  }
+
+  if (Array.isArray(ordersList) && ordersList.length > 0) {
+    ordersList.forEach((ord: any) => {
+      const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
+      const isWhMatch = !targetCode || !oWh || oWh.includes(targetCode) || targetCode.includes(oWh) ||
+        ((targetCode === 'kh006' || targetCode === 'kho thanh trì') && (oWh === 'kh006' || oWh === 'kho thanh trì' || oWh === 'kho-nvl' || oWh === 'kho-tong'));
+
+      if (!isWhMatch) return;
+
+      const details = ord.details || ord.items || [];
+      details.forEach((item: any) => {
+        const itemProdId = String(item.product?.id || item.productId || '');
+        const itemSku = String(item.product?.internalSku || item.productSku || '').toLowerCase();
+        const itemName = String(item.product?.name || item.productName || '').toLowerCase();
+
+        if (
+          (itemProdId && itemProdId === String(p.id)) ||
+          (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase()) ||
+          (itemName && p.name && itemName === p.name.toLowerCase())
+        ) {
+          whSum += Number(item.receivedQty ?? item.expectedQty ?? item.qty ?? 0);
+          foundInWh = true;
+        }
+      });
+    });
+
+    if (foundInWh && whSum > 0) {
+      return whSum;
     }
   }
 
@@ -93,7 +137,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
     return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
   }
 
-  return 0;
+  return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
 }
 
 
@@ -332,7 +376,7 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT): FormDetailRow[] {
   return Array.from({ length: count }, (_, i) => makeEmptyRow(i));
 }
 
-function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administrator'): OutboundTab {
+function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administrator', isDisposal = false, isReturnSupplier = false): OutboundTab {
   const d = new Date();
   const dateFormatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
 
@@ -342,19 +386,19 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administra
     orderNo: '',
     branchCode: 'KHO-TONG',
     employeeName: currentUserName || 'System Administrator',
-    customer: 'Khách hàng bán lẻ',
+    customer: isReturnSupplier ? '' : (isDisposal ? 'Hàng hết hạn sử dụng (HSD)' : 'Khách hàng bán lẻ'),
     customerPhone: '',
     customerAddress: '',
     orderDate: dateFormatted,
     expectedDate: dateFormatted,
-    description: '',
+    description: isDisposal ? 'Xuất hủy hàng hỏng / hết hạn sử dụng' : '',
     discount: 0,
     shippingFee: 0,
     vatRate: 0,
     paymentMethod: 'Tiền mặt',
     paymentAccount: '',
     amountPaid: 0,
-    status: 'Đã giao hàng',
+    status: isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng',
     details: makeInitialRows(DEFAULT_ROWS_COUNT),
   };
 }
@@ -401,6 +445,25 @@ export default function CreateOutboundOrderPage({
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>(() => getStoredWarehouses());
+  const [inboundOrders, setInboundOrders] = useState<any[]>([]);
+
+  const allInboundOrders = useMemo(() => {
+    let list = [...inboundOrders];
+    try {
+      const raw = localStorage.getItem('stored_stock_in_orders');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((ord: any) => {
+            if (!list.some((item) => String(item.id) === String(ord.id))) {
+              list.push(ord);
+            }
+          });
+        }
+      }
+    } catch {}
+    return list;
+  }, [inboundOrders]);
 
 
   // Toast alert
@@ -442,8 +505,14 @@ export default function CreateOutboundOrderPage({
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<OutboundTab[]>(() => {
     try {
+      const isCreateAction = typeof window !== 'undefined' && (
+        window.location.search.includes('action=create') ||
+        window.location.search.includes('mode=create')
+      );
       const savedDraft = sessionStorage.getItem('outbound_tabs_draft');
-      if (savedDraft) {
+      const savedMode = sessionStorage.getItem('outbound_draft_mode');
+
+      if (savedDraft && !isCreateAction && (!savedMode || savedMode === featureMode)) {
         const parsed = JSON.parse(savedDraft);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((t: OutboundTab) => ({
@@ -457,7 +526,7 @@ export default function CreateOutboundOrderPage({
         }
       }
     } catch { }
-    return [createNewOutboundTab(1, currentUserName)];
+    return [createNewOutboundTab(1, currentUserName, isDisposal, isReturnSupplier)];
   });
 
   const [activeTabId, setActiveTabId] = useState<string>(() => {
@@ -476,11 +545,11 @@ export default function CreateOutboundOrderPage({
 
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;
-    const newTab = createNewOutboundTab(newTabIndex, currentUserName);
+    const newTab = createNewOutboundTab(newTabIndex, currentUserName, isDisposal, isReturnSupplier);
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.tabId);
     setToast({ message: `Đã mở tab tạo phiếu xuất mới (#${newTabIndex})`, type: 'success' });
-  }, [tabs.length, currentUserName]);
+  }, [tabs.length, currentUserName, isDisposal, isReturnSupplier]);
 
   const handleCloseTab = useCallback((tabIdToClose: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -500,8 +569,9 @@ export default function CreateOutboundOrderPage({
     if (tabs && tabs.length > 0) {
       sessionStorage.setItem('outbound_tabs_draft', JSON.stringify(tabs));
       sessionStorage.setItem('outbound_active_tab_id', activeTabId);
+      sessionStorage.setItem('outbound_draft_mode', featureMode);
     }
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, featureMode]);
 
   // Click outside listener for dropdowns
   useEffect(() => {
@@ -522,11 +592,13 @@ export default function CreateOutboundOrderPage({
     async function loadMasterData() {
       try {
         const partnerEndpoint = isReturnSupplier ? `${API_BASE_URL}/suppliers` : `${API_BASE_URL}/customers`;
-        const [custRes, prodRes, userRes, whRes] = await Promise.all([
+        const [custRes, prodRes, userRes, whRes, balRes, poRes] = await Promise.all([
           fetch(partnerEndpoint, { headers: authHeaders() }).catch(() => null),
           fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(() => null),
           fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(() => null),
           fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
+          fetch(`${API_BASE_URL}/inventory/balances`, { headers: authHeaders() }).catch(() => null),
+          fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers: authHeaders() }).catch(() => null),
         ]);
 
         if (custRes && custRes.ok) {
@@ -542,24 +614,55 @@ export default function CreateOutboundOrderPage({
           setCustomers(normalized);
         }
 
+        let rawBalances: any[] = [];
+        if (balRes && balRes.ok) {
+          const balData = await balRes.json();
+          rawBalances = Array.isArray(balData) ? balData : balData.data || [];
+        }
+
+        if (poRes && poRes.ok) {
+          const poData = await poRes.json();
+          const list = Array.isArray(poData) ? poData : poData.data || [];
+          setInboundOrders(list);
+        }
+
         if (prodRes && prodRes.ok) {
           const prodData = await prodRes.json();
           const list = Array.isArray(prodData) ? prodData : prodData.data || [];
           if (list.length > 0) {
-            const normalized: ProductOption[] = list.map((p: any) => ({
-              id: String(p.id),
-              internalSku: p.internalSku || p.sku || p.code || `SP${p.id}`,
-              name: p.name || '',
-              unit: p.unit || 'Cái',
-              purchasePrice: Number(p.importPrice || p.purchasePrice || 0),
-              salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
-              wholesalePrice: Number(p.wholesalePrice || 0),
-              price: Number(p.retailPrice || p.salePrice || p.price || 0),
-              totalStock: Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0),
-              totalPhysical: Number(p.totalPhysical ?? p.totalStock ?? 0),
-              stockQty: Number(p.stockQty ?? p.totalStock ?? 0),
-              stockBalances: Array.isArray(p.stockBalances) ? p.stockBalances : [],
-            }));
+            const normalized: ProductOption[] = list.map((p: any) => {
+              let stockBalances: any[] = Array.isArray(p.stockBalances) ? [...p.stockBalances] : [];
+
+              rawBalances.forEach((b: any) => {
+                if (String(b.productId) === String(p.id) || (b.sku && p.internalSku && b.sku.toLowerCase() === p.internalSku.toLowerCase())) {
+                  if (!stockBalances.some((sb) => sb.locationCode === b.locationCode || sb.warehouseCode === b.locationCode)) {
+                    stockBalances.push({
+                      locationCode: b.locationCode || b.warehouseCode || 'KHO-TONG',
+                      available: Number(b.available ?? b.totalPhysical ?? 0),
+                      totalPhysical: Number(b.totalPhysical ?? 0),
+                    });
+                  }
+                }
+              });
+
+              return {
+                id: String(p.id),
+                internalSku: p.internalSku || p.sku || p.code || `SP${p.id}`,
+                name: p.name || '',
+                unit: p.unit || 'Cái',
+                purchasePrice: Number(p.importPrice || p.purchasePrice || 0),
+                salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
+                wholesalePrice: Number(p.wholesalePrice || 0),
+                price: Number(p.retailPrice || p.salePrice || p.price || 0),
+                totalStock: Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0),
+                totalPhysical: Number(p.totalPhysical ?? p.totalStock ?? 0),
+                stockQty: Number(p.stockQty ?? p.totalStock ?? 0),
+                supplierId: p.supplierId || p.supplier?.id,
+                supplierName: p.supplierName || p.supplier?.name,
+                supplier: p.supplier,
+                stockBalances,
+              };
+            });
             setProducts(filterOutDeletedProducts(normalized));
           } else {
             setProducts(filterOutDeletedProducts(DEFAULT_FALLBACK_PRODUCTS));
@@ -584,7 +687,7 @@ export default function CreateOutboundOrderPage({
       }
     }
     loadMasterData();
-  }, []);
+  }, [isReturnSupplier]);
 
   const handleBackNavigation = () => {
     sessionStorage.removeItem('outbound_form_open');
@@ -1042,10 +1145,99 @@ export default function CreateOutboundOrderPage({
     }
   };
 
+  // Available Products for current Mode & Supplier
+  const availableProductsForMode = useMemo(() => {
+    if (!isReturnSupplier) return products;
+
+    const selectedSupName = (activeTab?.customer || '').trim().toLowerCase();
+    const selectedSupId = String(activeTab?.customerId || '').trim().toLowerCase();
+
+    if (!selectedSupName || selectedSupName === 'khách hàng bán lẻ') {
+      return [];
+    }
+
+    const matched = products.filter((p) => {
+      const pSupId = String(p.supplierId || p.supplier?.id || '').trim().toLowerCase();
+      const pSupName = String(p.supplierName || p.supplier?.name || '').trim().toLowerCase();
+
+      if (selectedSupId && pSupId && selectedSupId === pSupId) return true;
+      if (selectedSupName && pSupName && (pSupName.includes(selectedSupName) || selectedSupName.includes(pSupName))) return true;
+
+      const isFromInbound = allInboundOrders.some((ord: any) => {
+        const oSupId = String(ord.supplierId || ord.supplier?.id || '').trim().toLowerCase();
+        const oSupName = String(ord.supplierName || ord.supplier?.name || '').trim().toLowerCase();
+
+        const isSupplierMatch =
+          (selectedSupId && oSupId && selectedSupId === oSupId) ||
+          (selectedSupName && oSupName && (oSupName.includes(selectedSupName) || selectedSupName.includes(oSupName)));
+
+        if (!isSupplierMatch) return false;
+
+        const details = ord.details || ord.items || [];
+        return details.some((item: any) => {
+          const itemProdId = String(item.product?.id || item.productId || '');
+          const itemSku = String(item.product?.internalSku || item.productSku || '').toLowerCase();
+          const itemName = String(item.product?.name || item.productName || '').toLowerCase();
+          return (
+            (itemProdId && itemProdId === String(p.id)) ||
+            (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase()) ||
+            (itemName && p.name && itemName === p.name.toLowerCase())
+          );
+        });
+      });
+
+      return isFromInbound;
+    });
+
+    if (matched.length > 0) return matched;
+
+    return products.filter((p) => {
+      const pSupId = String(p.supplierId || p.supplier?.id || '').trim().toLowerCase();
+      const pSupName = String(p.supplierName || p.supplier?.name || '').trim().toLowerCase();
+      if (pSupId && selectedSupId && pSupId !== selectedSupId) return false;
+      if (pSupName && selectedSupName && !pSupName.includes(selectedSupName) && !selectedSupName.includes(pSupName)) return false;
+      return true;
+    });
+  }, [products, isReturnSupplier, activeTab?.customer, activeTab?.customerId, allInboundOrders]);
+
+  const findInboundDetailsForProduct = useCallback((p: ProductOption) => {
+    const targetWh = (activeTab?.branchCode || 'KHO-TONG').trim().toLowerCase();
+    const targetSup = (activeTab?.customer || '').trim().toLowerCase();
+
+    let foundBin = '';
+    let foundPrice = getProductPriceForMode(p);
+
+    allInboundOrders.forEach((ord: any) => {
+      const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
+      const oSup = (ord.supplierName || ord.supplier?.name || '').trim().toLowerCase();
+
+      const isWhMatch = !targetWh || oWh.includes(targetWh) || targetWh.includes(oWh);
+      const isSupMatch = !targetSup || oSup.includes(targetSup) || targetSup.includes(oSup);
+
+      if (isWhMatch && isSupMatch) {
+        const details = ord.details || ord.items || [];
+        details.forEach((item: any) => {
+          const itemProdId = String(item.product?.id || item.productId || '');
+          const itemSku = String(item.product?.internalSku || item.productSku || '').toLowerCase();
+          if (
+            (itemProdId && itemProdId === String(p.id)) ||
+            (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase())
+          ) {
+            if (item.locationBin) foundBin = item.locationBin;
+            if (item.unitPrice || item.price) foundPrice = Number(item.unitPrice || item.price);
+          }
+        });
+      }
+    });
+
+    return { foundBin, foundPrice };
+  }, [activeTab?.branchCode, activeTab?.customer, allInboundOrders, getProductPriceForMode]);
+
   const getFilteredProductsForRow = (rowText: string) => {
     const kw = (rowText || '').trim().toLowerCase();
-    if (!kw) return products;
-    return products.filter(
+    const baseList = availableProductsForMode;
+    if (!kw) return baseList;
+    return baseList.filter(
       (p) =>
         p.name.toLowerCase().includes(kw) ||
         (p.internalSku || '').toLowerCase().includes(kw) ||
@@ -1055,17 +1247,27 @@ export default function CreateOutboundOrderPage({
 
   const filteredQuickProducts = useMemo(() => {
     const kw = quickProductSearch.trim().toLowerCase();
-    if (!kw) return products;
-    return products.filter(
+    const baseList = availableProductsForMode;
+    if (!kw) return baseList;
+    return baseList.filter(
       (p) =>
         p.name.toLowerCase().includes(kw) ||
         (p.internalSku || '').toLowerCase().includes(kw)
     );
-  }, [products, quickProductSearch]);
+  }, [availableProductsForMode, quickProductSearch]);
 
   const handleSelectQuickProduct = (p: ProductOption) => {
     if (!activeTab) return;
-    const targetPrice = getProductPriceForMode(p);
+
+    if (isReturnSupplier && (!activeTab.customer || activeTab.customer === 'Khách hàng bán lẻ')) {
+      setToast({ message: 'Vui lòng chọn Nhà cung cấp trước khi chọn sản phẩm xuất trả!', type: 'error' });
+      return;
+    }
+
+    const { foundBin, foundPrice } = findInboundDetailsForProduct(p);
+    const targetPrice = foundPrice || getProductPriceForMode(p);
+    const rowWhCode = activeTab.branchCode || warehouses[0]?.code || 'KHO-TONG';
+
     const emptyRow = activeTab.details.find((r) => !r.productId && !r.productName);
     if (emptyRow) {
       updateRow(emptyRow.rowId, {
@@ -1074,7 +1276,10 @@ export default function CreateOutboundOrderPage({
         productName: p.name,
         unit: p.unit || 'Cái',
         price: targetPrice,
+        locationBin: foundBin || emptyRow.locationBin || '',
+        assignedBins: foundBin ? [foundBin] : (emptyRow.assignedBins || []),
         qty: 1,
+        warehouseCode: rowWhCode,
       });
     } else {
       const newRow = makeEmptyRow(activeTab.details.length);
@@ -1083,8 +1288,11 @@ export default function CreateOutboundOrderPage({
       newRow.productName = p.name;
       newRow.unit = p.unit || 'Cái';
       newRow.price = targetPrice;
+      newRow.locationBin = foundBin;
+      newRow.assignedBins = foundBin ? [foundBin] : [];
       newRow.qty = 1;
       newRow.totalAmount = targetPrice;
+      newRow.warehouseCode = rowWhCode;
       updateActiveTab((tab) => ({ ...tab, details: [...tab.details, newRow] }));
     }
     setQuickProductSearch('');
@@ -1518,28 +1726,37 @@ export default function CreateOutboundOrderPage({
 
                 {showQuickSearchDropdown && quickProductSearch.trim() && (
                   <div className="absolute left-0 top-full z-[120] mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl divide-y divide-slate-100">
-                    {filteredQuickProducts.length === 0 ? (
-                      <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa phù hợp</div>
+                    {isReturnSupplier && (!activeTab?.customer || activeTab.customer === 'Khách hàng bán lẻ') ? (
+                      <div className="p-3 text-center text-xs font-bold text-amber-800 bg-amber-50">
+                        ⚠️ Vui lòng chọn Nhà cung cấp ở thông tin phiếu trước khi tìm kiếm sản phẩm xuất trả!
+                      </div>
+                    ) : filteredQuickProducts.length === 0 ? (
+                      <div className="p-3 text-center text-xs font-semibold text-slate-500">
+                        {isReturnSupplier ? `Không tìm thấy sản phẩm thuộc Nhà cung cấp [${activeTab?.customer || ''}]` : 'Không tìm thấy hàng hóa phù hợp'}
+                      </div>
                     ) : (
-                      filteredQuickProducts.map((p) => (
-                        <div
-                          key={p.id}
-                          onClick={() => handleSelectQuickProduct(p)}
-                          className="flex items-center justify-between px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs transition"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-cyan-800 bg-cyan-100 px-1.5 py-0.5 rounded text-[11px]">{p.internalSku}</span>
-                            <span className="font-bold text-slate-800">{p.name}</span>
-                            <span className="text-[11px] font-semibold text-slate-500">({p.unit || 'Cái'})</span>
+                      filteredQuickProducts.map((p) => {
+                        const whStock = getProductWarehouseStock(p, activeTab?.branchCode, allInboundOrders);
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => handleSelectQuickProduct(p)}
+                            className="flex items-center justify-between px-3 py-2 hover:bg-cyan-50 cursor-pointer text-xs transition"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-cyan-800 bg-cyan-100 px-1.5 py-0.5 rounded text-[11px]">{p.internalSku}</span>
+                              <span className="font-bold text-slate-800">{p.name}</span>
+                              <span className="text-[11px] font-semibold text-slate-500">({p.unit || 'Cái'})</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className={`font-bold px-1.5 py-0.5 rounded text-[11px] ${whStock > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                                Tồn: {whStock}
+                              </span>
+                              <span className="font-extrabold text-cyan-900">{getProductPriceForMode(p).toLocaleString('vi-VN')} đ</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className={`font-bold px-1.5 py-0.5 rounded text-[11px] ${getProductWarehouseStock(p, activeTab?.branchCode) > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
-                              Tồn: {getProductWarehouseStock(p, activeTab?.branchCode)}
-                            </span>
-                            <span className="font-extrabold text-cyan-900">{getProductPriceForMode(p).toLocaleString('vi-VN')} đ</span>
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 )}
@@ -1650,22 +1867,37 @@ export default function CreateOutboundOrderPage({
                                 <span className="w-1/4 text-right uppercase">{isReturnSupplier ? 'Giá nhập / Giá' : 'Giá vốn / Giá'}</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                                {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
-                                  <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
+                                {isReturnSupplier && (!activeTab?.customer || activeTab.customer === 'Khách hàng bán lẻ') ? (
+                                  <div className="p-3 text-center text-xs font-bold text-amber-800 bg-amber-50">
+                                    ⚠️ Vui lòng chọn Nhà cung cấp ở mục thông tin phiếu trước khi chọn sản phẩm xuất trả!
+                                  </div>
+                                ) : getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
+                                  <div className="p-3 text-center text-xs font-semibold text-slate-500">
+                                    {isReturnSupplier ? `Không có hàng hóa nào thuộc Nhà cung cấp [${activeTab?.customer || ''}]` : 'Không tìm thấy hàng hóa'}
+                                  </div>
                                 ) : (
                                   getFilteredProductsForRow(row.productName || row.productSku).map((p) => {
-                                     const rowWhCode = activeTab?.branchCode || row.warehouseCode || warehouses[0]?.code || 'KHO-TONG';
-                                    const whStock = getProductWarehouseStock(p, rowWhCode);
+                                    const rowWhCode = activeTab?.branchCode || row.warehouseCode || warehouses[0]?.code || 'KHO-TONG';
+                                    const whStock = getProductWarehouseStock(p, rowWhCode, allInboundOrders);
                                     return (
                                       <div
                                         key={p.id}
                                         onClick={() => {
+                                          if (isReturnSupplier && (!activeTab?.customer || activeTab.customer === 'Khách hàng bán lẻ')) {
+                                            setToast({ message: 'Vui lòng chọn Nhà cung cấp trước khi chọn sản phẩm xuất trả!', type: 'error' });
+                                            return;
+                                          }
+                                          const { foundBin, foundPrice } = findInboundDetailsForProduct(p);
+                                          const targetPrice = foundPrice || getProductPriceForMode(p);
+
                                           updateRow(row.rowId, {
                                             productId: p.id,
                                             productSku: p.internalSku,
                                             productName: p.name,
                                             unit: p.unit || 'Cái',
-                                            price: getProductPriceForMode(p),
+                                            price: targetPrice,
+                                            locationBin: foundBin || row.locationBin || '',
+                                            assignedBins: foundBin ? [foundBin] : (row.assignedBins || []),
                                             qty: row.qty === 0 ? 1 : row.qty,
                                             warehouseCode: rowWhCode,
                                           });

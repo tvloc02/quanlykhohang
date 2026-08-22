@@ -10,11 +10,13 @@ import { Customer } from '../entities/customer.entity';
 import { Product } from '../entities/product.entity';
 import { StockBalance } from '../inventory/entities/stock-balance.entity';
 import { ErpIntegrationModule } from '../erp-integration/erp-integration.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([OutboundOrder, OutboundDetail, PickingTask, ShippingNote, Customer, Product, StockBalance]),
     ErpIntegrationModule,
+    NotificationsModule,
   ],
   controllers: [OutboundController],
   providers: [OutboundService],

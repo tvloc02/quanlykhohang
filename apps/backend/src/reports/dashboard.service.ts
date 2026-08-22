@@ -11,6 +11,7 @@ import { Customer } from '../entities/customer.entity';
 import { Supplier } from '../entities/supplier.entity';
 import { Role } from '../entities/role.entity';
 import { User } from '../entities/user.entity';
+import { Warehouse } from '../entities/warehouse.entity';
 
 @Injectable()
 export class DashboardService {
@@ -25,6 +26,7 @@ export class DashboardService {
     @InjectRepository(Supplier) private supplierRepo: Repository<Supplier>,
     @InjectRepository(Role) private roleRepo: Repository<Role>,
     @InjectRepository(User) private userRepo: Repository<User>,
+    @InjectRepository(Warehouse) private warehouseRepo: Repository<Warehouse>,
   ) {}
 
   async getDashboardOverview() {
@@ -340,16 +342,22 @@ export class DashboardService {
   }
 
   /**
-   * BÁO CÁO DOANH THU (REAL DATABASE QUERY)
+   * BÁO CÁO DOANH THU (REAL DATABASE QUERY FOR ALL WAREHOUSES)
    */
   async getRevenueReport(startDate?: string, endDate?: string, branch?: string) {
+    const rawWarehouses = await this.warehouseRepo.find();
+    const allWarehouses = rawWarehouses.filter((w) => w.status !== 'inactive');
+
     const qb = this.outboundRepo.createQueryBuilder('o')
       .leftJoin('o.details', 'd')
       .leftJoin('o.customer', 'c')
-      .select("COALESCE(d.warehouseCode, 'Chi nhánh chính')", 'groupName')
+      .leftJoin('warehouses', 'w', 'w.code = d.warehouseCode')
+      .select("COALESCE(w.name, d.warehouseCode, 'Kho không xác định')", 'groupName')
+      .addSelect("COALESCE(w.code, d.warehouseCode, '')", 'groupCode')
       .addSelect("COALESCE(c.name, 'Khách hàng')", 'staffName')
       .addSelect('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'revenue')
-      .groupBy("COALESCE(d.warehouseCode, 'Chi nhánh chính')")
+      .groupBy("COALESCE(w.name, d.warehouseCode, 'Kho không xác định')")
+      .addGroupBy("COALESCE(w.code, d.warehouseCode, '')")
       .addGroupBy("COALESCE(c.name, 'Khách hàng')");
 
     if (startDate) {
@@ -361,11 +369,30 @@ export class DashboardService {
 
     const rows = await qb.getRawMany();
     const groupsMap = new Map<string, any[]>();
-    
+
+    // Pre-populate map with ALL active warehouses in system so none are missed
+    allWarehouses.forEach((wh) => {
+      const gName = wh.name || `Kho ${wh.code}`;
+      const gCode = wh.code || '';
+      const groupKey = `${gName}::${gCode}`;
+      if (!groupsMap.has(groupKey)) {
+        groupsMap.set(groupKey, []);
+      }
+    });
+
     rows.forEach((r, idx) => {
-      const gName = r.groupName || 'Chi nhánh chính';
-      if (!groupsMap.has(gName)) groupsMap.set(gName, []);
-      groupsMap.get(gName)?.push({
+      const gName = r.groupName || 'Kho không xác định';
+      const gCode = r.groupCode || '';
+      let groupKey = `${gName}::${gCode}`;
+
+      // Try matching by warehouse code if exact name key is not present
+      if (!groupsMap.has(groupKey) && gCode) {
+        const foundKey = Array.from(groupsMap.keys()).find((k) => k.endsWith(`::${gCode}`));
+        if (foundKey) groupKey = foundKey;
+      }
+
+      if (!groupsMap.has(groupKey)) groupsMap.set(groupKey, []);
+      groupsMap.get(groupKey)?.push({
         id: String(idx + 1),
         staffName: r.staffName,
         revenue: Number(r.revenue || 0),
@@ -375,15 +402,23 @@ export class DashboardService {
       });
     });
 
-    return Array.from(groupsMap.entries()).map(([groupName, items]) => ({
-      groupName,
-      items,
-    }));
+    return Array.from(groupsMap.entries()).map(([groupKey, items]) => {
+      const [groupName, groupCode = ''] = groupKey.split('::');
+      // If a warehouse has no sales/outbound items, render 1 default row with 0 revenue as requested
+      if (items.length === 0) {
+        items.push({
+          id: `empty_${groupCode || groupName}`,
+          staffName: `Kho ${groupName} (Chưa phát sinh xuất hàng)`,
+          revenue: 0,
+          returnAmount: 0,
+          netRevenue: 0,
+          cashReceived: 0,
+        });
+      }
+      return { groupName, groupCode, items };
+    });
   }
 
-  /**
-   * BÁO CÁO THU CHI (REAL DATABASE QUERY)
-   */
   async getCashflowReport(startDate?: string, endDate?: string, branch?: string) {
     const [inboundTotal, outboundTotal] = await Promise.all([
       this.inboundRepo.createQueryBuilder('i')
@@ -434,16 +469,28 @@ export class DashboardService {
 
     const rows = await qb.getRawMany();
     const groupsMap = new Map<string, any[]>();
+    const productMap = new Map<string, any>();
 
+    // A product can have several stock-balance rows (for example one per
+    // warehouse). Aggregate those rows by SKU before returning the report.
     rows.forEach((r, idx) => {
-      const catName = `Nhóm hàng: ${r.categoryName || 'Mặc định'}`;
-      if (!groupsMap.has(catName)) groupsMap.set(catName, []);
+      const sku = String(r.sku || `SKU-${idx + 1}`).trim();
       const finalStock = Number(r.finalStock || 0);
       const price = Number(r.unitPrice || 0);
-      groupsMap.get(catName)?.push({
+      const current = productMap.get(sku);
+      if (current) {
+        current.initialStock += Number(r.totalPhysical || 0);
+        current.finalStock += finalStock;
+        current.pendingExportQty += Number(r.allocated || 0);
+        current.totalValue += finalStock * price;
+        return;
+      }
+
+      productMap.set(sku, {
         id: String(idx + 1),
-        sku: r.sku || `SKU-${idx + 1}`,
+        sku,
         name: r.name,
+        categoryName: r.categoryName || 'Mặc định',
         initialStock: Number(r.totalPhysical || 0),
         importQty: 0,
         exportQty: 0,
@@ -453,6 +500,13 @@ export class DashboardService {
         pendingExportQty: Number(r.allocated || 0),
         pendingOrderQty: 0,
       });
+    });
+
+    Array.from(productMap.values()).forEach((item) => {
+      const catName = `Nhóm hàng: ${item.categoryName}`;
+      if (!groupsMap.has(catName)) groupsMap.set(catName, []);
+      delete item.categoryName;
+      groupsMap.get(catName)?.push(item);
     });
 
     if (groupsMap.size === 0) {
@@ -550,7 +604,7 @@ export class DashboardService {
       if (amt > 0) {
         logs.push({
           id: `in-${o.id}`,
-          date: o.orderDate ? new Date(o.orderDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          date: new Date((o as any).createdAt || o.orderDate || Date.now()).toISOString(),
           type: 'THU',
           code: o.orderNo || `XBH-${o.id}`,
           partner: o.customerName || 'Khách bán lẻ',
@@ -565,7 +619,7 @@ export class DashboardService {
       if (amt > 0) {
         logs.push({
           id: `out-${i.id}`,
-          date: i.orderDate ? new Date(i.orderDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          date: new Date((i as any).createdAt || i.orderDate || Date.now()).toISOString(),
           type: 'CHI',
           code: i.poNumber || `PNK-${i.id}`,
           partner: i.supplierName || 'Nhà cung cấp',

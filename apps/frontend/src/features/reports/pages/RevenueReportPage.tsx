@@ -38,6 +38,7 @@ interface RevenueItem {
 
 interface RevenueGroup {
   groupName: string;
+  groupCode?: string;
   items: RevenueItem[];
 }
 
@@ -178,47 +179,47 @@ export default function RevenueReportPage() {
             type="button"
             onClick={loadData}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-extrabold text-slate-700 shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`h-4.5 w-4.5 text-slate-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
             Làm mới
           </button>
 
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-extrabold text-slate-700 shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <Printer className="h-4.5 w-4.5 text-slate-600" />
+            <Printer className="h-4.5 w-4.5 text-cyan-700" />
             In báo cáo
           </button>
 
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-extrabold text-slate-700 shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
-            <FileSpreadsheet className="h-4.5 w-4.5 text-slate-600" />
+            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
             Export Excel
           </button>
 
           <button
             type="button"
             onClick={() => setShowColumnSettings(true)}
-            className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border border-slate-300 bg-white text-slate-700 font-extrabold text-sm shadow-xs transition hover:bg-slate-50 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Cấu hình hiển thị cột"
           >
-            <Settings className="h-4.5 w-4.5 text-slate-600" />
+            <Settings className="h-4.5 w-4.5 text-cyan-700" />
             <span>Hiển thị</span>
           </button>
 
           <button
             type="button"
             onClick={toggleBrowserFullscreen}
-            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border border-slate-300 bg-white text-slate-700 shadow-xs transition hover:bg-slate-100 active:scale-95 cursor-pointer"
+            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             title="Toàn màn hình"
           >
-            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5" /> : <Maximize2 className="h-4.5 w-4.5" />}
+            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
           </button>
         </div>
       </div>
@@ -321,7 +322,9 @@ export default function RevenueReportPage() {
                     <React.Fragment key={group.groupName}>
                       {/* GROUP HEADER ROW */}
                       <tr className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-slate-200">
-                        <td colSpan={6} className="py-2.5 px-4 text-left uppercase tracking-wider">{group.groupName}</td>
+                        <td colSpan={6} className="py-2.5 px-4 text-left uppercase tracking-wider">
+                          {group.groupName}{group.groupCode && group.groupCode.trim() !== group.groupName.trim() && !group.groupName.includes(`(${group.groupCode})`) ? ` (${group.groupCode})` : ''}
+                        </td>
                       </tr>
                       {group.items.map((row, idx) => (
                         <tr key={row.id || idx} className="hover:bg-slate-50 transition group">

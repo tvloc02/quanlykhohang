@@ -49,14 +49,14 @@ function authHeaders() {
 }
 
 function formatRole(role?: string) {
-  if (!role) return 'Quản trị viên';
+  if (!role) return 'Người dùng';
   const r = role.toLowerCase();
-  if (r === 'admin' || r === 'administrator') return 'Quản trị viên';
-  if (r === 'manager' || r === 'warehouse_manager') return 'Quản lý kho';
-  if (r === 'staff' || r === 'inventory_staff' || r === 'warehouse_staff' || r === 'storekeeper') return 'Thủ kho';
-  if (r === 'inventory_checker' || r === 'inventory-checker') return 'Nhân viên kiểm kê';
+  if (r === 'admin' || r === 'administrator' || r === 'quản trị viên') return 'Quản trị viên';
   if (r === 'customer') return 'Khách hàng';
   if (r === 'supplier') return 'Nhà cung cấp';
+  if (['manager', 'warehouse_manager', 'staff', 'inventory_staff', 'warehouse_staff', 'storekeeper', 'inventory_checker', 'inventory-checker', 'thủ kho', 'nv kiểm kê'].includes(r)) {
+    return 'Người dùng';
+  }
   return role;
 }
 
