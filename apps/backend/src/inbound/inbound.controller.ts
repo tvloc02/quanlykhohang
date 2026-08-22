@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 
-@Controller(['inbound', 'inbound/purchase-orders', 'inbound/stock-in-orders'])
+@Controller(['inbound', 'inbound/purchase-orders'])
 export class InboundController {
   constructor(private svc: InboundService) {}
 

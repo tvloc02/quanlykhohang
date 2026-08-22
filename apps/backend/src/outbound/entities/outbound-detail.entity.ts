@@ -23,6 +23,9 @@ export class OutboundDetail extends BaseEntity {
   @Column({ length: 50, nullable: true })
   warehouseCode?: string;
 
+  @Column({ length: 255, nullable: true })
+  locationBin?: string;
+
   @Column({ type: 'int', default: 0 })
   requiredQty: number;
 

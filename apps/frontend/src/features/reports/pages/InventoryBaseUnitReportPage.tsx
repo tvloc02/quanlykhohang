@@ -359,33 +359,33 @@ export default function InventoryBaseUnitReportPage() {
                       </tr>
                       {items.map((row, idx) => (
                         <tr key={row.id || idx} className="hover:bg-slate-50 transition group">
-                          <td className="py-3 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">{idx + 1}</td>
-                          {columnVis.sku && <td className="py-3 px-3 text-left border-r border-slate-200 font-mono font-bold text-slate-800">{row.sku}</td>}
-                          {columnVis.name && <td className="py-3 px-4 text-left border-r border-slate-200 font-extrabold text-slate-900">{row.name}</td>}
-                          {columnVis.initialStock && <td className="py-3 px-3 text-right border-r border-slate-200 font-bold text-slate-700">{row.initialStock}</td>}
-                          {columnVis.importQty && <td className="py-3 px-3 text-right border-r border-slate-200 font-bold text-slate-800">{row.importQty}</td>}
-                          {columnVis.exportQty && <td className="py-3 px-3 text-right border-r border-slate-200 font-bold text-slate-700">{row.exportQty}</td>}
+                          <td className="py-3 px-3 text-center border-r border-slate-200 font-normal text-slate-900">{idx + 1}</td>
+                          {columnVis.sku && <td className="py-3 px-3 text-left border-r border-slate-200 font-mono font-normal text-slate-900">{row.sku}</td>}
+                          {columnVis.name && <td className="py-3 px-4 text-left border-r border-slate-200 font-normal text-slate-900">{row.name}</td>}
+                          {columnVis.initialStock && <td className="py-3 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{row.initialStock}</td>}
+                          {columnVis.importQty && <td className="py-3 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{row.importQty}</td>}
+                          {columnVis.exportQty && <td className="py-3 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{row.exportQty}</td>}
                           {columnVis.finalStock && (
-                            <td className={`py-3 px-3 text-right border-r border-slate-200 font-black ${row.finalStock < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                            <td className={`py-3 px-3 text-right border-r border-slate-200 font-normal ${row.finalStock < 0 ? 'text-rose-600 font-semibold' : 'text-slate-900'}`}>
                               {row.finalStock}
                             </td>
                           )}
-                          {columnVis.unitPrice && <td className="py-3 px-3 text-right border-r border-slate-200 font-bold text-slate-800">{fmt(row.unitPrice)} đ</td>}
-                          {columnVis.totalValue && <td className="py-3 px-3 text-right border-r border-slate-200 font-black text-slate-900">{fmt(row.totalValue)} đ</td>}
-                          {columnVis.pendingExportQty && <td className="py-3 px-3 text-right border-r border-slate-200 font-semibold text-slate-600">{row.pendingExportQty}</td>}
-                          {columnVis.pendingOrderQty && <td className="py-3 px-3 text-right font-semibold text-slate-600">{row.pendingOrderQty}</td>}
+                          {columnVis.unitPrice && <td className="py-3 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{fmt(row.unitPrice)} đ</td>}
+                          {columnVis.totalValue && <td className="py-3 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{fmt(row.totalValue)} đ</td>}
+                          {columnVis.pendingExportQty && <td className="py-3 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{row.pendingExportQty}</td>}
+                          {columnVis.pendingOrderQty && <td className="py-3 px-3 text-right font-normal text-slate-900">{row.pendingOrderQty}</td>}
                         </tr>
                       ))}
-                      <tr className="bg-slate-100 font-black text-slate-900 border-b-2 border-slate-300">
-                        <td colSpan={3} className="py-2.5 px-4 text-right border-r border-slate-300 uppercase">Cộng nhóm:</td>
-                        {columnVis.initialStock && <td className="py-2.5 px-3 text-right border-r border-slate-300">{grpInit}</td>}
-                        {columnVis.importQty && <td className="py-2.5 px-3 text-right border-r border-slate-300">{grpIn}</td>}
-                        {columnVis.exportQty && <td className="py-2.5 px-3 text-right border-r border-slate-300">{grpOut}</td>}
-                        {columnVis.finalStock && <td className="py-2.5 px-3 text-right border-r border-slate-300">{grpFinal}</td>}
-                        {columnVis.unitPrice && <td className="py-2.5 px-3 border-r border-slate-300">-</td>}
-                        {columnVis.totalValue && <td className="py-2.5 px-3 text-right border-r border-slate-300">{fmt(grpValue)} đ</td>}
-                        {columnVis.pendingExportQty && <td className="py-2.5 px-3 text-right border-r border-slate-300">0</td>}
-                        {columnVis.pendingOrderQty && <td className="py-2.5 px-3 text-right">0</td>}
+                      <tr className="bg-slate-100 font-bold text-slate-900 border-b-2 border-slate-300">
+                        <td colSpan={3} className="py-2.5 px-4 text-left border-r border-slate-300 uppercase font-bold">Cộng nhóm:</td>
+                        {columnVis.initialStock && <td className="py-2.5 px-3 text-right border-r border-slate-300 font-bold">{grpInit}</td>}
+                        {columnVis.importQty && <td className="py-2.5 px-3 text-right border-r border-slate-300 font-bold">{grpIn}</td>}
+                        {columnVis.exportQty && <td className="py-2.5 px-3 text-right border-r border-slate-300 font-bold">{grpOut}</td>}
+                        {columnVis.finalStock && <td className="py-2.5 px-3 text-right border-r border-slate-300 font-bold">{grpFinal}</td>}
+                        {columnVis.unitPrice && <td className="py-2.5 px-3 border-r border-slate-300 font-bold">-</td>}
+                        {columnVis.totalValue && <td className="py-2.5 px-3 text-right border-r border-slate-300 font-bold">{fmt(grpValue)} đ</td>}
+                        {columnVis.pendingExportQty && <td className="py-2.5 px-3 text-right border-r border-slate-300 font-bold">0</td>}
+                        {columnVis.pendingOrderQty && <td className="py-2.5 px-3 text-right font-bold">0</td>}
                       </tr>
                     </React.Fragment>
                   );

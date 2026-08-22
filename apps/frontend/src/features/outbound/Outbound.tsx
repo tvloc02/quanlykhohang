@@ -8,6 +8,7 @@ import {
   XCircle,
   CheckCircle,
   Eye,
+  EyeOff,
   Trash2,
   Printer,
   FileSpreadsheet,
@@ -441,7 +442,8 @@ export default function Outbound({
   const [users, setUsers] = useState<UserOption[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>(DEFAULT_FALLBACK_WAREHOUSES);
 
-  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: '', customerCode: '' });
+  const [newCustomerForm, setNewCustomerForm] = useState({ fullName: '', email: '', phone: '', address: '', status: 'active' as 'active' | 'inactive', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
@@ -885,30 +887,71 @@ export default function Outbound({
     setToast({ message: `Đã quét: ${scanned.name} (Số lượng: ${finalQty})`, type: 'success' });
   };
 
-  const handleCreateCustomer = (e: React.FormEvent) => {
+  const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustomerForm.name.trim()) {
-      setToast({ message: 'Vui lòng nhập tên khách hàng', type: 'error' });
+    const custName = newCustomerForm.fullName.trim();
+    if (!custName) {
+      setToast({ message: 'Vui lòng nhập họ và tên khách hàng', type: 'error' });
       return;
     }
-    const newCust: CustomerOption = {
-      id: `cust-${Date.now()}`,
-      customerCode: newCustomerForm.customerCode || `KH${Date.now().toString().slice(-4)}`,
-      name: newCustomerForm.name,
-      phone: newCustomerForm.phone,
-      address: newCustomerForm.address,
+    const autoCode = `KH${Date.now().toString().slice(-6)}`;
+    const payload = {
+      name: custName,
+      fullName: custName,
+      customerCode: autoCode,
+      email: newCustomerForm.email.trim(),
+      phone: newCustomerForm.phone.trim(),
+      address: newCustomerForm.address.trim(),
+      status: newCustomerForm.status,
+      password: newCustomerForm.password,
     };
-    setCustomers((prev) => [newCust, ...prev]);
-    updateActiveTab((tab) => ({
-      ...tab,
-      customerId: newCust.id,
-      customer: newCust.name,
-      customerPhone: newCust.phone || '',
-      customerAddress: newCust.address || '',
-    }));
-    setShowAddCustomerModal(false);
-    setNewCustomerForm({ name: '', phone: '', address: '', customerCode: '' });
-    setToast({ message: `Đã thêm khách hàng: ${newCust.name}`, type: 'success' });
+    try {
+      const res = await fetch(`${API_BASE_URL}/customers`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      let created: any = null;
+      if (res.ok) {
+        created = await res.json();
+      } else {
+        const userRes = await fetch(`${API_BASE_URL}/users`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ ...payload, role: 'customer' }),
+        }).catch(() => null);
+
+        if (userRes && userRes.ok) {
+          created = await userRes.json();
+        } else {
+          created = { id: `cust-${Date.now()}`, ...payload };
+        }
+      }
+      setCustomers((prev) => [created, ...prev]);
+      updateActiveTab((tab) => ({
+        ...tab,
+        customerId: created.id,
+        customer: created.name || created.fullName || custName,
+        customerPhone: created.phone || newCustomerForm.phone,
+        customerAddress: created.address || newCustomerForm.address,
+      }));
+      setShowAddCustomerModal(false);
+      setNewCustomerForm({ fullName: '', email: '', phone: '', address: '', status: 'active', password: '' });
+      setToast({ message: `Đã thêm khách hàng: ${created.name || custName}`, type: 'success' });
+    } catch {
+      const fallbackCreated = { id: `cust-${Date.now()}`, ...payload };
+      setCustomers((prev) => [fallbackCreated, ...prev]);
+      updateActiveTab((tab) => ({
+        ...tab,
+        customerId: fallbackCreated.id,
+        customer: fallbackCreated.name,
+        customerPhone: fallbackCreated.phone,
+        customerAddress: fallbackCreated.address,
+      }));
+      setShowAddCustomerModal(false);
+      setNewCustomerForm({ fullName: '', email: '', phone: '', address: '', status: 'active', password: '' });
+      setToast({ message: `Đã thêm khách hàng: ${fallbackCreated.name}`, type: 'success' });
+    }
   };
 
   const handleEditOrder = (ord: OutboundOrder) => {
@@ -1730,65 +1773,116 @@ export default function Outbound({
       )}
         {/* ─── MODAL ADD CUSTOMER ─────────────────────────────────────── */}
       {showAddCustomerModal && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <UserPlus size={18} className="text-cyan-600" />
-                <span>Thêm Khách Hàng Mới</span>
-              </h2>
-              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
-                <X size={20} />
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
+                  <UserPlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Thêm khách hàng mới</h3>
+                  <p className="text-xs text-slate-500 font-normal">Nhập thông tin khách hàng đầy đủ</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <form onSubmit={handleCreateCustomer} className="space-y-3 text-xs">
-              <div>
-                <label className="mb-1 block font-bold text-slate-700">Mã Khách hàng</label>
-                <input
-                  type="text"
-                  placeholder="KH00..."
-                  value={newCustomerForm.customerCode}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, customerCode: e.target.value })}
-                  className="h-9 w-full rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-cyan-500"
-                />
+
+            <form onSubmit={handleCreateCustomer} className="mt-5 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Họ và tên</label>
+                  <input
+                    type="text"
+                    placeholder="Nguyễn Văn A"
+                    value={newCustomerForm.fullName}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, fullName: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Email</label>
+                  <input
+                    type="email"
+                    placeholder="admin@example.com"
+                    value={newCustomerForm.email}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block font-bold text-slate-700">Tên Khách hàng (*)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Nguyễn Văn A / Công ty..."
-                  value={newCustomerForm.name}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
-                  className="h-9 w-full rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-cyan-500"
-                />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Số điện thoại</label>
+                  <input
+                    type="text"
+                    placeholder="0901234567"
+                    value={newCustomerForm.phone}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Địa chỉ</label>
+                  <input
+                    type="text"
+                    placeholder="Số nhà, tên đường, phường/xã, quận/huyện..."
+                    value={newCustomerForm.address}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, address: e.target.value })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block font-bold text-slate-700">Số điện thoại</label>
-                <input
-                  type="text"
-                  placeholder="090..."
-                  value={newCustomerForm.phone}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
-                  className="h-9 w-full rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-cyan-500"
-                />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Trạng thái</label>
+                  <select
+                    value={newCustomerForm.status}
+                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, status: e.target.value as 'active' | 'inactive' })}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-white"
+                  >
+                    <option value="active">Đang hoạt động</option>
+                    <option value="inactive">Không hoạt động</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Mật khẩu</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      value={newCustomerForm.password}
+                      onChange={(e) => setNewCustomerForm({ ...newCustomerForm, password: e.target.value })}
+                      className="w-full h-10 rounded-xl border border-slate-200 pl-3.5 pr-10 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="mb-1 block font-bold text-slate-700">Địa chỉ</label>
-                <input
-                  type="text"
-                  placeholder="Số nhà, Đường, Quận/Huyện..."
-                  value={newCustomerForm.address}
-                  onChange={(e) => setNewCustomerForm({ ...newCustomerForm, address: e.target.value })}
-                  className="h-9 w-full rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-cyan-500"
-                />
-              </div>
-              <div className="mt-4 flex justify-end gap-2 pt-2 border-t border-slate-200">
-                <button type="button" onClick={() => setShowAddCustomerModal(false)} className="rounded-xl border border-slate-300 px-4 py-2 font-bold text-slate-600 hover:bg-slate-100">
+
+              <div className="mt-6 flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(false)}
+                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                >
                   Hủy
                 </button>
-                <button type="submit" className="rounded-xl bg-cyan-600 px-4 py-2 font-black text-white hover:bg-cyan-700 shadow-md">
-                  Lưu Khách Hàng
+                <button
+                  type="submit"
+                  className="rounded-xl bg-cyan-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-700"
+                >
+                  Thêm khách hàng
                 </button>
               </div>
             </form>

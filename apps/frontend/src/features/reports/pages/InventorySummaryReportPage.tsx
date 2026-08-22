@@ -515,22 +515,22 @@ export default function InventorySummaryReportPage() {
                 filteredItems.map((row, idx) => (
                   <tr key={row.productId || idx} className="hover:bg-cyan-50/50 transition group">
                     {/* STT */}
-                    <td className="py-3 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">
+                    <td className="py-3 px-3 text-center border-r border-slate-200 font-normal text-slate-600">
                       {idx + 1}
                     </td>
 
                     {/* Mã Hàng */}
-                    <td className="py-3 px-4 text-center border-r border-slate-200 font-extrabold text-slate-900">
+                    <td className="py-3 px-4 text-center border-r border-slate-200 font-mono font-normal text-slate-800">
                       {row.code}
                     </td>
 
                     {/* Tên Hàng */}
-                    <td className="py-3 px-4 text-left border-r border-slate-200 font-extrabold text-slate-900">
+                    <td className="py-3 px-4 text-left border-r border-slate-200 font-normal text-slate-800">
                       {row.name}
                     </td>
 
                     {/* ĐVT */}
-                    <td className="py-3 px-3 text-center border-r border-slate-200 font-bold text-slate-700">
+                    <td className="py-3 px-3 text-center border-r border-slate-200 font-normal text-slate-700">
                       {row.unit}
                     </td>
 
@@ -540,8 +540,8 @@ export default function InventorySummaryReportPage() {
                       return (
                         <td
                           key={wh.code}
-                          className={`py-3 px-3 text-center border-r border-slate-200 font-bold ${
-                            stockVal < 0 ? 'text-rose-600 font-black' : stockVal > 0 ? 'text-slate-900' : 'text-slate-400'
+                          className={`py-3 px-3 text-center border-r border-slate-200 font-normal ${
+                            stockVal < 0 ? 'text-rose-600 font-semibold' : stockVal > 0 ? 'text-slate-800' : 'text-slate-400'
                           }`}
                         >
                           {stockVal}
@@ -551,8 +551,8 @@ export default function InventorySummaryReportPage() {
 
                     {/* Tổng Stock Column */}
                     <td
-                      className={`py-3 px-3 text-center font-black bg-slate-50/80 ${
-                        row.totalStock < 0 ? 'text-rose-600 font-black' : 'text-slate-950'
+                      className={`py-3 px-3 text-center font-normal bg-slate-50/80 ${
+                        row.totalStock < 0 ? 'text-rose-600 font-semibold' : 'text-slate-800'
                       }`}
                     >
                       {row.totalStock}

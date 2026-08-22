@@ -328,21 +328,21 @@ export default function RevenueReportPage() {
                       </tr>
                       {group.items.map((row, idx) => (
                         <tr key={row.id || idx} className="hover:bg-slate-50 transition group">
-                          <td className="py-3.5 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">{idx + 1}</td>
-                          {columnVis.staffName && <td className="py-3.5 px-4 text-left border-r border-slate-200 font-extrabold text-slate-900">{row.staffName}</td>}
-                          {columnVis.revenue && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-bold text-slate-800">{fmt(row.revenue)} đ</td>}
-                          {columnVis.returnAmount && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-semibold text-slate-600">{fmt(row.returnAmount)} đ</td>}
-                          {columnVis.netRevenue && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-black text-slate-900">{fmt(row.netRevenue)} đ</td>}
-                          {columnVis.cashReceived && <td className="py-3.5 px-3 text-right font-black text-slate-900">{fmt(row.cashReceived)} đ</td>}
+                          <td className="py-3.5 px-3 text-center border-r border-slate-200 font-normal text-slate-900">{idx + 1}</td>
+                          {columnVis.staffName && <td className="py-3.5 px-4 text-left border-r border-slate-200 font-normal text-slate-900">{row.staffName}</td>}
+                          {columnVis.revenue && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{fmt(row.revenue)} đ</td>}
+                          {columnVis.returnAmount && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{fmt(row.returnAmount)} đ</td>}
+                          {columnVis.netRevenue && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{fmt(row.netRevenue)} đ</td>}
+                          {columnVis.cashReceived && <td className="py-3.5 px-3 text-right font-normal text-slate-900">{fmt(row.cashReceived)} đ</td>}
                         </tr>
                       ))}
                       {/* GROUP SUBTOTAL */}
-                      <tr className="bg-slate-50 font-black text-slate-900 border-b-2 border-slate-200">
-                        <td colSpan={2} className="py-2.5 px-4 text-right border-r border-slate-200 uppercase">Cộng nhóm:</td>
-                        {columnVis.revenue && <td className="py-2.5 px-3 text-right border-r border-slate-200">{fmt(grpRevenue)} đ</td>}
-                        {columnVis.returnAmount && <td className="py-2.5 px-3 text-right border-r border-slate-200">{fmt(grpReturn)} đ</td>}
-                        {columnVis.netRevenue && <td className="py-2.5 px-3 text-right border-r border-slate-200 text-slate-900">{fmt(grpNet)} đ</td>}
-                        {columnVis.cashReceived && <td className="py-2.5 px-3 text-right text-slate-900">{fmt(grpCash)} đ</td>}
+                      <tr className="bg-slate-50 font-bold text-slate-900 border-b-2 border-slate-200">
+                        <td colSpan={2} className="py-2.5 px-4 text-left border-r border-slate-200 uppercase font-bold">Cộng nhóm:</td>
+                        {columnVis.revenue && <td className="py-2.5 px-3 text-right border-r border-slate-200 font-bold">{fmt(grpRevenue)} đ</td>}
+                        {columnVis.returnAmount && <td className="py-2.5 px-3 text-right border-r border-slate-200 font-bold">{fmt(grpReturn)} đ</td>}
+                        {columnVis.netRevenue && <td className="py-2.5 px-3 text-right border-r border-slate-200 text-slate-900 font-bold">{fmt(grpNet)} đ</td>}
+                        {columnVis.cashReceived && <td className="py-2.5 px-3 text-right text-slate-900 font-bold">{fmt(grpCash)} đ</td>}
                       </tr>
                     </React.Fragment>
                   );

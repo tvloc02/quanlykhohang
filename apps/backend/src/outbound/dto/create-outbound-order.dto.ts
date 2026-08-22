@@ -31,6 +31,15 @@ export class OutboundItemDto {
   warehouseCode?: string;
 
   @IsOptional()
+  @IsString()
+  locationBin?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  assignedBins?: string[];
+
+  @IsOptional()
   @IsNumber()
   unitPrice?: number;
 
