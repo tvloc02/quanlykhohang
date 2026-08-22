@@ -342,6 +342,8 @@ type ProductForm = {
   warehouseUnitStocks: Record<string, number | ''>;
   stock: number | '';
   warehouseStocks: Record<string, number | ''>;
+  warehouseInboundStocks?: Record<string, number | ''>;
+  warehouseOutboundStocks?: Record<string, number | ''>;
 
   images: string[];
   isVisible: boolean;
@@ -1120,12 +1122,63 @@ export default function Products() {
     setActiveTab('general');
 
     const existingStocks: Record<string, number | ''> = {};
+    const existingInboundStocks: Record<string, number | ''> = {};
+    const existingOutboundStocks: Record<string, number | ''> = {};
     const stockBalances: Array<{ locationCode: string; totalPhysical?: number; available?: number }> =
       (product as any).stockBalances || [];
 
-    const overallProductStock = Number(
-      (product as any).totalStock !== undefined ? (product as any).totalStock : (product.stock || 0)
-    );
+    // 1. Build outbound export map per warehouse for this specific product
+    const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+    const whOutboundMap: Record<string, number> = {};
+    const productTotalExported = Number((product as any).totalExportedQty) || 0;
+
+    if (storedOutboundStr) {
+      try {
+        const outboundList = JSON.parse(storedOutboundStr);
+        if (Array.isArray(outboundList)) {
+          outboundList.forEach((order: any) => {
+            const st = String(order.status || '').toLowerCase();
+            if (st.includes('hủy') || st.includes('cancel')) return;
+
+            const orderWh = String(order.branchCode || order.warehouseCode || '').trim().toLowerCase();
+            const details = order.details || order.items || order.products || [];
+            if (Array.isArray(details)) {
+              details.forEach((d: any) => {
+                const pId = String(d.productId || d.id || '').trim().toLowerCase();
+                const pSku = String(d.productSku || d.sku || '').trim().toLowerCase();
+                const pName = String(d.productName || d.name || '').trim().toLowerCase();
+
+                const prodIdLower = String(product.id || '').trim().toLowerCase();
+                const prodSkuLower = String(product.sku || '').trim().toLowerCase();
+                const prodNameLower = String(product.name || '').trim().toLowerCase();
+
+                const isMatch =
+                  (pId && prodIdLower && pId === prodIdLower) ||
+                  (pSku && prodSkuLower && pSku === prodSkuLower) ||
+                  (pName && prodNameLower && pName === prodNameLower);
+
+                if (isMatch) {
+                  const qty = Number(d.qty || d.quantity || d.requiredQty || d.pickedQty || 0);
+                  const detailWh = String(d.warehouseCode || '').trim().toLowerCase() || orderWh;
+
+                  warehouses.forEach((wh) => {
+                    const c = String(wh.code || '').trim().toLowerCase();
+                    const n = String(wh.name || '').trim().toLowerCase();
+                    const i = String(wh.id || '').trim().toLowerCase();
+                    const keys = [wh.name, wh.code, wh.id].filter(Boolean) as string[];
+                    if (!detailWh || detailWh === c || detailWh === n || detailWh === i || (c && detailWh.includes(c))) {
+                      keys.forEach((k) => {
+                        whOutboundMap[k] = (whOutboundMap[k] || 0) + qty;
+                      });
+                    }
+                  });
+                }
+              });
+            }
+          });
+        }
+      } catch {}
+    }
 
     let totalMappedStock = 0;
 
@@ -1137,7 +1190,7 @@ export default function Products() {
       const name = String(wh.name || '').trim().toLowerCase();
       const id = String(wh.id || '').trim().toLowerCase();
 
-      // 1. Sum up all balances matching this warehouse (exact, prefix, or bin codes)
+      // 2. Sum up all balances matching this warehouse (exact, prefix, or bin codes)
       const defaultWhLower = String(product.defaultWarehouse || '').trim().toLowerCase();
       const matchedBalances = stockBalances.filter((b) => {
         const lc = String(b.locationCode || '').trim().toLowerCase();
@@ -1146,7 +1199,6 @@ export default function Products() {
         if (name && (lc === name || lc.startsWith(name + '-') || lc.startsWith(name + '_') || lc.startsWith(name + '/'))) return true;
         if (id && (lc === id || lc.startsWith(id + '-') || lc.startsWith(id + '_') || lc.startsWith(id + '/'))) return true;
 
-        // If locationCode is a standalone bin code (e.g. ZONE-A-R01-S04-C01), check if this warehouse is product's default warehouse
         const isBinCode = lc.includes('-r0') || lc.includes('-s0') || lc.includes('-c') || lc.startsWith('zone-');
         if (isBinCode && defaultWhLower && (code === defaultWhLower || name === defaultWhLower || id === defaultWhLower)) {
           return true;
@@ -1154,7 +1206,7 @@ export default function Products() {
         return false;
       });
 
-      let stockForThisWh = 0;
+      let rawInboundForWh = 0;
       if (matchedBalances.length > 0) {
         const mainRecs = matchedBalances.filter((b) => {
           const lc = String(b.locationCode || '').trim().toLowerCase();
@@ -1184,30 +1236,49 @@ export default function Products() {
           0
         );
 
-        if (mainPhysical > 0 && binPhysical > 0) {
-          stockForThisWh = Math.max(mainPhysical, binPhysical);
-        } else {
-          stockForThisWh = mainPhysical + binPhysical;
-        }
+        rawInboundForWh = mainPhysical > 0 && binPhysical > 0 ? Math.max(mainPhysical, binPhysical) : mainPhysical + binPhysical;
       } else if (product.warehouseStocks) {
-        // 2. Fallback to direct warehouseStocks on product entity
         for (const k of keys) {
           const stk = (product.warehouseStocks as any)[k];
           if (stk !== undefined && stk !== null && stk !== '') {
-            stockForThisWh = Number(stk) || 0;
+            rawInboundForWh = Number(stk) || 0;
             break;
           }
         }
       }
 
-      totalMappedStock += stockForThisWh;
+      // Check warehouse-specific outbound export qty
+      let rawOutboundForWh = 0;
+      for (const k of keys) {
+        if (whOutboundMap[k] !== undefined && whOutboundMap[k] > 0) {
+          rawOutboundForWh = whOutboundMap[k];
+          break;
+        }
+      }
+
+      // Fallback for default warehouse if productTotalExported exists
+      if (rawOutboundForWh === 0 && productTotalExported > 0) {
+        const defWhName = String(product.defaultWarehouse || warehouses[0]?.name || '').trim().toLowerCase();
+        if (code === defWhName || name === defWhName || id === defWhName) {
+          rawOutboundForWh = productTotalExported;
+        }
+      }
+
+      const curStockForWh = Math.max(0, rawInboundForWh - rawOutboundForWh);
+      totalMappedStock += curStockForWh;
+
       keys.forEach((k) => {
-        existingStocks[k] = stockForThisWh;
+        existingStocks[k] = curStockForWh;
+        existingInboundStocks[k] = rawInboundForWh;
+        existingOutboundStocks[k] = rawOutboundForWh;
       });
     });
 
+    const overallProductStock = totalMappedStock;
+
     // 3. Fallback for legacy/unmapped product stock: if total mapped is 0 but product has overall stock, assign to default warehouse
-    if (totalMappedStock === 0 && overallProductStock > 0 && warehouses.length > 0) {
+    if (totalMappedStock === 0 && (product.stock || 0) > 0 && warehouses.length > 0) {
+      const fallbackStock = Number(product.stock) || 0;
       const defaultWh = warehouses.find(
         (w: any) =>
           (product.defaultWarehouse && (w.name === product.defaultWarehouse || w.code === product.defaultWarehouse)) ||
@@ -1216,9 +1287,11 @@ export default function Products() {
 
       const whKeys = [defaultWh.name, defaultWh.code, defaultWh.id].filter(Boolean) as string[];
       whKeys.forEach((k) => {
-        existingStocks[k] = overallProductStock;
+        existingStocks[k] = fallbackStock;
+        existingInboundStocks[k] = fallbackStock + productTotalExported;
+        existingOutboundStocks[k] = productTotalExported;
       });
-      totalMappedStock = overallProductStock;
+      totalMappedStock = fallbackStock;
     }
 
     const existingConversionUnits = (product as any).conversionUnits || [];
@@ -1242,6 +1315,8 @@ export default function Products() {
       warehouseUnitStocks: (product as any).warehouseUnitStocks || {},
       stock: totalMappedStock > 0 ? totalMappedStock : overallProductStock,
       warehouseStocks: existingStocks,
+      warehouseInboundStocks: existingInboundStocks,
+      warehouseOutboundStocks: existingOutboundStocks,
       images: product.images || [],
       isVisible: product.isVisible || false,
       webTitle: (product as any).webTitle || '',
@@ -3039,14 +3114,15 @@ export default function Products() {
                                 <th className="p-3 min-w-[120px] text-center border-r border-slate-300 whitespace-nowrap">GIÁ NHẬP (₫)</th>
                                 <th className="p-3 min-w-[120px] text-center border-r border-slate-300 whitespace-nowrap">GIÁ BÁN BUÔN (₫)</th>
                                 <th className="p-3 min-w-[120px] text-center border-r border-slate-300 whitespace-nowrap">GIÁ BÁN LẺ (₫)</th>
-                                <th className="p-3 min-w-[140px] text-center border-r border-slate-300 whitespace-nowrap">TỔNG SỐ LƯỢNG</th>
-                                <th className="p-3 min-w-[160px] text-center whitespace-nowrap">SỐ LƯỢNG NHẬP GẦN NHẤT</th>
+                                <th className="p-3 min-w-[110px] text-center border-r border-slate-300 whitespace-nowrap">TỒN KHO</th>
+                                <th className="p-3 min-w-[120px] text-center border-r border-slate-300 whitespace-nowrap">NHẬP GẦN ĐÂY</th>
+                                <th className="p-3 min-w-[120px] text-center whitespace-nowrap">XUẤT GẦN ĐÂY</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-300">
                               {warehouses.length === 0 ? (
                                 <tr>
-                                  <td colSpan={8} className="p-8 text-center text-slate-900 font-bold">
+                                  <td colSpan={9} className="p-8 text-center text-slate-900 font-bold">
                                     Chưa có kho nào được cấu hình trong hệ thống.
                                   </td>
                                 </tr>
@@ -3099,8 +3175,8 @@ export default function Products() {
                                       : []),
                                   ];
 
-                                  // Calculate warehouse converted stock total (Số lượng nhập gần nhất tại kho)
-                                  let whTotalQty = Number(baseStockVal) || 0;
+                                  // Calculate warehouse converted stock totals: Tồn kho, Nhập gần đây, Xuất gần đây
+                                  let whCurrentStock = Number(baseStockVal) || 0;
                                   if (form.hasConversionUnits && form.conversionUnits.length > 0) {
                                     form.conversionUnits.forEach((u) => {
                                       const sKey = `${whKey}_${u.id}_stock`;
@@ -3108,11 +3184,16 @@ export default function Products() {
                                       const qVal = form.warehouseUnitStocks[sKey] !== undefined ? form.warehouseUnitStocks[sKey] : form.warehouseUnitStocks[altKey];
                                       const q = Number(qVal) || 0;
                                       const r = Number(u.conversionRate) || 1;
-                                      whTotalQty += q * r;
+                                      whCurrentStock += q * r;
                                     });
                                   }
 
-                                  const overallTotalStock = Number(form.stock) || 0;
+                                  const rawInbound = form.warehouseInboundStocks?.[whKey] ?? form.warehouseInboundStocks?.[wh.code] ?? form.warehouseInboundStocks?.[wh.id] ?? whCurrentStock;
+                                  let whInboundStock = Number(rawInbound) || whCurrentStock;
+                                  if (whInboundStock < whCurrentStock) whInboundStock = whCurrentStock;
+
+                                  const rawOutbound = form.warehouseOutboundStocks?.[whKey] ?? form.warehouseOutboundStocks?.[wh.code] ?? form.warehouseOutboundStocks?.[wh.id] ?? Math.max(0, whInboundStock - whCurrentStock);
+                                  let whOutboundStock = Number(rawOutbound) || Math.max(0, whInboundStock - whCurrentStock);
 
                                   const updateUnitField = (key: string, val: number | '') => {
                                     setForm((c) => {
@@ -3231,17 +3312,24 @@ export default function Products() {
                                           />
                                         </td>
 
-                                        {/* TỔNG SỐ LƯỢNG (Tất cả kho) */}
+                                        {/* TỒN KHO */}
                                         {uIdx === 0 && (
-                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-900 border-r border-slate-300 align-middle">
-                                            {whTotalQty.toLocaleString('vi-VN')}
+                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-cyan-800 border-r border-slate-300 align-middle">
+                                            {whCurrentStock.toLocaleString('vi-VN')}
                                           </td>
                                         )}
 
-                                        {/* SỐ LƯỢNG NHẬP GẦN NHẤT */}
+                                        {/* NHẬP GẦN ĐÂY */}
                                         {uIdx === 0 && (
-                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-slate-900 align-middle">
-                                            {whTotalQty.toLocaleString('vi-VN')}
+                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-emerald-700 border-r border-slate-300 align-middle">
+                                            {whInboundStock.toLocaleString('vi-VN')}
+                                          </td>
+                                        )}
+
+                                        {/* XUẤT GẦN ĐÂY */}
+                                        {uIdx === 0 && (
+                                          <td rowSpan={warehouseUnits.length} className="p-3 text-center font-bold text-rose-700 align-middle">
+                                            {whOutboundStock.toLocaleString('vi-VN')}
                                           </td>
                                         )}
                                       </tr>
@@ -3255,7 +3343,7 @@ export default function Products() {
                                 <td colSpan={6} className="p-3 text-center font-black text-slate-900 text-xs uppercase border-r border-slate-300">
                                   TỔNG CỘNG TỒN KHO TẤT CẢ CÁC KHO:
                                 </td>
-                                <td colSpan={2} className="p-3 text-center font-black text-slate-900 text-xs">
+                                <td colSpan={3} className="p-3 text-center font-black text-cyan-800 text-xs">
                                   {(Number(form.stock) || 0).toLocaleString('vi-VN')}
                                 </td>
                               </tr>

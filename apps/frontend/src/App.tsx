@@ -23,8 +23,12 @@ import Reports from './features/reports/Reports';
 import SalesReportPage from './features/reports/pages/SalesReportPage';
 import RevenueReportPage from './features/reports/pages/RevenueReportPage';
 import CashflowReportPage from './features/reports/pages/CashflowReportPage';
+import FundBalanceReportPage from './features/reports/pages/FundBalanceReportPage';
+import BusinessSummaryReportPage from './features/reports/pages/BusinessSummaryReportPage';
+import BelowMinStockReportPage from './features/reports/pages/BelowMinStockReportPage';
 import InventoryReportPage from './features/reports/pages/InventoryReportPage';
 import InventoryBaseUnitReportPage from './features/reports/pages/InventoryBaseUnitReportPage';
+import InventorySummaryReportPage from './features/reports/pages/InventorySummaryReportPage';
 import GenericReportPage from './features/reports/pages/GenericReportPage';
 import BillProfitReportPage from './features/reports/pages/BillProfitReportPage';
 import CategoryProfitReportPage from './features/reports/pages/CategoryProfitReportPage';
@@ -149,11 +153,30 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
   if (user.role === 'customer') {
     return <Navigate to="/customer-portal" replace />;
   }
-  const { isAdmin, canViewMenu } = usePermissions();
+  const { isAdmin, canViewMenu, isLoading } = usePermissions();
+
+  if (isLoading) {
+    return (
+      <MainLayout>
+        <div className="flex h-[calc(100vh-120px)] w-full items-center justify-center bg-slate-50/50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-cyan-600 border-t-transparent" />
+            <p className="text-xs font-extrabold text-cyan-800 animate-pulse uppercase tracking-wider">
+              Đang xác thực quyền truy cập...
+            </p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
   if (isAdmin) {
     return <>{children}</>;
   }
-  if (menuId && !canViewMenu(menuId)) {
+  if (menuId) {
+    if (canViewMenu(menuId)) {
+      return <>{children}</>;
+    }
     return (
       <MainLayout>
         <AccessDenied />
@@ -298,15 +321,15 @@ function App() {
         <Route
           path="/personnel"
           element={
-            <RoleRoute allowedRoles={['admin']} menuId="personnel">
+            <RoleRoute menuId="personnel">
               <MainLayout>
                 <Personnel />
               </MainLayout>
             </RoleRoute>
           }
         />
-        <Route path="/personnel/permission-groups" element={<RoleRoute allowedRoles={['admin']} menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
-        <Route path="/personnel/teams" element={<RoleRoute allowedRoles={['admin']} menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
+        <Route path="/personnel/permission-groups" element={<RoleRoute menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
+        <Route path="/personnel/teams" element={<RoleRoute menuId="permission-groups"><MainLayout><PermissionGroupsPage /></MainLayout></RoleRoute>} />
         <Route
           path="/customers"
           element={
@@ -864,7 +887,7 @@ function App() {
           element={
             <RoleRoute menuId="report-inventory-summary">
               <MainLayout>
-                <GenericReportPage reportType="inventory-summary-report" title="Hàng tồn Tổng hợp" description="Báo cáo tổng hợp số lượng tồn kho toàn hệ thống" />
+                <InventorySummaryReportPage />
               </MainLayout>
             </RoleRoute>
           }
@@ -907,7 +930,7 @@ function App() {
           element={
             <RoleRoute menuId="report-fund-balance">
               <MainLayout>
-                <GenericReportPage reportType="fund-balance" title="Tồn quỹ" description="Báo cáo theo dõi số dư tồn quỹ tiền mặt và tài khoản" />
+                <FundBalanceReportPage />
               </MainLayout>
             </RoleRoute>
           }
@@ -987,7 +1010,7 @@ function App() {
           element={
             <RoleRoute menuId="report-business-summary">
               <MainLayout>
-                <GenericReportPage title="Tổng hợp Kinh doanh" description="Báo cáo kết quả kinh doanh tổng hợp toàn công ty" />
+                <BusinessSummaryReportPage />
               </MainLayout>
             </RoleRoute>
           }
@@ -997,7 +1020,7 @@ function App() {
           element={
             <RoleRoute menuId="report-below-min-stock">
               <MainLayout>
-                <GenericReportPage title="Hàng tồn dưới định mức" description="Cảnh báo các sản phẩm đang có số lượng tồn kho dưới định mức tối thiểu" />
+                <BelowMinStockReportPage />
               </MainLayout>
             </RoleRoute>
           }

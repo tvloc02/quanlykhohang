@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -22,6 +22,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Filter,
+  ChevronDown,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -41,6 +42,236 @@ export interface PaymentVoucher {
 
 const STORAGE_KEY = 'smart-wms-payment-vouchers-data';
 const API_BASE_URL = 'http://localhost:3000/api';
+
+export interface PartnerOption {
+  id: string;
+  name: string;
+  type: 'Khách hàng' | 'Nhà cung cấp';
+  phone?: string;
+  address?: string;
+}
+
+const DEFAULT_PARTNERS: PartnerOption[] = [
+  // Nhà cung cấp
+  { id: 'sup-1', name: 'Nhà cung cấp An Bình', type: 'Nhà cung cấp', phone: '0977112233', address: 'Số 10 Kho Tân Triều, Thanh Trì, Hà Nội' },
+  { id: 'sup-2', name: 'Công ty TNHH Thiết Bị Điện Hải Hà', type: 'Nhà cung cấp', phone: '0966445566', address: 'KCN Bắc Thăng Long, Hà Nội' },
+  { id: 'sup-3', name: 'Tổng Công ty Vật Tư Kho Bãi Việt Nam', type: 'Nhà cung cấp', phone: '0944889900', address: 'Quận Hải Châu, Đà Nẵng' },
+  // Khách hàng
+  { id: 'cust-1', name: 'Công ty TNHH Thương Mại Minh Long', type: 'Khách hàng', phone: '0912345678', address: '123 Nguyễn Trãi, Thanh Xuân, Hà Nội' },
+  { id: 'cust-2', name: 'Công ty Cổ Phần XNK Nam Anh', type: 'Khách hàng', phone: '0987654321', address: '45 Lê Văn Lương, Cầu Giấy, Hà Nội' },
+  { id: 'cust-3', name: 'Khách hàng bán lẻ (Khách lẻ)', type: 'Khách hàng', phone: '0901234567', address: 'Hà Nội' },
+  { id: 'cust-4', name: 'Tập đoàn Công nghệ Viễn Đông', type: 'Khách hàng', phone: '0934567890', address: 'Quận 1, TP. Hồ Chí Minh' },
+];
+
+interface FormattedPriceInputProps {
+  value: number | '' | undefined | null;
+  onChange: (val: number) => void;
+  readOnly?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+  className?: string;
+}
+
+function FormattedPriceInput({
+  value,
+  onChange,
+  readOnly,
+  disabled,
+  placeholder = '0',
+  className,
+}: FormattedPriceInputProps) {
+  const formatVal = (v: number | '' | undefined | null): string => {
+    if (v === '' || v === undefined || v === null || v === 0) return '0';
+    const num = Number(v);
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('vi-VN');
+  };
+
+  const [displayValue, setDisplayValue] = useState<string>(formatVal(value));
+
+  useEffect(() => {
+    setDisplayValue(formatVal(value));
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawStr = e.target.value;
+    const digitsOnly = rawStr.replace(/\D/g, '');
+    if (!digitsOnly) {
+      setDisplayValue('0');
+      onChange(0);
+    } else {
+      const num = parseInt(digitsOnly, 10);
+      setDisplayValue(num.toLocaleString('vi-VN'));
+      onChange(num);
+    }
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={displayValue}
+      onChange={handleChange}
+      readOnly={readOnly}
+      disabled={disabled}
+      placeholder={placeholder}
+      className={className}
+    />
+  );
+}
+
+interface SearchablePartnerSelectProps {
+  value: string;
+  onChange: (partnerName: string, selectedPartner?: PartnerOption) => void;
+  partners: PartnerOption[];
+  disabled?: boolean;
+  placeholder?: string;
+}
+
+function SearchablePartnerSelect({
+  value,
+  onChange,
+  partners,
+  disabled,
+  placeholder = '-- Chọn Nhà cung cấp / Khách hàng / Đối tác --',
+}: SearchablePartnerSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredPartners = useMemo(() => {
+    if (!searchQuery.trim()) return partners;
+    const q = searchQuery.toLowerCase();
+    return partners.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.phone && p.phone.includes(q)) ||
+        (p.address && p.address.toLowerCase().includes(q))
+    );
+  }, [partners, searchQuery]);
+
+  const customers = useMemo(() => filteredPartners.filter((p) => p.type === 'Khách hàng'), [filteredPartners]);
+  const suppliers = useMemo(() => filteredPartners.filter((p) => p.type === 'Nhà cung cấp'), [filteredPartners]);
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 flex items-center justify-between outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer hover:bg-slate-50 transition"
+      >
+        <span className={value ? 'text-slate-800 font-bold' : 'text-slate-400 font-normal'}>
+          {value || placeholder}
+        </span>
+        <ChevronDown size={18} className={`text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Floating Dropdown Panel */}
+      {isOpen && !disabled && (
+        <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-white rounded-xl border border-slate-300 shadow-xl overflow-hidden p-2 space-y-1.5 max-h-72 flex flex-col">
+          {/* Search Input Bar */}
+          <div className="relative flex items-center shrink-0">
+            <Search size={15} className="absolute left-3 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Tìm kiếm đối tượng, SĐT..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white focus:border-cyan-500 outline-none"
+              autoFocus
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* List Options */}
+          <div className="overflow-y-auto space-y-2 pr-0.5 flex-1 text-xs">
+            {suppliers.length > 0 && (
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase px-2 py-1 tracking-wide">
+                  Nhà cung cấp
+                </div>
+                <div className="space-y-0.5">
+                  {suppliers.map((s) => (
+                    <div
+                      key={s.id}
+                      onClick={() => {
+                        onChange(s.name, s);
+                        setIsOpen(false);
+                        setSearchQuery('');
+                      }}
+                      className={`px-3 py-2 rounded-lg font-semibold cursor-pointer transition flex items-center justify-between ${
+                        value === s.name
+                          ? 'bg-cyan-50 text-cyan-900 font-bold'
+                          : 'hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <span>{s.name}</span>
+                      {s.phone && <span className="text-slate-400 text-[11px] font-mono">{s.phone}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {customers.length > 0 && (
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase px-2 py-1 tracking-wide">
+                  Khách hàng
+                </div>
+                <div className="space-y-0.5">
+                  {customers.map((c) => (
+                    <div
+                      key={c.id}
+                      onClick={() => {
+                        onChange(c.name, c);
+                        setIsOpen(false);
+                        setSearchQuery('');
+                      }}
+                      className={`px-3 py-2 rounded-lg font-semibold cursor-pointer transition flex items-center justify-between ${
+                        value === c.name
+                          ? 'bg-cyan-50 text-cyan-900 font-bold'
+                          : 'hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <span>{c.name}</span>
+                      {c.phone && <span className="text-slate-400 text-[11px] font-mono">{c.phone}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {filteredPartners.length === 0 && (
+              <div className="p-3 text-center text-xs text-slate-400">
+                Không tìm thấy "{searchQuery}"
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function authHeaders() {
   return {
@@ -86,8 +317,8 @@ export default function PaymentVouchersPage() {
   });
   const [showColumnModal, setShowColumnModal] = useState(false);
 
-  // Real Options from System
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string; phone?: string; address?: string }[]>([]);
+  // Real Partners (Suppliers + Customers) & Staff from System
+  const [partners, setPartners] = useState<PartnerOption[]>(DEFAULT_PARTNERS);
   const [staffList, setStaffList] = useState<{ id: string; fullName: string; email: string }[]>([]);
 
   // Filter states
@@ -137,27 +368,52 @@ export default function PaymentVouchersPage() {
     note: '',
   });
 
-  // Load Real Suppliers & Staff from System API
+  // Load Real Suppliers, Customers & Staff from System API
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [supRes, userRes] = await Promise.all([
+        const [supRes, custRes, userRes] = await Promise.all([
           fetch(`${API_BASE_URL}/suppliers`, { headers: authHeaders() }).catch(() => null),
+          fetch(`${API_BASE_URL}/customers`, { headers: authHeaders() }).catch(() => null),
           fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(() => null),
         ]);
+
+        const loadedPartners: PartnerOption[] = [];
 
         if (supRes && supRes.ok) {
           const data = await supRes.json();
           if (Array.isArray(data)) {
-            setSuppliers(
-              data.map((s: any) => ({
-                id: String(s.id),
+            data.forEach((s: any) => {
+              loadedPartners.push({
+                id: `sup-${s.id}`,
                 name: String(s.name || s.fullName || s.code),
+                type: 'Nhà cung cấp',
                 phone: s.phone,
                 address: s.address,
-              }))
-            );
+              });
+            });
           }
+        }
+
+        if (custRes && custRes.ok) {
+          const data = await custRes.json();
+          if (Array.isArray(data)) {
+            data.forEach((c: any) => {
+              loadedPartners.push({
+                id: `cust-${c.id}`,
+                name: String(c.name || c.fullName || c.code),
+                type: 'Khách hàng',
+                phone: c.phone,
+                address: c.address,
+              });
+            });
+          }
+        }
+
+        if (loadedPartners.length > 0) {
+          setPartners(loadedPartners);
+        } else {
+          setPartners(DEFAULT_PARTNERS);
         }
 
         if (userRes && userRes.ok) {
@@ -173,7 +429,7 @@ export default function PaymentVouchersPage() {
           }
         }
       } catch {
-        // quiet fallback
+        setPartners(DEFAULT_PARTNERS);
       }
     };
     fetchData();
@@ -704,268 +960,263 @@ export default function PaymentVouchersPage() {
       </div>
 
       {/* COLUMN VISIBILITY MODAL */}
-      {showColumnModal && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in-50">
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
-              <div className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-cyan-700" />
-                <h3 className="text-base font-extrabold text-slate-800 uppercase">Cấu hình hiển thị cột</h3>
+      {showColumnModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in-50">
+            <div className="w-full max-w-md overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-5 w-5 text-cyan-700" />
+                  <h3 className="text-base font-extrabold text-slate-800 uppercase">Cấu hình hiển thị cột</h3>
+                </div>
+                <button onClick={() => setShowColumnModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 transition cursor-pointer">
+                  <X size={18} />
+                </button>
               </div>
-              <button onClick={() => setShowColumnModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 transition cursor-pointer">
-                <X size={18} />
-              </button>
+              <div className="p-6 space-y-3">
+                {[
+                  { key: 'code', label: 'Mã phiếu' },
+                  { key: 'date', label: 'Ngày lập' },
+                  { key: 'type', label: 'Nội dung chi' },
+                  { key: 'targetName', label: 'Đối tượng nhận' },
+                  { key: 'amount', label: 'Số tiền (VND)' },
+                  { key: 'paymentMethod', label: 'Hình thức thanh toán' },
+                  { key: 'wallet', label: 'Tài khoản / Ví' },
+                  { key: 'staffName', label: 'Nhân viên lập' },
+                  { key: 'note', label: 'Ghi chú' },
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-3 p-2 rounded-xl hover:bg-cyan-50/50 cursor-pointer font-bold text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={(columnVis as any)[key]}
+                      onChange={(e) => setColumnVis({ ...columnVis, [key]: e.target.checked })}
+                      className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex items-center justify-end gap-3 border-t-2 border-slate-200 bg-slate-50 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setShowColumnModal(false)}
+                  className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-extrabold text-white hover:bg-cyan-700 shadow-md transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
-            <div className="p-6 space-y-3">
-              {[
-                { key: 'code', label: 'Mã phiếu' },
-                { key: 'date', label: 'Ngày lập' },
-                { key: 'type', label: 'Nội dung chi' },
-                { key: 'targetName', label: 'Đối tượng nhận' },
-                { key: 'amount', label: 'Số tiền (VND)' },
-                { key: 'paymentMethod', label: 'Hình thức thanh toán' },
-                { key: 'wallet', label: 'Tài khoản / Ví' },
-                { key: 'staffName', label: 'Nhân viên lập' },
-                { key: 'note', label: 'Ghi chú' },
-              ].map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-3 p-2 rounded-xl hover:bg-cyan-50/50 cursor-pointer font-bold text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={(columnVis as any)[key]}
-                    onChange={(e) => setColumnVis({ ...columnVis, [key]: e.target.checked })}
-                    className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
-            <div className="flex items-center justify-end gap-3 border-t-2 border-slate-200 bg-slate-50 px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setShowColumnModal(false)}
-                className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-extrabold text-white hover:bg-cyan-700 shadow-md transition cursor-pointer"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* POPUP FORM MODAL */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm animate-in fade-in-50">
-          <div className="w-full max-w-2xl overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl space-y-0">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3.5 py-1.5 text-white font-black text-sm">
-                  <CreditCard className="h-4.5 w-4.5" />
-                  {modalMode === 'create' ? 'TẠO PHIẾU CHI MỚI' : modalMode === 'view' ? 'CHI TIẾT PHIẾU CHI' : 'CẬP NHẬT PHIẾU CHI'}
+      {isModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in-50 overflow-y-auto">
+            <div className="w-full max-w-2xl overflow-hidden rounded-3xl border-2 border-cyan-500 bg-white shadow-2xl space-y-0 my-auto">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-3.5 py-1.5 text-white font-black text-sm">
+                    <CreditCard className="h-4.5 w-4.5" />
+                    {modalMode === 'create' ? 'TẠO PHIẾU CHI MỚI' : modalMode === 'view' ? 'CHI TIẾT PHIẾU CHI' : 'CẬP NHẬT PHIẾU CHI'}
+                  </div>
                 </div>
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="rounded-xl p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
               </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition cursor-pointer"
-              >
-                <X size={20} />
-              </button>
-            </div>
 
-            {/* Modal Form Content */}
-            <form onSubmit={handleSaveForm} className="p-6 space-y-4 text-xs font-bold text-slate-700">
-              <fieldset disabled={modalMode === 'view'} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Modal Form Content */}
+              <form onSubmit={handleSaveForm} className="p-6 space-y-4 text-xs font-bold text-slate-700">
+                <fieldset disabled={modalMode === 'view'} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-slate-700 font-extrabold">Ngày lập phiếu <span className="text-red-500">*</span></label>
+                      <input
+                        type="date"
+                        value={form.date}
+                        onChange={(e) => setForm({ ...form, date: e.target.value })}
+                        className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-slate-700 font-extrabold">Mã phiếu chi <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={form.code}
+                        onChange={(e) => setForm({ ...form, code: e.target.value })}
+                        className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-1.5">
-                    <label className="text-slate-700 font-extrabold">Ngày lập phiếu <span className="text-red-500">*</span></label>
+                    <label className="text-slate-700 font-extrabold">Nội dung chi tiền</label>
+                    <select
+                      value={form.type}
+                      onChange={(e) => setForm({ ...form, type: e.target.value })}
+                      className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
+                    >
+                      <option value="201 Chi trả nhà cung cấp">201 Chi trả nhà cung cấp</option>
+                      <option value="202 Chi phí vận chuyển">202 Chi phí vận chuyển</option>
+                      <option value="203 Chi lương nhân viên">203 Chi lương nhân viên</option>
+                      <option value="204 Chi phí điện nước/quản lý">204 Chi phí điện nước/quản lý</option>
+                      <option value="205 Chi phí khác">205 Chi phí khác</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-slate-700 font-extrabold">Đối tượng nhận (Nhà cung cấp / Đối tác) <span className="text-red-500">*</span></label>
+                    <SearchablePartnerSelect
+                      value={form.targetName}
+                      partners={partners}
+                      disabled={modalMode === 'view'}
+                      placeholder="-- Chọn Nhà cung cấp / Khách hàng / Đối tác --"
+                      onChange={(val, selectedPartner) => {
+                        setForm({
+                          ...form,
+                          targetName: val,
+                          addressTel: selectedPartner
+                            ? `${selectedPartner.address || ''} ${selectedPartner.phone ? `(${selectedPartner.phone})` : ''}`.trim() || '-'
+                            : form.addressTel,
+                        });
+                      }}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-slate-700 font-extrabold">Địa chỉ / Điện thoại</label>
                     <input
-                      type="date"
-                      value={form.date}
-                      onChange={(e) => setForm({ ...form, date: e.target.value })}
+                      type="text"
+                      value={form.addressTel}
+                      onChange={(e) => setForm({ ...form, addressTel: e.target.value })}
                       className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
                     />
                   </div>
 
+                  {/* Payment Method */}
                   <div className="space-y-1.5">
-                    <label className="text-slate-700 font-extrabold">Mã phiếu chi <span className="text-red-500">*</span></label>
-                    <input
-                      type="text"
-                      value={form.code}
-                      onChange={(e) => setForm({ ...form, code: e.target.value })}
-                      className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Nội dung chi tiền</label>
-                  <select
-                    value={form.type}
-                    onChange={(e) => setForm({ ...form, type: e.target.value })}
-                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
-                  >
-                    <option value="201 Chi trả nhà cung cấp">201 Chi trả nhà cung cấp</option>
-                    <option value="202 Chi phí vận chuyển">202 Chi phí vận chuyển</option>
-                    <option value="203 Chi lương nhân viên">203 Chi lương nhân viên</option>
-                    <option value="204 Chi phí điện nước/quản lý">204 Chi phí điện nước/quản lý</option>
-                    <option value="205 Chi phí khác">205 Chi phí khác</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Đối tượng nhận (Nhà cung cấp / Đối tác)</label>
-                  {suppliers.length > 0 ? (
-                    <select
-                      value={form.targetName}
-                      onChange={(e) => {
-                        const selected = suppliers.find((s) => s.name === e.target.value);
-                        setForm({
-                          ...form,
-                          targetName: e.target.value,
-                          addressTel: selected ? `${selected.address || ''} ${selected.phone || ''}`.trim() || '-' : form.addressTel,
-                        });
-                      }}
-                      className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
-                    >
-                      <option value="">-- Chọn Nhà cung cấp / Đối tượng nhận tiền --</option>
-                      {suppliers.map((s) => (
-                        <option key={s.id} value={s.name}>
-                          {s.name} {s.phone ? `(${s.phone})` : ''}
-                        </option>
+                    <label className="text-slate-700 font-extrabold">Hình thức thanh toán</label>
+                    <div className="flex flex-wrap items-center gap-6 pt-1">
+                      {(['Tiền mặt', 'Chuyển khoản', 'COD', 'ATM'] as const).map((method) => (
+                        <label key={method} className="flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-800">
+                          <input
+                            type="radio"
+                            name="paymentMethod"
+                            checked={form.paymentMethod === method}
+                            onChange={() => setForm({ ...form, paymentMethod: method })}
+                            className="h-4 w-4 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                          />
+                          <span>{method}</span>
+                        </label>
                       ))}
+                    </div>
+                  </div>
+
+                  {/* Wallet Select */}
+                  <div className="space-y-1.5">
+                    <label className="text-slate-700 font-extrabold">Ví tiền mặt / Tài khoản chi</label>
+                    <select
+                      value={form.wallet}
+                      onChange={(e) => setForm({ ...form, wallet: e.target.value })}
+                      className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
+                    >
+                      <option value="Ví tiền mặt chính">Ví tiền mặt chính</option>
+                      <option value="BIDV - CN.Thăng Long">BIDV - CN.Thăng Long</option>
+                      <option value="Vietcombank - Chi nhánh Hà Nội">Vietcombank - Chi nhánh Hà Nội</option>
                     </select>
-                  ) : (
-                    <input
-                      type="text"
-                      placeholder="Nhập tên đối tượng nhận tiền..."
-                      value={form.targetName}
-                      onChange={(e) => setForm({ ...form, targetName: e.target.value })}
-                      className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                    />
-                  )}
-                </div>
+                  </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Địa chỉ / Điện thoại</label>
-                  <input
-                    type="text"
-                    value={form.addressTel}
-                    onChange={(e) => setForm({ ...form, addressTel: e.target.value })}
-                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                  />
-                </div>
-
-                {/* Payment Method */}
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Hình thức thanh toán</label>
-                  <div className="flex flex-wrap items-center gap-6 pt-1">
-                    {(['Tiền mặt', 'Chuyển khoản', 'COD', 'ATM'] as const).map((method) => (
-                      <label key={method} className="flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-800">
-                        <input
-                          type="radio"
-                          name="paymentMethod"
-                          checked={form.paymentMethod === method}
-                          onChange={() => setForm({ ...form, paymentMethod: method })}
-                          className="h-4 w-4 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                  {/* Amount Highlight Field */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-slate-700 font-extrabold text-xs uppercase flex items-center gap-1">
+                      <span>Số tiền chi thực tế (VND):</span>
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-2 w-full">
+                      <div className="relative flex-1">
+                        <FormattedPriceInput
+                          value={form.amount}
+                          onChange={(val) => setForm({ ...form, amount: val })}
+                          readOnly={modalMode === 'view'}
+                          placeholder="0"
+                          className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 font-mono text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 transition"
                         />
-                        <span>{method}</span>
-                      </label>
-                    ))}
+                      </div>
+                      <span className="flex items-center justify-center rounded-xl border-2 border-cyan-500 bg-cyan-50 px-3.5 py-2.5 font-black text-cyan-800 text-xs shrink-0 h-[42px]">
+                        VND
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                {/* Wallet Select */}
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Ví tiền mặt / Tài khoản chi</label>
-                  <select
-                    value={form.wallet}
-                    onChange={(e) => setForm({ ...form, wallet: e.target.value })}
-                    className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
-                  >
-                    <option value="Ví tiền mặt chính">Ví tiền mặt chính</option>
-                    <option value="BIDV - CN.Thăng Long">BIDV - CN.Thăng Long</option>
-                    <option value="Vietcombank - Chi nhánh Hà Nội">Vietcombank - Chi nhánh Hà Nội</option>
-                  </select>
-                </div>
+                  <div className="space-y-1.5">
+                    <label className="text-slate-700 font-extrabold">Nhân viên lập phiếu</label>
+                    {staffList.length > 0 ? (
+                      <select
+                        value={form.staffName}
+                        onChange={(e) => setForm({ ...form, staffName: e.target.value })}
+                        className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
+                      >
+                        {staffList.map((s) => (
+                          <option key={s.id} value={s.fullName}>
+                            {s.fullName} ({s.email})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={form.staffName}
+                        onChange={(e) => setForm({ ...form, staffName: e.target.value })}
+                        className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none"
+                      />
+                    )}
+                  </div>
 
-                {/* Amount Highlight Field */}
-                <div className="space-y-1.5 pt-1">
-                  <label className="text-red-600 font-black text-sm uppercase">Số tiền chi thực tế (VND):</label>
-                  <div className="flex items-center gap-2 max-w-md">
-                    <input
-                      type="number"
-                      step="1000"
-                      value={form.amount}
-                      onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })}
-                      className="w-full rounded-xl border-2 border-red-500 bg-slate-50 px-4 py-2.5 text-lg font-mono font-black text-red-600 outline-none focus:bg-white focus:ring-4 focus:ring-red-500/10"
+                  <div className="space-y-1.5">
+                    <label className="text-slate-700 font-extrabold">Nội dung / Ghi chú</label>
+                    <textarea
+                      rows={2}
+                      value={form.note}
+                      onChange={(e) => setForm({ ...form, note: e.target.value })}
+                      className="w-full rounded-xl border-2 border-cyan-500 bg-white p-3 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
+                      placeholder="Nhập ghi chú phiếu chi..."
                     />
-                    <span className="rounded-xl border-2 border-red-500 bg-white px-3 py-2.5 font-black text-red-600 text-sm">
-                      VND
-                    </span>
                   </div>
-                </div>
+                </fieldset>
 
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Nhân viên lập phiếu</label>
-                  {staffList.length > 0 ? (
-                    <select
-                      value={form.staffName}
-                      onChange={(e) => setForm({ ...form, staffName: e.target.value })}
-                      className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10 cursor-pointer"
+                {/* Modal Footer Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t-2 border-slate-200">
+                  {modalMode !== 'view' && (
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-cyan-700 transition cursor-pointer"
                     >
-                      {staffList.map((s) => (
-                        <option key={s.id} value={s.fullName}>
-                          {s.fullName} ({s.email})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={form.staffName}
-                      onChange={(e) => setForm({ ...form, staffName: e.target.value })}
-                      className="w-full rounded-xl border-2 border-cyan-500 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-800 outline-none"
-                    />
+                      <Save size={16} />
+                      Lưu phiếu chi
+                    </button>
                   )}
-                </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-slate-700 font-extrabold">Nội dung / Ghi chú</label>
-                  <textarea
-                    rows={2}
-                    value={form.note}
-                    onChange={(e) => setForm({ ...form, note: e.target.value })}
-                    className="w-full rounded-xl border-2 border-cyan-500 bg-white p-3 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
-                    placeholder="Nhập ghi chú phiếu chi..."
-                  />
-                </div>
-              </fieldset>
-
-              {/* Modal Footer Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t-2 border-slate-200">
-                {modalMode !== 'view' && (
                   <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-cyan-700 transition cursor-pointer"
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="inline-flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                   >
-                    <Save size={16} />
-                    Lưu phiếu chi
+                    <X size={16} />
+                    Đóng
                   </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="inline-flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-                >
-                  <X size={16} />
-                  Đóng
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

@@ -60,7 +60,7 @@ export interface SlottingItemRow {
 export interface SmartSlottingGridModalProps<T extends SlottingItemRow = SlottingItemRow> {
   isOpen: boolean;
   onClose: () => void;
-  mode?: 'INBOUND' | 'INBOUND_STOCKIN' | 'OUTBOUND_TRANSFER';
+  mode?: 'INBOUND' | 'INBOUND_STOCKIN' | 'OUTBOUND_TRANSFER' | 'STOCKTAKE';
   warehouseCode: string;
   items: T[];
   targetRowId?: string | null;
@@ -432,9 +432,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     };
   }, [isOpen, warehouseCode]);
 
-  // Outbound mode valid bins (only bins storing the specific product being exported)
+  // Outbound / Stocktake mode valid bins (only bins storing the specific product being checked)
   const outboundValidBins = useMemo(() => {
-    if (mode !== 'OUTBOUND_TRANSFER') return [];
+    if (mode !== 'OUTBOUND_TRANSFER' && mode !== 'STOCKTAKE') return [];
     const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
     if (!activeItem) return [];
 
@@ -487,6 +487,32 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         }
       }
     });
+
+    // Also include assignedBins and locationBin from activeItem
+    if (Array.isArray(activeItem.assignedBins)) {
+      activeItem.assignedBins.forEach((b) => {
+        if (b) {
+          const clean = b.split('(')[0].trim();
+          validBins.push(clean);
+          const norm = normalizeBinKey(clean);
+          if (norm) validBins.push(norm);
+          const short = (clean.split('-').pop() || clean).toUpperCase();
+          if (short) validBins.push(short);
+        }
+      });
+    }
+    if (activeItem.locationBin) {
+      activeItem.locationBin.split(',').forEach((b) => {
+        const clean = b.trim();
+        if (clean) {
+          validBins.push(clean);
+          const norm = normalizeBinKey(clean);
+          if (norm) validBins.push(norm);
+          const short = (clean.split('-').pop() || clean).toUpperCase();
+          if (short) validBins.push(short);
+        }
+      });
+    }
 
     return Array.from(new Set(validBins));
   }, [mode, items, activeRowId, binProductsMap, dbOccupiedBinsMap, dbSubWarehouses]);
@@ -1346,7 +1372,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Kho (Smart WMS Slotting Grid)
               </h3>
               <p className="text-xs text-cyan-100 font-medium">
-                {mode === 'OUTBOUND_TRANSFER'
+                {mode === 'STOCKTAKE'
+                  ? 'SƠ ĐỒ VỊ TRÍ KỆ KIỂM KÊ • Ô KỆ ĐANG LƯU HÀNG HÓA HIỆN MÀU XANH, KỆ KHÔNG LƯU HÀNG SẼ IN CHÌM'
+                  : mode === 'OUTBOUND_TRANSFER'
                   ? 'Tự động khóa các ô không hợp lệ • CHỈ CHO PHÉP TICK chọn các Ô KỆ ĐANG LƯU ĐÚNG HÀNG HÓA để xuất chuyển'
                   : 'Tự động tính toán sức chứa ô/kệ • Click chọn các Ô TRỐNG trên sơ đồ 2D kệ kho để nhập cất hàng'}
               </p>
@@ -1597,7 +1625,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                   return map;
                 })()}
                 mode="select"
-                isOutbound={mode === 'OUTBOUND_TRANSFER'}
+                isOutbound={mode === 'OUTBOUND_TRANSFER' || mode === 'STOCKTAKE'}
                 maxBinsAllowed={Math.max(1, Math.ceil(((items.find((i) => i.rowId === activeRowId) || items[0])?.qty || 1) / 100))}
                 orderItems={items}
                 selectedBinsMap={selectedBinsMap}

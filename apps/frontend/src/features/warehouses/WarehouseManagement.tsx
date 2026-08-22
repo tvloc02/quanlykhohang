@@ -21,6 +21,8 @@ import {
   Unlock,
   AlertTriangle,
   Users,
+  UserCog,
+  UserCheck,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
 import {
@@ -49,30 +51,68 @@ type PersonnelUser = {
   fullName?: string;
   roles?: Role[];
   role?: string;
+  supplier?: any;
+  customer?: any;
 };
 
 type PersonnelCategory = 'manager' | 'storekeeper' | 'inventory_checker';
 
 function getUserRole(user: PersonnelUser): string {
+  if (user.supplier || user.role?.toLowerCase() === 'supplier' || user.roles?.some((r) => r.name.toLowerCase() === 'supplier')) {
+    return 'supplier';
+  }
+  if (user.customer || user.role?.toLowerCase() === 'customer' || user.roles?.some((r) => r.name.toLowerCase() === 'customer')) {
+    return 'customer';
+  }
   if (user.role) return user.role.toLowerCase();
   if (user.roles && user.roles.length > 0) return user.roles[0].name.toLowerCase();
   return 'staff';
 }
 
-function getUserRoleCategory(user: PersonnelUser): PersonnelCategory {
+function getUserRoleCategory(user: PersonnelUser): PersonnelCategory | 'external' {
   const r = getUserRole(user);
+  if (r === 'supplier' || r === 'customer') {
+    return 'external';
+  }
   if (r === 'admin' || r === 'manager') return 'manager';
   if (r === 'inventory_checker') return 'inventory_checker';
-  return 'storekeeper';
+  if (r === 'storekeeper' || r === 'staff') return 'storekeeper';
+  return 'external';
 }
 
-function formatRoleBadge(role: string) {
-  const r = role.toLowerCase();
-  if (r === 'admin') return { label: 'Admin', color: 'bg-rose-50 text-rose-700 border-rose-200' };
-  if (r === 'manager') return { label: 'Quản lý', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
-  if (r === 'storekeeper') return { label: 'Thủ kho', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
-  if (r === 'inventory_checker') return { label: 'NV kiểm kê', color: 'bg-amber-50 text-amber-700 border-amber-200' };
-  return { label: 'Nhân viên', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+function formatRoleBadge(userOrRole: PersonnelUser | string) {
+  let r = typeof userOrRole === 'string' ? userOrRole : getUserRole(userOrRole);
+  r = (r || '').toLowerCase();
+
+  if (r === 'admin' || r === 'quản trị viên') {
+    return { label: 'Admin', color: 'bg-rose-50 text-rose-700 border-rose-200' };
+  }
+  if (r === 'supplier' || r === 'nhà cung cấp') {
+    return { label: 'Nhà cung cấp', color: 'bg-orange-50 text-orange-700 border-orange-200' };
+  }
+  if (r === 'customer' || r === 'khách hàng') {
+    return { label: 'Khách hàng', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+  }
+
+  // Check if user object has dynamic role name
+  if (typeof userOrRole === 'object' && userOrRole.roles && userOrRole.roles.length > 0) {
+    const dynamicName = userOrRole.roles[0].name;
+    const dnLower = dynamicName.toLowerCase();
+    if (dnLower === 'admin' || dnLower === 'quản trị viên') {
+      return { label: 'Admin', color: 'bg-rose-50 text-rose-700 border-rose-200' };
+    }
+    if (dnLower === 'supplier' || dnLower === 'nhà cung cấp') {
+      return { label: 'Nhà cung cấp', color: 'bg-orange-50 text-orange-700 border-orange-200' };
+    }
+    if (dnLower === 'customer' || dnLower === 'khách hàng') {
+      return { label: 'Khách hàng', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+    }
+    if (!['storekeeper', 'inventory_checker', 'inventory-checker', 'staff', 'manager', 'nhân viên', 'thủ kho', 'nv kiểm kê', 'quản lý kho', 'quản lý', 'người dùng'].includes(dnLower)) {
+      return { label: dynamicName, color: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+    }
+  }
+
+  return { label: '', color: '' };
 }
 
 type WarehouseForm = {
@@ -179,6 +219,10 @@ export default function WarehouseManagement() {
   const [saving, setSaving] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
 
+  // Dedicated Warehouse Personnel Config Modal state
+  const [personnelConfigWarehouse, setPersonnelConfigWarehouse] = useState<WarehouseRecord | null>(null);
+  const [personnelForm, setPersonnelForm] = useState<{ managerIds: string[]; staffIds: string[] }>({ managerIds: [], staffIds: [] });
+
   // Personnel category add popup modal states
   const [personnelPopupCategory, setPersonnelPopupCategory] = useState<PersonnelCategory | null>(null);
   const [tempSelectedUserIds, setTempSelectedUserIds] = useState<string[]>([]);
@@ -189,60 +233,53 @@ export default function WarehouseManagement() {
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const openPersonnelPopup = (category: PersonnelCategory) => {
+  const openPersonnelPopup = () => {
+    const activeManagerIds = personnelConfigWarehouse ? personnelForm.managerIds : form.managerIds;
+    const activeStaffIds = personnelConfigWarehouse ? personnelForm.staffIds : form.staffIds;
+
     const assigned = users
       .filter(
         (u) =>
-          getUserRoleCategory(u) === category &&
-          (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
+          getUserRoleCategory(u) !== 'external' &&
+          (activeManagerIds.includes(u.id) || activeStaffIds.includes(u.id)),
       )
       .map((u) => u.id);
 
     setTempSelectedUserIds(assigned);
     setPopupSearch('');
-    setPersonnelPopupCategory(category);
+    setPersonnelPopupCategory('storekeeper');
   };
 
   const handleConfirmPersonnelPopup = () => {
-    if (!personnelPopupCategory) return;
-    const category = personnelPopupCategory;
-
-    setForm((prev) => {
-      // Keep IDs belonging to other categories
-      const otherManagerIds = prev.managerIds.filter((id) => {
-        const u = users.find((usr) => usr.id === id);
-        return u ? getUserRoleCategory(u) !== category : true;
+    if (personnelConfigWarehouse) {
+      setPersonnelForm({
+        managerIds: [],
+        staffIds: tempSelectedUserIds,
       });
-
-      const otherStaffIds = prev.staffIds.filter((id) => {
-        const u = users.find((usr) => usr.id === id);
-        return u ? getUserRoleCategory(u) !== category : true;
-      });
-
-      if (category === 'manager') {
-        return {
-          ...prev,
-          managerIds: [...otherManagerIds, ...tempSelectedUserIds],
-          staffIds: otherStaffIds,
-        };
-      } else {
-        return {
-          ...prev,
-          managerIds: otherManagerIds,
-          staffIds: [...otherStaffIds, ...tempSelectedUserIds],
-        };
-      }
-    });
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        managerIds: [],
+        staffIds: tempSelectedUserIds,
+      }));
+    }
 
     setPersonnelPopupCategory(null);
   };
 
   const handleRemoveAssignedUser = (userId: string) => {
-    setForm((prev) => ({
-      ...prev,
-      managerIds: prev.managerIds.filter((id) => id !== userId),
-      staffIds: prev.staffIds.filter((id) => id !== userId),
-    }));
+    if (personnelConfigWarehouse) {
+      setPersonnelForm((prev) => ({
+        managerIds: prev.managerIds.filter((id) => id !== userId),
+        staffIds: prev.staffIds.filter((id) => id !== userId),
+      }));
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        managerIds: prev.managerIds.filter((id) => id !== userId),
+        staffIds: prev.staffIds.filter((id) => id !== userId),
+      }));
+    }
   };
 
   const loadData = useCallback(async () => {
@@ -914,14 +951,8 @@ export default function WarehouseManagement() {
                 <th className="border-x border-slate-200 px-5 py-4 text-left text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[220px]">
                   Địa chỉ kho
                 </th>
-                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[180px]">
-                  Quản lý kho
-                </th>
-                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[180px]">
-                  Thủ kho
-                </th>
-                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[180px]">
-                  NV kiểm kê
+                <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[220px]">
+                  Người dùng trong kho
                 </th>
                 <th className="border-x border-slate-200 px-5 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-800 whitespace-nowrap min-w-[160px]">
                   Trạng thái
@@ -937,13 +968,13 @@ export default function WarehouseManagement() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={15} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
+                  <td colSpan={13} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
                     Đang tải danh sách kho hàng...
                   </td>
                 </tr>
               ) : paginatedWarehouses.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
+                  <td colSpan={13} className="px-6 py-12 text-center text-xs font-semibold text-slate-500">
                     {error ? 'Lỗi khi tải dữ liệu. Vui lòng thử lại.' : 'Chưa có kho hàng. Hãy tạo kho hàng mới.'}
                   </td>
                 </tr>
@@ -953,11 +984,10 @@ export default function WarehouseManagement() {
                     .filter((t) => t.warehouseId === w.id)
                     .flatMap((t) => [...(t.storekeeperIds || []), ...(t.inventoryCheckerIds || [])]);
                   const assignedUsers = users.filter(
-                    (u) => w.managerIds.includes(u.id) || w.staffIds.includes(u.id) || teamMemberIds.includes(u.id),
+                    (u) =>
+                      getUserRoleCategory(u) !== 'external' &&
+                      (w.managerIds.includes(u.id) || w.staffIds.includes(u.id) || teamMemberIds.includes(u.id)),
                   );
-                  const managers = assignedUsers.filter((u) => getUserRoleCategory(u) === 'manager');
-                  const storekeepers = assignedUsers.filter((u) => getUserRoleCategory(u) === 'storekeeper');
-                  const checkers = assignedUsers.filter((u) => getUserRoleCategory(u) === 'inventory_checker');
 
                   const totalRacks = w.subWarehouses?.reduce((acc, z) => acc + (z.racks?.length || z.racksCount || 0), 0) || 0;
                   const occupancy = w.occupancyRate ?? 0;
@@ -1029,13 +1059,13 @@ export default function WarehouseManagement() {
                         {w.address ||
                           `${w.detailAddress ? w.detailAddress + ', ' : ''}${w.ward ? w.ward + ', ' : ''}${w.province || ''}`}
                       </td>
-                      {/* Column 1: Quản lý kho */}
+                      {/* Column: Người dùng trong kho */}
                       <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                        {managers.length === 0 ? (
+                        {assignedUsers.length === 0 ? (
                           <span className="text-xs font-medium text-slate-400 font-mono">-</span>
                         ) : (
-                          <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
-                            {managers.slice(0, 2).map((u) => (
+                          <div className="flex flex-wrap items-center justify-center gap-1 max-w-[200px] mx-auto">
+                            {assignedUsers.slice(0, 2).map((u) => (
                               <span
                                 key={u.id}
                                 className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-800"
@@ -1044,70 +1074,14 @@ export default function WarehouseManagement() {
                                 {u.fullName || u.email.split('@')[0]}
                               </span>
                             ))}
-                            {managers.length > 2 && (
+                            {assignedUsers.length > 2 && (
                               <button
                                 type="button"
-                                onClick={() => setDetailPersonnelModal({ title: `Quản Lý Kho - ${w.name}`, users: managers })}
+                                onClick={() => setDetailPersonnelModal({ title: `Người Dùng Trong Kho - ${w.name}`, users: assignedUsers })}
                                 className="rounded-lg bg-cyan-100 px-2 py-1 text-xs font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
-                                title="Xem tất cả quản lý"
+                                title="Xem tất cả người dùng trong kho"
                               >
-                                +{managers.length - 2}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      {/* Column 2: Thủ kho */}
-                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                        {storekeepers.length === 0 ? (
-                          <span className="text-xs font-medium text-slate-400 font-mono">-</span>
-                        ) : (
-                          <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
-                            {storekeepers.slice(0, 2).map((u) => (
-                              <span
-                                key={u.id}
-                                className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-800"
-                                title={`${u.fullName || u.email}`}
-                              >
-                                {u.fullName || u.email.split('@')[0]}
-                              </span>
-                            ))}
-                            {storekeepers.length > 2 && (
-                              <button
-                                type="button"
-                                onClick={() => setDetailPersonnelModal({ title: `Thủ Kho - ${w.name}`, users: storekeepers })}
-                                className="rounded-lg bg-cyan-100 px-2 py-1 text-xs font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
-                                title="Xem tất cả thủ kho"
-                              >
-                                +{storekeepers.length - 2}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      {/* Column 3: NV kiểm kê */}
-                      <td className="border-x border-slate-200 px-3 py-4 text-center align-middle">
-                        {checkers.length === 0 ? (
-                          <span className="text-xs font-medium text-slate-400 font-mono">-</span>
-                        ) : (
-                          <div className="flex flex-wrap items-center justify-center gap-1 max-w-[170px] mx-auto">
-                            {checkers.slice(0, 2).map((u) => (
-                              <span
-                                key={u.id}
-                                className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-800"
-                                title={`${u.fullName || u.email}`}
-                              >
-                                {u.fullName || u.email.split('@')[0]}
-                              </span>
-                            ))}
-                            {checkers.length > 2 && (
-                              <button
-                                type="button"
-                                onClick={() => setDetailPersonnelModal({ title: `NV Kiểm Kê - ${w.name}`, users: checkers })}
-                                className="rounded-lg bg-cyan-100 px-2 py-1 text-xs font-bold text-cyan-800 border border-cyan-300 hover:bg-cyan-200 transition cursor-pointer"
-                                title="Xem tất cả nhân viên kiểm kê"
-                              >
-                                +{checkers.length - 2}
+                                +{assignedUsers.length - 2}
                               </button>
                             )}
                           </div>
@@ -1146,15 +1120,21 @@ export default function WarehouseManagement() {
                           >
                             {w.isFrozen ? <Unlock className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} /> : <Lock className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />}
                           </button>
-                          {/* 3D Phân Khu Button */}
+                          {/* Nút Cấu Hình Người Dùng Kho (Icon Đầu Người) */}
                           <button
                             type="button"
                             className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                            aria-label="Xem 3D Phân Khu"
-                            title="Xem 3D Kệ Phân Khu"
-                            onClick={() => openWarehouseModal('view3d', w)}
+                            aria-label="Cấu hình người dùng kho"
+                            title="Cấu hình người dùng & phân công nhân sự kho"
+                            onClick={() => {
+                              setPersonnelConfigWarehouse(w);
+                              setPersonnelForm({
+                                managerIds: [...(w.managerIds || [])],
+                                staffIds: [...(w.staffIds || [])],
+                              });
+                            }}
                           >
-                            <Move3d className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
+                            <UserCog className="h-4 w-4 text-cyan-600" strokeWidth={2.2} />
                           </button>
                           <button
                             type="button"
@@ -1489,223 +1469,75 @@ export default function WarehouseManagement() {
                           </div>
                         </div>
 
-                        {/* SECTION: PHÂN CÔNG NHÂN SỰ PHỤ TRÁCH KHO (3 CỘT RIÊNG BIỆT) */}
+                        {/* SECTION: NGƯỜI DÙNG TRỰC THUỘC KHO */}
                         <div className="space-y-3 pt-2">
                           <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
                             <div className="flex items-center gap-2">
                               <Users className="h-4 w-4 text-cyan-600" />
                               <h4 className="text-xs font-extrabold text-cyan-900 uppercase tracking-wide">
-                                Phân Công Nhân Sự Phụ Trách Kho
+                                Người Dùng Trực Thuộc Kho
                               </h4>
                             </div>
-
+                            {modalMode !== 'view' && (
+                              <button
+                                type="button"
+                                onClick={() => openPersonnelPopup()}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3 py-1 text-xs font-bold text-white shadow-xs transition hover:bg-cyan-700 cursor-pointer"
+                              >
+                                <Plus className="h-3.5 w-3.5" /> Thêm người dùng vào kho
+                              </button>
+                            )}
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            {/* BOX 1: QUẢN LÝ KHO */}
-                            {(() => {
-                              const assigned = users.filter(
-                                (u) =>
-                                  getUserRoleCategory(u) === 'manager' &&
-                                  (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
-                              );
-                              const displayed = assigned.slice(0, 2);
+                          {(() => {
+                            const assigned = users.filter(
+                              (u) =>
+                                getUserRoleCategory(u) !== 'external' &&
+                                (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
+                            );
 
-                              return (
-                                <div className="flex flex-col rounded-xl border border-cyan-200 bg-cyan-50/20 p-3 space-y-2">
-                                  <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
-                                    <span className="text-xs font-bold text-cyan-950 flex items-center gap-1.5">
-                                      <Building className="h-3.5 w-3.5 text-cyan-600" />
-                                      Quản Lý Kho ({assigned.length})
-                                    </span>
-                                    {modalMode !== 'view' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => openPersonnelPopup('manager')}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-2 py-1 text-[11px] font-bold text-white shadow-xs transition hover:bg-cyan-700 cursor-pointer"
-                                      >
-                                        <Plus className="h-3 w-3" /> Thêm Quản lý
-                                      </button>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                                    {assigned.length === 0 ? (
-                                      <p className="text-[11px] font-medium text-slate-400 italic py-2 text-center">Chưa chọn quản lý nào</p>
-                                    ) : (
-                                      <>
-                                        {displayed.map((u) => (
-                                          <div
-                                            key={u.id}
-                                            className="flex items-center justify-between rounded-lg border border-cyan-200/80 bg-white p-2 text-xs font-semibold text-slate-800 shadow-xs"
-                                          >
-                                            <div className="truncate pr-1">
-                                              <div className="font-bold text-slate-900">{u.fullName || u.email}</div>
-                                              <div className="text-[10px] font-normal text-slate-500 truncate">{u.email}</div>
+                            return (
+                              <div className="rounded-xl border border-cyan-200 bg-cyan-50/20 p-4 space-y-3">
+                                {assigned.length === 0 ? (
+                                  <p className="text-xs font-medium text-slate-400 italic py-4 text-center">Chưa phân công người dùng nào cho kho này</p>
+                                ) : (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pr-1">
+                                    {assigned.map((u) => {
+                                      const badge = formatRoleBadge(u);
+                                      return (
+                                        <div
+                                          key={u.id}
+                                          className="flex items-center justify-between rounded-lg border border-cyan-200/80 bg-white p-2.5 text-xs font-semibold text-slate-800 shadow-xs"
+                                        >
+                                          <div className="truncate pr-1">
+                                            <div className="flex items-center gap-1.5 mb-0.5">
+                                              <span className="font-bold text-slate-900 truncate">{u.fullName || u.email}</span>
+                                              {badge.label ? (
+                                                <span className={`inline-flex rounded px-1.5 py-0.2 text-[9px] font-bold border ${badge.color}`}>
+                                                  {badge.label}
+                                                </span>
+                                              ) : null}
                                             </div>
-                                            {modalMode !== 'view' && (
-                                              <button
-                                                type="button"
-                                                onClick={() => handleRemoveAssignedUser(u.id)}
-                                                className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer"
-                                                title="Gỡ khỏi kho"
-                                              >
-                                                <X className="h-3.5 w-3.5" />
-                                              </button>
-                                            )}
+                                            <div className="text-[10px] font-normal text-slate-500 truncate">{u.email}</div>
                                           </div>
-                                        ))}
-                                        {assigned.length > 2 && (
-                                          <button
-                                            type="button"
-                                            onClick={() => openPersonnelPopup('manager')}
-                                            className="w-full text-center py-1 text-[11px] font-bold text-cyan-700 hover:underline cursor-pointer"
-                                          >
-                                            + Xem thêm {assigned.length - 2} quản lý...
-                                          </button>
-                                        )}
-                                      </>
-                                    )}
+                                          {modalMode !== 'view' && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveAssignedUser(u.id)}
+                                              className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer rounded hover:bg-red-50"
+                                              title="Gỡ khỏi kho"
+                                            >
+                                              <X className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-                                </div>
-                              );
-                            })()}
-
-                            {/* BOX 2: THỦ KHO */}
-                            {(() => {
-                              const assigned = users.filter(
-                                (u) =>
-                                  getUserRoleCategory(u) === 'storekeeper' &&
-                                  (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
-                              );
-                              const displayed = assigned.slice(0, 2);
-
-                              return (
-                                <div className="flex flex-col rounded-xl border border-cyan-200 bg-cyan-50/20 p-3 space-y-2">
-                                  <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
-                                    <span className="text-xs font-bold text-cyan-950 flex items-center gap-1.5">
-                                      <Users className="h-3.5 w-3.5 text-cyan-600" />
-                                      Thủ Kho ({assigned.length})
-                                    </span>
-                                    {modalMode !== 'view' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => openPersonnelPopup('storekeeper')}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-2 py-1 text-[11px] font-bold text-white shadow-xs transition hover:bg-cyan-700 cursor-pointer"
-                                      >
-                                        <Plus className="h-3 w-3" /> Thêm Thủ kho
-                                      </button>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                                    {assigned.length === 0 ? (
-                                      <p className="text-[11px] font-medium text-slate-400 italic py-2 text-center">Chưa chọn thủ kho nào</p>
-                                    ) : (
-                                      <>
-                                        {displayed.map((u) => (
-                                          <div
-                                            key={u.id}
-                                            className="flex items-center justify-between rounded-lg border border-cyan-200/80 bg-white p-2 text-xs font-semibold text-slate-800 shadow-xs"
-                                          >
-                                            <div className="truncate pr-1">
-                                              <div className="font-bold text-slate-900">{u.fullName || u.email}</div>
-                                              <div className="text-[10px] font-normal text-slate-500 truncate">{u.email}</div>
-                                            </div>
-                                            {modalMode !== 'view' && (
-                                              <button
-                                                type="button"
-                                                onClick={() => handleRemoveAssignedUser(u.id)}
-                                                className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer"
-                                                title="Gỡ khỏi kho"
-                                              >
-                                                <X className="h-3.5 w-3.5" />
-                                              </button>
-                                            )}
-                                          </div>
-                                        ))}
-                                        {assigned.length > 2 && (
-                                          <button
-                                            type="button"
-                                            onClick={() => openPersonnelPopup('storekeeper')}
-                                            className="w-full text-center py-1 text-[11px] font-bold text-cyan-700 hover:underline cursor-pointer"
-                                          >
-                                            + Xem thêm {assigned.length - 2} thủ kho...
-                                          </button>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-
-                            {/* BOX 3: NHÂN VIÊN KIỂM KÊ */}
-                            {(() => {
-                              const assigned = users.filter(
-                                (u) =>
-                                  getUserRoleCategory(u) === 'inventory_checker' &&
-                                  (form.managerIds.includes(u.id) || form.staffIds.includes(u.id)),
-                              );
-                              const displayed = assigned.slice(0, 2);
-
-                              return (
-                                <div className="flex flex-col rounded-xl border border-cyan-200 bg-cyan-50/20 p-3 space-y-2">
-                                  <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
-                                    <span className="text-xs font-bold text-cyan-950 flex items-center gap-1.5">
-                                      <Check className="h-3.5 w-3.5 text-cyan-600" />
-                                      NV Kiểm Kê ({assigned.length})
-                                    </span>
-                                    {modalMode !== 'view' && (
-                                      <button
-                                        type="button"
-                                        onClick={() => openPersonnelPopup('inventory_checker')}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-2 py-1 text-[11px] font-bold text-white shadow-xs transition hover:bg-cyan-700 cursor-pointer"
-                                      >
-                                        <Plus className="h-3 w-3" /> Thêm NV kiểm kê
-                                      </button>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                                    {assigned.length === 0 ? (
-                                      <p className="text-[11px] font-medium text-slate-400 italic py-2 text-center">Chưa chọn NV kiểm kê</p>
-                                    ) : (
-                                      <>
-                                        {displayed.map((u) => (
-                                          <div
-                                            key={u.id}
-                                            className="flex items-center justify-between rounded-lg border border-cyan-200/80 bg-white p-2 text-xs font-semibold text-slate-800 shadow-xs"
-                                          >
-                                            <div className="truncate pr-1">
-                                              <div className="font-bold text-slate-900">{u.fullName || u.email}</div>
-                                              <div className="text-[10px] font-normal text-slate-500 truncate">{u.email}</div>
-                                            </div>
-                                            {modalMode !== 'view' && (
-                                              <button
-                                                type="button"
-                                                onClick={() => handleRemoveAssignedUser(u.id)}
-                                                className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer"
-                                                title="Gỡ khỏi kho"
-                                              >
-                                                <X className="h-3.5 w-3.5" />
-                                              </button>
-                                            )}
-                                          </div>
-                                        ))}
-                                        {assigned.length > 2 && (
-                                          <button
-                                            type="button"
-                                            onClick={() => openPersonnelPopup('inventory_checker')}
-                                            className="w-full text-center py-1 text-[11px] font-bold text-cyan-700 hover:underline cursor-pointer"
-                                          >
-                                            + Xem thêm {assigned.length - 2} NV kiểm kê...
-                                          </button>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -2099,7 +1931,7 @@ export default function WarehouseManagement() {
           document.body,
         )}
 
-      {/* POPUP MODAL: THÊM NHÂN SỰ THEO LOẠI */}
+      {/* POPUP MODAL: THÊM NGƯỜI DÙNG VÀO KHO */}
       {personnelPopupCategory &&
         createPortal(
           <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs transition-all animate-in fade-in duration-200">
@@ -2112,12 +1944,10 @@ export default function WarehouseManagement() {
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-white uppercase tracking-wide">
-                      {personnelPopupCategory === 'manager' && 'Thêm Quản Lý Kho'}
-                      {personnelPopupCategory === 'storekeeper' && 'Thêm Thủ Kho'}
-                      {personnelPopupCategory === 'inventory_checker' && 'Thêm Nhân Viên Kiểm Kê'}
+                      THÊM NGƯỜI DÙNG VÀO KHO
                     </h3>
                     <p className="text-xs font-medium text-cyan-100">
-                      Gán nhân sự vào kho: <b className="text-white font-bold">{form.name || 'Kho mới'}</b>
+                      Gán người dùng vào kho: <b className="text-white font-bold">{personnelConfigWarehouse?.name || form.name || 'Kho hàng'}</b>
                     </p>
                   </div>
                 </div>
@@ -2148,7 +1978,7 @@ export default function WarehouseManagement() {
                   {(() => {
                     const categoryUsers = users.filter(
                       (u) =>
-                        getUserRoleCategory(u) === personnelPopupCategory &&
+                        getUserRoleCategory(u) !== 'external' &&
                         (u.fullName?.toLowerCase().includes(popupSearch.toLowerCase()) ||
                           u.email.toLowerCase().includes(popupSearch.toLowerCase())),
                     );
@@ -2180,12 +2010,12 @@ export default function WarehouseManagement() {
                   })()}
                 </div>
 
-                {/* List of category users */}
+                {/* List of internal users */}
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {(() => {
                     const categoryUsers = users.filter(
                       (u) =>
-                        getUserRoleCategory(u) === personnelPopupCategory &&
+                        getUserRoleCategory(u) !== 'external' &&
                         (u.fullName?.toLowerCase().includes(popupSearch.toLowerCase()) ||
                           u.email.toLowerCase().includes(popupSearch.toLowerCase())),
                     );
@@ -2193,18 +2023,14 @@ export default function WarehouseManagement() {
                     if (categoryUsers.length === 0) {
                       return (
                         <div className="py-8 text-center text-xs font-medium text-slate-500 bg-white rounded-xl border border-slate-200">
-                          {popupSearch ? 'Không tìm thấy nhân sự phù hợp' : 'Chưa có nhân sự thuộc loại này'}
+                          {popupSearch ? 'Không tìm thấy người dùng phù hợp' : 'Chưa có người dùng nào'}
                         </div>
                       );
                     }
 
                     return categoryUsers.map((user) => {
                       const isSelected = tempSelectedUserIds.includes(user.id);
-                      const badge = formatRoleBadge(getUserRole(user));
-                      const currentWhId = selectedWarehouse?.id || warehouses.find((w) => w.code === form.code || w.name === form.name)?.id;
-                      const userWhIds = getUserWarehouseIds(user.id, warehouses, projectTeams);
-                      const isCurrentWh = currentWhId && userWhIds.includes(currentWhId);
-                      const assignedOtherWh = warehouses.find((w) => w.id !== currentWhId && userWhIds.includes(w.id));
+                      const badge = formatRoleBadge(user);
 
                       return (
                         <label
@@ -2232,28 +2058,14 @@ export default function WarehouseManagement() {
                                 <span className="text-xs font-bold text-slate-900">
                                   {user.fullName || user.email}
                                 </span>
-                                <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold border ${badge.color}`}>
-                                  {badge.label}
-                                </span>
+                                {badge.label ? (
+                                  <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold border ${badge.color}`}>
+                                    {badge.label}
+                                  </span>
+                                ) : null}
                               </div>
                               <span className="text-[11px] font-medium text-slate-500">{user.email}</span>
                             </div>
-                          </div>
-
-                          <div className="text-right">
-                            {personnelPopupCategory === 'inventory_checker' && (
-                              isCurrentWh ? (
-                                <span className="inline-flex items-center gap-1 rounded bg-cyan-100 px-2 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-300">
-                                  Đang ở kho này
-                                </span>
-                              ) : assignedOtherWh ? (
-                                <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-300">
-                                  Đang ở {assignedOtherWh.name} (Tự chuyển khi lưu)
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-slate-400 font-medium">Chưa vào kho nào</span>
-                              )
-                            )}
                           </div>
                         </label>
                       );
@@ -2276,7 +2088,7 @@ export default function WarehouseManagement() {
                   onClick={handleConfirmPersonnelPopup}
                   className="rounded-xl bg-cyan-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-cyan-700 transition cursor-pointer"
                 >
-                  Xác nhận thêm ({tempSelectedUserIds.length})
+                  Xác nhận lưu ({tempSelectedUserIds.length})
                 </button>
               </div>
             </div>
@@ -2284,7 +2096,7 @@ export default function WarehouseManagement() {
           document.body,
         )}
 
-      {/* DETAIL PERSONNEL MODAL (VIEW ALL PERSONNEL FOR A CATEGORY IN TABLE) */}
+      {/* DETAIL PERSONNEL MODAL (VIEW ALL PERSONNEL IN TABLE) */}
       {detailPersonnelModal &&
         createPortal(
           <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs transition-all animate-in fade-in duration-200">
@@ -2296,7 +2108,7 @@ export default function WarehouseManagement() {
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-white uppercase tracking-wide">
-                      Danh Sách Nhân Sự
+                      Danh Sách Người Dùng Trong Kho
                     </h3>
                     <p className="text-xs font-medium text-cyan-100">{detailPersonnelModal.title}</p>
                   </div>
@@ -2312,7 +2124,7 @@ export default function WarehouseManagement() {
 
               <div className="p-4 space-y-2 overflow-y-auto flex-1 bg-slate-50/50">
                 {detailPersonnelModal.users.map((u) => {
-                  const badge = formatRoleBadge(getUserRole(u));
+                  const badge = formatRoleBadge(u);
                   return (
                     <div
                       key={u.id}
@@ -2321,9 +2133,11 @@ export default function WarehouseManagement() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-slate-900">{u.fullName || u.email}</span>
-                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold border ${badge.color}`}>
-                            {badge.label}
-                          </span>
+                          {badge.label ? (
+                            <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold border ${badge.color}`}>
+                              {badge.label}
+                            </span>
+                          ) : null}
                         </div>
                         <span className="text-[11px] font-medium text-slate-500">{u.email}</span>
                       </div>
@@ -2339,6 +2153,161 @@ export default function WarehouseManagement() {
                   className="rounded-xl bg-slate-100 px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition cursor-pointer"
                 >
                   Đóng
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* DEDICATED WAREHOUSE PERSONNEL CONFIG MODAL (ICON ĐẦU NGƯỜI) */}
+      {personnelConfigWarehouse &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/70 p-4 sm:p-6 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl overflow-hidden border-2 border-cyan-500 flex flex-col max-h-[90vh]">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-cyan-500/40 bg-cyan-600 px-6 py-4 text-white">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-white/20 p-2 text-white border border-white/30 shadow-2xs">
+                    <UserCog className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-extrabold text-white tracking-tight uppercase">
+                      CẤU HÌNH NGƯỜI DÙNG KHO
+                    </h2>
+                    <p className="text-xs text-cyan-100 font-medium mt-0.5">
+                      Kho: <span className="font-extrabold text-white">{personnelConfigWarehouse.name}</span> ({personnelConfigWarehouse.code})
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPersonnelConfigWarehouse(null)}
+                  className="rounded-xl p-2 text-white/80 hover:bg-white/20 hover:text-white transition cursor-pointer"
+                  title="Đóng cửa sổ"
+                >
+                  <X className="h-5.5 w-5.5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto space-y-5 bg-slate-50/50 flex-1">
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50/80 p-3.5 text-xs font-bold text-cyan-950 flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <UserCheck className="h-4.5 w-4.5 text-cyan-600 flex-shrink-0" />
+                    <span>Thêm người dùng trực thuộc kho này. Quyền hạn thực hiện tính năng được áp dụng theo Nhóm Quyền Động.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openPersonnelPopup()}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 px-3.5 py-2 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer whitespace-nowrap"
+                  >
+                    <Plus className="h-4 w-4" /> Thêm người dùng
+                  </button>
+                </div>
+
+                {/* Assigned Users Card */}
+                {(() => {
+                  const assigned = users.filter(
+                    (u) =>
+                      getUserRoleCategory(u) !== 'external' &&
+                      (personnelForm.staffIds.includes(u.id) || personnelForm.managerIds.includes(u.id)),
+                  );
+
+                  return (
+                    <div className="rounded-2xl border border-cyan-200 bg-white p-5 space-y-4 shadow-xs">
+                      <div className="flex items-center justify-between border-b border-cyan-100 pb-3">
+                        <span className="text-xs font-extrabold text-cyan-950 uppercase tracking-wide flex items-center gap-2">
+                          <Users className="h-4 w-4 text-cyan-600" />
+                          DANH SÁCH NGƯỜI DÙNG TRONG KHO ({assigned.length})
+                        </span>
+                      </div>
+
+                      {assigned.length === 0 ? (
+                        <div className="py-10 text-center">
+                          <Users className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                          <p className="text-xs font-bold text-slate-500">Chưa có người dùng nào được thêm vào kho này</p>
+                          <button
+                            type="button"
+                            onClick={() => openPersonnelPopup()}
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-cyan-50 px-4 py-2 text-xs font-bold text-cyan-700 border border-cyan-200 hover:bg-cyan-100 transition cursor-pointer"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Thêm ngay
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[360px] overflow-y-auto pr-1">
+                          {assigned.map((u) => {
+                            const badge = formatRoleBadge(u);
+                            return (
+                              <div
+                                key={u.id}
+                                className="flex items-center justify-between rounded-xl border border-cyan-100 bg-cyan-50/40 p-3 text-xs font-semibold text-slate-800 shadow-2xs"
+                              >
+                                <div className="truncate pr-2">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <span className="font-bold text-slate-900 truncate">{u.fullName || u.email}</span>
+                                    {badge.label ? (
+                                      <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-bold border ${badge.color}`}>
+                                        {badge.label}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <div className="text-[11px] font-normal text-slate-500 truncate">{u.email}</div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveAssignedUser(u.id)}
+                                  className="text-slate-400 hover:text-red-600 transition p-1.5 cursor-pointer rounded-lg hover:bg-red-50"
+                                  title="Gỡ khỏi kho"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setPersonnelConfigWarehouse(null)}
+                  className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!personnelConfigWarehouse) return;
+                    setSaving(true);
+                    try {
+                      const payload = {
+                        ...personnelConfigWarehouse,
+                        managerIds: [],
+                        staffIds: personnelForm.staffIds,
+                      };
+                      await upsertWarehouseToApi(payload);
+                      await loadData();
+                      setSuccess(`Đã cập nhật danh sách người dùng cho kho ${personnelConfigWarehouse.name} thành công.`);
+                      setPersonnelConfigWarehouse(null);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Không lưu được phân công người dùng kho');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  disabled={saving}
+                  className="rounded-xl bg-cyan-600 px-6 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-cyan-700 transition cursor-pointer disabled:opacity-60 flex items-center gap-2"
+                >
+                  <UserCheck className="h-4 w-4" />
+                  {saving ? 'Đang lưu CSDL...' : 'Lưu Cấu Hình Người Dùng'}
                 </button>
               </div>
             </div>

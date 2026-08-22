@@ -60,6 +60,8 @@ export interface ProductOption {
 export interface ZoneItem {
   zoneCode: string;
   zoneName: string;
+  locationBin?: string; // Automatically retrieved shelf/bin location from CSDL
+  assignedBins?: string[]; // Array of bin codes
   systemQty: number;
   countedQty: number;
   assignedStaff: string; // Staff assigned to count this specific zone/product row
@@ -69,6 +71,98 @@ export interface ZoneItem {
 export interface StocktakeRicItem {
   product: ProductOption & { systemQty: number };
   zones: ZoneItem[];
+}
+
+export function findStockBinForProduct(
+  pId: string,
+  pSku: string,
+  pName: string,
+  whCode?: string
+): { locationBin: string; assignedBins: string[] } {
+  if (!pId && !pSku && !pName) {
+    return { locationBin: '', assignedBins: [] };
+  }
+
+  const normId = String(pId || '').trim().toLowerCase();
+  const normSku = String(pSku || '').trim().toLowerCase();
+  const normName = String(pName || '').trim().toLowerCase();
+  const targetWh = String(whCode || '').trim().toUpperCase();
+
+  const foundBinsSet = new Set<string>();
+
+  // 1. Check local stock-in orders
+  try {
+    const rawOrders = localStorage.getItem('stored_stock_in_orders');
+    if (rawOrders) {
+      const orders = JSON.parse(rawOrders);
+      if (Array.isArray(orders)) {
+        orders.forEach((ord: any) => {
+          const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toUpperCase();
+          if (targetWh && oWh && oWh !== targetWh && !oWh.includes(targetWh) && !targetWh.includes(oWh)) return;
+          (ord.details || ord.items || []).forEach((item: any) => {
+            const iName = String(item.productName || '').trim().toLowerCase();
+            const iSku = String(item.sku || item.productSku || '').trim().toLowerCase();
+            const iId = String(item.productId || '').trim().toLowerCase();
+
+            const matches =
+              (normId && iId && normId === iId) ||
+              (normSku && iSku && normSku === iSku) ||
+              (normName && iName && (normName.includes(iName) || iName.includes(normName)));
+
+            if (matches) {
+              let bins: string[] = item.assignedBins || (item.locationBin ? item.locationBin.split(',') : []);
+              bins.forEach((b: string) => {
+                const clean = b.split('(')[0].trim();
+                const short = (clean.split('-').pop() || clean).toUpperCase();
+                if (short) foundBinsSet.add(short);
+              });
+            }
+          });
+        });
+      }
+    }
+  } catch {}
+
+  // 2. Check stored warehouses customBins
+  try {
+    const rawWhs = localStorage.getItem('smart-wms-warehouses');
+    if (rawWhs) {
+      const whs = JSON.parse(rawWhs);
+      if (Array.isArray(whs)) {
+        whs.forEach((wh: any) => {
+          const wCode = String(wh.code || wh.id || '').trim().toUpperCase();
+          if (targetWh && wCode && wCode !== targetWh && !wCode.includes(targetWh) && !targetWh.includes(wCode)) return;
+          (wh.subWarehouses || []).forEach((sub: any) => {
+            (sub.racks || []).forEach((rk: any) => {
+              if (rk.customBins) {
+                Object.entries(rk.customBins).forEach(([bKey, cfg]: [string, any]) => {
+                  const notes = String(cfg?.notes || '').toLowerCase();
+                  const pct = Number(cfg?.occupancyPct || 0);
+                  if (
+                    pct > 0 &&
+                    ((normName && notes.includes(normName)) || (normSku && notes.includes(normSku)))
+                  ) {
+                    const shortBin = (bKey.split('-').pop() || bKey).toUpperCase();
+                    foundBinsSet.add(shortBin);
+                  }
+                });
+              }
+            });
+          });
+        });
+      }
+    }
+  } catch {}
+
+  const binsList = Array.from(foundBinsSet);
+  if (binsList.length > 0) {
+    return {
+      locationBin: binsList.join(', '),
+      assignedBins: binsList,
+    };
+  }
+
+  return { locationBin: '', assignedBins: [] };
 }
 
 export function getProductWarehouseStock(p: ProductOption, whCode: string): number {
@@ -136,6 +230,175 @@ export function getProductWarehouseStock(p: ProductOption, whCode: string): numb
   }
 
   return 0;
+}
+
+export function findProductStockAndBinsByZone(
+  p: ProductOption,
+  whCode: string,
+  subWarehouses: any[]
+): Array<{
+  zoneCode: string;
+  zoneName: string;
+  systemQty: number;
+  locationBin: string;
+  assignedBins: string[];
+}> {
+  const normWh = (whCode || '').trim().toUpperCase();
+  const resultsMap = new Map<
+    string,
+    {
+      zoneCode: string;
+      zoneName: string;
+      systemQty: number;
+      binsSet: Set<string>;
+    }
+  >();
+
+  const getOrCreateZoneResult = (zCode: string, defaultName?: string) => {
+    const cleanZCode = zCode.toUpperCase();
+    if (!resultsMap.has(cleanZCode)) {
+      const matchedSub = subWarehouses.find(
+        (s: any) => (s.code || s.id || '').toUpperCase() === cleanZCode
+      );
+      const zName = matchedSub?.name || defaultName || `Phân khu ${cleanZCode}`;
+      resultsMap.set(cleanZCode, {
+        zoneCode: cleanZCode,
+        zoneName: zName,
+        systemQty: 0,
+        binsSet: new Set<string>(),
+      });
+    }
+    return resultsMap.get(cleanZCode)!;
+  };
+
+  // 1. Check stockBalances
+  if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
+    p.stockBalances.forEach((b: any) => {
+      const bLoc = String(b.locationCode || '').trim().toUpperCase();
+      const bQty = Number(b.totalPhysical || b.available || 0);
+      let bBins: string[] = Array.isArray(b.assignedBins)
+        ? b.assignedBins
+        : b.locationBin
+        ? String(b.locationBin).split(',').map((s) => s.trim())
+        : [];
+
+      if (bLoc) {
+        const matchingSub = subWarehouses.find(
+          (s: any) => (s.code || s.id || '').toUpperCase() === bLoc
+        );
+        if (matchingSub) {
+          const res = getOrCreateZoneResult(matchingSub.code || matchingSub.id, matchingSub.name);
+          res.systemQty += bQty;
+          bBins.forEach((bin) => bin && res.binsSet.add(bin));
+        } else if (
+          bLoc === normWh ||
+          bLoc === 'KH006' ||
+          bLoc === 'KHO-NVL' ||
+          bLoc === 'KHO-TONG'
+        ) {
+          if (bBins.length > 0) {
+            bBins.forEach((bin) => {
+              const prefix = bin.split('-')[0] || '';
+              const sub =
+                subWarehouses.find((s) =>
+                  (s.code || s.id || '').toUpperCase().includes(prefix.toUpperCase())
+                ) || subWarehouses[0];
+              if (sub) {
+                const res = getOrCreateZoneResult(sub.code || sub.id, sub.name);
+                res.binsSet.add(bin);
+                if (res.systemQty === 0 && bQty > 0) res.systemQty = bQty;
+              }
+            });
+          } else {
+            const firstSub = subWarehouses[0];
+            if (firstSub) {
+              const res = getOrCreateZoneResult(firstSub.code || firstSub.id, firstSub.name);
+              res.systemQty += bQty;
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // 2. Check local stock-in history for bin assignments
+  try {
+    const rawOrders = localStorage.getItem('stored_stock_in_orders');
+    if (rawOrders) {
+      const orders = JSON.parse(rawOrders);
+      if (Array.isArray(orders)) {
+        orders.forEach((ord: any) => {
+          const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toUpperCase();
+          if (normWh && oWh && oWh !== normWh && !oWh.includes(normWh) && !normWh.includes(oWh))
+            return;
+          (ord.details || ord.items || []).forEach((item: any) => {
+            const iSku = String(item.sku || item.productSku || '').trim().toUpperCase();
+            const iId = String(item.productId || '').trim();
+            if (iId === String(p.id) || (iSku && iSku === (p.internalSku || '').toUpperCase())) {
+              let bins: string[] =
+                item.assignedBins || (item.locationBin ? item.locationBin.split(',') : []);
+              bins.forEach((b: string) => {
+                const clean = b.split('(')[0].trim().toUpperCase();
+                if (clean) {
+                  const rackPrefix = clean.split('-')[0] || '';
+                  const sub =
+                    subWarehouses.find(
+                      (s) =>
+                        (s.code || s.id || '').toUpperCase() === rackPrefix ||
+                        (s.code || s.id || '').toUpperCase().includes(rackPrefix)
+                    ) || subWarehouses[0];
+
+                  if (sub) {
+                    const res = getOrCreateZoneResult(sub.code || sub.id, sub.name);
+                    res.binsSet.add(clean);
+                  }
+                }
+              });
+            }
+          });
+        });
+      }
+    }
+  } catch {}
+
+  // 3. Fallback autoBins lookup from CSDL / localStorage
+  const autoBins = findStockBinForProduct(p.id, p.internalSku, p.name, whCode);
+
+  // If no zone entries formed yet, fallback to active sub-warehouses where total system stock or autoBins are allocated
+  if (resultsMap.size === 0) {
+    const firstSub = subWarehouses[0] || { code: 'PK-A', name: 'Phân Khu A' };
+    const totalSys = getProductWarehouseStock(p, whCode);
+    const binsSet = new Set<string>(autoBins.assignedBins || []);
+
+    return [
+      {
+        zoneCode: firstSub.code || firstSub.id,
+        zoneName: firstSub.name,
+        systemQty: totalSys,
+        locationBin: Array.from(binsSet).join(', '),
+        assignedBins: Array.from(binsSet),
+      },
+    ];
+  }
+
+  // Ensure autoBins are also attached if missing
+  if (autoBins.assignedBins.length > 0) {
+    const firstRes = Array.from(resultsMap.values())[0];
+    if (firstRes) {
+      autoBins.assignedBins.forEach((b) => firstRes.binsSet.add(b));
+    }
+  }
+
+  return Array.from(resultsMap.values()).map((res) => {
+    const binsArray = Array.from(res.binsSet);
+    return {
+      zoneCode: res.zoneCode,
+      zoneName: res.zoneName,
+      systemQty: res.systemQty,
+      locationBin: binsArray.join(', '),
+      assignedBins: binsArray,
+    };
+  });
 }
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────
@@ -245,32 +508,29 @@ export default function CreateStocktakeOrderPage({
     ];
   }, [locationCode, warehouses]);
 
-  // Recalculate systemQty when warehouse changes
+  // Recalculate zone rows & systemQty when warehouse changes
   useEffect(() => {
     if (!locationCode) return;
     setItems((prev) => {
       return prev.map((item) => {
         const fullProduct = products.find((p) => p.id === item.product.id) || item.product;
-        const totalSys = getProductWarehouseStock(fullProduct, locationCode);
+        const zoneLocations = findProductStockAndBinsByZone(fullProduct, locationCode, activeSubWarehouses);
 
-        // Update systemQty for zones
-        const updatedZones = item.zones.map((z, idx) => {
-          let zSys = 0;
-          if (Array.isArray(fullProduct.stockBalances)) {
-            const match = fullProduct.stockBalances.find(
-              (b: any) => (b.locationCode || '').toLowerCase() === z.zoneCode.toLowerCase()
-            );
-            if (match) zSys = Number(match.totalPhysical || match.available || 0);
-            else if (idx === 0) zSys = totalSys;
-          } else if (idx === 0) {
-            zSys = totalSys;
-          }
+        const updatedZones: ZoneItem[] = zoneLocations.map((zLoc) => {
+          const existingMatch = item.zones.find((z) => z.zoneCode.toLowerCase() === zLoc.zoneCode.toLowerCase());
           return {
-            ...z,
-            systemQty: zSys,
-            countedQty: zSys,
+            zoneCode: zLoc.zoneCode,
+            zoneName: zLoc.zoneName,
+            locationBin: zLoc.locationBin,
+            assignedBins: zLoc.assignedBins,
+            systemQty: zLoc.systemQty,
+            countedQty: existingMatch ? existingMatch.countedQty : zLoc.systemQty,
+            assignedStaff: existingMatch?.assignedStaff || userIdentifier || 'System Administrator',
+            note: existingMatch?.note || (zLoc.locationBin ? `[Kệ: ${zLoc.locationBin}]` : ''),
           };
         });
+
+        const totalSys = updatedZones.reduce((sum, z) => sum + (z.systemQty || 0), 0);
 
         return {
           ...item,
@@ -282,7 +542,7 @@ export default function CreateStocktakeOrderPage({
         };
       });
     });
-  }, [locationCode, products]);
+  }, [locationCode, products, activeSubWarehouses, userIdentifier]);
 
   // Click outside listener to close search dropdown
   useEffect(() => {
@@ -326,7 +586,19 @@ export default function CreateStocktakeOrderPage({
     }
   };
 
-  // Add Product (Automatically populates ALL sub-warehouses / zones)
+  // Staff options lookup with fallback
+  const staffList = useMemo(() => {
+    const list = Array.isArray(users) ? users : [];
+    if (list.length > 0) return list;
+    return [
+      { id: 'u1', fullName: 'System Administrator', role: 'admin' },
+      { id: 'u2', fullName: 'Nguyễn Văn Kiểm (NV Kho)', role: 'staff' },
+      { id: 'u3', fullName: 'Trần Thị Kiểm (NV Kho)', role: 'staff' },
+      { id: 'u4', fullName: 'Hoàng Minh Tuấn (Quản lý)', role: 'manager' },
+    ];
+  }, [users]);
+
+  // Add Product (Automatically populates sub-warehouses & shelf/bins from CSDL)
   const handleAddProduct = (p: any) => {
     if (items.some((item) => item.product.id === p.id)) {
       showError(`Sản phẩm [${p.internalSku}] đã có trong danh sách kiểm kê.`);
@@ -335,33 +607,20 @@ export default function CreateStocktakeOrderPage({
       return;
     }
 
-    const totalSys = getProductWarehouseStock(p, locationCode);
+    const zoneLocations = findProductStockAndBinsByZone(p, locationCode, activeSubWarehouses);
 
-    // Generate zone entries for ALL active sub-warehouses
-    const initialZones: ZoneItem[] = activeSubWarehouses.map((sub: any, index: number) => {
-      const zCode = sub.code || sub.id || `PK-${index + 1}`;
-      const zName = sub.name || `Phân khu ${zCode}`;
+    const initialZones: ZoneItem[] = zoneLocations.map((zLoc) => ({
+      zoneCode: zLoc.zoneCode,
+      zoneName: zLoc.zoneName,
+      locationBin: zLoc.locationBin,
+      assignedBins: zLoc.assignedBins,
+      systemQty: zLoc.systemQty,
+      countedQty: zLoc.systemQty,
+      assignedStaff: userIdentifier || 'System Administrator',
+      note: zLoc.locationBin ? `[Kệ: ${zLoc.locationBin}]` : '',
+    }));
 
-      let zSys = 0;
-      if (Array.isArray(p.stockBalances)) {
-        const match = p.stockBalances.find(
-          (b: any) => (b.locationCode || '').toLowerCase() === zCode.toLowerCase()
-        );
-        if (match) zSys = Number(match.totalPhysical || match.available || 0);
-        else if (index === 0) zSys = totalSys;
-      } else if (index === 0) {
-        zSys = totalSys;
-      }
-
-      return {
-        zoneCode: zCode,
-        zoneName: zName,
-        systemQty: zSys,
-        countedQty: zSys,
-        assignedStaff: userIdentifier, // Default assigned staff
-        note: '',
-      };
-    });
+    const totalSys = initialZones.reduce((sum, z) => sum + (z.systemQty || 0), 0);
 
     setItems((prev) => [
       ...prev,
@@ -1091,6 +1350,20 @@ export default function CreateStocktakeOrderPage({
                                 </option>
                               ))}
                             </select>
+                            {/* Interactive shelf/bin button directly opening rack popup modal */}
+                            <button
+                              type="button"
+                              onClick={() => setRackModalData({ product: item.product, zone })}
+                              className="mt-1 w-full flex items-center justify-between gap-1 text-[10px] font-extrabold text-cyan-900 bg-cyan-100/90 hover:bg-cyan-200/90 px-2 py-1 rounded-lg border border-cyan-300 shadow-2xs transition cursor-pointer active:scale-95 group"
+                              title="Bấm vào để mở sơ đồ kệ - Kệ lưu hàng hiện xanh, không lưu in chìm"
+                            >
+                              <span className="shrink-0 text-cyan-700 font-bold group-hover:text-cyan-900 flex items-center gap-1">
+                                📍 Kệ:
+                              </span>
+                              <span className="truncate font-extrabold text-cyan-950 group-hover:underline">
+                                {zone.locationBin || (zone.assignedBins && zone.assignedBins.length > 0 ? zone.assignedBins.join(', ') : 'Chưa xếp ô')}
+                              </span>
+                            </button>
                           </td>
 
                           {/* ══ CELL 6: SỐ TỒN KHO ══ */}
@@ -1134,19 +1407,15 @@ export default function CreateStocktakeOrderPage({
                               className="h-8 w-full rounded-lg border-2 border-indigo-200 bg-white px-2 text-[11px] font-bold text-slate-800 outline-none focus:border-indigo-600 cursor-pointer shadow-2xs"
                             >
                               <option value="">— Chọn NV kiểm —</option>
-                              {users
-                                .filter(
-                                  (u) =>
-                                    Array.isArray(u.roles) &&
-                                    u.roles.some((r: any) =>
-                                      ['staff', 'manager', 'admin'].includes(r.name?.toLowerCase())
-                                    )
-                                )
-                                .map((u) => (
-                                  <option key={u.id} value={u.fullName || u.email}>
-                                    {u.fullName || u.email}
+                              {staffList.map((u: any) => {
+                                const displayName = u.fullName || u.name || u.username || u.email || `User #${u.id}`;
+                                const roleTag = u.role ? ` (${u.role})` : '';
+                                return (
+                                  <option key={u.id || displayName} value={displayName}>
+                                    {displayName}{roleTag}
                                   </option>
-                                ))}
+                                );
+                              })}
                             </select>
                           </td>
 
@@ -1358,6 +1627,60 @@ export default function CreateStocktakeOrderPage({
             </div>
           </div>
         </div>
+
+        {/* ══ SMART SLOTTING RACK GRID MODAL ══ */}
+        {rackModalData && (
+          <SmartSlottingGridModal
+            isOpen={Boolean(rackModalData)}
+            onClose={() => setRackModalData(null)}
+            mode="STOCKTAKE"
+            warehouseCode={locationCode}
+            targetRowId={rackModalData.product.id}
+            products={products}
+            subWarehouses={activeSubWarehouses}
+            items={items.map((it) => {
+              const allBins = it.zones.flatMap((z) =>
+                z.assignedBins && z.assignedBins.length > 0
+                  ? z.assignedBins
+                  : z.locationBin
+                  ? z.locationBin.split(',').map((s) => s.trim())
+                  : []
+              );
+              return {
+                rowId: it.product.id,
+                productId: it.product.id,
+                productSku: it.product.internalSku,
+                productName: it.product.name,
+                unit: it.product.unit,
+                qty: it.zones.reduce((sum, z) => sum + (z.countedQty ?? z.systemQty ?? 0), 0),
+                assignedBins: Array.from(new Set(allBins.filter(Boolean))),
+                locationBin: Array.from(new Set(allBins.filter(Boolean))).join(', '),
+              };
+            })}
+            onConfirmAll={(updatedRows) => {
+              setItems((prev) =>
+                prev.map((it) => {
+                  const match = updatedRows.find((r) => r.rowId === it.product.id);
+                  if (match && match.assignedBins) {
+                    const updatedZones = it.zones.map((z, zIdx) => {
+                      if (zIdx === 0) {
+                        return {
+                          ...z,
+                          locationBin: match.locationBin,
+                          assignedBins: match.assignedBins,
+                        };
+                      }
+                      return z;
+                    });
+                    return { ...it, zones: updatedZones };
+                  }
+                  return it;
+                })
+              );
+              setRackModalData(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );

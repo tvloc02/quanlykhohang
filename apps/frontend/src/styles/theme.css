@@ -71,4 +71,24 @@ input[type=number] {
 }
 
 
+/* Header Marquee Ticker (Chạy chữ siêu siêu siêu chậm từ phải sang trái, 600s) */
+@keyframes headerMarquee {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
 
+.animate-header-marquee {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  animation: headerMarquee 600s linear infinite;
+  will-change: transform;
+}
+
+.animate-header-marquee:hover {
+  animation-play-state: paused;
+}

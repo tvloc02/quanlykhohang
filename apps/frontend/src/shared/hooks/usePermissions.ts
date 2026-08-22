@@ -95,12 +95,17 @@ export function getStoredUser() {
 
 export function usePermissions() {
   const [tick, setTick] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
   const isFetchingRef = useRef(false);
 
   // Sync groups & user profile from API
   const syncPermissionsFromApi = useCallback(async () => {
     const token = localStorage.getItem('token');
-    if (!token || isFetchingRef.current) return;
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+    if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
     try {
@@ -188,6 +193,7 @@ export function usePermissions() {
       // Local fallback active
     } finally {
       isFetchingRef.current = false;
+      setIsLoading(false);
     }
   }, []);
 
@@ -310,23 +316,25 @@ export function usePermissions() {
   const canViewMenu = useCallback(
     (menuId: string): boolean => {
       if (isAdmin) return true;
-      if (userActiveGroups.length === 0) return false;
-      return userActiveGroups.some((g: PermissionGroup) => {
+      if (userActiveGroups.length === 0) return true;
+
+      let hasExplicitDeny = false;
+      let hasExplicitAllow = false;
+
+      for (const g of userActiveGroups) {
         const menuPerms = parseJson(g.menuPermissions) || {};
         const p = menuPerms[menuId];
         if (p) {
-          if (p.view === true || p.view === 'true' || p.view === 1 || Boolean(p.view)) {
-            return true;
-          }
           if (p.view === false || p.view === 'false' || p.view === 0) {
-            return false;
+            hasExplicitDeny = true;
+          } else if (p.view === true || p.view === 'true' || p.view === 1 || Boolean(p.view)) {
+            hasExplicitAllow = true;
           }
         }
-        if (menuId === 'pos') {
-          return true;
-        }
-        return false;
-      });
+      }
+
+      if (hasExplicitDeny && !hasExplicitAllow) return false;
+      return true;
     },
     [isAdmin, userActiveGroups]
   );
@@ -334,7 +342,7 @@ export function usePermissions() {
   const canPerformAction = useCallback(
     (menuId: string, action: keyof ActionPermission): boolean => {
       if (isAdmin) return true;
-      if (userActiveGroups.length === 0) return false;
+      if (userActiveGroups.length === 0) return true;
       return userActiveGroups.some((g: PermissionGroup) => {
         const menuPerms = parseJson(g.menuPermissions) || {};
         return menuPerms[menuId]?.[action] === true;
@@ -346,7 +354,7 @@ export function usePermissions() {
   const canGeneralPermission = useCallback(
     (permKey: keyof GeneralPermissions): boolean => {
       if (isAdmin) return true;
-      if (userActiveGroups.length === 0) return false;
+      if (userActiveGroups.length === 0) return true;
       return userActiveGroups.some((g: PermissionGroup) => {
         const genPerms = parseJson(g.generalPermissions) || {};
         return genPerms[permKey] === true;
@@ -359,6 +367,7 @@ export function usePermissions() {
     currentUser,
     userRole,
     isAdmin,
+    isLoading,
     userActiveGroups,
     permissionGroups,
     canViewMenu,
