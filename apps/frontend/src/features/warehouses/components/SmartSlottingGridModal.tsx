@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   getStoredWarehouses,
@@ -112,6 +112,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     Map<string, { productId: string; sku: string; productName: string; qty: number }>
   >(new Map());
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
+
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll chat to latest message
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
 
   // Real-time slot reservation locks across order drafts / tabs
   useEffect(() => {
@@ -1128,6 +1137,159 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           aiReply = `Đã thực thi: Đã bỏ chọn tất cả các ô kệ của mặt hàng "${activeItem?.productName || 'hàng hóa'}".`;
         }
       }
+      // ACTION 1.5: INTENT - CHỈ DẪN KỆ TRỐNG CHO NHẬP KHO (EMPTY RACK GUIDANCE)
+      else if (
+        lower.includes('kệ trống') ||
+        lower.includes('ô trống') ||
+        lower.includes('trống bao nhiêu') ||
+        lower.includes('tìm ô trống') ||
+        lower.includes('kệ nào trống') ||
+        lower.includes('nhập vào đâu') ||
+        lower.includes('chỉ dẫn nhập') ||
+        lower.includes('xếp vào đâu') ||
+        (mode !== 'OUTBOUND_TRANSFER' && (
+          lower.includes('kệ nào') ||
+          lower.includes('ô nào') ||
+          lower.includes('ở đâu') ||
+          lower.includes('trống') ||
+          lower.includes('nhập')
+        ))
+      ) {
+        const rackEmptyMap = new Map<string, { rackName: string; totalBins: number; emptyBins: string[]; emptyCount: number }>();
+
+        racksTopology.forEach((rk) => {
+          const rackKey = rk.rackId;
+          const rackName = rk.rackName || rk.rackId;
+          const emptyBinsList: string[] = [];
+          let totalCount = 0;
+
+          rk.floors.forEach((fl) => {
+            fl.cells.forEach((cl) => {
+              totalCount++;
+              const cellAny = cl as any;
+              if (!cl.isOccupied && (!cellAny.occupancyPct || cellAny.occupancyPct === 0)) {
+                emptyBinsList.push(cl.binCode.split('-').pop() || cl.binCode);
+              }
+            });
+          });
+
+          rackEmptyMap.set(rackKey, {
+            rackName,
+            totalBins: totalCount,
+            emptyBins: emptyBinsList,
+            emptyCount: emptyBinsList.length,
+          });
+        });
+
+        const lines: string[] = [];
+        lines.push(`✨ CHỈ DẪN VỊ TRÍ KỆ TRỐNG (NHẬP KHO SLOTTING):`);
+        lines.push(`Mặt hàng đang xếp: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${activeItem?.qty || 0} ${activeItem?.unit || 'Cái'})`);
+        lines.push(``);
+
+        const candidateBins: string[] = [];
+        rackEmptyMap.forEach((data) => {
+          const emptyPct = data.totalBins > 0 ? Math.round((data.emptyCount / data.totalBins) * 100) : 0;
+          const sampleStr = data.emptyBins.slice(0, 4).join(', ');
+          lines.push(`• Dãy ${data.rackName}: ${data.emptyCount}/${data.totalBins} ô trống (${emptyPct}%) ${sampleStr ? `[Gợi ý ô: ${sampleStr}${data.emptyBins.length > 4 ? '...' : ''}]` : ''}`);
+        });
+
+        for (const cell of allCellsList) {
+          if (candidateBins.length >= requiredCount) break;
+          const cellAny = cell as any;
+          if (!cell.isOccupied && (!cellAny.occupancyPct || cellAny.occupancyPct === 0)) {
+            candidateBins.push(cell.binCode);
+          }
+        }
+
+        if (candidateBins.length > 0 && activeRowId) {
+          setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: candidateBins }));
+          const firstBin = candidateBins[0];
+          const matchRack = racksTopology.find((rk) => firstBin.includes(rk.rackId));
+          if (matchRack) setActiveRackId(matchRack.rackId);
+          lines.push(``);
+          lines.push(`👉 AI đã tự động tích chọn ${candidateBins.length} ô trống (${candidateBins.map(b => b.split('-').pop()).join(', ')}) trên sơ đồ 2D để bạn nhập hàng ngay!`);
+        } else {
+          lines.push(``);
+          lines.push(`⚠️ Cảnh báo: Tất cả các kệ trong kho đã đầy 100%. Vui lòng xuất bớt hàng hoặc mở rộng sơ đồ kệ.`);
+        }
+
+        aiReply = lines.join('\n');
+      }
+      // ACTION 1.8: INTENT - CHỈ DẪN KỆ CÓ HÀNG CHO XUẤT KHO (OCCUPIED STOCK GUIDANCE)
+      else if (
+        lower.includes('còn hàng') ||
+        lower.includes('có hàng') ||
+        lower.includes('kệ có hàng') ||
+        lower.includes('ô có hàng') ||
+        lower.includes('kệ nào có') ||
+        lower.includes('kệ nào còn') ||
+        lower.includes('hàng để xuất') ||
+        lower.includes('hàng nằm ở đâu') ||
+        lower.includes('lấy hàng ở đâu') ||
+        lower.includes('xuất ở đâu') ||
+        lower.includes('vị trí hàng') ||
+        lower.includes('chỉ dẫn xuất') ||
+        (mode === 'OUTBOUND_TRANSFER' && (
+          lower.includes('kệ nào') ||
+          lower.includes('ô nào') ||
+          lower.includes('ở đâu') ||
+          lower.includes('xuất') ||
+          lower.includes('hàng') ||
+          lower.includes('có')
+        ))
+      ) {
+        const matchingOccupiedBins: { binCode: string; rackId: string; rackName: string; pct: number; qty: number; pName: string; unit: string }[] = [];
+
+        racksTopology.forEach((rk) => {
+          rk.floors.forEach((fl) => {
+            fl.cells.forEach((cl) => {
+              const clAny = cl as any;
+              const isMatch = isBinMatchingActiveItem(cl);
+              if (isMatch) {
+                matchingOccupiedBins.push({
+                  binCode: cl.binCode,
+                  rackId: rk.rackId,
+                  rackName: rk.rackName || rk.rackId,
+                  pct: clAny.occupancyPct || 100,
+                  qty: clAny.totalPhysical || (activeItem?.qty || 1),
+                  pName: cl.productName || activeItem?.productName || 'Sản phẩm',
+                  unit: clAny.unit || activeItem?.unit || 'Cái',
+                });
+              }
+            });
+          });
+        });
+
+        const lines: string[] = [];
+        lines.push(`📦 CHỈ DẪN VỊ TRÍ KỆ CÓ HÀNG (XUẤT KHO SLOTTING):`);
+        lines.push(`Mặt hàng cần xuất: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất: ${activeItem?.qty || 0} ${activeItem?.unit || 'Cái'})`);
+        lines.push(``);
+
+        if (matchingOccupiedBins.length > 0) {
+          lines.push(`Tìm thấy ${matchingOccupiedBins.length} ô kệ đang lưu trữ đúng mặt hàng này:`);
+          const candidateCodes: string[] = [];
+
+          matchingOccupiedBins.forEach((bInfo, idx) => {
+            const shortCode = bInfo.binCode.split('-').pop() || bInfo.binCode;
+            lines.push(` ${idx + 1}. Ô ${shortCode} (Dãy ${bInfo.rackName}): Đã chứa ${bInfo.pct}% (${bInfo.qty} ${bInfo.unit})`);
+            candidateCodes.push(bInfo.binCode);
+          });
+
+          if (activeRowId) {
+            setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: candidateCodes }));
+            const firstBin = candidateCodes[0];
+            const matchRack = racksTopology.find((rk) => firstBin.includes(rk.rackId));
+            if (matchRack) setActiveRackId(matchRack.rackId);
+          }
+
+          lines.push(``);
+          lines.push(`👉 AI đã tự động chọn và mở Dãy Kệ ${matchingOccupiedBins[0].rackName} để bạn xuất hàng chính xác!`);
+        } else {
+          lines.push(`⚠️ Không tìm thấy ô kệ nào trong kho đang chứa mặt hàng "${activeItem?.productName}". Vui lòng kiểm tra lại tồn kho.`);
+        }
+
+        aiReply = lines.join('\n');
+      }
       // ACTION 2: Switch Rack view (R01, R02, R03, Kệ 1, Kệ 2...)
       else if (lower.includes('r01') || lower.includes('r02') || lower.includes('r03') || lower.includes('kệ 1') || lower.includes('kệ 2') || lower.includes('kệ 3') || lower.includes('dãy r')) {
         let matchRackCode = 'R01';
@@ -1421,8 +1583,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         {/* Modal Body */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-0 flex-1 overflow-hidden bg-slate-50">
           {/* Left Column: AI Interactive Chat */}
-          <div className="md:col-span-4 border-r border-cyan-200 bg-cyan-50/30 flex flex-col h-full">
-            <div className="p-3 bg-white border-b border-cyan-100 flex items-center justify-between text-xs font-black text-cyan-900 shadow-2xs">
+          <div className="md:col-span-4 border-r border-cyan-200 bg-cyan-50/30 flex flex-col h-full min-h-0 overflow-hidden">
+            <div className="p-3 bg-white border-b border-cyan-100 flex items-center justify-between text-xs font-black text-cyan-900 shadow-2xs shrink-0">
               <span className="flex items-center gap-2">
                 <Bot className="h-5 w-5 text-cyan-600" /> Trợ lý AI Hỏi Đáp Slotting
               </span>
@@ -1432,7 +1594,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
 
             {/* Chat Messages */}
-            <div className="flex-1 p-3 overflow-y-auto space-y-3 text-xs">
+            <div className="flex-1 p-3 overflow-y-auto min-h-0 space-y-3 text-xs scrollbar-thin scrollbar-thumb-cyan-400 scrollbar-track-cyan-100">
               {messages.map((m) => (
                 <div key={m.id} className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}>
                   <div className="flex items-center gap-1.5 mb-1 text-[10px] text-slate-400 font-bold">
@@ -1450,14 +1612,22 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                   </div>
                 </div>
               ))}
+              <div ref={chatEndRef} />
             </div>
 
             {/* Quick Prompts */}
-            <div className="px-3 py-2 bg-white border-t border-cyan-100 flex flex-wrap gap-1.5">
+            <div className="px-3 py-2 bg-white border-t border-cyan-100 flex flex-wrap gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleSendMessage(undefined, mode === 'OUTBOUND_TRANSFER' ? 'Kệ có hàng' : 'Kệ trống')}
+                className="text-[10px] bg-cyan-600 hover:bg-cyan-700 text-white px-2.5 py-1 rounded-lg font-black transition cursor-pointer shadow-2xs flex items-center gap-1"
+              >
+                {mode === 'OUTBOUND_TRANSFER' ? '📦 Chỉ dẫn Kệ Có Hàng' : '✨ Chỉ dẫn Kệ Trống'}
+              </button>
               <button
                 type="button"
                 onClick={() => handleSendMessage(undefined, '1 kệ thôi')}
-                className="text-[10px] bg-cyan-600 hover:bg-cyan-700 text-white px-2.5 py-1 rounded-lg font-black transition cursor-pointer shadow-2xs"
+                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-300 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
                 1 Kệ/Ô thôi
               </button>
@@ -1485,7 +1655,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
 
             {/* Chat Input */}
-            <form onSubmit={(e) => handleSendMessage(e)} className="p-3 bg-white border-t border-cyan-200 flex items-center gap-2">
+            <form onSubmit={(e) => handleSendMessage(e)} className="p-3 bg-white border-t border-cyan-200 flex items-center gap-2 shrink-0">
               <input
                 type="text"
                 value={inputMsg}
