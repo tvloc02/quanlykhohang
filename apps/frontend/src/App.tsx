@@ -88,6 +88,7 @@ import StockOutDocPage from './features/documents/pages/StockOutDocPage';
 import TransferDocPage from './features/documents/pages/TransferDocPage';
 import AccessDenied from './shared/components/AccessDenied';
 import { usePermissions } from './shared/hooks/usePermissions';
+import DifyChatbot from './shared/components/DifyChatbot';
 
 function getStoredUser() {
   try {
@@ -197,6 +198,7 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
 function App() {
   return (
     <BrowserRouter>
+      <DifyChatbot />
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
