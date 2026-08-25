@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Camera, CheckCircle2, AlertCircle, Loader2, X, QrCode, Link, Plus } from 'lucide-react';
+import { Camera, CheckCircle2, AlertCircle, Loader2, X, QrCode, Link, Plus, Sparkles, ScanLine } from 'lucide-react';
 import './BarcodeScanner.css';
 
 // ──── Types (theo format response tài liệu thiết kế) ──────────
@@ -225,6 +225,7 @@ export default function BarcodeScanner({
   const [qty, setQty] = useState(defaultQty);
   const [cameraActive, setCameraActive] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [scannerSource, setScannerSource] = useState<'camera' | 'infrared'>('camera');
 
   // Quick Add State cho sản phẩm từ external API
   const [quickAddName, setQuickAddName] = useState('');
@@ -598,10 +599,10 @@ export default function BarcodeScanner({
             }}>
               <Camera className="h-10 w-10 text-slate-400" />
               <span>Camera chưa sẵn sàng</span>
-              <span style={{ fontSize: '12px', color: '#475569' }}>Sử dụng nhập thủ công bên dưới</span>
-            </div>
-          )}
-        </div>
+                <span style={{ fontSize: '12px', color: '#475569' }}>Sử dụng nhập thủ công bên dưới</span>
+              </div>
+            )}
+          </div>
 
         {/* Camera status */}
         {cameraActive && (
