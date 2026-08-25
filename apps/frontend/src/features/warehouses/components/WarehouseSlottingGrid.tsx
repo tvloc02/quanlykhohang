@@ -925,11 +925,33 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
           const cleanName = rawName.replace(/\s*\(Lô nhập mới\)/i, '');
           const totalItemQty = it.qty && Number(it.qty) > 0 ? Number(it.qty) : 100;
 
+          const bList = selectedBinsMap?.[rowId] || [];
+          const totalSelectedBinsForItem = Math.max(1, bList.length);
+          const maxPerBin = Math.ceil(totalItemQty / totalSelectedBinsForItem);
+          const binIdxInItem = bList.findIndex((b: string) => normalizeBinKey(b) === normTarget || b.includes(fullBinCode));
+
+          let qtyPerBinForItem = maxPerBin;
+          if (binIdxInItem >= 0 && totalSelectedBinsForItem > 1) {
+            if (binIdxInItem === totalSelectedBinsForItem - 1) {
+              qtyPerBinForItem = Math.max(1, totalItemQty - maxPerBin * (totalSelectedBinsForItem - 1));
+            }
+          }
+
+          const maxBinCap = 500;
+          let calcPctForItem = Math.max(1, Math.min(100, Math.round((qtyPerBinForItem / maxBinCap) * 100)));
+
+          // Check if specific percentage is embedded in selected bList
+          const matchBinEntry = bList.find((b: string) => normalizeBinKey(b) === normTarget || b.includes(fullBinCode));
+          if (matchBinEntry) {
+            const m = matchBinEntry.match(/\((\d+)%\)/);
+            if (m) calcPctForItem = Number(m[1]);
+          }
+
           assigned.push({
             rowId,
             productName: `${cleanName} (Lô nhập mới)`,
-            qty: totalItemQty,
-            occupancyPct: remainingPct > 0 ? remainingPct : (assigned.length > 0 ? 25 : 100),
+            qty: qtyPerBinForItem,
+            occupancyPct: calcPctForItem,
             isExistingStock: false,
           });
         });

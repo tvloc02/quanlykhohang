@@ -753,7 +753,24 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       }
 
       if (validBins.length > 0) {
-        initialMap[item.rowId] = [...validBins];
+        if (mode !== 'OUTBOUND_TRANSFER') {
+          const itemQty = Number(item.qty || 1);
+          const totalBins = validBins.length;
+          const maxPerBin = Math.ceil(itemQty / totalBins);
+          const maxBinCap = 500;
+
+          initialMap[item.rowId] = validBins.map((b, bIdx) => {
+            if (b.includes('%')) return b;
+            const cleanB = b.split('(')[0].trim();
+            const qtyForThisBin = bIdx < totalBins - 1
+              ? Math.min(itemQty, maxPerBin)
+              : Math.max(1, itemQty - maxPerBin * (totalBins - 1));
+            const pctPerBin = Math.max(1, Math.min(100, Math.round((qtyForThisBin / maxBinCap) * 100)));
+            return pctPerBin < 100 ? `${cleanB} (${pctPerBin}%)` : cleanB;
+          });
+        } else {
+          initialMap[item.rowId] = [...validBins];
+        }
       }
     });
 
@@ -906,9 +923,11 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         return normB === normKey || b.startsWith(binCode) || b === binCode || b.includes(shortCode);
       });
 
+      let updatedRawList: string[];
+
       if (isCurrentlySelected) {
         // UNCHECKING BIN: Remove from current item's selection
-        const updatedList = currentList.filter((b) => {
+        updatedRawList = currentList.filter((b) => {
           const normB = normalizeBinKey(b);
           return normB !== normKey && !b.startsWith(binCode) && b !== binCode && !b.includes(shortCode);
         });
@@ -925,10 +944,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         // If no other item in order is using this bin, revert bin config back to original 0%/empty state!
         if (!isUsedByOtherItems) {
           removeBinCustomConfig(binCode);
-          updateSubWarehousesTopology(binCode, shortCode, 0, 'Ô Trống (480kg)');
+          updateSubWarehousesTopology(binCode, shortCode, 0, 'Ô Trống (500kg)');
         }
-
-        return { ...prev, [activeRowId]: updatedList };
       } else {
         // CHECKING BIN: Add to current item's selection
         const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
@@ -948,7 +965,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             return prev;
           }
 
-          // 2. Verify that the bin actually stores the active product being exported
+          // 2. Verify that the bin actually stores the active product being exported if valid bins are identified
           if (outboundValidBins.length > 0) {
             const isValidForActiveProduct = outboundValidBins.some(
               (b) => normalizeBinKey(b) === normKey || b === binCode || b.includes(shortCode) || normalizeBinKey(b) === normalizeBinKey(shortCode)
@@ -957,9 +974,6 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               setWarningMessage(`⚠️ Kệ ${binCode} không lưu trữ mặt hàng "${activeItem?.productName || ''}". Vui lòng chỉ chọn các ô kệ có chứa mặt hàng này!`);
               return prev;
             }
-          } else {
-            setWarningMessage(`⚠️ Không tìm thấy ô kệ nào trong kho đang lưu trữ mặt hàng "${activeItem?.productName || ''}"!`);
-            return prev;
           }
 
           // 3. Check if total stock from selected bins already satisfies target export quantity
@@ -977,30 +991,49 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           }
         }
 
-        // Calculate remaining capacity of this bin taking into account other items already assigned to this bin
-        let occupiedByOthers = 0;
-        Object.entries(prev).forEach(([rId, bList]) => {
-          if (rId === activeRowId) return;
-          const matchStr = bList.find((b) => normalizeBinKey(b) === normKey || b.startsWith(binCode));
-          if (matchStr) {
-            const match = matchStr.match(/\((\d+)%\)/);
-            if (match) {
-              occupiedByOthers += Number(match[1]);
-            } else {
-              occupiedByOthers += 100;
+        const filtered = currentList.filter((b) => normalizeBinKey(b) !== normKey);
+        updatedRawList = [...filtered, binCode];
+      }
+
+      // EVEN DISTRIBUTION OF QUANTITY & CAPACITY PER BIN IN INBOUND / STOCKIN MODE
+      const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
+      const targetQty = Number(activeItem?.qty || 1);
+      const totalBins = updatedRawList.length;
+
+      if (mode !== 'OUTBOUND_TRANSFER' && totalBins > 0) {
+        const maxPerBin = Math.ceil(targetQty / totalBins);
+        const maxBinCap = 500;
+
+        const formattedList = updatedRawList.map((bCodeStr, bIdx) => {
+          const cleanB = bCodeStr.split('(')[0].trim();
+          const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+
+          const qtyForThisBin = bIdx < totalBins - 1
+            ? Math.min(targetQty, maxPerBin)
+            : Math.max(1, targetQty - maxPerBin * (totalBins - 1));
+
+          const pctForThisBin = Math.max(1, Math.min(100, Math.round((qtyForThisBin / maxBinCap) * 100)));
+
+          let occupiedByOthers = 0;
+          Object.entries(prev).forEach(([rId, bList]) => {
+            if (rId === activeRowId) return;
+            const matchStr = bList.find((b) => normalizeBinKey(b) === normalizeBinKey(cleanB) || b.startsWith(cleanB));
+            if (matchStr) {
+              const m = matchStr.match(/\((\d+)%\)/);
+              occupiedByOthers += m ? Number(m[1]) : 100;
             }
-          }
+          });
+
+          const netPct = Math.min(100, occupiedByOthers + pctForThisBin);
+          updateSubWarehousesTopology(cleanB, shortB, netPct, `Đã chứa: ${netPct}% (${qtyForThisBin} ${activeItem?.unit || 'cái'})`);
+
+          return pctForThisBin < 100 ? `${cleanB} (${pctForThisBin}%)` : cleanB;
         });
 
-        const remaining = Math.max(0, 100 - occupiedByOthers);
-        const pctToSet = occupiedByOthers > 0 ? (remaining > 0 ? remaining : 50) : 100;
-        const formattedBinCode = pctToSet < 100 ? `${binCode} (${pctToSet}%)` : binCode;
-        
-        updateSubWarehousesTopology(binCode, shortCode, Math.min(100, occupiedByOthers + pctToSet), `Đã chứa: ${Math.min(100, occupiedByOthers + pctToSet)}%`);
-
-        const filtered = currentList.filter((b) => normalizeBinKey(b) !== normKey);
-        return { ...prev, [activeRowId]: [...filtered, formattedBinCode] };
+        return { ...prev, [activeRowId]: formattedList };
       }
+
+      return { ...prev, [activeRowId]: updatedRawList };
     });
   };
 
