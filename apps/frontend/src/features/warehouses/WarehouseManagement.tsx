@@ -9,6 +9,7 @@ import {
   Search,
   Trash2,
   Warehouse,
+  Store,
   X,
   MapPin,
   Move3d,
@@ -729,7 +730,7 @@ export default function WarehouseManagement() {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border border-cyan-500/30 bg-cyan-600 px-4 py-2 text-white shadow-sm">
-            <Warehouse className="h-5 w-5 text-cyan-100" />
+            <Store className="h-5 w-5 text-cyan-100" />
             <h1 className="text-base font-bold tracking-tight text-white">QUẢN LÝ KHO HÀNG VÀ PHÂN KHU</h1>
           </div>
         </div>
