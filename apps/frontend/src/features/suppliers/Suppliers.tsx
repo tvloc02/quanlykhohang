@@ -2,6 +2,7 @@ import React from 'react';
 import {
   BadgeDollarSign,
   Building2,
+  Contact,
   Eye,
   Mail,
   Pencil,
@@ -354,7 +355,7 @@ export default function Suppliers() {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
-            <Building2 className="h-5 w-5 text-cyan-100" />
+            <Contact className="h-5 w-5 text-cyan-100" />
             <h1 className="text-lg font-bold tracking-tight text-white">Quản lý nhà cung cấp</h1>
           </div>
         </div>

@@ -21,13 +21,13 @@ export default function Toast({ message, type, onClose }: ToastProps) {
   }, [message, isError, onClose]);
 
   return (
-    <div className="fixed right-6 top-24 z-[90] flex justify-end">
+    <div className="fixed right-6 top-5 z-[9999] flex justify-end pointer-events-none">
       <div
         role="alert"
-        className={`flex items-center gap-3 rounded-xl border px-4 py-3 shadow-xl max-w-sm w-full ${
+        className={`pointer-events-auto flex items-center gap-3 rounded-xl border px-4 py-3 shadow-2xl max-w-sm w-full transition-all ${
           isError
-            ? 'border-red-200 bg-white text-red-600'
-            : 'border-emerald-200 bg-white text-emerald-600'
+            ? 'border-red-200 bg-white text-red-600 dark:bg-slate-800 dark:border-red-800 dark:text-red-300'
+            : 'border-emerald-200 bg-white text-emerald-600 dark:bg-slate-800 dark:border-emerald-800 dark:text-emerald-300'
         }`}
       >
         <span className="text-sm font-bold flex-1 break-words leading-tight">{message}</span>

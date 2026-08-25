@@ -276,20 +276,36 @@ export default function Login() {
 
       <div className="w-full max-w-[1340px] bg-white rounded-[28px] shadow-2xl shadow-cyan-900/15 overflow-hidden flex flex-col lg:flex-row min-h-[730px]">
         <div className="w-full lg:w-[47%] bg-gradient-to-br from-cyan-700 to-cyan-500 text-white p-10 lg:p-14 flex flex-col relative overflow-hidden">
-          <div className="absolute bottom-0 left-0 w-full opacity-20 pointer-events-none">
+          <style>{`
+            @keyframes waveMotion1 {
+              0%, 100% { transform: translateX(0px) translateY(0px) scaleY(1); }
+              50% { transform: translateX(-15px) translateY(-8px) scaleY(1.06); }
+            }
+            @keyframes waveMotion2 {
+              0%, 100% { transform: translateX(0px) translateY(0px) scaleY(1); }
+              50% { transform: translateX(15px) translateY(6px) scaleY(0.95); }
+            }
+          `}</style>
+          <div
+            className="absolute -bottom-2 -left-[10%] w-[135%] opacity-20 pointer-events-none"
+            style={{ animation: 'waveMotion1 12s ease-in-out infinite' }}
+          >
             <svg viewBox="0 0 1440 320" className="w-full h-auto">
               <path fill="#ffffff" fillOpacity="1" d="M0,160L48,176C96,192,192,224,288,213.3C384,203,480,149,576,144C672,139,768,181,864,197.3C960,213,1056,203,1152,176C1248,149,1344,107,1392,85.3L1440,64L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
             </svg>
           </div>
-          <div className="absolute bottom-0 left-0 w-full opacity-10 pointer-events-none">
+          <div
+            className="absolute -bottom-2 -left-[10%] w-[135%] opacity-15 pointer-events-none"
+            style={{ animation: 'waveMotion2 16s ease-in-out infinite' }}
+          >
             <svg viewBox="0 0 1440 320" className="w-full h-auto">
-              <path fill="#ffffff" fillOpacity="1" d="M0,256L48,229.3C96,203,192,149,288,154.7C384,160,480,224,576,218.7C672,213,768,139,864,128C960,117,1056,171,1152,197.3C1248,224,1344,224,1392,224L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+              <path fill="#ffffff" fillOpacity="1" d="M0,256L48,229.3C96,203,192,149,288,154.7C384,160,480,224,576,218.7C672,213,768,139,864,128C960,117,1056,171,1152,197.3C1248,224,1344,224,1392,224L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
             </svg>
           </div>
 
           <div className="relative z-10 flex-1 flex flex-col">
             <div className="flex items-center gap-3 mb-12">
-              <img src="/logo.png" alt="Smart WMS Logo" className="h-10 w-10 object-contain rounded-xl bg-white/20 p-1" />
+              <img src="/logo.png" alt="Smart WMS Logo" className="h-10 w-10 object-contain" />
               <span className="font-bold text-xl tracking-wide">Smart WMS</span>
             </div>
 
@@ -332,8 +348,8 @@ export default function Login() {
         <div className="w-full lg:w-[53%] p-10 lg:p-20 flex flex-col relative bg-white">
           <div className="max-w-[500px] w-full mx-auto flex-1 flex flex-col justify-center">
             <div className="text-center mb-10">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-cyan-50 text-cyan-700 mb-7 shadow-sm border border-cyan-100 p-2">
-                <img src="/logo.png" alt="Smart WMS" className="w-full h-full object-contain rounded-2xl" />
+              <div className="inline-flex items-center justify-center mb-7">
+                <img src="/logo.png" alt="Smart WMS" className="w-20 h-20 object-contain" />
               </div>
               <h2 className="text-4xl font-bold text-slate-800 mb-4">Đăng nhập vào hệ thống</h2>
               <p className="text-base text-slate-500">Vui lòng đăng nhập để tiếp tục sử dụng hệ thống</p>

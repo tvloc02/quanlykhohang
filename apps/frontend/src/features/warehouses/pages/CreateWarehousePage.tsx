@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import {
   ArrowLeft,
   Building,
+  Store,
   Check,
   CheckCircle,
   ChevronRight,
@@ -28,7 +31,6 @@ import {
   Sliders,
   Snowflake,
   Sparkles,
-  Store,
   Thermometer,
   Trash2,
   Warehouse,
@@ -36,6 +38,7 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Minimize2,
   Filter,
   CheckSquare,
   Square,
@@ -43,8 +46,11 @@ import {
   Calendar,
   Building2,
   X,
+  Copy,
+  Printer,
+  FileSpreadsheet,
 } from 'lucide-react';
-import { WarehouseSlottingGrid } from '../components/WarehouseSlottingGrid';
+import { WarehouseSlottingGrid, fetchWarehouseOccupiedBins } from '../components/WarehouseSlottingGrid';
 import Toast from '../../../shared/components/Toast';
 import MainLayout from '../../../shared/components/MainLayout';
 import {
@@ -174,18 +180,7 @@ export default function CreateWarehousePage() {
     maxWeight: 500,
   });
 
-  // AI Slotting Simulator State
-  const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
-  const [simProduct, setSimProduct] = useState<ProductSlotInput>({
-    productName: 'Lô hàng xuất nhập khẩu',
-    tempRequirement: 'AMBIENT',
-    packageLength: 60,
-    packageWidth: 40,
-    packageHeight: 40,
-    totalWeight: 100,
-    turnoverClass: 'A',
-  });
-  const [aiRecommendations, setAiRecommendations] = useState<AiSlottingRecommendation[]>([]);
+
 
   function normalizeBinKey(binCode: string): string {
     if (!binCode) return '';
@@ -202,6 +197,376 @@ export default function CreateWarehousePage() {
     occupiedInfo: any;
     goodsList: any[];
   } | null>(null);
+
+  // Fullscreen state
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  const toggleBrowserFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => { });
+      setIsFullScreen(true);
+    } else {
+      document.exitFullscreen().catch(() => { });
+      setIsFullScreen(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleFSChange = () => setIsFullScreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFSChange);
+    return () => document.removeEventListener('fullscreenchange', handleFSChange);
+  }, []);
+
+  const handleCopyWarehouseConfig = () => {
+    try {
+      const configData = {
+        code,
+        name,
+        province,
+        ward,
+        detailAddress,
+        length,
+        width,
+        height,
+        subWarehouses,
+      };
+      navigator.clipboard.writeText(JSON.stringify(configData, null, 2));
+      setSuccess('Đã sao chép toàn bộ cấu hình kho vào bộ nhớ tạm (Clipboard)!');
+    } catch (e) {
+      setError('Không thể sao chép cấu hình kho');
+    }
+  };
+
+  const handleExportWarehouseExcel = async () => {
+    try {
+      const targetCode = code ? code.trim().toUpperCase() : '';
+      const targetId = id ? id.trim().toLowerCase() : '';
+
+      // 1. Single Source of Truth: Fetch live occupied bins and goods mapping matching the visual grid UI
+      const { occupiedMap, goodsListMap } = await fetchWarehouseOccupiedBins(targetCode, targetId);
+
+      // 2. Local fallbacks (stock_in_orders, inventory_balances, subWarehouses customBins)
+      const stockInOrders = JSON.parse(
+        localStorage.getItem('stock_in_orders') || sessionStorage.getItem('stock_in_orders') || '[]'
+      );
+      const inventoryBalances = JSON.parse(
+        localStorage.getItem('inventory_balances') || localStorage.getItem('wms_inventory_balances') || '[]'
+      );
+
+      const binDataMap: Record<string, Array<{ sku: string; name: string; quantity: string; pct: string }>> = {};
+
+      const addGoodsToBin = (binCode: string, sku: string, name: string, quantity: string, pct: string) => {
+        if (!binCode || !name) return;
+        const normalized = binCode.trim().toUpperCase().replace(/\s+/g, '');
+        if (!binDataMap[normalized]) binDataMap[normalized] = [];
+        const existing = binDataMap[normalized].find((g) => g.name === name);
+        if (!existing) {
+          binDataMap[normalized].push({ sku: sku || 'SKU-001', name, quantity, pct });
+        }
+      };
+
+      if (Array.isArray(stockInOrders)) {
+        stockInOrders.forEach((order: any) => {
+          if (order.details && Array.isArray(order.details)) {
+            order.details.forEach((dt: any) => {
+              const bin = dt.locationBin || dt.binCode || order.locationBin || '';
+              if (bin) {
+                addGoodsToBin(
+                  bin,
+                  dt.productSku || dt.sku || 'SKU-001',
+                  dt.productName || dt.name || 'Hàng hóa kho',
+                  `${dt.quantity || dt.qty || 1} ${dt.unit || 'cái'}`,
+                  `${dt.occupancyPct || 30}%`
+                );
+              }
+            });
+          }
+        });
+      }
+
+      if (Array.isArray(inventoryBalances)) {
+        inventoryBalances.forEach((b: any) => {
+          const bin = b.binCode || b.locationCode || b.bin || '';
+          if (bin) {
+            addGoodsToBin(
+              bin,
+              b.product?.sku || b.sku || 'SKU-001',
+              b.productName || b.product?.name || 'Hàng hóa kho',
+              `${b.quantity || b.qty || b.onHand || 1} ${b.unit || b.product?.unit || 'cái'}`,
+              `${b.occupancyPct || 50}%`
+            );
+          }
+        });
+      }
+
+      subWarehouses.forEach((z) => {
+        (z.racks || []).forEach((rk) => {
+          if (rk.customBins) {
+            Object.entries(rk.customBins).forEach(([binCode, cfg]: [string, any]) => {
+              if (cfg && (cfg.productName || cfg.goods)) {
+                if (Array.isArray(cfg.goods)) {
+                  cfg.goods.forEach((g: any) => {
+                    addGoodsToBin(binCode, g.sku || 'SKU-001', g.name || g.productName, `${g.quantity || 1} ${g.unit || 'cái'}`, `${g.pct || 30}%`);
+                  });
+                } else if (cfg.productName) {
+                  addGoodsToBin(binCode, cfg.sku || 'SKU-001', cfg.productName, `${cfg.quantity || 1} ${cfg.unit || 'cái'}`, `${cfg.occupancyPct || 50}%`);
+                }
+              }
+            });
+          }
+        });
+      });
+
+      const currentZone = subWarehouses.find((z) => z.id === activeZoneId) || subWarehouses[0];
+      const racksList = currentZone?.racks && currentZone.racks.length > 0
+        ? currentZone.racks
+        : generateDefaultRacks(4);
+
+      let maxProductsInBin = 1;
+      goodsListMap.forEach((list) => {
+        if (list && list.length > maxProductsInBin) maxProductsInBin = list.length;
+      });
+      Object.values(binDataMap).forEach((list) => {
+        if (list && list.length > maxProductsInBin) maxProductsInBin = list.length;
+      });
+
+      const titleRow = [`BÁO CÁO TRA CỨU SƠ ĐỒ VỊ TRÍ HÀNG HÓA KHO: ${name ? name.toUpperCase() : 'KHO CHÍNH'} (${targetCode || 'KH001'})`];
+      const blankRow: string[] = [];
+
+      const headers = ['Kệ', '% Tổng đang chứa'];
+      for (let i = 1; i <= maxProductsInBin; i++) {
+        headers.push(`Mã HH ${i}`, `Tên hàng hóa ${i}`, `Số lượng ${i}`, `% Chứa ${i}`);
+      }
+
+      const excelRows: (string | number)[][] = [];
+
+      racksList.forEach((rack: any, rIdx: number) => {
+        const rackCode = rack.rackCode || `R${String(rIdx + 1).padStart(2, '0')}`;
+        excelRows.push([`Dãy kệ ${rackCode}`]);
+
+        const shelvesCount = rack.shelvesCount || rack.horizontalPartitions || currentZone?.shelvesPerRack || 4;
+        const baysCount = Math.max(
+          1,
+          (rack.binsPerShelf || rack.verticalPartitions || currentZone?.binsPerShelf || 8) > 2
+            ? (rack.binsPerShelf || (rack.verticalPartitions ? rack.verticalPartitions - 1 : 7))
+            : 7
+        );
+
+        for (let s = shelvesCount; s >= 1; s--) {
+          const globalShelfIdx = calculateGlobalShelfIndex(
+            subWarehouses,
+            currentZone?.id || '',
+            rack.id || rack.rackCode || String(rIdx),
+            s
+          );
+          const shelfPrefix = getRackLetterPrefix(globalShelfIdx);
+          excelRows.push([`Tầng ${shelfPrefix}`]);
+
+          for (let c = 1; c <= baysCount; c++) {
+            const binCodeShort = `${shelfPrefix}${c}`;
+            const binLabel = `Ô ${binCodeShort}`;
+            const binKeyFull = `${targetCode}-${currentZone?.code || 'ZONE'}-${rackCode}-${binCodeShort}`;
+            const binKeyRackCell = `${rackCode}-${binCodeShort}`;
+            const binKeyFullNoZone = `${targetCode}-${rackCode}-${binCodeShort}`;
+
+            const normalizedShort = binCodeShort.toUpperCase().replace(/\s+/g, '');
+            const normalizedRackCell = binKeyRackCell.toUpperCase().replace(/\s+/g, '');
+            const normalizedFull = binKeyFull.toUpperCase().replace(/\s+/g, '');
+            const normalizedLabel = binLabel.toUpperCase().replace(/\s+/g, '');
+
+            const liveGoodsList =
+              goodsListMap.get(binKeyRackCell) ||
+              goodsListMap.get(binKeyFull) ||
+              goodsListMap.get(binKeyFullNoZone) ||
+              goodsListMap.get(binCodeShort) ||
+              goodsListMap.get(normalizedRackCell) ||
+              goodsListMap.get(normalizedShort) ||
+              goodsListMap.get(normalizedFull) ||
+              goodsListMap.get(normalizedLabel) ||
+              goodsListMap.get(binLabel) ||
+              [];
+
+            const fallbackGoods =
+              binDataMap[normalizedRackCell] ||
+              binDataMap[normalizedFull] ||
+              binDataMap[normalizedShort] ||
+              binDataMap[normalizedLabel] ||
+              binDataMap[binLabel] ||
+              binDataMap[binCodeShort] ||
+              [];
+
+            let goods: Array<{ sku: string; name: string; quantity: string; pct: string }> = [];
+
+            if (liveGoodsList.length > 0) {
+              goods = liveGoodsList.map((g) => ({
+                sku: g.sku || 'SKU-001',
+                name: g.productName || 'Hàng hóa kho',
+                quantity: `${Math.abs(g.quantity || 1)} ${g.unit || 'cái'}`,
+                pct: `${g.occupancyPct !== undefined ? g.occupancyPct : 100}%`,
+              }));
+            } else if (fallbackGoods.length > 0) {
+              goods = fallbackGoods;
+            }
+
+            const occInfo =
+              occupiedMap.get(binKeyRackCell) ||
+              occupiedMap.get(binKeyFull) ||
+              occupiedMap.get(binKeyFullNoZone) ||
+              occupiedMap.get(binCodeShort) ||
+              occupiedMap.get(normalizedRackCell) ||
+              occupiedMap.get(normalizedShort) ||
+              occupiedMap.get(normalizedFull) ||
+              occupiedMap.get(binLabel);
+
+            let totalPct = '0%';
+            if (goods.length > 0) {
+              const sumPct = goods.reduce((acc, g) => acc + (parseInt(g.pct) || 0), 0);
+              totalPct = `${Math.min(100, sumPct || 90)}%`;
+            } else if (occInfo && (occInfo.totalPhysical || 0) > 0) {
+              totalPct = `${occInfo.occupancyPct !== undefined ? occInfo.occupancyPct : 100}%`;
+              if (occInfo.productName) {
+                goods = [{
+                  sku: occInfo.sku || 'SKU-001',
+                  name: occInfo.productName,
+                  quantity: `${occInfo.totalPhysical || 1} ${occInfo.unit || 'cái'}`,
+                  pct: totalPct,
+                }];
+              }
+            }
+
+            const row: (string | number)[] = [binLabel, totalPct];
+
+            for (let i = 0; i < maxProductsInBin; i++) {
+              const g = goods[i];
+              if (g) {
+                row.push(g.sku, g.name, g.quantity, g.pct);
+              } else {
+                row.push('', '', '', '');
+              }
+            }
+
+            excelRows.push(row);
+          }
+        }
+      });
+
+      const rawSheetData: any[][] = [titleRow, blankRow, headers, ...excelRows];
+      const ws = XLSX.utils.aoa_to_sheet(rawSheetData);
+
+      // Auto-fit column widths based on maximum string visual length (Độ rộng ô bằng chữ)
+      const colWidths = headers.map((header, colIdx) => {
+        let maxLen = String(header || '').length;
+        rawSheetData.forEach((row) => {
+          const cellVal = row[colIdx];
+          if (cellVal !== undefined && cellVal !== null) {
+            const strVal = String(cellVal);
+            const visualLen = strVal.split('').reduce((acc, char) => acc + (char.charCodeAt(0) > 255 ? 1.2 : 1), 0);
+            if (visualLen > maxLen) maxLen = visualLen;
+          }
+        });
+        return { wch: Math.max(Math.ceil(maxLen) + 4, 12) };
+      });
+      ws['!cols'] = colWidths;
+
+      // Enable gridlines & cell border/alignment styles
+      ws['!views'] = [{ showGridLines: true }];
+
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:A1');
+      const thinBorder = {
+        top: { style: 'thin', color: { auto: 1 } },
+        bottom: { style: 'thin', color: { auto: 1 } },
+        left: { style: 'thin', color: { auto: 1 } },
+        right: { style: 'thin', color: { auto: 1 } },
+      };
+
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!ws[cellAddr]) continue;
+
+          // Row 0: Main Title
+          if (R === 0) {
+            ws[cellAddr].s = {
+              font: { bold: true, sz: 13, color: { rgb: '0E7490' } },
+              alignment: { horizontal: 'left', vertical: 'center' },
+            };
+            continue;
+          }
+          if (R === 1) continue;
+
+          // Row 2: Table Column Headers
+          if (R === 2) {
+            const mod = (C - 2) % 4;
+            let headerAlign = 'center';
+            if (C >= 2 && mod === 1) headerAlign = 'left';
+            if (C >= 2 && mod === 2) headerAlign = 'right';
+
+            ws[cellAddr].s = {
+              font: { bold: true, color: { rgb: '0E7490' } },
+              fill: { fgColor: { rgb: 'CFFAFE' } },
+              alignment: { horizontal: headerAlign, vertical: 'center' },
+              border: thinBorder,
+            };
+            continue;
+          }
+
+          // Data Rows (R >= 3)
+          const cellVal = String(ws[cellAddr].v || '');
+          if (cellVal.startsWith('Dãy kệ')) {
+            ws[cellAddr].s = {
+              font: { bold: true, sz: 11, color: { rgb: '0369A1' } },
+              fill: { fgColor: { rgb: 'E0F2FE' } },
+              alignment: { horizontal: 'left', vertical: 'center' },
+              border: thinBorder,
+            };
+            continue;
+          }
+          if (cellVal.startsWith('Tầng ')) {
+            ws[cellAddr].s = {
+              font: { bold: true, sz: 10, color: { rgb: '334155' } },
+              fill: { fgColor: { rgb: 'F1F5F9' } },
+              alignment: { horizontal: 'left', vertical: 'center' },
+              border: thinBorder,
+            };
+            continue;
+          }
+
+          // Strict Alignments per column type:
+          // C === 0 (Kệ): Center
+          // C === 1 (% Tổng đang chứa): Center
+          // C >= 2:
+          //   (C - 2) % 4 === 0 (Mã HH): Center
+          //   (C - 2) % 4 === 1 (Tên HH): Left (Căn lề trái)
+          //   (C - 2) % 4 === 2 (Số lượng): Right (Căn lề phải)
+          //   (C - 2) % 4 === 3 (% Chứa): Center
+          let hAlign = 'center';
+          if (C === 0 || C === 1) {
+            hAlign = 'center';
+          } else {
+            const mod = (C - 2) % 4;
+            if (mod === 0) hAlign = 'center';
+            else if (mod === 1) hAlign = 'left';
+            else if (mod === 2) hAlign = 'right';
+            else if (mod === 3) hAlign = 'center';
+          }
+
+          ws[cellAddr].s = {
+            alignment: { horizontal: hAlign, vertical: 'center' },
+            border: thinBorder,
+          };
+        }
+      }
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'So_Do_Ke_Kho');
+      XLSX.writeFile(wb, `So_Do_Ke_Kho_${targetCode || 'WMS'}.xlsx`);
+
+      setSuccess('Đã xuất file Excel (.xlsx) sơ đồ vị trí kệ thành công!');
+    } catch (err) {
+      console.error('Export excel error:', err);
+      setError('Lỗi khi xuất file Excel sơ đồ vị trí kệ');
+    }
+  };
 
   const handleSaveBinCustomConfig = () => {
     if (!editingBinCode) return;
@@ -647,34 +1012,12 @@ export default function CreateWarehousePage() {
     }
   };
 
-  // Run AI Slotting Handler
-  const handleRunAiSlotting = () => {
-    if (!activeZone) return;
-    const currentWarehouse: WarehouseRecord = {
-      id: id || `wh_temp`,
-      code: code || 'KH001',
-      name: name || 'Kho Hàng',
-      address: `${detailAddress}, ${ward}, ${province}`,
-      province,
-      ward,
-      detailAddress,
-      status,
-      length,
-      width,
-      height,
-      managerIds: [],
-      staffIds: [],
-      subWarehouses,
-    };
-    const allBins = generateWarehouseBinCells(currentWarehouse);
-    const recs = calculateAiSlottingRecommendations(simProduct, allBins);
-    setAiRecommendations(recs);
-  };
+
 
   return (
     <MainLayout>
       <div className="space-y-6 font-sans pb-16">
-        {Toast && (error || success) && (
+        {Toast && (error || success) && createPortal(
           <Toast
             message={error || success}
             type={error ? 'error' : 'success'}
@@ -682,48 +1025,87 @@ export default function CreateWarehousePage() {
               setError('');
               setSuccess('');
             }}
-          />
+          />,
+          document.body
         )}
 
         {/* PAGE HEADER & TOP NAVIGATION BAR (Exact Products/Main UI Style) */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
-              <Building className="h-5 w-5 text-cyan-100" />
+              <Store className="h-5 w-5 text-cyan-100" />
               <h1 className="text-lg font-bold tracking-tight text-white">
                 {isEditMode ? 'Cấu Hình Dãy Kệ Dọc & Phân Khu Kho' : 'Tạo Kho Hàng Mới'}
               </h1>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-cyan-50 px-4 py-2.5 text-xs font-bold text-cyan-800 shadow-sm transition hover:bg-cyan-100 cursor-pointer"
-            >
-              <Sparkles className="h-4 w-4 text-cyan-600" />
-              {isAiPanelOpen ? 'Đóng AI Simulator' : 'Giả Lập AI Slotting'}
-            </button>
-
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={handleSaveWarehouse}
               disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition cursor-pointer disabled:opacity-50 active:scale-95"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
             >
-              <Save className="h-4 w-4" />
-              {saving ? 'Đang Lưu...' : 'Lưu Cấu Hình Kho'}
+              <Plus className="h-4.5 w-4.5 text-cyan-700" />
+              Thêm mới
             </button>
 
             <button
               type="button"
-              onClick={() => navigate('/warehouses')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-4 py-2.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 shadow-sm transition cursor-pointer"
-              title="Quay lại danh sách kho"
+              onClick={handleCopyWarehouseConfig}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Sao chép cấu hình kho"
             >
-              <ArrowLeft className="h-4 w-4" />
-              Quay lại
+              <Copy className="h-4.5 w-4.5 text-cyan-700" />
+              Copy
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClearAllGoods}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Xóa hết hàng hóa trong kho"
+            >
+              <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+              Xóa
+            </button>
+
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Printer className="h-4.5 w-4.5 text-cyan-700" />
+              In báo cáo
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportWarehouseExcel}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+              Export Excel
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setGridZoomScale((prev) => (prev >= 200 ? 100 : prev + 50))}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Thay đổi tỷ lệ hiển thị ma trận"
+            >
+              <Settings className="h-4.5 w-4.5 text-cyan-700" />
+              <span>Hiển thị</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleBrowserFullscreen}
+              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-slate-300 bg-white text-slate-700 shadow-xs transition hover:bg-slate-100 active:scale-95 cursor-pointer"
+              title="Toàn màn hình"
+            >
+              {isFullScreen ? <Minimize2 className="h-4.5 w-4.5" /> : <Maximize2 className="h-4.5 w-4.5" />}
             </button>
           </div>
         </div>
@@ -775,84 +1157,7 @@ export default function CreateWarehousePage() {
           </div>
         </div>
 
-        {/* AI SLOTTING SIMULATOR PANEL (IF OPEN) */}
-        {isAiPanelOpen && (
-          <div className="bg-slate-900 text-white p-5 rounded-2xl border-2 border-cyan-400 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <Cpu className="h-5 w-5 text-cyan-400" />
-                <h3 className="text-sm font-black text-cyan-400 uppercase tracking-wider">
-                  BÀI TOÁN AI GỢI Ý VỊ TRÍ XẾP HÀNG (3D SLOTTING ENGINE)
-                </h3>
-              </div>
 
-              <button
-                type="button"
-                onClick={handleRunAiSlotting}
-                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 rounded-xl font-black text-xs transition flex items-center gap-2 cursor-pointer shadow-md"
-              >
-                <Zap className="h-4 w-4 fill-slate-950" />
-                CHẠY AI GỢI Ý
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-xs">
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Tên Lô Hàng</label>
-                <input
-                  type="text"
-                  value={simProduct.productName}
-                  onChange={(e) => setSimProduct({ ...simProduct, productName: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Môi Trường Chứa</label>
-                <select
-                  value={simProduct.tempRequirement}
-                  onChange={(e) => setSimProduct({ ...simProduct, tempRequirement: e.target.value as any })}
-                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-cyan-300 font-bold"
-                >
-                  <option value="COLD">❄️ Kho Lạnh (-18°C ~ 5°C)</option>
-                  <option value="THERMAL">🌡️ Kho Nhiệt (15°C ~ 22°C)</option>
-                  <option value="AMBIENT">📦 Kho Thường (20°C ~ 35°C)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Trọng Lượng (kg)</label>
-                <input
-                  type="number"
-                  value={simProduct.totalWeight}
-                  onChange={(e) => setSimProduct({ ...simProduct, totalWeight: Number(e.target.value) || 0 })}
-                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Tần Suất Bán (ABC)</label>
-                <select
-                  value={simProduct.turnoverClass}
-                  onChange={(e) => setSimProduct({ ...simProduct, turnoverClass: e.target.value as any })}
-                  className="w-full px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-emerald-400 font-bold"
-                >
-                  <option value="A">Loại A (Bán nhanh - Gần cửa)</option>
-                  <option value="B">Loại B (Trung bình)</option>
-                  <option value="C">Loại C (Bán chậm - Tầng cao)</option>
-                </select>
-              </div>
-
-              <div className="flex items-end">
-                <div className="bg-slate-800/80 p-2 rounded-lg border border-slate-700 text-xs text-cyan-300 font-bold w-full text-center truncate">
-                  {aiRecommendations.length > 0
-                    ? `Top 1: ${aiRecommendations[0]?.bin.binCode} (${aiRecommendations[0]?.score}%)`
-                    : 'Bấm nút để chạy AI'}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* MAIN SPLIT LAYOUT (5 COLS CONFIG / 7 COLS VISUAL WORKSPACE) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -984,8 +1289,8 @@ export default function CreateWarehousePage() {
                         setSelectedRackCodes([]);
                       }}
                       className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer border ${z.id === activeZone?.id
-                          ? 'bg-cyan-600 text-white border-cyan-600 shadow'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-cyan-50'
+                        ? 'bg-cyan-600 text-white border-cyan-600 shadow'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-cyan-50'
                         }`}
                     >
                       {z.code}
@@ -995,16 +1300,11 @@ export default function CreateWarehousePage() {
               </div>
 
               {hasWarehouseGoods && (
-                <div className="rounded-xl border-2 border-amber-400 bg-amber-50 dark:bg-amber-950/60 p-3.5 text-xs font-bold text-amber-900 dark:text-amber-200 shadow-sm flex items-start gap-2.5">
-                  <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="font-black text-amber-950 dark:text-amber-100 uppercase tracking-wide">
-                      🔒 ĐÃ KHÓA THÔNG SỐ KỆ (ĐANG CHỨA HÀNG)
-                    </p>
-                    <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 leading-relaxed">
-                      Kệ chỉ được phép thay đổi thông số khi kệ <b>không có hàng</b>. Nếu muốn sửa kích thước/vách kệ, vui lòng bấm nút <b>"Xóa hết hàng (Về kệ trống)"</b>.
-                    </p>
-                  </div>
+                <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/60 px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 shadow-2xs flex items-center gap-2">
+                  <ShieldCheck className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <p className="font-black text-amber-950 dark:text-amber-100 uppercase tracking-wide">
+                    ĐÃ KHÓA THÔNG SỐ KỆ (ĐANG CHỨA HÀNG)
+                  </p>
                 </div>
               )}
 
@@ -1206,8 +1506,8 @@ export default function CreateWarehousePage() {
                     <div
                       key={r.id}
                       className={`p-3 rounded-xl border transition space-y-2 ${isChecked
-                          ? 'border-cyan-400 bg-cyan-50/60 dark:bg-cyan-950/40 text-slate-900 dark:text-slate-100 shadow-sm'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-400 opacity-65'
+                        ? 'border-cyan-400 bg-cyan-50/60 dark:bg-cyan-950/40 text-slate-900 dark:text-slate-100 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-400 opacity-65'
                         }`}
                     >
                       {/* TOP CHECKBOX HEADER */}
@@ -1328,8 +1628,8 @@ export default function CreateWarehousePage() {
                       type="button"
                       onClick={() => setViewMode('2D_MATRIX')}
                       className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${viewMode === '2D_MATRIX'
-                          ? 'bg-cyan-600 text-white shadow'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
+                        ? 'bg-cyan-600 text-white shadow'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
                         }`}
                     >
                       <Grid className="h-3.5 w-3.5" />
@@ -1339,8 +1639,8 @@ export default function CreateWarehousePage() {
                       type="button"
                       onClick={() => setViewMode('3D_VIEW')}
                       className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${viewMode === '3D_VIEW'
-                          ? 'bg-cyan-600 text-white shadow'
-                          : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
+                        ? 'bg-cyan-600 text-white shadow'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600'
                         }`}
                     >
                       <Move3d className="h-3.5 w-3.5" />
@@ -1597,7 +1897,7 @@ export default function CreateWarehousePage() {
 
                   return (
                     <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-4 shadow-sm">
-                      
+
                       {/* BIN OVERALL SUMMARY BANNER */}
                       <div className="rounded-xl border border-cyan-200 dark:border-cyan-800 bg-gradient-to-r from-cyan-50/90 via-slate-50 to-cyan-50/90 dark:from-slate-950 dark:via-cyan-950/40 dark:to-slate-950 p-4 space-y-3 shadow-2xs">
                         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-200/70 dark:border-cyan-800/60 pb-2.5">
@@ -1738,8 +2038,8 @@ export default function CreateWarehousePage() {
                                       <td className="py-2.5 px-3 text-center font-mono font-medium border border-slate-300 dark:border-slate-700 whitespace-nowrap align-middle">
                                         <span
                                           className={`px-2.5 py-1 rounded border font-bold text-xs ${isOutbound
-                                              ? 'bg-rose-50 text-rose-900 border-rose-300'
-                                              : 'bg-cyan-50 text-cyan-950 border-cyan-300'
+                                            ? 'bg-rose-50 text-rose-900 border-rose-300'
+                                            : 'bg-cyan-50 text-cyan-950 border-cyan-300'
                                             }`}
                                         >
                                           {realOrderCode}

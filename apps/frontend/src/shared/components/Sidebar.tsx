@@ -256,6 +256,31 @@ const menuItems: MenuItem[] = [
   },
 ];
 
+function isRouteActive(pathname: string, targetPath: string): boolean {
+  if (!targetPath || targetPath === '#') return false;
+  if (pathname === targetPath) return true;
+  if (targetPath === '/' || targetPath === '') return false;
+  if (targetPath === '/products/main' && pathname.startsWith('/products')) return true;
+  if (targetPath === '/inbound/receipts' && pathname.startsWith('/inbound')) return true;
+  if (targetPath === '/outbound/orders' && pathname.startsWith('/outbound')) return true;
+  if (targetPath === '/delivery/shippers' && pathname.startsWith('/delivery')) return true;
+  if (
+    targetPath === '/categories-menu' &&
+    (pathname.startsWith('/products') ||
+      pathname.startsWith('/categories') ||
+      pathname.startsWith('/customers') ||
+      pathname.startsWith('/suppliers') ||
+      pathname.startsWith('/warehouses') ||
+      pathname.startsWith('/units') ||
+      pathname.startsWith('/currencies') ||
+      pathname.startsWith('/bank-accounts'))
+  ) {
+    return true;
+  }
+  if (pathname.startsWith(targetPath + '/')) return true;
+  return false;
+}
+
 function getStoredUser() {
   try {
     return JSON.parse(localStorage.getItem('user') || '{}');
@@ -299,9 +324,23 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
     const initialPath = location.pathname;
-    const activeParent = menuItems.find((item) => item.children?.some((c) => initialPath === c.path));
+    const activeParent = menuItems.find((item) => item.children?.some((c) => isRouteActive(initialPath, c.path)));
     return new Set([activeParent ? activeParent.path : '/nhap-xuat']);
   });
+
+  useEffect(() => {
+    const activeParent = menuItems.find((item) =>
+      item.children?.some((c) => isRouteActive(location.pathname, c.path))
+    );
+    if (activeParent) {
+      setExpandedItems((prev) => {
+        if (!prev.has(activeParent.path)) {
+          return new Set([...Array.from(prev), activeParent.path]);
+        }
+        return prev;
+      });
+    }
+  }, [location.pathname]);
 
   const toggleExpanded = (path: string) => {
     setExpandedItems((prev) => {
@@ -347,14 +386,14 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
   const renderItem = (item: MenuItem) => {
     const Icon = item.icon;
-    const isParentActive = location.pathname.startsWith(item.path);
+    const isParentActive = isRouteActive(location.pathname, item.path);
     const hasChildren = Boolean(item.children && item.children.length > 0);
-    const isChildActive = hasChildren && item.children?.some((c) => location.pathname === c.path);
+    const isChildActive = hasChildren && item.children?.some((c) => isRouteActive(location.pathname, c.path));
     const isExpanded = expandedItems.has(item.path);
 
     // SPECIAL BUTTON FOR TRANG CHỦ
     if (item.isSpecialButton) {
-      const isActive = location.pathname === item.path;
+      const isActive = isRouteActive(location.pathname, item.path);
       return (
         <Link
           key={item.path + item.id}
@@ -411,7 +450,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
               <div className="pl-2.5 ml-4 space-y-1 py-0.5">
                 {item.children!.map((child) => {
                   const ChildIcon = child.icon;
-                  const isChildActiveState = location.pathname === child.path;
+                  const isChildActiveState = isRouteActive(location.pathname, child.path);
                   return (
                     <Link
                       key={child.path + child.id}
@@ -444,7 +483,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       );
     }
 
-    const isActive = location.pathname === item.path;
+    const isActive = isRouteActive(location.pathname, item.path);
 
     return (
       <Link
