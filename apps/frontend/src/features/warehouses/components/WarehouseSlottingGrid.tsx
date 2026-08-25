@@ -926,19 +926,31 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
           const totalItemQty = it.qty && Number(it.qty) > 0 ? Number(it.qty) : 100;
 
           const bList = selectedBinsMap?.[rowId] || [];
-          const totalSelectedBinsForItem = Math.max(1, bList.length);
-          const maxPerBin = Math.ceil(totalItemQty / totalSelectedBinsForItem);
-          const binIdxInItem = bList.findIndex((b: string) => normalizeBinKey(b) === normTarget || b.includes(fullBinCode));
+          const maxBinCap = 500;
 
-          let qtyPerBinForItem = maxPerBin;
-          if (binIdxInItem >= 0 && totalSelectedBinsForItem > 1) {
-            if (binIdxInItem === totalSelectedBinsForItem - 1) {
-              qtyPerBinForItem = Math.max(1, totalItemQty - maxPerBin * (totalSelectedBinsForItem - 1));
+          // Sequential filling calculation for this bin
+          let remainingForSeq = totalItemQty;
+          let qtyPerBinForItem = 0;
+          let calcPctForItem = 0;
+
+          for (const bStr of bList) {
+            const cleanBStr = bStr.split('(')[0].trim();
+            const isTargetBin = normalizeBinKey(cleanBStr) === normTarget || cleanBStr.includes(fullBinCode);
+
+            const alloc = Math.min(remainingForSeq, maxBinCap);
+            remainingForSeq -= alloc;
+
+            if (isTargetBin) {
+              qtyPerBinForItem = alloc;
+              calcPctForItem = Math.max(1, Math.min(100, Math.round((alloc / maxBinCap) * 100)));
+              break;
             }
           }
 
-          const maxBinCap = 500;
-          let calcPctForItem = Math.max(1, Math.min(100, Math.round((qtyPerBinForItem / maxBinCap) * 100)));
+          if (qtyPerBinForItem === 0 && bList.length > 0) {
+            qtyPerBinForItem = Math.min(totalItemQty, maxBinCap);
+            calcPctForItem = Math.max(1, Math.min(100, Math.round((qtyPerBinForItem / maxBinCap) * 100)));
+          }
 
           // Check if specific percentage is embedded in selected bList
           const matchBinEntry = bList.find((b: string) => normalizeBinKey(b) === normTarget || b.includes(fullBinCode));
@@ -1340,36 +1352,33 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                           const knownPct = occupiedInfo?.occupancyPct !== undefined && Number(occupiedInfo.occupancyPct) >= 0 ? Number(occupiedInfo.occupancyPct) : undefined;
 
-                          if (knownPct !== undefined) {
-                            occupancyPct = knownPct;
-                            if (mode === 'select' && !isOutbound && occupancyPct >= 100 && !isSelected) {
-                              isOtherItemFull = true;
-                            }
-                          } else if (otherItemName && !isSelected) {
-                            const otherPct = otherItemPctFromLock !== undefined ? Number(otherItemPctFromLock) : (customPct !== undefined ? customPct : 100);
-                            occupancyPct = otherPct;
-                            if (!isOutbound && otherPct >= 100) {
-                              isOtherItemFull = true;
-                            }
-                          } else if (hasGoods) {
-                            const qty = occupiedInfo?.totalPhysical || occupiedInfo?.allocated || 1;
-                            const maxCap = customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500;
-                            const calculatedFromQty = Math.min(100, Math.max(10, Math.round((qty / maxCap) * 100)));
-                            occupancyPct = customPct !== undefined
-                              ? customPct
-                              : (embeddedPct !== undefined ? embeddedPct : calculatedFromQty);
-                            if (mode === 'select' && !isOutbound && occupancyPct >= 100 && !isSelected) {
-                              isOtherItemFull = true;
-                            }
-                          } else if (isSelected) {
+                          if (isSelected) {
                             occupancyPct = embeddedPct !== undefined
                               ? embeddedPct
-                              : (customPct !== undefined ? customPct : 100);
-                          } else if (customPct !== undefined && customPct > 0) {
-                            occupancyPct = customPct;
-                            if (mode === 'select' && !isOutbound && occupancyPct >= 100 && !isSelected) {
+                              : (customPct !== undefined ? customPct : (knownPct !== undefined ? knownPct : 100));
+                          } else if (otherItemName) {
+                            const otherPct = otherItemPctFromLock !== undefined ? Number(otherItemPctFromLock) : (customPct !== undefined ? customPct : 100);
+                            occupancyPct = otherPct;
+                            if (mode === 'select' && !isOutbound && otherPct >= 100) {
                               isOtherItemFull = true;
                             }
+                          } else if (hasGoods && occupiedInfo) {
+                            const curName = (orderItems && activeRowId) ? (orderItems.find((i: any) => i.rowId === activeRowId)?.productName || '').trim().toLowerCase() : '';
+                            const occName = (occupiedInfo.productName || '').trim().toLowerCase();
+                            const isDifferentProduct = curName && occName && !occName.includes(curName) && !curName.includes(occName);
+
+                            const qty = occupiedInfo.totalPhysical || occupiedInfo.allocated || 1;
+                            const maxCap = customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500;
+                            const calculatedFromQty = Math.min(100, Math.max(10, Math.round((qty / maxCap) * 100)));
+                            occupancyPct = knownPct !== undefined ? knownPct : (customPct !== undefined ? customPct : calculatedFromQty);
+
+                            if (mode === 'select' && !isOutbound && isDifferentProduct && occupancyPct >= 100) {
+                              isOtherItemFull = true;
+                            }
+                          } else if (customPct !== undefined && customPct > 0) {
+                            occupancyPct = customPct;
+                          } else if (knownPct !== undefined && knownPct > 0) {
+                            occupancyPct = knownPct;
                           } else {
                             occupancyPct = 0;
                           }

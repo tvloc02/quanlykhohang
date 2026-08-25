@@ -989,30 +989,52 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             setWarningMessage(`✅ Đã chọn đủ ${currentSelectedStock}/${targetQty} ${activeItem?.unit || 'Cái'} cần xuất cho "${activeItem?.productName || 'mặt hàng'}"! Hệ thống đã khóa không cho chọn thêm.`);
             return prev;
           }
+        } else {
+          // INBOUND MODE / STOCKIN / STOCKTAKE: Sequential capacity filling validation
+          const maxBinCap = 500;
+          let currentStackedQty = 0;
+
+          currentList.forEach((bCodeStr) => {
+            const cleanB = bCodeStr.split('(')[0].trim();
+            let occupiedByOthers = 0;
+            Object.entries(prev).forEach(([rId, bList]) => {
+              if (rId === activeRowId) return;
+              const matchStr = bList.find((b) => normalizeBinKey(b) === normalizeBinKey(cleanB) || b.startsWith(cleanB));
+              if (matchStr) {
+                const m = matchStr.match(/\((\d+)%\)/);
+                occupiedByOthers += m ? Number(m[1]) : 100;
+              }
+            });
+
+            const availCapPct = Math.max(0, 100 - occupiedByOthers);
+            const availCapQty = Math.round((availCapPct / 100) * maxBinCap);
+            const remainingToStack = Math.max(0, targetQty - currentStackedQty);
+            const alloc = Math.min(remainingToStack, availCapQty);
+            currentStackedQty += alloc;
+          });
+
+          if (currentStackedQty >= targetQty) {
+            setWarningMessage(`✅ Đã xếp đầy đủ ${targetQty}/${targetQty} ${activeItem?.unit || 'Cái'} cần nhập vào các ô kệ đã chọn! Nếu muốn chuyển sang ô kệ khác, vui lòng bỏ chọn ô vừa rồi trước.`);
+            return prev;
+          }
         }
 
         const filtered = currentList.filter((b) => normalizeBinKey(b) !== normKey);
         updatedRawList = [...filtered, binCode];
       }
 
-      // EVEN DISTRIBUTION OF QUANTITY & CAPACITY PER BIN IN INBOUND / STOCKIN MODE
+      // SEQUENTIAL CAPACITY FILLING PER BIN IN INBOUND / STOCKIN / STOCKTAKE MODE
       const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
       const targetQty = Number(activeItem?.qty || 1);
       const totalBins = updatedRawList.length;
 
       if (mode !== 'OUTBOUND_TRANSFER' && totalBins > 0) {
-        const maxPerBin = Math.ceil(targetQty / totalBins);
         const maxBinCap = 500;
+        let remainingToAllocate = targetQty;
 
-        const formattedList = updatedRawList.map((bCodeStr, bIdx) => {
+        const formattedList = updatedRawList.map((bCodeStr) => {
           const cleanB = bCodeStr.split('(')[0].trim();
           const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
-
-          const qtyForThisBin = bIdx < totalBins - 1
-            ? Math.min(targetQty, maxPerBin)
-            : Math.max(1, targetQty - maxPerBin * (totalBins - 1));
-
-          const pctForThisBin = Math.max(1, Math.min(100, Math.round((qtyForThisBin / maxBinCap) * 100)));
 
           let occupiedByOthers = 0;
           Object.entries(prev).forEach(([rId, bList]) => {
@@ -1024,7 +1046,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             }
           });
 
+          const availCapPct = Math.max(0, 100 - occupiedByOthers);
+          const availCapQty = Math.round((availCapPct / 100) * maxBinCap);
+
+          const qtyForThisBin = Math.min(remainingToAllocate, availCapQty);
+          remainingToAllocate = Math.max(0, remainingToAllocate - qtyForThisBin);
+
+          const pctForThisBin = Math.max(1, Math.min(100, Math.round((qtyForThisBin / maxBinCap) * 100)));
           const netPct = Math.min(100, occupiedByOthers + pctForThisBin);
+
           updateSubWarehousesTopology(cleanB, shortB, netPct, `Đã chứa: ${netPct}% (${qtyForThisBin} ${activeItem?.unit || 'cái'})`);
 
           return pctForThisBin < 100 ? `${cleanB} (${pctForThisBin}%)` : cleanB;
