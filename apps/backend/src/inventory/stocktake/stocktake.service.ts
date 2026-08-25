@@ -280,32 +280,31 @@ export class StocktakeService {
     }
 
     // Get system quantity from StockBalance with smart location matching
-    let balance = await this.balanceRepo.findOne({
-      where: {
-        product: { id: product.id } as any,
-        locationCode: stocktake.locationCode,
-      },
+    const allBalances = await this.balanceRepo.find({
+      where: { product: { id: product.id } as any },
       relations: ['product'],
     });
 
-    if (!balance && (stocktake.locationCode === 'KH006' || stocktake.locationCode === 'Kho Thanh Trì')) {
-      balance = await this.balanceRepo.findOne({
-        where: {
-          product: { id: product.id } as any,
-          locationCode: 'KHO-NVL',
-        },
-        relations: ['product'],
-      });
-    }
+    const isMatchWh = (balanceLoc: string, targetWhCode: string): boolean => {
+      const b = (balanceLoc || '').trim().toUpperCase();
+      const t = (targetWhCode || '').trim().toUpperCase();
+      if (!b || !t) return false;
+      if (b === t) return true;
+      if (b.startsWith(`${t}-`)) return true;
+      if (t === 'KH001' || t.includes('HÀ NỘI') || t.includes('HA NOI') || t === 'WH_DEFAULT_1') {
+        if (b.includes('KH001') || b.includes('HÀ NỘI') || b.includes('HA NOI') || b === 'WH_DEFAULT_1') return true;
+      }
+      if (t === 'KH002' || t.includes('HCM') || t.includes('HỒ CHÍ MINH') || t === 'WH_DEFAULT_2') {
+        if (b.includes('KH002') || b.includes('HCM') || b.includes('HỒ CHÍ MINH') || b === 'WH_DEFAULT_2') return true;
+      }
+      if (t === 'KH006' || t.includes('THANH TRÌ')) {
+        if (b.includes('KH006') || b.includes('KHO-NVL') || b.includes('THANH TRÌ')) return true;
+      }
+      return false;
+    };
 
-    if (!balance) {
-      balance = await this.balanceRepo.findOne({
-        where: {
-          product: { id: product.id } as any,
-        },
-        relations: ['product'],
-      });
-    }
+    const matchingBalances = allBalances.filter((b) => isMatchWh(b.locationCode, stocktake.locationCode));
+    const balance = matchingBalances[0];
 
     const systemQty = balance?.totalPhysical || 0;
 
@@ -434,66 +433,61 @@ export class StocktakeService {
 
     // Bọc toàn bộ cập nhật điều chỉnh tồn kho và mở khóa kho trong 1 Database Transaction duy nhất
     await this.dataSource.transaction(async (manager) => {
-      // 1. Bulk Update tồn kho StockBalance theo countedQty
+      // 1. Bulk Update tồn kho StockBalance theo countedQty (Isolated per Warehouse)
+      const isMatchWh = (balanceLoc: string, targetWhCode: string): boolean => {
+        const b = (balanceLoc || '').trim().toUpperCase();
+        const t = (targetWhCode || '').trim().toUpperCase();
+        if (!b || !t) return false;
+        if (b === t) return true;
+        if (b.startsWith(`${t}-`)) return true;
+        if (t === 'KH001' || t.includes('HÀ NỘI') || t.includes('HA NOI') || t === 'WH_DEFAULT_1') {
+          if (b.includes('KH001') || b.includes('HÀ NỘI') || b.includes('HA NOI') || b === 'WH_DEFAULT_1') return true;
+        }
+        if (t === 'KH002' || t.includes('HCM') || t.includes('HỒ CHÍ MINH') || t === 'WH_DEFAULT_2') {
+          if (b.includes('KH002') || b.includes('HCM') || b.includes('HỒ CHÍ MINH') || b === 'WH_DEFAULT_2') return true;
+        }
+        if (t === 'KH006' || t.includes('THANH TRÌ')) {
+          if (b.includes('KH006') || b.includes('KHO-NVL') || b.includes('THANH TRÌ')) return true;
+        }
+        return false;
+      };
+
       for (const detail of stocktake.details || []) {
         if (detail.countedQty !== null && detail.countedQty !== undefined) {
-          let balance = await manager.findOne(StockBalance, {
-            where: {
-              product: { id: detail.product.id } as any,
-              locationCode: stocktake.locationCode,
-            },
+          const targetWh = stocktake.locationCode;
+          const allBalances = await manager.find(StockBalance, {
+            where: { product: { id: detail.product.id } as any },
             relations: ['product'],
           });
 
-          if (!balance && (stocktake.locationCode === 'KH006' || stocktake.locationCode === 'Kho Thanh Trì')) {
-            balance = await manager.findOne(StockBalance, {
-              where: {
-                product: { id: detail.product.id } as any,
-                locationCode: 'KHO-NVL',
-              },
-              relations: ['product'],
-            });
-          }
+          const matchingBalances = allBalances.filter((b) => isMatchWh(b.locationCode, targetWh));
 
-          if (!balance) {
-            balance = await manager.findOne(StockBalance, {
-              where: {
-                product: { id: detail.product.id } as any,
-              },
-              relations: ['product'],
-            });
-          }
+          let balance: StockBalance | null = null;
+          if (matchingBalances.length > 0) {
+            balance = matchingBalances[0];
+            balance.totalPhysical = detail.countedQty;
+            balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
 
-          if (!balance) {
+            // Clean up duplicate alias rows for THIS WAREHOUSE ONLY (never touch other warehouses)
+            if (matchingBalances.length > 1) {
+              const duplicates = matchingBalances.slice(1);
+              await manager.remove(StockBalance, duplicates);
+            }
+          } else {
             const product = await manager.findOne(Product, { where: { id: detail.product.id } });
             if (product) {
               balance = manager.create(StockBalance, {
                 product,
-                locationCode: stocktake.locationCode,
+                locationCode: targetWh,
                 totalPhysical: detail.countedQty,
                 allocated: 0,
                 available: detail.countedQty,
               });
             }
-          } else {
-            balance.totalPhysical = detail.countedQty;
-            balance.locationCode = stocktake.locationCode || balance.locationCode;
-            balance.available = Math.max(balance.totalPhysical - balance.allocated, 0);
           }
 
           if (balance) {
             await manager.save(StockBalance, balance);
-
-            // Clean up any remaining duplicate balances for this product
-            const allBalances = await manager.find(StockBalance, {
-              where: { product: { id: detail.product.id } as any },
-            });
-            if (allBalances.length > 1) {
-              const duplicates = allBalances.filter((b) => b.id !== balance.id);
-              if (duplicates.length > 0) {
-                await manager.remove(StockBalance, duplicates);
-              }
-            }
           }
         }
       }
