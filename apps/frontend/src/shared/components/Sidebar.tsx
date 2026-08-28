@@ -192,18 +192,6 @@ const menuItems: MenuItem[] = [
       { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/bank-accounts' },
     ],
   },
-  // 8. Chăm sóc Khách hàng
-  {
-    id: 'cham-soc-khach-hang',
-    icon: PhoneCall,
-    label: 'Chăm sóc Khách hàng',
-    path: '/customers',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'cskh-customers', icon: UserPlus, label: 'Danh sách Khách hàng', path: '/customers' },
-      { id: 'cskh-suppliers', icon: Contact, label: 'Nhà cung cấp', path: '/suppliers' },
-    ],
-  },
   // 9. Hệ thống
   {
     id: 'he-thong',
