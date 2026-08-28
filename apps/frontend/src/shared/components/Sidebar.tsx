@@ -63,7 +63,6 @@ import {
   HelpCircle,
   BookMarked,
 } from 'lucide-react';
-import { readStoredPermissionGroups } from '../../features/personnel/PermissionGroupsPage';
 import { usePermissions } from '../hooks/usePermissions';
 
 interface SidebarProps {
@@ -88,10 +87,8 @@ type MenuItem = {
   }>;
 };
 
-// Cấu trúc danh mục menu xếp chuẩn theo Ảnh Mẫu:
-// POS - Bán lẻ (Trang chủ), Nhập - Xuất, Thu chi, Báo cáo Tổng hợp, Báo cáo Phân tích, Sổ sách kế toán, Danh mục, CSKH, Hệ thống, Shipper, VAT Điện tử, Ghi đơn Thị trường, Trợ giúp, Hướng dẫn sử dụng
 const menuItems: MenuItem[] = [
-  // 1. Trang chủ (Nút Vàng Nổi Bật)
+  // 1. Trang chủ
   {
     id: 'pos',
     icon: Home,
@@ -122,7 +119,7 @@ const menuItems: MenuItem[] = [
       { id: 'inbound-assembly', icon: LinkIcon, label: 'Tạo bộ/Combo', path: '/inbound/assembly' },
     ],
   },
-  // 3. Thu chi (Viết phiếu thu, Thu tiền từ Phiếu xuất, Viết phiếu chi)
+  // 3. Thu chi
   {
     id: 'thu-chi',
     icon: ArrowLeftRight,
@@ -198,108 +195,40 @@ const menuItems: MenuItem[] = [
     icon: Settings,
     label: 'Hệ thống',
     path: '/system-menu',
-    allowedRoles: ['admin', 'manager', 'staff'],
+    allowedRoles: ['admin', 'manager'],
     children: [
-      { id: 'logout', icon: LogOut, label: 'Đăng xuất', path: '/login' },
-      { id: 'change-password', icon: Lock, label: 'Đổi mật khẩu', path: '/profile' },
-      { id: 'personnel', icon: User, label: 'Người dùng / Nhân viên', path: '/personnel', allowedRoles: ['admin'] },
-      { id: 'permission-groups', icon: ShieldCheck, label: 'Nhóm quyền', path: '/personnel/permission-groups', allowedRoles: ['admin'] },
-      { id: 'audit-log', icon: History, label: 'Lịch sử thao tác', path: '/audit-log', allowedRoles: ['admin'] },
-      { id: 'zalo-config', icon: MessageCircle, label: 'Cấu hình Zalo OA', path: '/settings' },
-      { id: 'evat-config', icon: Receipt, label: 'Cấu hình e-VAT', path: '/vat/config' },
+      { id: 'settings', icon: Settings, label: 'Cấu hình hệ thống', path: '/settings' },
+      { id: 'personnel-users', icon: Users, label: 'Nhân viên & Phân quyền', path: '/personnel/users' },
+      { id: 'system-branch-config', icon: Warehouse, label: 'Cấu hình Chi nhánh', path: '/system/branch-config' },
+      { id: 'vat-management', icon: FileEdit, label: 'Hóa đơn & VAT', path: '/vat-management' },
+      { id: 'system-print-templates', icon: Printer, label: 'Mẫu in Chứng từ', path: '/system/print-templates' },
+      { id: 'system-audit-log', icon: History, label: 'Nhật ký Hoạt động', path: '/system/audit-log' },
     ],
-  },
-  // 10. Shipper
-  {
-    id: 'shipper',
-    icon: Bike,
-    label: 'Shipper',
-    path: '/delivery/shippers',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'shipper-delivery', icon: Truck, label: 'Quản lý Giao hàng', path: '/delivery/transfer-orders' },
-      { id: 'shipper-list', icon: Bike, label: 'Danh sách Shipper / Tài xế', path: '/delivery/shippers' },
-    ],
-  },
-  // 11. VAT Điện tử
-  {
-    id: 'vat-dien-tu',
-    icon: Receipt,
-    label: 'VAT Điện tử',
-    path: '/vat/management',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'vat-management', icon: Repeat, label: 'Quản lý VAT Điện tử', path: '/vat/management' },
-      { id: 'vat-config', icon: Settings, label: 'Thiết lập thông tin VAT', path: '/vat/config' },
-    ],
-  },
-  // 12. Hướng dẫn sử dụng
-  {
-    id: 'huong-dan-su-dung',
-    icon: BookMarked,
-    label: 'Hướng dẫn sử dụng',
-    path: '/settings',
-    allowedRoles: ['admin', 'manager', 'staff'],
   },
 ];
 
-function isRouteActive(pathname: string, targetPath: string): boolean {
-  if (!targetPath || targetPath === '#') return false;
-  if (pathname === targetPath) return true;
-  if (targetPath === '/' || targetPath === '') return false;
-  if (targetPath === '/products/main' && pathname.startsWith('/products')) return true;
-  if (targetPath === '/inbound/receipts' && pathname.startsWith('/inbound')) return true;
-  if (targetPath === '/outbound/orders' && pathname.startsWith('/outbound')) return true;
-  if (targetPath === '/delivery/shippers' && pathname.startsWith('/delivery')) return true;
-  if (
-    targetPath === '/categories-menu' &&
-    (pathname.startsWith('/products') ||
-      pathname.startsWith('/categories') ||
-      pathname.startsWith('/customers') ||
-      pathname.startsWith('/suppliers') ||
-      pathname.startsWith('/warehouses') ||
-      pathname.startsWith('/units') ||
-      pathname.startsWith('/currencies') ||
-      pathname.startsWith('/bank-accounts'))
-  ) {
-    return true;
+function isRouteActive(currentPath: string, targetPath: string) {
+  if (targetPath === '/dashboard') {
+    return currentPath === '/dashboard' || currentPath === '/';
   }
-  if (pathname.startsWith(targetPath + '/')) return true;
-  return false;
-}
-
-function getStoredUser() {
-  try {
-    return JSON.parse(localStorage.getItem('user') || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function getStoredRole(user: any) {
-  return (user.role || (user.roles && user.roles[0]?.name) || 'admin').toLowerCase();
+  return currentPath.startsWith(targetPath);
 }
 
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
-  const [permissionTick, setPermissionTick] = useState(0);
+  const [userRole, setUserRole] = useState<string>('');
 
   useEffect(() => {
-    const handlePermissionsChange = () => {
-      setTimeout(() => setPermissionTick((prev) => prev + 1), 0);
-    };
-
-    window.addEventListener('storage', handlePermissionsChange);
-    window.addEventListener('permissions-updated', handlePermissionsChange);
-
-    return () => {
-      window.removeEventListener('storage', handlePermissionsChange);
-      window.removeEventListener('permissions-updated', handlePermissionsChange);
-    };
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      setUserRole(user.role || (user.roles && user.roles[0]?.name) || 'staff');
+    } catch {
+      setUserRole('staff');
+    }
   }, []);
 
-  const { isAdmin, userActiveGroups, canViewMenu } = usePermissions();
+  const { isAdmin, canViewMenu } = usePermissions();
 
   const isMenuAllowed = useCallback(
     (item: { id: string; allowedRoles?: string[] }) => {
@@ -378,28 +307,6 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     const isChildActive = hasChildren && item.children?.some((c) => isRouteActive(location.pathname, c.path));
     const isExpanded = expandedItems.has(item.path);
 
-    // SPECIAL BUTTON FOR TRANG CHỦ
-    if (item.isSpecialButton) {
-      const isActive = isRouteActive(location.pathname, item.path);
-      return (
-        <Link
-          key={item.path + item.id}
-          to={item.path}
-          className={`w-full flex items-center ${
-            isOpen ? 'px-4 py-3' : 'justify-center p-3'
-          } text-sm font-black rounded-xl transition-all duration-200 ${
-            isActive
-              ? 'bg-gradient-to-r from-cyan-600 to-cyan-700 text-white border-2 border-cyan-500 shadow-md shadow-cyan-600/20'
-              : 'bg-cyan-50/90 hover:bg-cyan-100 text-cyan-900 border-2 border-cyan-300/80 shadow-xs'
-          } mb-2 cursor-pointer`}
-          title={!isOpen ? item.label : ''}
-        >
-          <Icon className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${isActive ? 'text-white' : 'text-cyan-700'}`} />
-          {isOpen && <span className="flex-1 text-left truncate font-black tracking-wide">{item.label}</span>}
-        </Link>
-      );
-    }
-
     if (hasChildren) {
       return (
         <div key={item.path} className="space-y-1">
@@ -407,17 +314,17 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             onClick={() => toggleExpanded(item.path)}
             className={`w-full flex items-center ${isOpen ? 'px-3.5' : 'justify-center'} py-3 text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer group ${
               isParentActive || isChildActive || isExpanded
-                ? 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300'
-                : 'hover:bg-cyan-50 dark:hover:bg-slate-900 text-gray-800 dark:text-slate-200'
+                ? 'bg-cyan-500/10 dark:bg-[#131b2e] text-cyan-700 dark:text-blue-300 border border-transparent dark:border-blue-800/60'
+                : 'hover:bg-cyan-50 dark:hover:bg-[#0f172a] text-slate-800 dark:text-slate-200'
             }`}
             title={!isOpen ? item.label : ''}
           >
-            <Icon className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 text-cyan-600 dark:text-cyan-400`} />
+            <Icon className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 text-cyan-600 dark:text-blue-400`} />
             {isOpen && (
               <>
                 <span className="flex-1 text-left truncate">{item.label}</span>
                 <ChevronDown
-                  className={`h-4 w-4 text-cyan-600 transition-transform duration-300 ${
+                  className={`h-4 w-4 text-cyan-600 dark:text-blue-400 transition-transform duration-300 ${
                     isExpanded ? 'transform rotate-180' : ''
                   }`}
                 />
@@ -434,7 +341,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                   : 'max-h-0 opacity-0 my-0 pointer-events-none'
               }`}
             >
-              <div className="pl-2.5 ml-4 space-y-1 py-0.5">
+              <div className="pl-2.5 ml-4 space-y-1 py-0.5 border-l-2 border-slate-100 dark:border-slate-800">
                 {item.children!.map((child) => {
                   const ChildIcon = child.icon;
                   const isChildActiveState = isRouteActive(location.pathname, child.path);
@@ -450,13 +357,13 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                       }}
                       className={`w-full flex items-center px-3 py-2 text-[13px] font-semibold rounded-lg transition-all duration-200 ${
                         isChildActiveState
-                          ? 'bg-cyan-600 text-white shadow-sm font-semibold'
-                          : 'text-gray-700 dark:text-slate-200 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:bg-slate-900 dark:hover:text-cyan-300'
+                          ? 'bg-gradient-to-r from-cyan-600 to-cyan-500 dark:from-cyan-700 dark:to-cyan-800 text-white shadow-md font-extrabold'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:bg-[#131b2e] dark:hover:text-cyan-200'
                       }`}
                     >
                       <ChildIcon
                         className={`h-4 w-4 mr-2.5 flex-shrink-0 ${
-                          isChildActiveState ? 'text-white' : 'text-cyan-500/80 dark:text-cyan-400/70'
+                          isChildActiveState ? 'text-white' : 'text-cyan-500/80 dark:text-cyan-400'
                         }`}
                       />
                       <span className="truncate">{child.label}</span>
@@ -478,14 +385,14 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         to={item.path}
         className={`w-full flex items-center ${isOpen ? 'px-3.5' : 'justify-center'} py-3 text-sm font-bold rounded-xl transition-all duration-200 group ${
           isActive
-            ? 'bg-gradient-to-r from-cyan-500 to-cyan-600 text-white shadow-md'
-            : 'hover:bg-cyan-50 dark:hover:bg-slate-900 text-gray-800 dark:text-slate-200'
+            ? 'bg-gradient-to-r from-cyan-600 to-cyan-500 dark:from-cyan-700 dark:to-cyan-800 text-white shadow-md font-black'
+            : 'hover:bg-cyan-50 dark:hover:bg-[#0f172a] text-slate-800 dark:text-slate-200'
         }`}
         title={!isOpen ? item.label : ''}
       >
         <Icon
           className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${
-            isActive ? 'text-white' : 'text-cyan-600 dark:text-cyan-400'
+            isActive ? 'text-white' : 'text-cyan-600 dark:text-blue-400'
           }`}
         />
         {isOpen && <span className="flex-1 text-left truncate">{item.label}</span>}
@@ -497,18 +404,15 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     <aside
       className={`${
         isOpen ? 'w-80' : 'w-20'
-      } fixed lg:relative z-40 bg-white dark:bg-slate-950 transform transition-all duration-300 ease-in-out border-r-2 border-gray-200 dark:border-slate-800 flex flex-col h-screen`}
-      style={{
-        background: 'linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%)',
-      }}
+      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen`}
     >
-      <div className="h-20 p-4 border-b-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800 flex justify-center lg:justify-start box-border">
+      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex justify-center lg:justify-start box-border">
         <div className={`flex items-center gap-3 w-full ${!isOpen ? 'justify-center' : ''}`}>
           <img src="/logo.png" alt="Smart WMS" className="h-11 w-11 object-cover rounded-xl shadow-sm flex-shrink-0" />
           {isOpen && (
             <div className="flex-1 overflow-hidden">
-              <h1 className="font-bold text-lg text-gray-800 dark:text-white truncate">Smart WMS</h1>
-              <p className="text-gray-500 dark:text-slate-400 text-xs font-medium truncate">
+              <h1 className="font-extrabold text-lg text-slate-900 dark:text-slate-100 truncate">Smart WMS</h1>
+              <p className="text-slate-500 dark:text-blue-300 text-xs font-semibold truncate">
                 Hệ thống quản lý kho
               </p>
             </div>
@@ -519,38 +423,32 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       <div className="px-4 py-4 flex-shrink-0">
         {isOpen ? (
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-cyan-500" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-cyan-500 dark:text-blue-400" />
             <input
               type="text"
               placeholder="Tìm kiếm menu..."
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 text-sm border-2 border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 dark:bg-slate-900 dark:text-white transition-all bg-gray-50"
+              className="w-full pl-9 pr-3 py-2.5 text-xs font-semibold border-2 border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-cyan-500 dark:focus:border-blue-500 focus:ring-4 focus:ring-cyan-500/10 dark:bg-[#060913] dark:text-slate-100 transition-all bg-slate-50"
             />
           </div>
         ) : (
           <div className="flex justify-center">
             <button
               type="button"
-              className="p-2 rounded-xl bg-cyan-50 dark:bg-slate-900 cursor-pointer"
+              className="p-2 rounded-xl bg-cyan-50 dark:bg-[#0f172a] cursor-pointer"
               onClick={onToggle}
               title="Mở rộng để tìm kiếm"
             >
-              <Search className="h-5 w-5 text-cyan-600" />
+              <Search className="h-5 w-5 text-cyan-600 dark:text-blue-400" />
             </button>
           </div>
         )}
       </div>
 
-      <nav
-        className="flex-1 px-3 space-y-2 overflow-y-auto pb-4"
-        style={{
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#d5d8db #F1F5F9',
-        }}
-      >
+      <nav className="flex-1 px-3 space-y-2 overflow-y-auto pb-4 custom-scrollbar">
         {filteredMenuItems.length === 0 && isOpen && (
-          <div className="text-center py-4 text-sm text-gray-500 dark:text-slate-400">
+          <div className="text-center py-4 text-xs font-semibold text-slate-500 dark:text-blue-300/70">
             Không tìm thấy kết quả.
           </div>
         )}
@@ -558,15 +456,15 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         {filteredMenuItems.map(renderItem)}
       </nav>
 
-      <div className="p-4 border-t-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800">
+      <div className="p-4 border-t-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80">
         <button
           type="button"
           onClick={onToggle}
-          className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${
+          className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 font-bold text-xs ${
             !isOpen
-              ? 'bg-cyan-50 dark:bg-slate-900'
-              : 'bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900'
-          } hover:shadow-md text-cyan-600 dark:text-cyan-400`}
+              ? 'bg-cyan-50 dark:bg-[#0f172a]'
+              : 'bg-slate-100 dark:bg-[#060913]'
+          } hover:shadow-md text-cyan-600 dark:text-blue-400 cursor-pointer`}
           title={!isOpen ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
         >
           {!isOpen ? (

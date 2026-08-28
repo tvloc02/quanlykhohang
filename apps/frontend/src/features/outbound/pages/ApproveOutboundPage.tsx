@@ -23,16 +23,6 @@ function statusLabel(status?: string) {
   }
 }
 
-function statusColor(status?: string) {
-  switch (status) {
-    case 'pending': return { bg: '#fffbeb', color: '#92400e', border: '#fde68a' };
-    case 'picking': return { bg: '#eff6ff', color: '#1e40af', border: '#bfdbfe' };
-    case 'READY_TO_SHIP': return { bg: '#ecfdf5', color: '#065f46', border: '#a7f3d0' };
-    case 'shipped': return { bg: '#f8fafc', color: '#64748b', border: '#e2e8f0' };
-    default: return { bg: '#f8fafc', color: '#475569', border: '#e2e8f0' };
-  }
-}
-
 const formatMoney = (amount: number | string) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(amount));
 };
@@ -109,62 +99,54 @@ export default function ApproveOutboundPage() {
   });
 
   return (
-    <div style={{ display: 'flex', height: '100%', gap: 24, padding: 24, background: '#f8fafc', overflow: 'hidden' }}>
+    <div className="flex h-full gap-6 p-6 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 overflow-hidden">
       {/* Left Panel */}
-      <div style={{ width: 380, flexShrink: 0, background: 'white', borderRadius: 16, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: 16, borderBottom: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>Đơn chờ duyệt xuất</h2>
-            <button onClick={fetchOrders} style={{ padding: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', borderRadius: 8 }}>
-              <RefreshCw style={{ width: 16, height: 16 }} />
+      <div className="w-95 shrink-0 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-indigo-900/60 flex flex-col overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-slate-100 dark:border-indigo-900/40 flex flex-col gap-3">
+          <div className="flex justify-between items-center">
+            <h2 className="m-0 text-lg font-extrabold text-slate-900 dark:text-slate-100">Đơn chờ duyệt xuất</h2>
+            <button onClick={fetchOrders} className="p-2 bg-transparent border-0 cursor-pointer text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 rounded-lg transition">
+              <RefreshCw className="w-4 h-4" />
             </button>
           </div>
-          <div style={{ position: 'relative' }}>
-            <Search style={{ position: 'absolute', left: 12, top: 10, width: 16, height: 16, color: '#94a3b8' }} />
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               placeholder="Tìm mã đơn, khách hàng..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{ width: '100%', height: 36, paddingLeft: 36, paddingRight: 12, borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 13, outline: 'none' }}
+              className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500"
             />
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+        <div className="flex-1 overflow-y-auto p-2">
           {loading ? (
-            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Đang tải...</div>
+            <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs font-semibold">Đang tải...</div>
           ) : filtered.length === 0 ? (
-            <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Không có đơn nào.</div>
+            <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs font-semibold">Không có đơn nào.</div>
           ) : (
             filtered.map((o) => {
-              const sc = statusColor(o.status);
+              const isSelected = o.id === selectedId;
               return (
                 <button
                   key={o.id}
                   onClick={() => setSelectedId(o.id)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: 12,
-                    borderRadius: 12,
-                    border: o.id === selectedId ? '2px solid #06b6d4' : '1px solid transparent',
-                    background: o.id === selectedId ? 'rgba(6,182,212,0.04)' : 'transparent',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                    marginBottom: 4,
-                  }}
+                  className={`w-full text-left p-3 rounded-xl border mb-1 cursor-pointer flex flex-col gap-2 transition ${
+                    isSelected
+                      ? 'border-2 border-cyan-600 dark:border-indigo-500 bg-cyan-50/50 dark:bg-indigo-950/50 shadow-2xs'
+                      : 'border-transparent hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{o.orderNo}</span>
-                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
+                  <div className="flex justify-between items-center">
+                    <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100">{o.orderNo}</span>
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
                       {statusLabel(o.status)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#64748b' }}>
-                    <span style={{ fontWeight: 600, color: '#334155' }}>{o.customer || 'Khách lẻ'}</span>
+                  <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-bold text-slate-700 dark:text-slate-300">{o.customer || 'Khách lẻ'}</span>
                     <span>{o.items} sản phẩm</span>
                   </div>
                 </button>
@@ -175,87 +157,81 @@ export default function ApproveOutboundPage() {
       </div>
 
       {/* Right Panel */}
-      <div style={{ flex: 1, background: 'white', borderRadius: 16, border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-indigo-900/60 flex flex-col overflow-hidden shadow-sm">
         {selected ? (
           <>
             {/* Header */}
-            <div style={{ padding: 24, borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
-              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                <div style={{ padding: 12, background: '#ecfeff', borderRadius: 14, color: '#06b6d4' }}>
-                  <FileText style={{ width: 24, height: 24 }} />
+            <div className="p-6 border-b border-slate-200 dark:border-indigo-900/40 bg-slate-50/70 dark:bg-slate-950 flex justify-between items-start flex-wrap gap-4">
+              <div className="flex gap-4 items-start">
+                <div className="p-3 bg-cyan-50 dark:bg-indigo-950 rounded-2xl text-cyan-600 dark:text-indigo-400 border border-cyan-200 dark:border-indigo-800">
+                  <FileText className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>{selected.orderNo}</h3>
-                  <div style={{ marginTop: 4, display: 'flex', gap: 16, fontSize: 13, color: '#64748b', fontWeight: 600, flexWrap: 'wrap' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Building style={{ width: 14, height: 14 }} />
+                  <h3 className="m-0 text-xl font-extrabold text-slate-900 dark:text-slate-100">{selected.orderNo}</h3>
+                  <div className="mt-1 flex gap-4 text-xs text-slate-500 dark:text-slate-400 font-bold flex-wrap">
+                    <span className="flex items-center gap-1.5">
+                      <Building className="w-3.5 h-3.5" />
                       {selected.customer || 'Khách lẻ'}
                     </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <CalendarDays style={{ width: 14, height: 14 }} />
+                    <span className="flex items-center gap-1.5">
+                      <CalendarDays className="w-3.5 h-3.5" />
                       Ngày giao: {formatDate(selected.dueDate)}
                     </span>
                   </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 12 }}>
+              <div className="flex gap-3">
                 <button
                   onClick={() => handleCancel(selected.id)}
                   disabled={approving}
-                  style={{ padding: '10px 16px', border: '2px solid #fca5a5', background: 'white', color: '#dc2626', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}
+                  className="px-4 py-2.5 border-2 border-rose-300 dark:border-rose-900/60 bg-white dark:bg-slate-950 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1.5 transition active:scale-95"
                 >
-                  <XCircle style={{ width: 16, height: 16 }} /> Hủy đơn
+                  <XCircle className="w-4 h-4" /> Hủy đơn
                 </button>
                 <button
                   onClick={() => handleApprove(selected.id)}
                   disabled={approving}
-                  style={{ padding: '10px 20px', background: '#059669', color: 'white', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(5,150,105,0.3)' }}
+                  className="px-5 py-2.5 bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-600 text-white border-0 rounded-xl font-black text-xs cursor-pointer flex items-center gap-1.5 shadow-md transition active:scale-95"
                 >
-                  <Check style={{ width: 16, height: 16 }} /> Phê duyệt & Xuất kho
+                  <Check className="w-4 h-4" /> Phê duyệt & Xuất kho
                 </button>
               </div>
             </div>
 
             {/* Reconciliation Table */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-              <div style={{ marginBottom: 16, padding: 16, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, display: 'flex', gap: 12, fontSize: 14, fontWeight: 600, color: '#92400e' }}>
-                <AlertTriangle style={{ width: 20, height: 20, flexShrink: 0, color: '#f59e0b' }} />
-                <p style={{ margin: 0 }}>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl flex gap-3 text-xs font-bold text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500" />
+                <p className="m-0">
                   Đối chiếu số lượng đã lấy so với yêu cầu. Sau khi phê duyệt, tồn kho vật lý sẽ chính thức bị trừ.
                 </p>
               </div>
 
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white' }}>
-                  <thead style={{ background: '#f8fafc' }}>
-                    <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-                      <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', width: 50 }}>STT</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>SKU</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Sản phẩm</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Vị trí</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>SL yêu cầu</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>SL đã lấy</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Chênh lệch</th>
+              <div className="border border-slate-200 dark:border-indigo-900/40 rounded-xl overflow-hidden shadow-2xs">
+                <table className="w-full border-collapse bg-white dark:bg-slate-900">
+                  <thead className="bg-slate-50 dark:bg-slate-950">
+                    <tr className="border-b border-slate-200 dark:border-indigo-900/40">
+                      <th className="py-3 px-4 text-center text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase w-12">STT</th>
+                      <th className="py-3 px-4 text-left text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">SKU</th>
+                      <th className="py-3 px-4 text-left text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">Sản phẩm</th>
+                      <th className="py-3 px-4 text-center text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">Vị trí</th>
+                      <th className="py-3 px-4 text-right text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">SL yêu cầu</th>
+                      <th className="py-3 px-4 text-right text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">SL đã lấy</th>
+                      <th className="py-3 px-4 text-right text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">Chênh lệch</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100 dark:divide-indigo-900/40">
                     {(selected.details || []).map((d, i) => {
                       const diff = d.pickedQty - d.requiredQty;
                       return (
-                        <tr key={d.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>{i + 1}</td>
-                          <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: '#475569' }}>{d.product?.internalSku}</td>
-                          <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{d.product?.name}</td>
-                          <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#475569' }}>{d.warehouseCode || 'DEFAULT'}</td>
-                          <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#475569' }}>{d.requiredQty}</td>
-                          <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{d.pickedQty}</td>
-                          <td style={{
-                            padding: '14px 16px',
-                            textAlign: 'right',
-                            fontSize: 14,
-                            fontWeight: 800,
-                            color: diff === 0 ? '#059669' : diff < 0 ? '#dc2626' : '#06b6d4',
-                          }}>
+                        <tr key={d.id} className="hover:bg-cyan-50/40 dark:hover:bg-indigo-950/40 transition-colors">
+                          <td className="py-3.5 px-4 text-center text-xs font-bold text-slate-400 dark:text-slate-500">{i + 1}</td>
+                          <td className="py-3.5 px-4 text-xs font-extrabold font-mono text-cyan-800 dark:text-indigo-300">{d.product?.internalSku}</td>
+                          <td className="py-3.5 px-4 text-xs font-bold text-slate-800 dark:text-slate-100">{d.product?.name}</td>
+                          <td className="py-3.5 px-4 text-center text-xs font-bold text-slate-600 dark:text-slate-400">{d.warehouseCode || 'DEFAULT'}</td>
+                          <td className="py-3.5 px-4 text-right text-xs font-bold text-slate-600 dark:text-slate-400">{d.requiredQty}</td>
+                          <td className="py-3.5 px-4 text-right text-sm font-black text-slate-900 dark:text-slate-100">{d.pickedQty}</td>
+                          <td className={`py-3.5 px-4 text-right text-sm font-black ${diff === 0 ? 'text-emerald-600 dark:text-emerald-400' : diff < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-cyan-700 dark:text-indigo-300'}`}>
                             {diff === 0 ? 'Khớp (0)' : diff > 0 ? `+${diff}` : diff}
                           </td>
                         </tr>
@@ -267,16 +243,16 @@ export default function ApproveOutboundPage() {
             </div>
 
             {/* Footer Summary */}
-            <div style={{ padding: '12px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 600, color: '#475569' }}>
-              <span>Tổng mặt hàng: <strong style={{ color: '#0f172a' }}>{(selected.details || []).length}</strong></span>
-              <span>Tổng giá trị: <strong style={{ color: '#0f172a' }}>{formatMoney((selected.details || []).reduce((sum, d) => sum + d.totalLineAmount, 0))}</strong></span>
+            <div className="py-3 px-6 border-t border-slate-200 dark:border-indigo-900/40 bg-slate-50/70 dark:bg-slate-950 flex justify-between text-xs font-bold text-slate-600 dark:text-slate-400">
+              <span>Tổng mặt hàng: <strong className="text-slate-900 dark:text-slate-100">{(selected.details || []).length}</strong></span>
+              <span>Tổng giá trị: <strong className="text-slate-900 dark:text-slate-100">{formatMoney((selected.details || []).reduce((sum, d) => sum + d.totalLineAmount, 0))}</strong></span>
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-            <CheckCircle2 style={{ width: 64, height: 64, color: '#e2e8f0', marginBottom: 16 }} />
-            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#475569', margin: 0 }}>Tất cả đơn đã được xử lý</h3>
-            <p style={{ fontSize: 13, marginTop: 4 }}>Không có đơn xuất kho nào đang chờ phê duyệt.</p>
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
+            <CheckCircle2 className="w-16 h-16 text-slate-200 dark:text-slate-800 mb-4" />
+            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 m-0">Tất cả đơn đã được xử lý</h3>
+            <p className="text-xs mt-1">Không có đơn xuất kho nào đang chờ phê duyệt.</p>
           </div>
         )}
       </div>
