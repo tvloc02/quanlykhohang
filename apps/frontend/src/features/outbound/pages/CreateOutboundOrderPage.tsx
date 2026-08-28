@@ -1494,7 +1494,7 @@ export default function CreateOutboundOrderPage({
   const contentMarkup = (
     <div
       className={`animate-[fadeIn_0.2s_ease-out] ${isFullScreen
-        ? 'fixed inset-0 z-[9999] bg-slate-100 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
+        ? 'fixed inset-0 z-[9999] bg-slate-100 dark:bg-slate-950 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
         : 'space-y-3 pb-20'
         }`}
     >
@@ -1502,13 +1502,13 @@ export default function CreateOutboundOrderPage({
       {toast && (
         <div
           className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${toast.type === 'error'
-            ? 'bg-red-50 text-red-600 border-red-200'
-            : 'bg-emerald-50 text-emerald-600 border-emerald-200'
+            ? 'bg-red-50 dark:bg-rose-950/80 text-red-600 dark:text-rose-300 border-red-200 dark:border-rose-900/60'
+            : 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/60'
             }`}
         >
           {toast.type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
           <p className="text-sm font-bold">{toast.message}</p>
-          <button onClick={() => setToast(null)} className="ml-2 rounded-lg p-1 hover:bg-white/50 transition cursor-pointer">
+          <button onClick={() => setToast(null)} className="ml-2 rounded-lg p-1 hover:bg-white/50 dark:hover:bg-slate-800/50 transition cursor-pointer">
             <X size={16} />
           </button>
         </div>
@@ -1526,19 +1526,19 @@ export default function CreateOutboundOrderPage({
 
       {/* Quick Customer Add Modal (Only for regular sales) */}
       {!isDisposal && showAddCustomerModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 dark:bg-slate-950/80 backdrop-blur-xs p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-100 dark:border-indigo-900/50 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex items-start justify-between border-b border-slate-100 dark:border-indigo-900/40 pb-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 dark:bg-indigo-950 text-cyan-600 dark:text-indigo-400">
                   <UserPlus className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Thêm khách hàng mới</h3>
-                  <p className="text-xs text-slate-500 font-normal">Nhập thông tin khách hàng đầy đủ</p>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Thêm khách hàng mới</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">Nhập thông tin khách hàng đầy đủ</p>
                 </div>
               </div>
-              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1546,7 +1546,7 @@ export default function CreateOutboundOrderPage({
             <div className="mt-5 space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Họ và tên</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Họ và tên</label>
                   <input
                     type="text"
                     placeholder="Nguyễn Văn A"
@@ -1647,11 +1647,11 @@ export default function CreateOutboundOrderPage({
       {/* ═══ 1. TOP HEADER BAR: Page Title Left, Multi-Tab & Back Button Right ═══ */}
       {!isFullScreen && (
         <div className="flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
-          <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
+          <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 dark:bg-indigo-600 px-4 py-2 text-white shadow-sm">
             {isDisposal ? (
-              <FileX className="h-5 w-5 text-cyan-100" />
+              <FileX className="h-5 w-5 text-cyan-100 dark:text-indigo-200" />
             ) : (
-              <TrendingUp className="h-5 w-5 text-cyan-100" />
+              <TrendingUp className="h-5 w-5 text-cyan-100 dark:text-indigo-200" />
             )}
             <h1 className="text-base font-black tracking-tight uppercase">
               {isDisposal ? (title || 'TẠO PHIẾU XUẤT HỦY HÀNG HÓA') : 'TẠO PHIẾU XUẤT HÀNG HÓA'}
@@ -1668,17 +1668,17 @@ export default function CreateOutboundOrderPage({
                   key={tab.tabId}
                   onClick={() => setActiveTabId(tab.tabId)}
                   className={`group inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer border shadow-xs select-none ${isActive
-                    ? 'bg-cyan-600 text-white border-cyan-600 shadow-md ring-2 ring-cyan-200'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-cyan-50 hover:border-cyan-300 hover:text-cyan-800'
+                    ? 'bg-cyan-600 dark:bg-indigo-600 text-white border-cyan-600 dark:border-indigo-500 shadow-md ring-2 ring-cyan-200 dark:ring-indigo-900/60'
+                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-indigo-900/60 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:border-cyan-300 dark:hover:border-indigo-500 hover:text-cyan-800 dark:hover:text-indigo-300'
                     }`}
                 >
-                  <FileText className={`h-3.5 w-3.5 ${isActive ? 'text-cyan-100' : 'text-cyan-600'}`} />
+                  <FileText className={`h-3.5 w-3.5 ${isActive ? 'text-cyan-100 dark:text-indigo-200' : 'text-cyan-600 dark:text-indigo-400'}`} />
                   <span className="max-w-[140px] truncate">
                     {tab.orderNo ? tab.orderNo : `Phiếu #${idx + 1}`}
                   </span>
                   {validItemsCount > 0 && (
                     <span
-                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${isActive ? 'bg-white text-cyan-800' : 'bg-cyan-100 text-cyan-800'
+                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${isActive ? 'bg-white dark:bg-slate-950 text-cyan-800 dark:text-indigo-300' : 'bg-cyan-100 dark:bg-indigo-950 text-cyan-800 dark:text-indigo-300'
                         }`}
                     >
                       {validItemsCount} SP
@@ -1689,8 +1689,8 @@ export default function CreateOutboundOrderPage({
                       type="button"
                       onClick={(e) => handleCloseTab(tab.tabId, e)}
                       className={`rounded p-0.5 transition ${isActive
-                        ? 'hover:bg-cyan-700 text-cyan-200 hover:text-white'
-                        : 'hover:bg-slate-200 text-slate-400 hover:text-red-500'
+                        ? 'hover:bg-cyan-700 dark:hover:bg-indigo-700 text-cyan-200 dark:text-indigo-200 hover:text-white'
+                        : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-red-500'
                         }`}
                       title="Đóng phiếu này"
                     >
@@ -1705,17 +1705,17 @@ export default function CreateOutboundOrderPage({
             <button
               type="button"
               onClick={handleAddNewTab}
-              className="inline-flex items-center gap-1 rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-50/60 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 hover:border-cyan-600 transition cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-xl border-2 border-dashed border-cyan-400 dark:border-indigo-500 bg-cyan-50/60 dark:bg-indigo-950/40 px-3 py-1.5 text-xs font-bold text-cyan-700 dark:text-indigo-300 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 hover:border-cyan-600 dark:hover:border-indigo-400 transition cursor-pointer"
               title="Tạo thêm phiếu mới (Tab tiếp theo)"
             >
-              <Plus size={14} className="text-cyan-700" />
+              <Plus size={14} className="text-cyan-700 dark:text-indigo-400" />
               <span>+ Thêm phiếu mới</span>
             </button>
 
             <button
               type="button"
               onClick={handleBackNavigation}
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-4 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition shadow-xs cursor-pointer ml-1"
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 px-4 py-1.5 text-xs font-bold text-cyan-700 dark:text-indigo-300 hover:bg-cyan-50 dark:hover:bg-indigo-950 transition shadow-xs cursor-pointer ml-1"
             >
               <ArrowLeft size={16} />
               <span>Quay lại</span>
@@ -1725,12 +1725,12 @@ export default function CreateOutboundOrderPage({
       )}
 
       {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (Horizontal bar spanning full width across page) ═══ */}
-      <div className="w-full rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md flex-shrink-0">
+      <div className="w-full rounded-2xl border-2 border-cyan-500/30 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-4 shadow-md flex-shrink-0">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 items-center">
           {/* Ngày xuất hàng / Ngày xuất hủy (Kèm Giờ Phút Giây) */}
           <div>
-            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
-              <Calendar className="h-4 w-4 text-cyan-600" />
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700 dark:text-slate-300">
+              <Calendar className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
               <span>{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất hàng'}</span>
             </label>
             <input
@@ -1738,14 +1738,14 @@ export default function CreateOutboundOrderPage({
               value={activeTab?.orderDate || formatFullDateTime()}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
               placeholder="DD/MM/YYYY HH:mm:ss"
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
             />
           </div>
 
           {/* Mã phiếu / Lệnh (Đã điền tự động) */}
           <div>
-            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
-              <Hash className="h-4 w-4 text-cyan-600" />
+            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700 dark:text-slate-300">
+              <Hash className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
               <span>{isDisposal ? 'Mã phiếu xuất hủy' : 'Mã phiếu / Lệnh'}</span>
             </label>
             <input
@@ -1753,7 +1753,7 @@ export default function CreateOutboundOrderPage({
               value={activeTab?.orderNo || ''}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderNo: e.target.value }))}
               placeholder={isDisposal ? 'XH20260822-1001' : 'PXK20260822-1001'}
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 uppercase outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 uppercase outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
             />
           </div>
 
@@ -1761,14 +1761,14 @@ export default function CreateOutboundOrderPage({
           {isDisposal ? (
             <div>
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-black uppercase text-slate-700 flex items-center gap-1">
-                  <FileText className="h-4 w-4 text-cyan-600" />
+                <label className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <FileText className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
                   <span>Lý do xuất hủy</span>
                 </label>
                 <button
                   type="button"
                   onClick={() => setShowAddReasonModal(true)}
-                  className="text-[11px] font-extrabold text-cyan-700 hover:underline flex items-center gap-0.5 cursor-pointer bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-300 hover:bg-cyan-100 transition"
+                  className="text-[11px] font-extrabold text-cyan-700 dark:text-indigo-300 hover:underline flex items-center gap-0.5 cursor-pointer bg-cyan-50 dark:bg-indigo-950 px-2 py-0.5 rounded-lg border border-cyan-300 dark:border-indigo-800 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 transition"
                   title="Thêm lý do xuất hủy mới"
                 >
                   <Plus size={13} />
@@ -1782,10 +1782,10 @@ export default function CreateOutboundOrderPage({
                   setDisposalReasonSelect(val);
                   updateActiveTab((t) => ({ ...t, customer: val, description: val }));
                 }}
-                className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-pointer shadow-xs rounded-xl"
+                className="h-10 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 cursor-pointer shadow-xs rounded-xl"
               >
                 {disposalReasons.map((reason) => (
-                  <option key={reason} value={reason} className="py-1.5 px-2 bg-white text-slate-800 font-semibold rounded-lg">
+                  <option key={reason} value={reason} className="py-1.5 px-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-semibold rounded-lg">
                     {reason}
                   </option>
                 ))}
@@ -1980,11 +1980,11 @@ export default function CreateOutboundOrderPage({
         <div className={`flex-1 min-w-0 flex flex-col ${isFullScreen ? 'h-full' : ''}`}>
 
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
-          <div className={`flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullScreen ? 'flex-1 h-full' : ''}`}>
+          <div className={`flex flex-col rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 shadow-sm overflow-hidden min-h-0 ${isFullScreen ? 'flex-1 h-full' : ''}`}>
             {/* Product Section Top Control Bar */}
-            <div className="px-4 py-3 border-b-2 border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
-              <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs sm:text-sm">
-                <Package className="h-4.5 w-4.5 text-cyan-600" />
+            <div className="px-4 py-3 border-b-2 border-slate-200 dark:border-indigo-900/40 bg-slate-50 dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
+              <div className="flex items-center gap-2 text-cyan-800 dark:text-indigo-300 font-extrabold text-xs sm:text-sm">
+                <Package className="h-4.5 w-4.5 text-cyan-600 dark:text-indigo-400" />
                 <span>
                   {isDisposal
                     ? `THÔNG TIN HÀNG HÓA TIÊU HỦY (${activeValidItems.length} MẶT HÀNG - TỔNG SL HỦY: ${totalQty})`
@@ -1996,16 +1996,16 @@ export default function CreateOutboundOrderPage({
                 <button
                   type="button"
                   onClick={() => setShowScannerModal(true)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-cyan-600 bg-white px-3.5 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer shadow-xs"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-cyan-600 dark:border-indigo-500 bg-white dark:bg-slate-950 px-3.5 py-1.5 text-xs font-bold text-cyan-700 dark:text-indigo-300 hover:bg-cyan-50 dark:hover:bg-indigo-950 transition cursor-pointer shadow-xs"
                 >
-                  <ScanLine className="h-4 w-4 text-cyan-600" />
+                  <ScanLine className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
                   <span>Quét Barcode</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handleAddBlankRow}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-cyan-600 px-4 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-cyan-600 dark:bg-indigo-600 px-4 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 dark:hover:bg-indigo-700 transition cursor-pointer"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Thêm dòng mới</span>
@@ -2014,10 +2014,10 @@ export default function CreateOutboundOrderPage({
                 <button
                   type="button"
                   onClick={() => setIsFullScreen(!isFullScreen)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer shadow-xs"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shadow-xs"
                   title={isFullScreen ? 'Thu nhỏ cửa sổ' : 'Phóng to toàn màn hình'}
                 >
-                  {isFullScreen ? <Minimize2 className="h-4 w-4 text-slate-600" /> : <Maximize2 className="h-4 w-4 text-slate-600" />}
+                  {isFullScreen ? <Minimize2 className="h-4 w-4 text-slate-600 dark:text-slate-400" /> : <Maximize2 className="h-4 w-4 text-slate-600 dark:text-slate-400" />}
                   <span>{isFullScreen ? 'Thu nhỏ' : 'Phóng to'}</span>
                 </button>
               </div>
@@ -2026,53 +2026,53 @@ export default function CreateOutboundOrderPage({
             {/* Clean Grid Product Table */}
             <div className={`overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 ${isFullScreen ? '' : 'max-h-[calc(100vh-215px)]'}`}>
               <table className="w-full text-left border-collapse text-xs min-w-[950px]">
-                <thead className="bg-slate-100 text-slate-800 font-extrabold border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
+                <thead className="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 font-extrabold border-b-2 border-slate-200 dark:border-indigo-900/40 uppercase text-xs sticky top-0 z-10">
                   <tr>
-                    <th className="p-2 w-10 text-center border-r border-slate-200 bg-slate-100">STT</th>
-                    <th className="p-2 w-[24%] min-w-[180px] text-center border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
-                    <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-10 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">STT</th>
+                    <th className="p-2 w-[24%] min-w-[180px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">TÊN HÀNG HÓA</th>
+                    <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
                       {isDisposal ? 'KỆ XUẤT HỦY' : 'KỆ LẤY HÀNG'}
                     </th>
-                    <th className="p-2 w-14 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
-                    <th className="p-2 w-28 text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-14 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">ĐVT</th>
+                    <th className="p-2 w-28 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
                       {isDisposal ? 'SL HỦY' : 'SỐ LƯỢNG'}
                     </th>
-                    <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
                       {isDisposal ? 'GIÁ VỐN (đ)' : (isReturnSupplier ? 'GIÁ NHẬP (đ)' : 'ĐƠN GIÁ (đ)')}
                     </th>
                     {!isDisposal && (
                       <>
-                        <th className="p-2 min-w-[130px] whitespace-nowrap text-center border-r border-slate-200 bg-slate-100">CHIẾT KHẤU (%)</th>
-                        <th className="p-2 w-16 text-center border-r border-slate-200 bg-slate-100">VAT (%)</th>
+                        <th className="p-2 min-w-[130px] whitespace-nowrap text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">CHIẾT KHẤU (%)</th>
+                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">VAT (%)</th>
                       </>
                     )}
-                    <th className="p-2 w-32 text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
                       {isDisposal ? 'GIÁ TRỊ HỦY' : 'THÀNH TIỀN'}
                     </th>
-                    <th className="p-2 w-56 min-w-[200px] text-center border-r border-slate-200 bg-slate-100">
+                    <th className="p-2 w-56 min-w-[200px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
                       {isDisposal ? 'TÌNH TRẠNG / LÝ DO HỦY' : 'GHI CHÚ'}
                     </th>
                     {isDisposal && (
-                      <th className="p-2 w-36 min-w-[120px] text-center border-r border-slate-200 bg-slate-100">BIÊN BẢN / GHI CHÚ</th>
+                      <th className="p-2 w-36 min-w-[120px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">BIÊN BẢN / GHI CHÚ</th>
                     )}
-                    <th className="p-2.5 w-24 text-center bg-slate-100 min-w-[90px]">THAO TÁC</th>
+                    <th className="p-2.5 w-24 text-center bg-slate-100 dark:bg-slate-950 min-w-[90px]">THAO TÁC</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40">
                   {activeTab?.details.map((row, idx) => {
                     const isEven = idx % 2 === 1;
                     return (
                       <tr
                         key={row.rowId}
-                        className={`${isEven ? 'bg-slate-50/70' : 'bg-white'} hover:bg-cyan-50/50 transition-colors`}
+                        className={`${isEven ? 'bg-slate-50/70 dark:bg-slate-900/60' : 'bg-white dark:bg-slate-950'} hover:bg-cyan-50/50 dark:hover:bg-indigo-950/50 transition-colors`}
                       >
                         {/* STT */}
-                        <td className="p-1.5 text-center font-bold text-slate-500 border-r border-slate-200">
+                        <td className="p-1.5 text-center font-bold text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-indigo-900/40">
                           {idx + 1}.
                         </td>
 
                         {/* TÊN HÀNG HÓA */}
-                        <td className="p-1 border-r border-slate-200 relative product-table-dropdown">
+                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 relative product-table-dropdown">
                           <input
                             type="text"
                             value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
@@ -2084,25 +2084,25 @@ export default function CreateOutboundOrderPage({
                             onFocus={() => setActiveProductDropdownRowId(row.rowId)}
                             onClick={() => setActiveProductDropdownRowId(row.rowId)}
                             placeholder="Chọn hoặc nhập tên hàng..."
-                            className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white font-semibold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs cursor-text"
+                            className="w-full h-9 px-3 rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs cursor-text"
                           />
 
                           {/* Interactive Table Dropdown for this row */}
                           {activeProductDropdownRowId === row.rowId && (
-                            <div className="absolute left-0 top-full z-[100] mt-1 w-[480px] max-h-64 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
-                              <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 sticky top-0 z-10">
+                            <div className="absolute left-0 top-full z-[100] mt-1 w-[480px] max-h-64 overflow-y-auto rounded-xl border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
+                              <div className="flex bg-slate-100 dark:bg-slate-950 border-b border-slate-300 dark:border-indigo-900/40 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 sticky top-0 z-10">
                                 <span className="w-1/4 uppercase">Mã hàng</span>
                                 <span className="w-1/3 uppercase">Tên hàng hóa</span>
                                 <span className="w-1/5 text-center uppercase">Tồn kho</span>
                                 <span className="w-1/4 text-right uppercase">{isReturnSupplier ? 'Giá nhập / Giá' : 'Giá vốn / Giá'}</span>
                               </div>
-                              <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                              <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-indigo-900/40">
                                 {isReturnSupplier && (!activeTab?.customer || activeTab.customer === 'Khách hàng bán lẻ') ? (
-                                  <div className="p-3 text-center text-xs font-bold text-amber-800 bg-amber-50">
+                                  <div className="p-3 text-center text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40">
                                     ⚠️ Vui lòng chọn Nhà cung cấp ở mục thông tin phiếu trước khi chọn sản phẩm xuất trả!
                                   </div>
                                 ) : getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
-                                  <div className="p-3 text-center text-xs font-semibold text-slate-500">
+                                  <div className="p-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400">
                                     {isReturnSupplier ? `Không có hàng hóa nào thuộc Nhà cung cấp [${activeTab?.customer || ''}]` : 'Không tìm thấy hàng hóa'}
                                   </div>
                                 ) : (
@@ -2133,14 +2133,14 @@ export default function CreateOutboundOrderPage({
                                           });
                                           setActiveProductDropdownRowId(null);
                                         }}
-                                        className="flex items-center px-3 py-2 text-xs hover:bg-cyan-50 cursor-pointer text-slate-700 transition"
+                                        className="flex items-center px-3 py-2 text-xs hover:bg-cyan-50 dark:hover:bg-indigo-950 cursor-pointer text-slate-700 dark:text-slate-200 transition"
                                       >
-                                        <span className="w-1/4 font-extrabold text-cyan-800">{p.internalSku}</span>
-                                        <span className="w-1/3 font-bold text-slate-800 truncate pr-1">{p.name}</span>
-                                        <span className={`w-1/5 text-center font-bold px-1.5 py-0.5 rounded text-[11px] ${whStock > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                                        <span className="w-1/4 font-extrabold text-cyan-800 dark:text-indigo-300">{p.internalSku}</span>
+                                        <span className="w-1/3 font-bold text-slate-800 dark:text-slate-100 truncate pr-1">{p.name}</span>
+                                        <span className={`w-1/5 text-center font-bold px-1.5 py-0.5 rounded text-[11px] ${whStock > 0 ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60' : 'bg-red-50 dark:bg-rose-950/60 text-red-600 dark:text-rose-300 border border-red-200 dark:border-rose-900/60'}`}>
                                           Tồn: {whStock}
                                         </span>
-                                        <span className="w-1/4 text-right font-extrabold text-slate-900">
+                                        <span className="w-1/4 text-right font-extrabold text-slate-900 dark:text-slate-100">
                                           {getProductPriceForMode(p).toLocaleString('vi-VN')} đ
                                         </span>
                                       </div>
@@ -2153,12 +2153,12 @@ export default function CreateOutboundOrderPage({
                         </td>
 
                         {/* KỆ XUẤT HÀNG / KỆ XUẤT HỦY */}
-                        <td className="p-1 border-r border-slate-200 text-center w-32">
+                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 text-center w-32">
                           {row.assignedBins && row.assignedBins.length > 0 ? (
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white border border-cyan-600 font-extrabold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white border border-cyan-600 dark:border-indigo-500 font-extrabold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
                               title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
                               <span className="truncate max-w-[100px]">{row.assignedBins.join(', ')}</span>
@@ -2167,7 +2167,7 @@ export default function CreateOutboundOrderPage({
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white border border-cyan-600 font-extrabold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white border border-cyan-600 dark:border-indigo-500 font-extrabold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
                               title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
                               <span className="truncate max-w-[100px]">{row.locationBin}</span>
@@ -2176,7 +2176,7 @@ export default function CreateOutboundOrderPage({
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-50 hover:bg-cyan-600 text-cyan-700 hover:text-white border-2 border-cyan-400 hover:border-cyan-600 font-bold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
+                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-50 dark:bg-indigo-950 hover:bg-cyan-600 dark:hover:bg-indigo-600 text-cyan-700 dark:text-indigo-300 hover:text-white border-2 border-cyan-400 dark:border-indigo-500 hover:border-cyan-600 dark:hover:border-indigo-600 font-bold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
                               title="Bấm mở sơ đồ chọn vị trí kệ lấy hàng"
                             >
                               <span>Chọn Kệ</span>
@@ -2185,29 +2185,29 @@ export default function CreateOutboundOrderPage({
                         </td>
 
                         {/* ĐVT */}
-                        <td className="p-1 text-center border-r border-slate-200 w-14">
+                        <td className="p-1 text-center border-r border-slate-200 dark:border-indigo-900/40 w-14">
                           <input
                             type="text"
                             value={row.unit}
                             onChange={(e) => updateRow(row.rowId, { unit: e.target.value })}
-                            className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
+                            className="w-full h-9 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
 
                         {/* SỐ LƯỢNG */}
-                        <td className="p-1 border-r border-slate-200 w-28">
+                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 w-28">
                           <input
                             type="number"
                             min="0"
                             value={row.qty === 0 ? '' : row.qty}
                             onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
                             placeholder="0"
-                            className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
+                            className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
 
                         {/* ĐƠN GIÁ (đ) */}
-                        <td className="p-1 border-r border-slate-200">
+                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
                           <input
                             type="text"
                             value={row.price === 0 ? '' : formatNumberWithCommas(row.price)}
@@ -2216,14 +2216,14 @@ export default function CreateOutboundOrderPage({
                               updateRow(row.rowId, { price: parsed });
                             }}
                             placeholder="0"
-                            className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
+                            className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
 
                         {!isDisposal && (
                           <>
                             {/* CHIẾT KHẤU (%) */}
-                            <td className="p-1 border-r border-slate-200">
+                            <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
                               <input
                                 type="number"
                                 min="0"
@@ -2231,12 +2231,12 @@ export default function CreateOutboundOrderPage({
                                 value={row.discountPercent === 0 ? '' : row.discountPercent}
                                 onChange={(e) => updateRow(row.rowId, { discountPercent: Number(e.target.value) })}
                                 placeholder="0"
-                                className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-semibold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
+                                className="w-full h-9 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                               />
                             </td>
 
                             {/* VAT (%) */}
-                            <td className="p-1 border-r border-slate-200">
+                            <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
                               <input
                                 type="number"
                                 min="0"
@@ -2244,36 +2244,36 @@ export default function CreateOutboundOrderPage({
                                 value={row.vatPercent === 0 ? '' : row.vatPercent}
                                 onChange={(e) => updateRow(row.rowId, { vatPercent: Number(e.target.value) })}
                                 placeholder="0"
-                                className="w-full h-9 text-center rounded-lg border border-slate-300 bg-white font-semibold text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
+                                className="w-full h-9 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                               />
                             </td>
                           </>
                         )}
 
                         {/* THÀNH TIỀN / GIÁ TRỊ HỦY */}
-                        <td className="p-1.5 text-right font-extrabold text-cyan-900 border-r border-slate-200 bg-cyan-50/40">
+                        <td className="p-1.5 text-right font-extrabold text-cyan-900 dark:text-indigo-300 border-r border-slate-200 dark:border-indigo-900/40 bg-cyan-50/40 dark:bg-indigo-950/40">
                           {(isDisposal ? (row.qty * row.price) : row.totalAmount).toLocaleString('vi-VN')}
                         </td>
 
                         {/* GHI CHÚ / TÌNH TRẠNG LÝ DO HỦY */}
-                        <td className="p-1 border-r border-slate-200">
+                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
                           <input
                             type="text"
                             value={row.note}
                             onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
                             placeholder={isDisposal ? "Lý do: Hết hạn, vỡ móp, mốc ẩm..." : "Ghi chú..."}
-                            className="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
+                            className="w-full h-9 px-2.5 rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
 
                         {isDisposal && (
-                          <td className="p-1 border-r border-slate-200">
+                          <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
                             <input
                               type="text"
                               value={activeTab.description || ''}
                               onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
                               placeholder="Biên bản số..."
-                              className="w-full h-9 px-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
+                              className="w-full h-9 px-2.5 rounded-xl border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                             />
                           </td>
                         )}
@@ -2284,7 +2284,7 @@ export default function CreateOutboundOrderPage({
                             <button
                               type="button"
                               onClick={() => handleDuplicateRow(idx)}
-                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-400 bg-cyan-50 text-cyan-700 shadow-2xs transition hover:bg-cyan-600 hover:text-white hover:border-cyan-600 cursor-pointer"
+                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-400 dark:border-indigo-500 bg-cyan-50 dark:bg-indigo-950 text-cyan-700 dark:text-indigo-300 shadow-2xs transition hover:bg-cyan-600 dark:hover:bg-indigo-600 hover:text-white hover:border-cyan-600 dark:hover:border-indigo-600 cursor-pointer"
                               title="Nhân đôi dòng"
                             >
                               <Copy size={16} strokeWidth={2.2} />
@@ -2292,7 +2292,7 @@ export default function CreateOutboundOrderPage({
                             <button
                               type="button"
                               onClick={() => handleRemoveRow(row.rowId)}
-                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 bg-rose-50 text-rose-600 shadow-2xs transition hover:bg-rose-600 hover:text-white hover:border-rose-600 cursor-pointer"
+                              className="flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 shadow-2xs transition hover:bg-rose-600 hover:text-white hover:border-rose-600 cursor-pointer"
                               title="Xóa dòng"
                             >
                               <Trash2 size={16} strokeWidth={2.2} />
@@ -2310,20 +2310,20 @@ export default function CreateOutboundOrderPage({
 
         {/* ── RIGHT COLUMN: SUMMARY & FINANCIAL / DISPOSAL FORM ── */}
         {isDisposal ? (
-          <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
+          <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 dark:text-slate-200 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
             <div className="space-y-2">
-              <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-1.5 text-cyan-800 font-extrabold text-xs">
-                <FileText className="h-4 w-4 text-cyan-600" />
+              <div className="flex items-center gap-2 border-b-2 border-slate-100 dark:border-indigo-900/40 pb-1.5 text-cyan-800 dark:text-indigo-300 font-extrabold text-xs">
+                <FileText className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
                 <span>TỔNG KẾT & BIÊN BẢN HỦY</span>
               </div>
 
               {/* Người lập phiếu / Giám sát */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Người lập phiếu / Giám sát</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Người lập phiếu / Giám sát</label>
                 <select
                   value={activeTab?.employeeName || currentUserName}
                   onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
-                  className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-600 cursor-pointer"
+                  className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 font-semibold text-slate-800 dark:text-slate-100 text-xs outline-none focus:border-cyan-600 focus:dark:border-indigo-500 cursor-pointer"
                 >
                   <option value={currentUserName}>{currentUserName}</option>
                   {users.map((u) => (
@@ -2336,11 +2336,11 @@ export default function CreateOutboundOrderPage({
 
               {/* Phương án xử lý tiêu hủy */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Phương án xử lý tiêu hủy</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Phương án xử lý tiêu hủy</label>
                 <select
                   value={disposalMethod}
                   onChange={(e) => setDisposalMethod(e.target.value)}
-                  className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-600 cursor-pointer"
+                  className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 font-semibold text-slate-800 dark:text-slate-100 text-xs outline-none focus:border-cyan-600 focus:dark:border-indigo-500 cursor-pointer"
                 >
                   <option value="Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)">Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)</option>
                   <option value="Bán phế liệu / Ve chai">Bán phế liệu / Ve chai</option>
@@ -2352,31 +2352,31 @@ export default function CreateOutboundOrderPage({
 
               {/* Ghi chú biên bản / Căn cứ quyết định */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Ghi chú biên bản / Căn cứ</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Ghi chú biên bản / Căn cứ</label>
                 <textarea
                   rows={2}
                   value={activeTab?.description || ''}
                   onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
                   placeholder="Biên bản kiểm kê số..., Quyết định tiêu hủy..."
-                  className="w-full rounded-lg border-2 border-slate-200 p-2 text-xs font-medium text-slate-800 outline-none focus:border-cyan-600"
+                  className="w-full rounded-lg border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 p-2 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500"
                 />
               </div>
 
               {/* Summary Card */}
-              <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/70 p-3 shadow-xs space-y-2 text-slate-800">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+              <div className="rounded-xl border-2 border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/70 dark:bg-indigo-950/40 p-3 shadow-xs space-y-2 text-slate-800 dark:text-slate-200">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Số mặt hàng hủy:</span>
-                  <span className="font-extrabold text-slate-900">{activeValidItems.length} mặt hàng</span>
+                  <span className="font-extrabold text-slate-900 dark:text-slate-100">{activeValidItems.length} mặt hàng</span>
                 </div>
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Tổng số lượng hủy:</span>
-                  <span className="font-extrabold text-cyan-800">{totalQty} SP</span>
+                  <span className="font-extrabold text-cyan-800 dark:text-indigo-300">{totalQty} SP</span>
                 </div>
-                <div className="border-t border-cyan-200/80 pt-2 flex items-center justify-between">
-                  <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-950">
+                <div className="border-t border-cyan-200/80 dark:border-indigo-900/60 pt-2 flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-950 dark:text-indigo-200">
                     TỔNG GIÁ TRỊ THIỆT HẠI:
                   </span>
-                  <span className="text-sm font-black text-rose-600 tracking-tight">
+                  <span className="text-sm font-black text-rose-600 dark:text-rose-400 tracking-tight">
                     {subtotal.toLocaleString('vi-VN')} đ
                   </span>
                 </div>
@@ -2388,7 +2388,7 @@ export default function CreateOutboundOrderPage({
               <button
                 type="button"
                 onClick={() => handleSaveOutboundOrder(true)}
-                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 dark:hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
                 <span>LƯU & IN BIÊN BẢN HỦY</span>
@@ -2397,7 +2397,7 @@ export default function CreateOutboundOrderPage({
               <button
                 type="button"
                 onClick={() => handleSaveOutboundOrder(false)}
-                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] dark:bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 dark:hover:bg-indigo-700 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
                 <span>LƯU PHIẾU XUẤT HỦY</span>
@@ -2406,7 +2406,7 @@ export default function CreateOutboundOrderPage({
               <button
                 type="button"
                 onClick={handleBackNavigation}
-                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95 cursor-pointer"
               >
                 <ArrowLeft size={18} strokeWidth={2.2} />
                 <span>HỦY / QUAY LẠI</span>
@@ -2414,16 +2414,16 @@ export default function CreateOutboundOrderPage({
             </div>
           </div>
         ) : (
-          <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 bg-white p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
+          <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 dark:text-slate-200 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
             <div className="space-y-2">
-              <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-1.5 text-cyan-800 font-extrabold text-xs">
-                <DollarSign className="h-4 w-4 text-cyan-600" />
+              <div className="flex items-center gap-2 border-b-2 border-slate-100 dark:border-indigo-900/40 pb-1.5 text-cyan-800 dark:text-indigo-300 font-extrabold text-xs">
+                <DollarSign className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
                 <span>TỔNG CỘNG & THANH TOÁN</span>
               </div>
 
               {/* Nhân viên xuất kho */}
               <div className="relative employee-dropdown-box">
-                <label className="mb-1 block text-xs font-bold text-slate-700">Nhân viên xuất kho</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Nhân viên xuất kho</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -2438,13 +2438,13 @@ export default function CreateOutboundOrderPage({
                     }}
                     onClick={() => setShowEmployeeDropdown(true)}
                     placeholder="Tìm tên nhân viên..."
-                    className="h-9 w-full rounded-xl border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 shadow-2xs cursor-text"
+                    className="h-9 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 shadow-2xs cursor-text"
                   />
-                  <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="absolute right-2.5 top-2.5 h-4 w-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                 </div>
 
                 {showEmployeeDropdown && (
-                  <div className="absolute left-0 top-full z-[100] mt-1 w-full max-h-48 overflow-y-auto rounded-xl border-2 border-slate-200 bg-white shadow-xl custom-scrollbar p-1">
+                  <div className="absolute left-0 top-full z-[100] mt-1 w-full max-h-48 overflow-y-auto rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 shadow-xl custom-scrollbar p-1">
                     {filteredEmployees.length === 0 ? (
                       <div className="p-2 text-center text-xs text-slate-400 font-medium">Không tìm thấy nhân viên</div>
                     ) : (
@@ -2457,8 +2457,8 @@ export default function CreateOutboundOrderPage({
                           }}
                           className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                             (activeTab?.employeeName || currentUserName) === emp.name
-                              ? 'bg-cyan-600 text-white'
-                              : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
+                              ? 'bg-cyan-600 dark:bg-indigo-600 text-white'
+                              : 'text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-900 dark:hover:text-indigo-300'
                           }`}
                         >
                           <span>{emp.name}</span>
@@ -2471,18 +2471,18 @@ export default function CreateOutboundOrderPage({
 
               {/* Ghi chú phiếu xuất */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700">Ghi chú phiếu xuất</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Ghi chú phiếu xuất</label>
                 <textarea
                   rows={2}
                   value={activeTab?.description || ''}
                   onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
                   placeholder="Ghi chú phiếu xuất..."
-                  className="w-full rounded-xl border-2 border-slate-300 bg-white p-2 text-xs font-medium text-slate-800 outline-none focus:border-cyan-600 shadow-2xs"
+                  className="w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 p-2 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 shadow-2xs"
                 />
               </div>
 
               {/* Hình thức thanh toán Radios */}
-              <div className="space-y-1.5 text-xs font-semibold text-slate-800 border-t border-slate-200 pt-1.5">
+              <div className="space-y-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 border-t border-slate-200 dark:border-indigo-900/40 pt-1.5">
                 <label className="block font-bold">Hình thức thanh toán:</label>
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-1 cursor-pointer">
@@ -2492,7 +2492,7 @@ export default function CreateOutboundOrderPage({
                       value="Tiền mặt"
                       checked={(activeTab?.paymentMethod || 'Tiền mặt') === 'Tiền mặt'}
                       onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                      className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                      className="h-3.5 w-3.5 text-cyan-600 dark:text-indigo-500 focus:ring-cyan-500 cursor-pointer"
                     />
                     <span>Tiền mặt</span>
                   </label>
@@ -2503,7 +2503,7 @@ export default function CreateOutboundOrderPage({
                       value="Chuyển khoản"
                       checked={activeTab?.paymentMethod === 'Chuyển khoản'}
                       onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                      className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                      className="h-3.5 w-3.5 text-cyan-600 dark:text-indigo-500 focus:ring-cyan-500 cursor-pointer"
                     />
                     <span>Chuyển khoản</span>
                   </label>
@@ -2514,7 +2514,7 @@ export default function CreateOutboundOrderPage({
                       value="ATM"
                       checked={activeTab?.paymentMethod === 'ATM'}
                       onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
-                      className="h-3.5 w-3.5 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                      className="h-3.5 w-3.5 text-cyan-600 dark:text-indigo-500 focus:ring-cyan-500 cursor-pointer"
                     />
                     <span>ATM</span>
                   </label>
@@ -2522,7 +2522,7 @@ export default function CreateOutboundOrderPage({
                 <select
                   value={activeTab?.paymentAccount || ''}
                   onChange={(e) => updateActiveTab((t) => ({ ...t, paymentAccount: e.target.value }))}
-                  className="h-9 w-full rounded-xl border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
+                  className="h-9 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 cursor-pointer shadow-2xs"
                 >
                   <option value="">Chọn tài khoản thanh toán-</option>
                   <option value="TK-01">Vietcombank - 1012345678 (Hà Nội)</option>
@@ -2531,37 +2531,37 @@ export default function CreateOutboundOrderPage({
                 </select>
               </div>
 
-              {/* ══ Light Theme Payment Summary Box ══ */}
-              <div className="rounded-xl border-2 border-cyan-200 bg-cyan-50/60 p-2.5 shadow-sm space-y-1.5 text-slate-800">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+              {/* ══ Light/Dark Theme Payment Summary Box ══ */}
+              <div className="rounded-xl border-2 border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/60 dark:bg-indigo-950/40 p-2.5 shadow-sm space-y-1.5 text-slate-800 dark:text-slate-200">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Thành tiền hàng:</span>
-                  <span className="font-extrabold text-slate-900">{baseSubtotal.toLocaleString('vi-VN')} đ</span>
+                  <span className="font-extrabold text-slate-900 dark:text-slate-100">{baseSubtotal.toLocaleString('vi-VN')} đ</span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Chiết khấu:</span>
-                  <span className="font-extrabold text-rose-600 text-xs">
+                  <span className="font-extrabold text-rose-600 dark:text-rose-400 text-xs">
                     - {totalDiscount.toLocaleString('vi-VN')} đ
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Thuế VAT:</span>
-                  <span className="font-extrabold text-emerald-600 text-xs">
+                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400 text-xs">
                     + {totalVat.toLocaleString('vi-VN')} đ
                   </span>
                 </div>
 
-                <div className="border-t border-slate-300/80 pt-1.5 flex items-center justify-between">
-                  <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-900">
+                <div className="border-t border-slate-300/80 dark:border-indigo-900/60 pt-1.5 flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-900 dark:text-indigo-200">
                     TỔNG THÀNH TOÁN:
                   </span>
-                  <span className="text-sm font-black text-cyan-700 tracking-tight">
+                  <span className="text-sm font-black text-cyan-700 dark:text-indigo-300 tracking-tight">
                     {grandTotal.toLocaleString('vi-VN')} đ
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 pt-0.5">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300 pt-0.5">
                   <span>Khách thanh toán:</span>
                   <input
                     type="number"
@@ -2569,12 +2569,12 @@ export default function CreateOutboundOrderPage({
                     value={activeTab?.amountPaid || ''}
                     onChange={(e) => updateActiveTab((t) => ({ ...t, amountPaid: Number(e.target.value) }))}
                     placeholder={grandTotal.toString()}
-                    className="h-8 w-28 rounded-xl bg-white px-2.5 text-right font-extrabold text-emerald-700 text-xs outline-none border-2 border-slate-300 focus:border-cyan-600 shadow-2xs"
+                    className="h-8 w-28 rounded-xl bg-white dark:bg-slate-950 px-2.5 text-right font-extrabold text-emerald-700 dark:text-emerald-400 text-xs outline-none border-2 border-slate-300 dark:border-indigo-900/60 focus:border-cyan-600 focus:dark:border-indigo-500 shadow-2xs"
                   />
                 </div>
 
                 {remainingDebt > 0 && (
-                  <div className="flex items-center justify-between text-xs font-bold text-red-600 pt-1 border-t border-slate-200">
+                  <div className="flex items-center justify-between text-xs font-bold text-red-600 dark:text-rose-400 pt-1 border-t border-slate-200 dark:border-indigo-900/60">
                     <span>Ghi nợ lại:</span>
                     <span className="font-extrabold">{remainingDebt.toLocaleString('vi-VN')} đ</span>
                   </div>
@@ -2587,7 +2587,7 @@ export default function CreateOutboundOrderPage({
               <button
                 type="button"
                 onClick={() => handleSaveOutboundOrder(true)}
-                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 dark:hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
                 <span>{isReturnSupplier ? 'LƯU & IN PHIẾU XUẤT TRẢ' : 'LƯU & IN PHIẾU XUẤT'}</span>
@@ -2596,7 +2596,7 @@ export default function CreateOutboundOrderPage({
               <button
                 type="button"
                 onClick={() => handleSaveOutboundOrder(false)}
-                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] dark:bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 dark:hover:bg-indigo-700 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
                 <span>{isReturnSupplier ? 'LƯU PHIẾU XUẤT TRẢ NCC' : 'LƯU PHIẾU XUẤT HÀNG'}</span>
@@ -2605,7 +2605,7 @@ export default function CreateOutboundOrderPage({
               <button
                 type="button"
                 onClick={handleBackNavigation}
-                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition active:scale-95 cursor-pointer"
               >
                 <ArrowLeft size={18} strokeWidth={2.2} />
                 <span>HỦY / QUAY LẠI</span>
@@ -2634,23 +2634,23 @@ export default function CreateOutboundOrderPage({
 
       {/* ═══ MODAL THÊM LÝ DO XUẤT HỦY MỚI ═══ */}
       {showAddReasonModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 className="text-sm font-black text-cyan-900 uppercase flex items-center gap-2">
-                <PlusCircle className="h-5 w-5 text-cyan-600" />
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-indigo-900/40 pb-3">
+              <h3 className="text-sm font-black text-cyan-900 dark:text-indigo-300 uppercase flex items-center gap-2">
+                <PlusCircle className="h-5 w-5 text-cyan-600 dark:text-indigo-400" />
                 Thêm lý do xuất hủy mới
               </h3>
               <button
                 type="button"
                 onClick={() => setShowAddReasonModal(false)}
-                className="rounded-lg p-1 hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+                className="rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                 Nội dung lý do xuất hủy:
               </label>
               <input
@@ -2671,7 +2671,7 @@ export default function CreateOutboundOrderPage({
                   }
                 }}
                 placeholder="Ví dụ: Hàng cấn móp nhẹ, thanh lý nội bộ..."
-                className="w-full h-10 rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600"
+                className="w-full h-10 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500"
                 autoFocus
               />
             </div>
@@ -2679,7 +2679,7 @@ export default function CreateOutboundOrderPage({
               <button
                 type="button"
                 onClick={() => setShowAddReasonModal(false)}
-                className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                className="rounded-xl border border-slate-300 dark:border-indigo-900/60 px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 Hủy
               </button>
@@ -2698,7 +2698,7 @@ export default function CreateOutboundOrderPage({
                     setToast({ message: `Đã thêm lý do: "${added}"`, type: 'success' });
                   }
                 }}
-                className="rounded-xl bg-cyan-600 px-4 py-2 text-xs font-extrabold text-white hover:bg-cyan-700 cursor-pointer shadow-sm"
+                className="rounded-xl bg-cyan-600 dark:bg-indigo-600 px-4 py-2 text-xs font-extrabold text-white hover:bg-cyan-700 dark:hover:bg-indigo-700 cursor-pointer shadow-sm"
               >
                 Lưu lý do
               </button>

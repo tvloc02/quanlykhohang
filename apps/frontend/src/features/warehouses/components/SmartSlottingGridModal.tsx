@@ -1600,19 +1600,19 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-1.5 sm:p-3 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border-2 border-cyan-500 w-full max-w-[98vw] max-w-[1650px] h-[95vh] flex flex-col overflow-hidden">
-        {/* Modal Header - Master Cyan Theme */}
-        <div className="bg-cyan-700 text-white px-6 py-3.5 flex items-center justify-between shadow-sm">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-1.5 sm:p-3 animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-2 border-cyan-500 dark:border-indigo-900/60 w-full max-w-[98vw] max-w-[1650px] h-[95vh] flex flex-col overflow-hidden">
+        {/* Modal Header - Master Cyan/Indigo Theme */}
+        <div className="bg-cyan-700 dark:bg-indigo-900 text-white px-6 py-3.5 flex items-center justify-between shadow-sm border-b dark:border-indigo-800">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-cyan-800 border border-cyan-500/50 flex items-center justify-center text-cyan-200 shadow-inner">
+            <div className="h-10 w-10 rounded-2xl bg-cyan-800 dark:bg-indigo-950 border border-cyan-500/50 dark:border-indigo-700 flex items-center justify-center text-cyan-200 dark:text-indigo-300 shadow-inner">
               <Sparkles className="h-6 w-6" />
             </div>
             <div>
               <h3 className="text-base font-black uppercase tracking-wide flex items-center gap-2">
                 Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Kho (Smart WMS Slotting Grid)
               </h3>
-              <p className="text-xs text-cyan-100 font-medium">
+              <p className="text-xs text-cyan-100 dark:text-indigo-200 font-medium">
                 {mode === 'STOCKTAKE'
                   ? 'SƠ ĐỒ VỊ TRÍ KỆ KIỂM KÊ • Ô KỆ ĐANG LƯU HÀNG HÓA HIỆN MÀU XANH, KỆ KHÔNG LƯU HÀNG SẼ IN CHÌM'
                   : mode === 'OUTBOUND_TRANSFER'
@@ -1624,7 +1624,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           <button
             type="button"
             onClick={onClose}
-            className="h-8 w-8 rounded-2xl bg-cyan-800/60 hover:bg-cyan-600 text-cyan-100 flex items-center justify-center transition cursor-pointer"
+            className="h-8 w-8 rounded-2xl bg-cyan-800/60 dark:bg-indigo-950 hover:bg-cyan-600 dark:hover:bg-indigo-700 text-cyan-100 dark:text-indigo-200 flex items-center justify-center transition cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -1644,14 +1644,14 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         )}
 
         {/* Modal Body */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-0 flex-1 overflow-hidden bg-slate-50">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-0 flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950">
           {/* Left Column: AI Interactive Chat */}
-          <div className="md:col-span-4 border-r border-cyan-200 bg-cyan-50/30 flex flex-col h-full min-h-0 overflow-hidden">
-            <div className="p-3 bg-white border-b border-cyan-100 flex items-center justify-between text-xs font-black text-cyan-900 shadow-2xs shrink-0">
+          <div className="md:col-span-4 border-r border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/30 dark:bg-slate-900 flex flex-col h-full min-h-0 overflow-hidden">
+            <div className="p-3 bg-white dark:bg-slate-950 border-b border-cyan-100 dark:border-indigo-900/40 flex items-center justify-between text-xs font-black text-cyan-900 dark:text-indigo-300 shadow-2xs shrink-0">
               <span className="flex items-center gap-2">
-                <Bot className="h-5 w-5 text-cyan-600" /> Trợ lý AI Hỏi Đáp Slotting
+                <Bot className="h-5 w-5 text-cyan-600 dark:text-indigo-400" /> Trợ lý AI Hỏi Đáp Slotting
               </span>
-              <span className="bg-cyan-100 text-cyan-900 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase border border-cyan-300">
+              <span className="bg-cyan-100 dark:bg-indigo-950 text-cyan-900 dark:text-indigo-300 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase border border-cyan-300 dark:border-indigo-800">
                 Online
               </span>
             </div>
@@ -1660,15 +1660,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             <div className="flex-1 p-3 overflow-y-auto min-h-0 space-y-3 text-xs scrollbar-thin scrollbar-thumb-cyan-400 scrollbar-track-cyan-100">
               {messages.map((m) => (
                 <div key={m.id} className={`flex flex-col ${m.sender === 'user' ? 'items-end' : 'items-start'}`}>
-                  <div className="flex items-center gap-1.5 mb-1 text-[10px] text-slate-400 font-bold">
+                  <div className="flex items-center gap-1.5 mb-1 text-[10px] text-slate-400 dark:text-slate-500 font-bold">
                     <span>{m.sender === 'user' ? 'Thủ kho' : 'AI Assistant'}</span>
                     <span>•</span>
                     <span>{m.time}</span>
                   </div>
                   <div
                     className={`max-w-[95%] p-3 rounded-2xl shadow-xs leading-relaxed whitespace-pre-wrap ${m.sender === 'user'
-                        ? 'bg-cyan-600 text-white rounded-br-none font-medium'
-                        : 'bg-white text-slate-800 border border-cyan-200 rounded-bl-none font-normal shadow-2xs'
+                        ? 'bg-cyan-600 dark:bg-indigo-600 text-white rounded-br-none font-medium'
+                        : 'bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 border border-cyan-200 dark:border-indigo-900/60 rounded-bl-none font-normal shadow-2xs'
                       }`}
                   >
                     {m.text}
@@ -1679,56 +1679,56 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
 
             {/* Quick Prompts */}
-            <div className="px-3 py-2 bg-white border-t border-cyan-100 flex flex-wrap gap-1.5 shrink-0">
+            <div className="px-3 py-2 bg-white dark:bg-slate-950 border-t border-cyan-100 dark:border-indigo-900/40 flex flex-wrap gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => handleSendMessage(undefined, mode === 'OUTBOUND_TRANSFER' ? 'Kệ có hàng' : 'Kệ trống')}
-                className="text-[10px] bg-cyan-600 hover:bg-cyan-700 text-white px-2.5 py-1 rounded-lg font-black transition cursor-pointer shadow-2xs flex items-center gap-1"
+                className="text-[10px] bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg font-black transition cursor-pointer shadow-2xs flex items-center gap-1"
               >
                 {mode === 'OUTBOUND_TRANSFER' ? '📦 Chỉ dẫn Kệ Có Hàng' : '✨ Chỉ dẫn Kệ Trống'}
               </button>
               <button
                 type="button"
                 onClick={() => handleSendMessage(undefined, '1 kệ thôi')}
-                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-300 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
                 1 Kệ/Ô thôi
               </button>
               <button
                 type="button"
                 onClick={() => handleSendMessage(undefined, 'Tự động chọn')}
-                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-300 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
                 Tự chọn đủ ô
               </button>
               <button
                 type="button"
                 onClick={() => handleSendMessage(undefined, 'Chuyển kệ R01')}
-                className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-300 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
                 Xem Kệ R01
               </button>
               <button
                 type="button"
                 onClick={() => handleSendMessage(undefined, 'Bỏ chọn')}
-                className="text-[10px] bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                className="text-[10px] bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
                 Bỏ chọn hết
               </button>
             </div>
 
             {/* Chat Input */}
-            <form onSubmit={(e) => handleSendMessage(e)} className="p-3 bg-white border-t border-cyan-200 flex items-center gap-2 shrink-0">
+            <form onSubmit={(e) => handleSendMessage(e)} className="p-3 bg-white dark:bg-slate-950 border-t border-cyan-200 dark:border-indigo-900/40 flex items-center gap-2 shrink-0">
               <input
                 type="text"
                 value={inputMsg}
                 onChange={(e) => setInputMsg(e.target.value)}
                 placeholder="Ra lệnh AI (VD: 1 kệ thôi, chọn ô D1, R02)..."
-                className="flex-1 h-9 px-3 text-xs border border-slate-300 rounded-xl outline-none focus:border-cyan-600 bg-white font-medium text-slate-800"
+                className="flex-1 h-9 px-3 text-xs border border-slate-300 dark:border-indigo-900/60 rounded-xl outline-none focus:border-cyan-600 focus:dark:border-indigo-500 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-slate-100"
               />
               <button
                 type="submit"
-                className="h-9 px-3.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl flex items-center justify-center transition cursor-pointer shadow-sm active:scale-95"
+                className="h-9 px-3.5 bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white rounded-xl flex items-center justify-center transition cursor-pointer shadow-sm active:scale-95"
               >
                 <Send className="h-4 w-4" />
               </button>
@@ -1736,12 +1736,12 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           </div>
 
           {/* Right Column: Interactive Visual Rack Topology Grid */}
-          <div className="md:col-span-8 p-4 flex flex-col h-full overflow-hidden bg-white">
+          <div className="md:col-span-8 p-4 flex flex-col h-full overflow-hidden bg-white dark:bg-slate-900">
             {/* 1. Item Switcher Bar */}
-            <div className="mb-3 bg-cyan-50/80 p-2.5 rounded-2xl border border-cyan-200 flex items-center justify-between">
+            <div className="mb-3 bg-cyan-50/80 dark:bg-indigo-950/50 p-2.5 rounded-2xl border border-cyan-200 dark:border-indigo-900/60 flex items-center justify-between">
               <div className="flex items-center gap-2 overflow-x-auto">
-                <span className="text-xs font-black uppercase text-cyan-950 flex items-center gap-1.5 shrink-0">
-                  <Layers className="h-4 w-4 text-cyan-600" /> Đơn hàng:
+                <span className="text-xs font-black uppercase text-cyan-950 dark:text-indigo-200 flex items-center gap-1.5 shrink-0">
+                  <Layers className="h-4 w-4 text-cyan-600 dark:text-indigo-400" /> Đơn hàng:
                 </span>
                 {items.map((it, idx) => {
                   const isActive = it.rowId === activeRowId;
@@ -1753,15 +1753,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                       type="button"
                       onClick={() => setActiveRowId(it.rowId)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${isActive
-                          ? 'bg-cyan-600 text-white shadow-sm'
-                          : 'bg-white hover:bg-cyan-100 text-slate-700 border border-cyan-200'
+                          ? 'bg-cyan-600 dark:bg-indigo-600 text-white shadow-sm'
+                          : 'bg-white dark:bg-slate-950 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 text-slate-700 dark:text-slate-300 border border-cyan-200 dark:border-indigo-900/60'
                         }`}
                     >
                       <span>
                         #{idx + 1} {it.productName || `Mặt hàng ${idx + 1}`}
                       </span>
                       <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-black ${isActive ? 'bg-cyan-800 text-white' : 'bg-cyan-100 text-cyan-900'
+                        className={`text-[10px] px-1.5 py-0.5 rounded-md font-black ${isActive ? 'bg-cyan-800 dark:bg-slate-950 text-white dark:text-indigo-300' : 'bg-cyan-100 dark:bg-indigo-950 text-cyan-900 dark:text-indigo-300'
                           }`}
                       >
                         {selectedCount} Ô
@@ -1774,11 +1774,11 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               {/* Status Indicator */}
               <div className="shrink-0">
                 {currentSelectedBins.length > 0 ? (
-                  <span className="bg-cyan-100 text-cyan-900 text-[11px] font-black px-2.5 py-1 rounded-xl border border-cyan-300 flex items-center gap-1">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-cyan-700" /> Đã chọn {currentSelectedBins.length} ô
+                  <span className="bg-cyan-100 dark:bg-indigo-950 text-cyan-900 dark:text-indigo-300 text-[11px] font-black px-2.5 py-1 rounded-xl border border-cyan-300 dark:border-indigo-800 flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-cyan-700 dark:text-indigo-400" /> Đã chọn {currentSelectedBins.length} ô
                   </span>
                 ) : (
-                  <span className="bg-slate-100 text-slate-600 text-[11px] font-bold px-2.5 py-1 rounded-xl border border-slate-200 flex items-center gap-1">
+                  <span className="bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 text-[11px] font-bold px-2.5 py-1 rounded-xl border border-slate-200 dark:border-indigo-900/60 flex items-center gap-1">
                     Chưa chọn ô
                   </span>
                 )}
@@ -1786,15 +1786,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
 
             {/* 2. Rack Selection Tabs */}
-            <div className="flex items-center justify-between mb-3 border-b border-slate-200 pb-2">
+            <div className="flex items-center justify-between mb-3 border-b border-slate-200 dark:border-indigo-900/40 pb-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500">Chọn Dãy Kệ:</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Chọn Dãy Kệ:</span>
                 {racksTopology.map((rk) => (
                   <button
                     key={rk.rackId}
                     type="button"
                     onClick={() => setActiveRackId(rk.rackId)}
-                    className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${activeRackId === rk.rackId ? 'bg-cyan-700 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    className={`px-3 py-1 rounded-xl text-xs font-extrabold transition cursor-pointer ${activeRackId === rk.rackId ? 'bg-cyan-700 dark:bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
                       }`}
                   >
                     {rk.rackName}
@@ -1802,7 +1802,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 ))}
               </div>
 
-              <div className="text-[11px] font-bold text-cyan-900 bg-cyan-100/70 px-2.5 py-0.5 rounded-lg border border-cyan-200">
+              <div className="text-[11px] font-bold text-cyan-900 dark:text-indigo-300 bg-cyan-100/70 dark:bg-indigo-950 px-2.5 py-0.5 rounded-lg border border-cyan-200 dark:border-indigo-800">
                 {currentRack.zoneName}
               </div>
             </div>
@@ -1887,10 +1887,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
 
             {/* Footer Summary & Action Buttons */}
-            <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between gap-3">
-              <div className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                <span className="text-slate-500">{mode === 'OUTBOUND_TRANSFER' ? 'Các Ô đang chọn xuất:' : 'Các Ô đang chọn nhập:'}</span>
-                <span className="text-cyan-900 font-black bg-cyan-100 px-2.5 py-1 rounded-lg border border-cyan-300">
+            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-indigo-900/40 flex items-center justify-between gap-3">
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <span className="text-slate-500 dark:text-slate-400">{mode === 'OUTBOUND_TRANSFER' ? 'Các Ô đang chọn xuất:' : 'Các Ô đang chọn nhập:'}</span>
+                <span className="text-cyan-900 dark:text-indigo-300 font-black bg-cyan-100 dark:bg-indigo-950 px-2.5 py-1 rounded-lg border border-cyan-300 dark:border-indigo-800">
                   {currentSelectedBins.length > 0 ? currentSelectedBins.join(', ') : 'Chưa chọn ô nào'}
                 </span>
               </div>
@@ -1899,14 +1899,14 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-5 py-2.5 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-indigo-900/60 bg-slate-100 dark:bg-slate-950 hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 transition cursor-pointer"
                 >
                   Đóng
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmSelections}
-                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-xs font-black text-white tracking-wide shadow-md transition cursor-pointer active:scale-95 flex items-center gap-2"
+                  className="px-6 py-2.5 rounded-xl bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-xs font-black text-white tracking-wide shadow-md transition cursor-pointer active:scale-95 flex items-center gap-2"
                 >
                   Lưu
                 </button>

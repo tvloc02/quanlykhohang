@@ -129,56 +129,44 @@ export default function PickingPage() {
   // Task List View
   if (!selectedTask) {
     return (
-      <div style={{ padding: 24, background: '#f8fafc', minHeight: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Lấy hàng (Picking)</h1>
-          <button onClick={fetchTasks} style={{ padding: '8px 16px', background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#475569' }}>
-            <RefreshCw style={{ width: 14, height: 14 }} /> Làm mới
+      <div className="p-6 bg-slate-50 dark:bg-slate-950 min-h-full text-slate-800 dark:text-slate-100">
+        <div className="flex justify-between items-center mb-5">
+          <h1 className="m-0 text-2xl font-extrabold text-slate-900 dark:text-slate-100">Lấy hàng (Picking)</h1>
+          <button onClick={fetchTasks} className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-indigo-900/60 rounded-xl cursor-pointer flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <RefreshCw className="w-3.5 h-3.5" /> Làm mới
           </button>
         </div>
 
         {loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8' }}>Đang tải nhiệm vụ...</div>
+          <div className="p-12 text-center text-slate-400 dark:text-slate-500 font-semibold text-xs">Đang tải nhiệm vụ...</div>
         ) : tasks.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#94a3b8', background: 'white', borderRadius: 16, border: '1px solid #e2e8f0' }}>
-            <CheckCircle2 style={{ width: 48, height: 48, color: '#e2e8f0', margin: '0 auto 12px' }} />
-            <p style={{ fontSize: 16, fontWeight: 700, color: '#475569' }}>Không có nhiệm vụ nào đang chờ</p>
-            <p style={{ fontSize: 13 }}>Tất cả nhiệm vụ lấy hàng đã hoàn thành.</p>
+          <div className="p-12 text-center text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-indigo-900/60 shadow-xs">
+            <CheckCircle2 className="w-12 h-12 text-slate-200 dark:text-slate-800 mx-auto mb-3" />
+            <p className="text-base font-bold text-slate-700 dark:text-slate-300 m-0">Không có nhiệm vụ nào đang chờ</p>
+            <p className="text-xs mt-1">Tất cả nhiệm vụ lấy hàng đã hoàn thành.</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 12 }}>
+          <div className="grid gap-3">
             {tasks.map((t) => (
               <button
                 key={t.id}
                 onClick={() => selectTask(t)}
-                style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: '20px 24px',
-                  background: 'white',
-                  borderRadius: 16,
-                  border: '1px solid #e2e8f0',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  transition: 'box-shadow 0.15s',
-                }}
+                className="w-full text-left p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-indigo-900/60 cursor-pointer flex justify-between items-center hover:border-cyan-500 dark:hover:border-indigo-500 hover:shadow-md transition"
               >
-                <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                  <div style={{ padding: 10, background: '#ecfeff', borderRadius: 12, color: '#06b6d4' }}>
-                    <Package style={{ width: 24, height: 24 }} />
+                <div className="flex gap-4 items-center">
+                  <div className="p-2.5 bg-cyan-50 dark:bg-indigo-950 rounded-xl text-cyan-600 dark:text-indigo-400 border border-cyan-200 dark:border-indigo-800">
+                    <Package className="w-6 h-6" />
                   </div>
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+                    <div className="text-base font-extrabold text-slate-900 dark:text-slate-100">
                       {t.order?.orderNo || `Đơn #${t.order?.id?.slice(0, 8)}`}
                     </div>
-                    <div style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
-                      Giao cho: <strong>{t.assignedTo || 'Chưa xác định'}</strong> • Trạng thái: {t.status}
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                      Giao cho: <strong className="text-slate-700 dark:text-slate-300">{t.assignedTo || 'Chưa xác định'}</strong> • Trạng thái: {t.status}
                     </div>
                   </div>
                 </div>
-                <ChevronRight style={{ width: 20, height: 20, color: '#94a3b8' }} />
+                <ChevronRight className="w-5 h-5 text-slate-400 dark:text-slate-500" />
               </button>
             ))}
           </div>
@@ -191,39 +179,39 @@ export default function PickingPage() {
   const allPicked = orderDetail?.details?.every((d) => d.pickedQty >= d.requiredQty) ?? false;
 
   return (
-    <div style={{ padding: 24, background: '#f8fafc', minHeight: '100%' }}>
+    <div className="p-6 bg-slate-50 dark:bg-slate-950 min-h-full text-slate-800 dark:text-slate-100">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div className="flex justify-between items-center mb-5">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => { setSelectedTask(null); setOrderDetail(null); }}
-            style={{ padding: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, cursor: 'pointer', color: '#475569' }}
+            className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-indigo-900/60 rounded-xl cursor-pointer text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
-            <ArrowLeft style={{ width: 16, height: 16 }} />
+            <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>
+            <h1 className="m-0 text-xl font-extrabold text-slate-900 dark:text-slate-100">
               Lấy hàng — {orderDetail?.orderNo}
             </h1>
-            <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
+            <p className="m-0 text-xs text-slate-500 dark:text-slate-400 font-medium">
               Giao cho: {selectedTask.assignedTo} • {orderDetail?.customer || 'Khách lẻ'}
             </p>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="flex gap-2">
           <button
             onClick={() => setScannerOpen(true)}
-            style={{ padding: '8px 16px', background: '#06b6d4', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+            className="px-4 py-2 bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white border-0 rounded-xl cursor-pointer font-bold text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95"
           >
-            <ScanLine style={{ width: 16, height: 16 }} /> Quét mã
+            <ScanLine className="w-4 h-4" /> Quét mã
           </button>
           {allPicked && (
             <button
               onClick={handleCompleteTask}
               disabled={submitting}
-              style={{ padding: '8px 16px', background: '#059669', color: 'white', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+              className="px-4 py-2 bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-600 text-white border-0 rounded-xl cursor-pointer font-bold text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95"
             >
-              <Check style={{ width: 16, height: 16 }} /> Hoàn thành
+              <Check className="w-4 h-4" /> Hoàn thành
             </button>
           )}
         </div>
@@ -231,68 +219,78 @@ export default function PickingPage() {
 
       {/* Picking progress */}
       {orderDetail && (
-        <div style={{ marginBottom: 16, padding: 16, background: allPicked ? '#ecfdf5' : '#fffbeb', border: `1px solid ${allPicked ? '#a7f3d0' : '#fde68a'}`, borderRadius: 12, display: 'flex', gap: 12, alignItems: 'center', fontSize: 14, fontWeight: 600, color: allPicked ? '#065f46' : '#92400e' }}>
+        <div className={`mb-4 p-4 border rounded-xl flex gap-3 items-center text-xs font-bold ${
+          allPicked
+            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+            : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900/60 text-amber-800 dark:text-amber-300'
+        }`}>
           {allPicked ? (
-            <><CheckCircle2 style={{ width: 20, height: 20 }} /> Tất cả sản phẩm đã được lấy đủ. Nhấn "Hoàn thành" để kết thúc.</>
+            <><CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" /> Tất cả sản phẩm đã được lấy đủ. Nhấn "Hoàn thành" để kết thúc.</>
           ) : (
-            <><AlertTriangle style={{ width: 20, height: 20 }} /> Quét mã vạch hoặc nhấn vào dòng sản phẩm để nhập số lượng đã lấy.</>
+            <><AlertTriangle className="w-5 h-5 shrink-0 text-amber-500" /> Quét mã vạch hoặc nhấn vào dòng sản phẩm để nhập số lượng đã lấy.</>
           )}
         </div>
       )}
 
       {/* Products Table */}
-      <div style={{ border: '1px solid #e2e8f0', borderRadius: 16, overflow: 'hidden', background: 'white' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ background: '#f8fafc' }}>
-            <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', width: 50 }}>STT</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>SKU</th>
-              <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Sản phẩm</th>
-              <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Vị trí kho</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Yêu cầu</th>
-              <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Đã lấy</th>
-              <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 12, fontWeight: 700, color: '#475569', textTransform: 'uppercase', width: 200 }}>Thao tác</th>
+      <div className="border border-slate-200 dark:border-indigo-900/60 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
+        <table className="w-full border-collapse">
+          <thead className="bg-slate-50 dark:bg-slate-950">
+            <tr className="border-b border-slate-200 dark:border-indigo-900/40">
+              <th className="py-3 px-4 text-center text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase w-12">STT</th>
+              <th className="py-3 px-4 text-left text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">SKU</th>
+              <th className="py-3 px-4 text-left text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">Sản phẩm</th>
+              <th className="py-3 px-4 text-center text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">Vị trí kho</th>
+              <th className="py-3 px-4 text-right text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">Yêu cầu</th>
+              <th className="py-3 px-4 text-right text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase">Đã lấy</th>
+              <th className="py-3 px-4 text-center text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase w-48">Thao tác</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-100 dark:divide-indigo-900/40">
             {(orderDetail?.details || []).map((d, i) => {
               const done = d.pickedQty >= d.requiredQty;
               const isActive = activeDetailId === d.id;
               return (
-                <tr key={d.id} style={{
-                  borderBottom: '1px solid #e2e8f0',
-                  background: isActive ? 'rgba(6,182,212,0.04)' : done ? '#f0fdf4' : 'white',
-                  cursor: done ? 'default' : 'pointer',
-                }} onClick={() => { if (!done) { setActiveDetailId(d.id); setPickQty(d.requiredQty - d.pickedQty); } }}>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: 13, color: '#94a3b8', fontWeight: 700 }}>{i + 1}</td>
-                  <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 700, fontFamily: 'monospace', color: '#475569' }}>{d.product?.internalSku}</td>
-                  <td style={{ padding: '14px 16px', fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{d.product?.name}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#475569' }}>{d.warehouseCode || 'DEFAULT'}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#475569' }}>{d.requiredQty}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontSize: 14, fontWeight: 800, color: done ? '#059669' : '#0f172a' }}>{d.pickedQty}</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                <tr
+                  key={d.id}
+                  className={`transition-colors ${
+                    isActive
+                      ? 'bg-cyan-50/60 dark:bg-indigo-950/60'
+                      : done
+                      ? 'bg-emerald-50/40 dark:bg-emerald-950/20'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                  } ${done ? 'cursor-default' : 'cursor-pointer'}`}
+                  onClick={() => { if (!done) { setActiveDetailId(d.id); setPickQty(d.requiredQty - d.pickedQty); } }}
+                >
+                  <td className="py-3.5 px-4 text-center text-xs font-bold text-slate-400 dark:text-slate-500">{i + 1}</td>
+                  <td className="py-3.5 px-4 text-xs font-extrabold font-mono text-cyan-800 dark:text-indigo-300">{d.product?.internalSku}</td>
+                  <td className="py-3.5 px-4 text-xs font-bold text-slate-800 dark:text-slate-100">{d.product?.name}</td>
+                  <td className="py-3.5 px-4 text-center text-xs font-bold text-slate-600 dark:text-slate-400">{d.warehouseCode || 'DEFAULT'}</td>
+                  <td className="py-3.5 px-4 text-right text-xs font-bold text-slate-600 dark:text-slate-400">{d.requiredQty}</td>
+                  <td className={`py-3.5 px-4 text-right text-sm font-black ${done ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-slate-100'}`}>{d.pickedQty}</td>
+                  <td className="py-3.5 px-4 text-center">
                     {done ? (
-                      <span style={{ padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700, background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>✓ Đủ</span>
+                      <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">✓ Đủ</span>
                     ) : isActive ? (
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <div className="flex gap-1.5 justify-center items-center" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="number"
                           value={pickQty}
                           min={1}
                           max={d.requiredQty - d.pickedQty}
                           onChange={(e) => setPickQty(Math.max(1, Number(e.target.value)))}
-                          style={{ width: 60, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: 13, textAlign: 'center' }}
+                          className="w-16 py-1 px-2 rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-xs font-bold text-center text-slate-900 dark:text-slate-100 outline-none"
                         />
                         <button
                           onClick={() => handlePick(d.id)}
                           disabled={submitting}
-                          style={{ padding: '6px 12px', background: '#06b6d4', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 700, fontSize: 12 }}
+                          className="py-1 px-3 bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white border-0 rounded-lg cursor-pointer font-bold text-xs shadow-2xs"
                         >
                           Lấy
                         </button>
                       </div>
                     ) : (
-                      <span style={{ fontSize: 12, color: '#94a3b8' }}>Nhấn để lấy</span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500 font-semibold">Nhấn để lấy</span>
                     )}
                   </td>
                 </tr>
