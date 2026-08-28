@@ -205,7 +205,6 @@ const menuItems: MenuItem[] = [
       { id: 'personnel', icon: User, label: 'Người dùng / Nhân viên', path: '/personnel', allowedRoles: ['admin'] },
       { id: 'permission-groups', icon: ShieldCheck, label: 'Nhóm quyền', path: '/personnel/permission-groups', allowedRoles: ['admin'] },
       { id: 'audit-log', icon: History, label: 'Lịch sử thao tác', path: '/audit-log', allowedRoles: ['admin'] },
-      { id: 'print-barcode', icon: ScanLine, label: 'In Barcode + QRCode', path: '/scanner' },
       { id: 'zalo-config', icon: MessageCircle, label: 'Cấu hình Zalo OA', path: '/settings' },
       { id: 'evat-config', icon: Receipt, label: 'Cấu hình e-VAT', path: '/vat/config' },
     ],

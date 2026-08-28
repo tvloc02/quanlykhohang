@@ -32,6 +32,7 @@ import {
   Maximize2,
   Minimize2,
   RotateCcw,
+  QrCode,
 } from 'lucide-react';
 import {
   getActiveItemGroupCategories,
@@ -385,6 +386,59 @@ interface ColumnConfig {
 const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
 const PRODUCT_STORAGE_KEY = 'smart-wms-products';
 
+const CODE128_PATTERNS: string[] = [
+  "212222", "222122", "222221", "121223", "121322", "131222",
+  "122213", "122312", "132212", "221213", "221312", "231212",
+  "112232", "122132", "122231", "113222", "123122", "123221",
+  "223211", "221132", "221231", "213212", "223112", "312131",
+  "311222", "321122", "321221", "312212", "322112", "322211",
+  "212123", "212321", "232121", "111323", "131123", "131321",
+  "112313", "132113", "132311", "211313", "231113", "231311",
+  "112133", "112331", "132131", "113123", "113321", "133121",
+  "313111", "312113", "312311", "332111", "314111", "221411",
+  "431111", "111224", "111422", "121124", "121421", "141122",
+  "141221", "112214", "112412", "122114", "122411", "142112",
+  "142211", "241211", "221114", "413111", "241112", "134111",
+  "111242", "121142", "121241", "114212", "124112", "124211",
+  "411212", "421112", "421211", "212141", "214121", "412121",
+  "111143", "111341", "131141", "114113", "114311", "411113",
+  "411311", "113141", "114131", "311141", "411131", "211412",
+  "211214", "211232", "2331112", "211133", "213113", "213311",
+  "213131", "211412", "211214", "211232", "2331112"
+];
+
+function generateCode128DataUrl(text: string): string {
+  const code = (text || 'HH100001').trim();
+  let pattern = CODE128_PATTERNS[104];
+  let checksum = 104;
+
+  for (let i = 0; i < code.length; i++) {
+    const val = code.charCodeAt(i) - 32;
+    if (val >= 0 && val < CODE128_PATTERNS.length) {
+      checksum += val * (i + 1);
+      pattern += CODE128_PATTERNS[val];
+    }
+  }
+
+  const checkVal = checksum % 103;
+  pattern += CODE128_PATTERNS[checkVal] || CODE128_PATTERNS[0];
+  pattern += CODE128_PATTERNS[106];
+
+  let x = 10;
+  let rectsSvg = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const w = parseInt(pattern[i], 10);
+    const isBar = i % 2 === 0;
+    if (isBar) {
+      rectsSvg += `<rect x="${x}" y="0" width="${w * 1.6}" height="50" fill="#000"/>`;
+    }
+    x += w * 1.6;
+  }
+  const totalWidth = x + 10;
+  const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} 50" preserveAspectRatio="none">${rectsSvg}</svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
+}
+
 function authHeaders() {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
   return {
@@ -678,7 +732,14 @@ export default function Products() {
   const [selectedProduct, setSelectedProduct] = React.useState<Product | null>(null);
   const [form, setForm] = React.useState<ProductForm>(buildEmptyForm());
   const [uploadingSlot, setUploadingSlot] = React.useState<number | null>(null);
-  const [activeTab, setActiveTab] = React.useState<'general' | 'combo' | 'web' | 'conversion'>('general');
+  const [activeTab, setActiveTab] = React.useState<'general' | 'combo' | 'web' | 'conversion' | 'barcode'>('general');
+  const [barcodeType, setBarcodeType] = React.useState<'barcode' | 'qrcode'>('barcode');
+  const [printLayout, setPrintLayout] = React.useState<'3-row' | '2-row' | '1-row' | 'a4-decal'>('3-row');
+  const [printCount, setPrintCount] = React.useState<number>(10);
+  const [showName, setShowName] = React.useState(true);
+  const [showPrice, setShowPrice] = React.useState(true);
+  const [showCode, setShowCode] = React.useState(true);
+  const [showUnit, setShowUnit] = React.useState(true);
   const [catalogCategories, setCatalogCategories] = React.useState(() => getStoredCatalogCategories());
   const [warehouses, setWarehouses] = React.useState(() => getStoredWarehouses());
 
@@ -2638,6 +2699,18 @@ export default function Products() {
                     <RefreshCw className="h-4 w-4 text-cyan-600" />
                     <span>Đơn vị quy đổi</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('barcode')}
+                    className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${activeTab === 'barcode'
+                      ? 'border-cyan-600 text-cyan-700 bg-white shadow-sm rounded-t-xl'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 rounded-t-xl'
+                      }`}
+                  >
+                    <QrCode className="h-4 w-4 text-cyan-600" />
+                    <span>Tạo, in QR/Barcode</span>
+                  </button>
                 </div>
 
                 {/* TAB CONTENT AREA */}
@@ -3645,6 +3718,257 @@ export default function Products() {
                           </table>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* TAB 5: TẠO & IN QR / BARCODE */}
+                  {activeTab === 'barcode' && (
+                    <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm space-y-6">
+                      <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                        <div className="flex items-center gap-2 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                          <QrCode className="h-5 w-5 text-cyan-600" />
+                          <span>TẠO VÀ IN MÃ VẠCH (BARCODE) & MÃ QR SẢN PHẨM</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const codeToPrint = form.sku || form.barcode || 'HH100001';
+                            const titleStr = form.name || 'Sản phẩm';
+                            const priceStr = form.retailPrice || form.price ? `${Number(form.retailPrice || form.price).toLocaleString('vi-VN')} ₫` : '';
+                            const unitStr = form.unit || '';
+                            
+                            const printWindow = window.open('', '_blank');
+                            if (!printWindow) return;
+
+                            const barcode1DDataUrl = generateCode128DataUrl(codeToPrint);
+                            let itemsHtml = '';
+                            for (let i = 0; i < printCount; i++) {
+                              if (barcodeType === 'qrcode') {
+                                itemsHtml += `
+                                  <div class="label-box">
+                                    ${showName ? `<div class="prod-name">${titleStr}</div>` : ''}
+                                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(codeToPrint)}" class="qr-img" />
+                                    ${showCode ? `<div class="prod-code">${codeToPrint}</div>` : ''}
+                                    ${showPrice && priceStr ? `<div class="prod-price">${priceStr} ${showUnit && unitStr ? '/' + unitStr : ''}</div>` : ''}
+                                  </div>
+                                `;
+                              } else {
+                                itemsHtml += `
+                                  <div class="label-box">
+                                    ${showName ? `<div class="prod-name">${titleStr}</div>` : ''}
+                                    <img src="${barcode1DDataUrl}" class="barcode-img" />
+                                    ${showCode ? `<div class="prod-code">${codeToPrint}</div>` : ''}
+                                    ${showPrice && priceStr ? `<div class="prod-price">${priceStr} ${showUnit && unitStr ? '/' + unitStr : ''}</div>` : ''}
+                                  </div>
+                                `;
+                              }
+                            }
+
+                            const gridCols = printLayout === '1-row' ? '1fr' : printLayout === '2-row' ? '1fr 1fr' : printLayout === 'a4-decal' ? 'repeat(5, 1fr)' : '1fr 1fr 1fr';
+
+                            printWindow.document.write(`
+                              <!DOCTYPE html>
+                              <html>
+                                <head>
+                                  <title>In Tem Mã Vạch - ${codeToPrint}</title>
+                                  <style>
+                                    @page { size: auto; margin: 4mm; }
+                                    body { font-family: Arial, sans-serif; margin: 0; padding: 6px; background: #fff; text-align: center; }
+                                    .label-grid { display: grid; grid-template-columns: ${gridCols}; gap: 6px; }
+                                    .label-box { border: 1px dashed #bbb; padding: 6px 4px; border-radius: 4px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; page-break-inside: avoid; height: 105px; overflow: hidden; }
+                                    .prod-name { font-size: 11px; font-weight: bold; margin-bottom: 2px; color: #000; width: 100%; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                                    .prod-code { font-size: 10px; font-weight: bold; font-family: monospace; letter-spacing: 0.5px; margin-top: 2px; color: #111; }
+                                    .prod-price { font-size: 11px; font-weight: 800; color: #000; margin-top: 2px; }
+                                    .qr-img { width: 65px; height: 65px; margin: 2px auto; object-fit: contain; display: block; }
+                                    .barcode-img { width: 150px; height: 40px; margin: 2px auto; object-fit: fill; display: block; }
+                                  </style>
+                                </head>
+                                <body>
+                                  <div class="label-grid">
+                                    ${itemsHtml}
+                                  </div>
+                                  <script>
+                                    window.onload = function() {
+                                      setTimeout(function() {
+                                        window.print();
+                                        window.close();
+                                      }, 500);
+                                    };
+                                  </script>
+                                </body>
+                              </html>
+                            `);
+                            printWindow.document.close();
+                          }}
+                          className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-600 bg-cyan-600 px-5 py-2 text-xs font-extrabold text-white shadow-md hover:bg-cyan-700 transition cursor-pointer"
+                        >
+                          <Printer className="h-4 w-4" />
+                          <span>In tem mã vạch / QR</span>
+                        </button>
+                      </div>
+
+                      {/* Control Form Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        {/* Option 1: Loại mã & Khổ tem */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-slate-700 uppercase block">1. Loại mã & Khổ tem</label>
+                          
+                          <div>
+                            <span className="text-[11px] font-semibold text-slate-500 block mb-1">Loại mã hiển thị:</span>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setBarcodeType('barcode')}
+                                className={`py-2 px-3 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
+                                  barcodeType === 'barcode' ? 'border-cyan-600 bg-cyan-50 text-cyan-800' : 'border-slate-300 bg-white text-slate-600'
+                                }`}
+                              >
+                                <span>Barcode (1D)</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setBarcodeType('qrcode')}
+                                className={`py-2 px-3 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5 ${
+                                  barcodeType === 'qrcode' ? 'border-cyan-600 bg-cyan-50 text-cyan-800' : 'border-slate-300 bg-white text-slate-600'
+                                }`}
+                              >
+                                <span>Mã QR (2D)</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className="text-[11px] font-semibold text-slate-500 block mb-1">Khổ giấy / Tem in:</span>
+                            <select
+                              value={printLayout}
+                              onChange={(e) => setPrintLayout(e.target.value as any)}
+                              className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white font-bold text-xs outline-none focus:border-cyan-500"
+                            >
+                              <option value="3-row">3 tem / dòng (Tem chuẩn 35x22mm)</option>
+                              <option value="2-row">2 tem / dòng (Tem 50x30mm)</option>
+                              <option value="1-row">1 tem / dòng (Tem đơn 80x50mm)</option>
+                              <option value="a4-decal">Trang A4 Decal (40 tem/trang)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Option 2: Số lượng tem */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-slate-700 uppercase block">2. Số lượng tem in</label>
+                          <div>
+                            <span className="text-[11px] font-semibold text-slate-500 block mb-1">Nhập số tem cần in:</span>
+                            <input
+                              type="number"
+                              min="1"
+                              max="500"
+                              value={printCount}
+                              onChange={(e) => setPrintCount(Math.max(1, Number(e.target.value) || 1))}
+                              className="w-full h-9 px-3 text-center rounded-lg border-2 border-slate-300 bg-white font-black text-sm text-cyan-900 outline-none focus:border-cyan-500"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            {[1, 5, 10, 20, 50].map((num) => (
+                              <button
+                                key={num}
+                                type="button"
+                                onClick={() => setPrintCount(num)}
+                                className={`flex-1 py-1 text-xs font-bold rounded border ${
+                                  printCount === num ? 'border-cyan-600 bg-cyan-600 text-white' : 'border-slate-200 bg-white text-slate-700'
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Option 3: Thông tin hiển thị trên tem */}
+                        <div className="space-y-3">
+                          <label className="text-xs font-bold text-slate-700 uppercase block">3. Thông tin trên tem</label>
+                          <div className="space-y-2">
+                            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={showName}
+                                onChange={(e) => setShowName(e.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                              />
+                              <span>Hiển thị Tên hàng hóa</span>
+                            </label>
+
+                            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={showCode}
+                                onChange={(e) => setShowCode(e.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                              />
+                              <span>Hiển thị Mã sản phẩm (SKU)</span>
+                            </label>
+
+                            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={showPrice}
+                                onChange={(e) => setShowPrice(e.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                              />
+                              <span>Hiển thị Giá bán lẻ</span>
+                            </label>
+
+                            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={showUnit}
+                                onChange={(e) => setShowUnit(e.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                              />
+                              <span>Hiển thị Đơn vị tính ({form.unit || 'Cái'})</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* LIVE PREVIEW BOX */}
+                      <div className="rounded-xl border-2 border-slate-200 bg-white p-5 space-y-3">
+                        <span className="text-xs font-bold text-slate-700 uppercase block tracking-wider">Xem trước con tem (Live Preview)</span>
+                        
+                        <div className="flex flex-wrap items-center justify-center gap-4 bg-slate-100 p-6 rounded-xl border border-dashed border-slate-300 min-h-[160px]">
+                          <div className="bg-white p-3 rounded-lg border border-slate-300 shadow-md text-center max-w-[200px] space-y-1">
+                            {showName && (
+                              <p className="text-[11px] font-bold text-slate-900 truncate">
+                                {form.name || 'Tên sản phẩm mẫu'}
+                              </p>
+                            )}
+                            
+                            {barcodeType === 'qrcode' ? (
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(form.sku || form.barcode || 'HH100001')}`}
+                                alt="QR Code Preview"
+                                className="w-24 h-24 mx-auto my-1 object-contain"
+                              />
+                            ) : (
+                              <img
+                                src={generateCode128DataUrl(form.sku || form.barcode || 'HH100001')}
+                                alt="Barcode 1D Preview"
+                                className="w-48 h-12 mx-auto my-1 object-contain"
+                              />
+                            )}
+
+                            {showCode && (
+                              <p className="text-[11px] font-mono font-bold text-slate-800 tracking-wider">
+                                {form.sku || form.barcode || 'HH100001'}
+                              </p>
+                            )}
+
+                            {showPrice && (form.retailPrice || form.price) && (
+                              <p className="text-[11px] font-black text-emerald-600">
+                                {Number(form.retailPrice || form.price).toLocaleString('vi-VN')} ₫ {showUnit && form.unit ? `/${form.unit}` : ''}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 

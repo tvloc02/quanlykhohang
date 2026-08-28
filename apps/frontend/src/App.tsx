@@ -1192,16 +1192,6 @@ function App() {
           <Route path="ai" element={<AiSettings />} />
           <Route path="store" element={<StoreSettings />} />
         </Route>
-        <Route
-          path="/scanner"
-          element={
-            <RoleRoute menuId="print-barcode">
-              <MainLayout>
-                <ScannerPage />
-              </MainLayout>
-            </RoleRoute>
-          }
-        />
         <Route path="/stocktake" element={<Navigate to="/inventory/stocktake" replace />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

@@ -2209,6 +2209,9 @@ export default function CreateStockInOrderPage({
   const [aiSlottingTargetRowId, setAiSlottingTargetRowId] = useState<string | null>(null);
   const [pendingSaveConfig, setPendingSaveConfig] = useState<{ isPrint: boolean; saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' } | null>(null);
 
+  // Hardware Barcode Scanner Auto-Detection State
+  const [isScannerConnected, setIsScannerConnected] = useState<boolean>(true);
+
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<InboundTab[]>(() => {
     try {
@@ -2718,6 +2721,155 @@ export default function CreateStockInOrderPage({
     }
     setToast({ message: `Đã thêm sản phẩm: ${scanned.name}`, type: 'success' });
   };
+
+  const processInfraredScanCode = useCallback(async (rawCode: string) => {
+    const code = rawCode.trim();
+    if (!code || isReadOnly) return;
+
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.15);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); ctx.close(); };
+    } catch {}
+
+    // 1. Tra cứu trong danh mục sản phẩm local trước
+    const foundLocal = products.find(
+      (p) =>
+        (p.internalSku && p.internalSku.toLowerCase() === code.toLowerCase()) ||
+        (p.id && p.id.toLowerCase() === code.toLowerCase()) ||
+        ((p as any).supplierBarcode && (p as any).supplierBarcode.toLowerCase() === code.toLowerCase())
+    );
+
+    if (foundLocal) {
+      handleBarcodeScanned({
+        id: foundLocal.id,
+        internalSku: foundLocal.internalSku,
+        supplierBarcode: (foundLocal as any).supplierBarcode || code,
+        name: foundLocal.name,
+        unit: foundLocal.unit || 'Cái',
+        minimumStock: 0,
+        category: null,
+        supplier: null,
+        purchasePrice: foundLocal.purchasePrice || foundLocal.importPrice || foundLocal.price || 0,
+        stockBalances: [],
+        totalStock: foundLocal.stock || 0,
+      });
+      return;
+    }
+
+    // 2. Tra cứu qua API lookup
+    try {
+      const res = await fetch(`${API_BASE_URL}/v1/scan/lookup?barcode=${encodeURIComponent(code)}`, {
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.data) {
+        const d = data.data;
+        handleBarcodeScanned({
+          id: d.product_id || 'PROD_' + Date.now(),
+          internalSku: d.internal_sku || code,
+          supplierBarcode: d.barcode || code,
+          name: d.name || `Sản phẩm ${code}`,
+          unit: d.unit || 'Cái',
+          minimumStock: 0,
+          category: null,
+          supplier: d.supplier ? { id: '', name: d.supplier } : null,
+          purchasePrice: d.purchase_price || 0,
+          stockBalances: [],
+          totalStock: d.current_stock?.available || 0,
+        });
+        return;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    // 3. Fallback: Thêm dòng mới nếu chưa có trong danh mục
+    handleBarcodeScanned({
+      id: 'CODE_' + code,
+      internalSku: code,
+      supplierBarcode: code,
+      name: `Sản phẩm mã vạch [${code}]`,
+      unit: 'Cái',
+      minimumStock: 0,
+      category: null,
+      supplier: null,
+      purchasePrice: 0,
+      stockBalances: [],
+      totalStock: 0,
+    });
+  }, [products, isReadOnly, handleBarcodeScanned]);
+
+  // Auto-detect WebHID USB scanner connection & Background Keydown Listener
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'hid' in navigator) {
+      const checkHid = async () => {
+        try {
+          const devices = await (navigator as any).hid.getDevices();
+          setIsScannerConnected(Boolean(devices && devices.length > 0));
+        } catch (e) {}
+      };
+      checkHid();
+
+      const onConnect = () => setIsScannerConnected(true);
+      const onDisconnect = () => setIsScannerConnected(false);
+
+      (navigator as any).hid.addEventListener('connect', onConnect);
+      (navigator as any).hid.addEventListener('disconnect', onDisconnect);
+
+      return () => {
+        (navigator as any).hid.removeEventListener('connect', onConnect);
+        (navigator as any).hid.removeEventListener('disconnect', onDisconnect);
+      };
+    }
+  }, []);
+
+  // Global Background Keydown Listener cho Súng quét mã vạch (USB/Bluetooth)
+  useEffect(() => {
+    if (isReadOnly) return;
+
+    let buffer = '';
+    let lastKeyTime = Date.now();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) {
+        return;
+      }
+
+      const currentTime = Date.now();
+      if (currentTime - lastKeyTime > 120) {
+        buffer = '';
+      }
+      lastKeyTime = currentTime;
+
+      if (e.key === 'Enter') {
+        if (buffer.trim().length >= 2) {
+          e.preventDefault();
+          const scannedCode = buffer.trim();
+          buffer = '';
+          setIsScannerConnected(true);
+          processInfraredScanCode(scannedCode);
+        }
+      } else if (e.key.length === 1) {
+        buffer += e.key;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isReadOnly, processInfraredScanCode]);
 
   const handleAddQuickSupplier = async () => {
     if (!newSupplierForm.name.trim()) {
@@ -3529,11 +3681,28 @@ export default function CreateStockInOrderPage({
                     <button
                       type="button"
                       onClick={() => setShowScannerModal(true)}
-                      className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer shadow-xs"
+                      title="Mở camera để quét mã vạch"
                     >
                       <ScanLine className="h-4 w-4 text-cyan-600" />
-                      <span>Quét Barcode</span>
+                      <span>Quét Camera</span>
                     </button>
+
+                    {/* Ô Tự động Phát hiện Trạng thái Máy Quét (Không dùng Icon) */}
+                    <div
+                      className={`inline-flex items-center px-3.5 py-1.5 rounded-lg border-2 text-xs font-extrabold shadow-2xs select-none ${
+                        isScannerConnected
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                          : 'border-amber-400 bg-amber-50 text-amber-900'
+                      }`}
+                      title={
+                        isScannerConnected
+                          ? 'Máy quét mã vạch đã kết nối & sẵn sàng quét'
+                          : 'Máy quét chưa kết nối'
+                      }
+                    >
+                      <span>Máy quét: {isScannerConnected ? 'Đã kết nối' : 'Chưa kết nối'}</span>
+                    </div>
 
                     <button
                       type="button"
