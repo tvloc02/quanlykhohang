@@ -1,12 +1,21 @@
 import { DataSource } from "typeorm";
 import * as bcrypt from "bcryptjs";
+import * as dotenv from "dotenv";
+import * as path from "path";
+
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+dotenv.config();
 
 export async function runSeed() {
+  const databaseUrl =
+    process.env.DATABASE_URL || "mysql://root:root@localhost:3306/smart_wms";
+  console.log(
+    `🔌 Using database URL: ${databaseUrl.replace(/:[^:@]+@/, ":****@")}`,
+  );
+
   const ds = new DataSource({
     type: "mysql",
-    url:
-      process.env.DATABASE_URL ||
-      "mysql://user:password@localhost:3306/defaultdb",
+    url: databaseUrl,
   });
 
   await ds.initialize();

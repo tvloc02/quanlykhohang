@@ -1,15 +1,22 @@
 import { DataSource } from "typeorm";
+import * as dotenv from "dotenv";
+import * as path from "path";
+
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+dotenv.config();
 
 export async function runInventorySeed() {
+  const databaseUrl =
+    process.env.DATABASE_URL || "mysql://root:root@localhost:3306/smart_wms";
   const ds = new DataSource({
     type: "mysql",
-    url:
-      process.env.DATABASE_URL ||
-      "mysql://root:root@localhost:3307/smart_wms",
+    url: databaseUrl,
   });
 
   await ds.initialize();
-  console.log("🚀 Connecting to MySQL database to seed inventory & products...");
+  console.log(
+    "🚀 Connecting to MySQL database to seed inventory & products...",
+  );
 
   // Disable FK checks
   await ds.query("SET FOREIGN_KEY_CHECKS = 0");
@@ -60,7 +67,9 @@ export async function runInventorySeed() {
   // Enable FK checks
   await ds.query("SET FOREIGN_KEY_CHECKS = 1");
 
-  console.log("✅ SEED THÀNH CÔNG: Đã thêm tồn kho cho SP-VL-001 (0 Cuộn), SP-TP-006 (100 Thùng), SP-TP-001 (50 Bao)!");
+  console.log(
+    "✅ SEED THÀNH CÔNG: Đã thêm tồn kho cho SP-VL-001 (0 Cuộn), SP-TP-006 (100 Thùng), SP-TP-001 (50 Bao)!",
+  );
   await ds.destroy();
 }
 

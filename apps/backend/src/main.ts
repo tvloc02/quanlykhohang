@@ -1,10 +1,10 @@
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import helmet from 'helmet';
-import * as express from 'express';
-import { ValidationPipe } from '@nestjs/common';
-import { DataSource } from 'typeorm';
-import { QueryFailedExceptionFilter } from './common/filters/query-failed.filter';
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+import helmet from "helmet";
+import * as express from "express";
+import { ValidationPipe } from "@nestjs/common";
+import { DataSource } from "typeorm";
+import { QueryFailedExceptionFilter } from "./common/filters/query-failed.filter";
 
 async function ensureWarehouseTable(dataSource: DataSource) {
   await dataSource.query(`
@@ -25,19 +25,29 @@ async function ensureWarehouseTable(dataSource: DataSource) {
 
   // Fix existing columns: make TEXT columns nullable (MySQL doesn't allow default values on TEXT)
   try {
-    await dataSource.query(`ALTER TABLE \`warehouses\` MODIFY COLUMN \`managerIds\` text NULL`);
-    await dataSource.query(`ALTER TABLE \`warehouses\` MODIFY COLUMN \`staffIds\` text NULL`);
-    await dataSource.query(`ALTER TABLE \`warehouses\` ADD COLUMN \`subWarehouses\` text NULL`);
+    await dataSource.query(
+      `ALTER TABLE \`warehouses\` MODIFY COLUMN \`managerIds\` text NULL`,
+    );
+    await dataSource.query(
+      `ALTER TABLE \`warehouses\` MODIFY COLUMN \`staffIds\` text NULL`,
+    );
+    await dataSource.query(
+      `ALTER TABLE \`warehouses\` ADD COLUMN \`subWarehouses\` text NULL`,
+    );
   } catch {
     // Ignore errors if columns are already correct
   }
 
   try {
-    await dataSource.query(`ALTER TABLE \`inbound_details\` ADD COLUMN \`note\` text NULL`);
+    await dataSource.query(
+      `ALTER TABLE \`inbound_details\` ADD COLUMN \`note\` text NULL`,
+    );
   } catch {}
 
   try {
-    await dataSource.query(`ALTER TABLE \`stock_in_order_details\` ADD COLUMN \`note\` text NULL`);
+    await dataSource.query(
+      `ALTER TABLE \`stock_in_order_details\` ADD COLUMN \`note\` text NULL`,
+    );
   } catch {}
 }
 
@@ -50,18 +60,26 @@ async function bootstrap() {
       xXssProtection: false,
     }),
   );
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: false }));
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: false,
+    }),
+  );
   app.useGlobalFilters(new QueryFailedExceptionFilter());
   app.enableCors({
     origin: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   });
   // Prefix all routes with /api so frontend can call /api/*
-  app.setGlobalPrefix('api');
-  await app.listen(3000);
+  app.setGlobalPrefix("api");
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  await app.listen(port);
+  console.log(`🚀 Backend is running on http://localhost:${port}/api`);
 }
 bootstrap();

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Package,
@@ -613,7 +613,7 @@ export default function MainLayout({ children }: LayoutProps) {
 
         {/* Page Content */}
         <main
-          className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 lg:pb-6"
+          className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-6"
           style={{
             background: "linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 100%)",
           }}
@@ -624,66 +624,6 @@ export default function MainLayout({ children }: LayoutProps) {
             </div>
           )}
         </main>
-
-        {/* Mobile Bottom Navigation */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 py-1.5 flex items-center justify-around shadow-lg">
-          <Link
-            to="/dashboard"
-            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-colors ${
-              location.pathname === "/dashboard"
-                ? "text-cyan-600 dark:text-cyan-400 font-bold"
-                : "text-slate-500 dark:text-slate-400 font-medium"
-            }`}
-          >
-            <Home className="h-5 w-5 mb-0.5" />
-            <span className="text-[10px] tracking-tight">Trang chủ</span>
-          </Link>
-
-          <Link
-            to="/inbound/goods-receipts"
-            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-colors ${
-              location.pathname.startsWith("/inbound")
-                ? "text-cyan-600 dark:text-cyan-400 font-bold"
-                : "text-slate-500 dark:text-slate-400 font-medium"
-            }`}
-          >
-            <Package className="h-5 w-5 mb-0.5" />
-            <span className="text-[10px] tracking-tight">Nhập kho</span>
-          </Link>
-
-          {/* Floating Center Action Button for QR Scanner */}
-          <Link
-            to="/scanner"
-            className="flex flex-col items-center justify-center -mt-5 mx-1"
-          >
-            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-600 to-cyan-400 text-white flex items-center justify-center shadow-lg shadow-cyan-600/40 border-2 border-white dark:border-slate-900 active:scale-95 transition-transform">
-              <ScanLine className="h-6 w-6" />
-            </div>
-            <span className="text-[10px] font-bold text-cyan-700 dark:text-cyan-300 mt-0.5">
-              Quét mã
-            </span>
-          </Link>
-
-          <Link
-            to="/outbound"
-            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-colors ${
-              location.pathname.startsWith("/outbound")
-                ? "text-cyan-600 dark:text-cyan-400 font-bold"
-                : "text-slate-500 dark:text-slate-400 font-medium"
-            }`}
-          >
-            <Truck className="h-5 w-5 mb-0.5" />
-            <span className="text-[10px] tracking-tight">Xuất kho</span>
-          </Link>
-
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl text-slate-500 dark:text-slate-400 font-medium hover:text-cyan-600"
-          >
-            <Menu className="h-5 w-5 mb-0.5" />
-            <span className="text-[10px] tracking-tight">Menu</span>
-          </button>
-        </nav>
       </div>
     </div>
   );
