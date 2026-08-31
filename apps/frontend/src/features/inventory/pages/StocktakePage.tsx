@@ -110,7 +110,7 @@ interface ProductOption {
 
 // ─── API HELPERS ───────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = '/api';
 
 function authHeaders() {
   return {
@@ -567,7 +567,7 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
                 type="button"
                 onClick={async () => {
                   try {
-                    const res = await fetch('http://localhost:3000/api/inventory/smart-stocktake/generate-recommended', {
+                    const res = await fetch('/api/inventory/smart-stocktake/generate-recommended', {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',

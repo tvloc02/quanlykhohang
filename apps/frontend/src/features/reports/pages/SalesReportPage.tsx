@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { reportsApi } from '../api/reportsApi';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
 

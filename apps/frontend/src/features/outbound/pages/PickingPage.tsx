@@ -12,7 +12,7 @@ import {
 import BarcodeScanner from '../../../shared/components/BarcodeScanner';
 import { outboundApi, type OutboundOrder, type PickingTask } from '../api/outboundApi';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function authHeaders() {
   return {

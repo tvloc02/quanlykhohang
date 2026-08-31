@@ -87,7 +87,7 @@ export default function Shop() {
 
   useEffect(() => {
     // Fetch danh sách sản phẩm từ kho (mẫu)
-    fetch('http://localhost:3000/api/products')
+    fetch('/api/products')
       .then(res => res.json())
       .then(data => {
         setProducts(Array.isArray(data) ? data : []);

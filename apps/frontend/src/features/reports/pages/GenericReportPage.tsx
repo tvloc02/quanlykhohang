@@ -49,7 +49,7 @@ export default function GenericReportPage({
   const [warehouses, setWarehouses] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/warehouses', {
+    fetch('/api/warehouses', {
       headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
     })
       .then((res) => res.json())

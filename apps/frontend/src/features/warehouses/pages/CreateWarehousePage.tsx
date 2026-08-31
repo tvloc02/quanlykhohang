@@ -77,7 +77,7 @@ import {
   type ProductSlotInput,
 } from '../utils/aiSlottingEngine';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 // Default generator for continuous longitudinal rack rows
 function generateDefaultRacks(

@@ -106,7 +106,7 @@ export default function Dashboard() {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:3000/api/reports/dashboard', {
+      const response = await fetch('/api/reports/dashboard', {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
         },

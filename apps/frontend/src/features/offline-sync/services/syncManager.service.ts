@@ -1,7 +1,7 @@
 import { OfflineQueueService } from './offlineQueue.service';
 import { type QueueItem } from '../db/indexedDb';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 const CHUNK_SIZE = 5; // Sync in chunks of 5 items at a time
 const MAX_RETRIES = 3;
 

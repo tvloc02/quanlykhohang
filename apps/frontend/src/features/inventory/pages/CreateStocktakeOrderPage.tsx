@@ -28,7 +28,7 @@ import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottin
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = '/api';
 
 function authHeaders() {
   return {

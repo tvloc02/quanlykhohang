@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import Toast from '../../../shared/components/Toast';
 
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = '/api';
 function authHeaders() {
   return {
     'Content-Type': 'application/json',

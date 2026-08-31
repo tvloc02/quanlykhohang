@@ -167,7 +167,7 @@ export default function SalesInvoiceDocPage() {
       setWarehousesLoading(true);
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:3000/api/warehouses', {
+        const response = await fetch('/api/warehouses', {
           headers: {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),

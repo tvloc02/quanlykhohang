@@ -137,7 +137,7 @@ export default function TransferOrderModal({
 
     async function loadWarehouses() {
       try {
-        const res = await fetch('http://localhost:3000/api/warehouses', {
+        const res = await fetch('/api/warehouses', {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${localStorage.getItem('token') || ''}`,

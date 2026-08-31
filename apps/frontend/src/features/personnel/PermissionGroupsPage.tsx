@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { normalizeWarehouseRecord, type WarehouseRecord } from '../../shared/utils/warehouseAssignments';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 const STORAGE_KEY = 'smart-wms-permission-groups';
 
 export type UserRole = { name: string };

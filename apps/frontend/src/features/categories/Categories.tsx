@@ -57,7 +57,7 @@ const statusOptions = [
 ];
 
 const excelHeaders = ['STT', 'Mã danh mục', 'Tên danh mục', 'Ghi chú', 'Trạng thái'];
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function escapeXml(value: unknown) {
     return String(value ?? '')

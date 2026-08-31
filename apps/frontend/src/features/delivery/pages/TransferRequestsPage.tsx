@@ -177,8 +177,8 @@ export default function TransferRequestsPage() {
         const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
         const [whRes, prodRes] = await Promise.all([
-          fetch('http://localhost:3000/api/warehouses', { headers }).catch(() => null),
-          fetch('http://localhost:3000/api/products', { headers }).catch(() => null),
+          fetch('/api/warehouses', { headers }).catch(() => null),
+          fetch('/api/products', { headers }).catch(() => null),
         ]);
 
         if (whRes && whRes.ok) {

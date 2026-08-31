@@ -371,7 +371,7 @@ export interface OutboundTab {
 }
 
 const DEFAULT_ROWS_COUNT = 50;
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [
   { id: 'p1', internalSku: 'SP001', name: 'Đèn Led Module 3 bóng Samsung', unit: 'Cái', purchasePrice: 45000, salePrice: 65000, wholesalePrice: 55000, price: 65000 },

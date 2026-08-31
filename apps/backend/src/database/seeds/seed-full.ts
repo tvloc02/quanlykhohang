@@ -1,22 +1,24 @@
-import { DataSource } from 'typeorm';
-import * as bcrypt from 'bcryptjs';
+import { DataSource } from "typeorm";
+import * as bcrypt from "bcryptjs";
 
 export async function runSeed() {
   const ds = new DataSource({
-    type: 'mysql',
-    url: process.env.DATABASE_URL || 'mysql://kien:123456@localhost:3306/smart_wms_db',
+    type: "mysql",
+    url:
+      process.env.DATABASE_URL ||
+      "mysql://user:password@localhost:3306/defaultdb",
   });
 
   await ds.initialize();
-  console.log('🚀 Connecting to MySQL database for full seeding...');
+  console.log("🚀 Connecting to MySQL database for full seeding...");
 
-  const pass = await bcrypt.hash('123456', 10);
+  const pass = await bcrypt.hash("123456", 10);
 
   // Disable FK constraints
-  await ds.query('SET FOREIGN_KEY_CHECKS = 0');
+  await ds.query("SET FOREIGN_KEY_CHECKS = 0");
 
   // 1. ROLES
-  console.log('🌱 Seeding Roles...');
+  console.log("🌱 Seeding Roles...");
   await ds.query(`
     INSERT IGNORE INTO roles (id, name) VALUES 
     (1, 'admin'),
@@ -27,7 +29,7 @@ export async function runSeed() {
   `);
 
   // 2. USERS
-  console.log('🌱 Seeding Users...');
+  console.log("🌱 Seeding Users...");
   await ds.query(`
     INSERT INTO users (id, email, password, fullName, phone, status, department) VALUES 
     (1, 'admin@wms.vn', '${pass}', 'Quản Trị Viên Hệ Thống', '0901234567', 'active', 'Ban Giám Đốc'),
@@ -45,7 +47,7 @@ export async function runSeed() {
   `);
 
   // 3. CATEGORIES
-  console.log('🌱 Seeding Categories...');
+  console.log("🌱 Seeding Categories...");
   await ds.query(`
     INSERT INTO categories (id, name, description, code, type, status) VALUES 
     (1, 'Điện tử & Công nghệ', 'Thiết bị điện tử, máy tính, điện thoại, phụ kiện', 'CAT-DT', 'item-group', 'active'),
@@ -56,7 +58,7 @@ export async function runSeed() {
   `);
 
   // 4. SUPPLIERS
-  console.log('🌱 Seeding Suppliers...');
+  console.log("🌱 Seeding Suppliers...");
   await ds.query(`
     INSERT INTO suppliers (id, supplierCode, name, phone, address, taxCode) VALUES 
     (1, 'NCC001', 'Apple Vietnam Authorized Distributor', '0283999888', 'Tòa nhà Phú Mỹ Hưng, Quận 7, TP.HCM', '0308889991'),
@@ -67,7 +69,7 @@ export async function runSeed() {
   `);
 
   // 5. CUSTOMERS
-  console.log('🌱 Seeding Customers...');
+  console.log("🌱 Seeding Customers...");
   await ds.query(`
     INSERT INTO customers (id, customerCode, name, phone, address, type, status) VALUES 
     (1, 'KH001', 'Công ty TNHH Công Nghệ Minh Phát', '0988123456', '15 Nguyễn Thị Minh Khai, Quận 1, TP.HCM', 'B2B', 'active'),
@@ -78,7 +80,7 @@ export async function runSeed() {
   `);
 
   // 6. WAREHOUSES
-  console.log('🌱 Seeding Warehouses...');
+  console.log("🌱 Seeding Warehouses...");
   await ds.query(`
     INSERT INTO warehouses (id, code, name, address, status, isFrozen, managerIds, staffIds) VALUES 
     ('wh-1', 'KHO-TONG', 'Kho Tổng SPX Express (TP.HCM)', '123 Quốc lộ 1A, Bình Chánh, TP.HCM', 'active', 0, '2', '3'),
@@ -89,7 +91,7 @@ export async function runSeed() {
   `);
 
   // 7. PRODUCTS
-  console.log('🌱 Seeding Products...');
+  console.log("🌱 Seeding Products...");
   await ds.query(`
     INSERT INTO products (id, internalSku, supplierBarcode, name, unit, price, minimumStock, categoryId, supplierId) VALUES 
     (1, 'SP-DT-006', '885909123456', 'MacBook Pro 14 inch M3 Max 36GB/1TB', 'Cái', 64500000, 5, 1, 1),
@@ -104,7 +106,7 @@ export async function runSeed() {
   `);
 
   // 8. INBOUND RECEIPTS (PHIEU NHAP KHO)
-  console.log('🌱 Seeding Inbound Receipts...');
+  console.log("🌱 Seeding Inbound Receipts...");
   await ds.query(`
     INSERT INTO inbound_receipts (id, poNumber, supplierName, supplierId, status, receiptType, creatorName, description, totalAmount, orderDate) VALUES 
     (1, 'PNK-2026-0001', 'Apple Vietnam Authorized Distributor', 1, 'completed', 'stock_in', 'Trần Văn Nam', 'Nhập đợt 1 MacBook & iPhone chính hãng', 639900000.00, NOW()),
@@ -125,7 +127,7 @@ export async function runSeed() {
   `);
 
   // 9. OUTBOUND ORDERS (PHIEU XUAT KHO)
-  console.log('🌱 Seeding Outbound Orders...');
+  console.log("🌱 Seeding Outbound Orders...");
   await ds.query(`
     INSERT INTO outbound_orders (id, orderNo, branchCode, employeeName, customerName, customerPhone, customerAddress, status, orderType, description, items, subtotal, discount, totalAmount, amountPaid, paymentMethod, orderDate) VALUES 
     (1, 'PXK-2026-0001', 'KHO-TONG', 'Trần Văn Nam', 'Công ty TNHH Công Nghệ Minh Phát', '0988123456', '15 Nguyễn Thị Minh Khai, Quận 1, TP.HCM', 'Đã giao hàng', 'outbound_sales', 'Xuất lô hàng MacBook & iPhone cho DN', 2, 394890000.00, 4890000.00, 390000000.00, 390000000.00, 'BANK_TRANSFER', NOW()),
@@ -145,16 +147,38 @@ export async function runSeed() {
     ON DUPLICATE KEY UPDATE warehouseCode = VALUES(warehouseCode)
   `);
 
-  // Enable FK constraints
-  await ds.query('SET FOREIGN_KEY_CHECKS = 1');
+  // 10. STOCK BALANCES (TỒN KHO)
+  console.log("🌱 Seeding Stock Balances...");
+  await ds.query(`
+    INSERT INTO stock_balances (productId, locationCode, totalPhysical, allocated, available) VALUES 
+    (1, 'KHO-TONG', 15, 3, 12),
+    (2, 'KHO-TONG', 20, 5, 15),
+    (3, 'KHO-HN', 25, 10, 15),
+    (4, 'KHO-HN', 30, 20, 10),
+    (5, 'KHO-TONG', 15, 0, 15),
+    (6, 'KHO-TONG', 50, 0, 50),
+    (7, 'KHO-TONG', 100, 0, 100),
+    (8, 'KHO-TONG', 0, 0, 0)
+    ON DUPLICATE KEY UPDATE 
+      totalPhysical = VALUES(totalPhysical),
+      allocated = VALUES(allocated),
+      available = VALUES(available)
+  `);
 
-  console.log('🎉 ALL DEMO SEED DATA INSERTED SUCCESSFULLY INTO MYSQL DATABASE!');
+  // Enable FK constraints
+  await ds.query("SET FOREIGN_KEY_CHECKS = 1");
+
+  console.log(
+    "🎉 ALL DEMO SEED DATA INSERTED SUCCESSFULLY INTO MYSQL DATABASE!",
+  );
   await ds.destroy();
 }
 
 if (require.main === module) {
-  runSeed().then(() => process.exit(0)).catch((err) => {
-    console.error('❌ Seeding error:', err);
-    process.exit(1);
-  });
+  runSeed()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error("❌ Seeding error:", err);
+      process.exit(1);
+    });
 }

@@ -280,7 +280,7 @@ export interface InboundTab {
 }
 
 const DEFAULT_ROWS_COUNT = 50;
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function authHeaders() {
   return {

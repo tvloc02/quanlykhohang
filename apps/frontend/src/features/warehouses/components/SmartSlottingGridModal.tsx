@@ -35,7 +35,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 function authHeaders() {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';

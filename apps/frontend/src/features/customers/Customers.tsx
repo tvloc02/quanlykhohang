@@ -64,7 +64,7 @@ type SelectOption = {
   label: string;
 };
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 const CUSTOMER_PROFILE_KEY = 'smart-wms-customer-profiles';
 
 function authHeaders() {

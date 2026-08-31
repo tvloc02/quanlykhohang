@@ -92,7 +92,7 @@ export default function CartCheckoutPage() {
         }))
       };
 
-      const response = await fetch('http://localhost:3000/api/outbounds', {
+      const response = await fetch('/api/outbounds', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

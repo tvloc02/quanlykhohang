@@ -490,7 +490,7 @@ export default function PurchaseOrdersWindow({ compact, receipts }: PurchaseOrde
     [filteredReceipts, selectedId],
   );
 
-  const API_BASE_URL = 'http://localhost:3000/api';
+  const API_BASE_URL = '/api';
   const [isAsnModalOpen, setIsAsnModalOpen] = React.useState(false);
   const [isNegotiateModalOpen, setIsNegotiateModalOpen] = React.useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = React.useState(false);
