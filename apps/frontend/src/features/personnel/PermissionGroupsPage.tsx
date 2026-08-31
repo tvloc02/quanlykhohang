@@ -176,13 +176,15 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
 
   // 9. Hệ thống
   { id: 'he-thong', label: 'Hệ thống', isHeader: true },
+  { id: 'settings', label: 'Cấu hình hệ thống', parentId: 'he-thong' },
+  { id: 'personnel', label: 'Nhân viên & Phân quyền', parentId: 'he-thong' },
+  { id: 'areas', label: 'Cấu hình Chi nhánh', parentId: 'he-thong' },
+  { id: 'evat-config', label: 'Hóa đơn & VAT', parentId: 'he-thong' },
+  { id: 'print-templates', label: 'Mẫu in Chứng từ', parentId: 'he-thong' },
+  { id: 'audit-log', label: 'Nhật ký Hoạt động', parentId: 'he-thong' },
+  { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
   { id: 'logout', label: 'Đăng xuất', parentId: 'he-thong' },
   { id: 'change-password', label: 'Đổi mật khẩu', parentId: 'he-thong' },
-  { id: 'personnel', label: 'Người dùng / Nhân viên', parentId: 'he-thong' },
-  { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
-  { id: 'audit-log', label: 'Lịch sử thao tác', parentId: 'he-thong' },
-  { id: 'zalo-config', label: 'Cấu hình Zalo OA', parentId: 'he-thong' },
-  { id: 'evat-config', label: 'Cấu hình e-VAT', parentId: 'he-thong' },
 
   // 10. Shipper
   { id: 'shipper', label: 'Shipper', isHeader: true },

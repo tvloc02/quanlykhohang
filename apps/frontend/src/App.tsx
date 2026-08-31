@@ -236,6 +236,11 @@ function App() {
           }
         />
         <Route path="/system-menu" element={<Navigate to="/personnel" replace />} />
+        <Route path="/personnel/users" element={<Navigate to="/personnel" replace />} />
+        <Route path="/system/branch-config" element={<Navigate to="/areas" replace />} />
+        <Route path="/vat-management" element={<Navigate to="/vat/management" replace />} />
+        <Route path="/system/print-templates" element={<Navigate to="/documents" replace />} />
+        <Route path="/system/audit-log" element={<Navigate to="/audit-log" replace />} />
         <Route path="/categories-menu" element={<Navigate to="/categories" replace />} />
         <Route path="/nhap-xuat" element={<Navigate to="/inbound/stock-in-orders" replace />} />
         <Route path="/reports-summary" element={<Navigate to="/reports/sales" replace />} />
@@ -557,7 +562,7 @@ function App() {
         <Route
           path="/inbound/approve"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']} menuId="inbound-stock-in-orders">
+            <RoleRoute menuId="inbound-stock-in-orders">
               <MainLayout>
                 <ApproveReceiptPage />
               </MainLayout>
@@ -577,7 +582,7 @@ function App() {
         <Route
           path="/sync-conflicts"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']} menuId="data-maintenance">
+            <RoleRoute menuId="data-maintenance">
               <MainLayout>
                 <SyncConflictsPage />
               </MainLayout>
@@ -631,7 +636,7 @@ function App() {
         <Route
           path="/outbound/approve"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']} menuId="outbound-orders">
+            <RoleRoute menuId="outbound-orders">
               <MainLayout>
                 <ApproveOutboundPage />
               </MainLayout>
@@ -806,7 +811,7 @@ function App() {
         <Route
           path="/inventory/stocktake/adjustment-approval"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']} menuId="inventory-stocktake">
+            <RoleRoute menuId="inventory-stocktake">
               <MainLayout>
                 <AdjustmentApprovalPage />
               </MainLayout>
@@ -1150,7 +1155,7 @@ function App() {
         <Route
           path="/erp-status"
           element={
-            <RoleRoute allowedRoles={['admin', 'manager']} menuId="sys-info">
+            <RoleRoute menuId="sys-info">
               <MainLayout>
                 <ErpSyncStatusPage />
               </MainLayout>
@@ -1160,7 +1165,7 @@ function App() {
         <Route
           path="/audit-log"
           element={
-            <RoleRoute allowedRoles={['admin']} menuId="audit-log">
+            <RoleRoute menuId="audit-log">
               <MainLayout>
                 <AuditLog />
               </MainLayout>
@@ -1180,7 +1185,7 @@ function App() {
         <Route
           path="/settings/*"
           element={
-            <RoleRoute allowedRoles={['admin']} menuId="sys-config">
+            <RoleRoute menuId="settings">
               <MainLayout>
                 <Settings />
               </MainLayout>
