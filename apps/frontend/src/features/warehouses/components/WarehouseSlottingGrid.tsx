@@ -1596,7 +1596,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       {editingBinConfig &&
         createPortal(
           <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-slate-900 border-2 border-cyan-500 rounded-2xl p-5 w-full max-w-sm shadow-2xl space-y-3.5">
+          <div className="bg-white dark:bg-slate-900 border-2 border-cyan-500 rounded-2xl p-6 w-full max-w-2xl shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
               <h5 className="text-xs font-black text-cyan-900 dark:text-cyan-100 flex items-center gap-2 uppercase tracking-wide">
                 <Settings className="h-4.5 w-4.5 text-cyan-600" />
@@ -1621,7 +1621,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               const actualBinStockPct = Number(sInfo?.occupancyPct || editingBinConfig.currentPct || 100);
 
               return (
-                <div className="bg-cyan-50 dark:bg-cyan-950/70 p-2.5 rounded-xl border border-cyan-200/80 text-xs">
+                <div className="bg-cyan-50 dark:bg-cyan-950/70 p-3 rounded-xl border border-cyan-200/80 text-xs">
                   <div className="flex items-center justify-between font-bold text-cyan-950 dark:text-cyan-100">
                     <span>Trạng thái ô hiện tại ({binShort}):</span>
                     <span className="font-black text-cyan-700 dark:text-cyan-300">
@@ -1638,13 +1638,13 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
             })()}
 
             {/* Item-by-Item Occupancy Table with Scrollbar */}
-            <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs my-2 custom-scrollbar">
+            <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs my-2 custom-scrollbar">
               <table className="w-full text-xs text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-cyan-50 dark:bg-cyan-950 text-cyan-950 dark:text-cyan-200 font-bold border-b border-cyan-200 dark:border-slate-700 shadow-2xs">
                   <tr>
-                    <th className="p-2.5">Tên hàng hóa</th>
-                    <th className="p-2.5 text-right w-24">Số lượng</th>
-                    <th className="p-2.5 text-right w-24">Lưu trữ</th>
+                    <th className="p-3">Tên hàng hóa</th>
+                    <th className="p-3 text-right w-28">Số lượng</th>
+                    <th className="p-3 text-right w-28">Lưu trữ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900 font-medium">
@@ -1660,16 +1660,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                     return (
                       <tr key={idx} className={isOutbound ? "bg-rose-50/30 dark:bg-rose-950/20 hover:bg-rose-50/60 dark:hover:bg-rose-950/40 transition border-l-4 border-rose-500" : isExisting ? "bg-cyan-50/40 dark:bg-slate-800/40 hover:bg-cyan-50/70 border-l-4 border-cyan-500" : "hover:bg-emerald-50/40 dark:hover:bg-slate-800/50 transition border-l-4 border-emerald-500"}>
-                        <td className="p-2.5">
-                          <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 flex-wrap">
+                        <td className="p-3">
+                          <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 flex-wrap">
                             <span>{item.productName}</span>
                             {isExisting ? (
-                              <span className="text-[9px] font-black bg-cyan-200 text-cyan-900 dark:bg-cyan-900 dark:text-cyan-200 px-1.5 py-0.5 rounded-md tracking-tight">
-                                📦 TỒN TẠI KỆ
+                              <span className="text-[10px] font-black bg-cyan-200 text-cyan-900 dark:bg-cyan-900 dark:text-cyan-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                TỒN TẠI KỆ
                               </span>
                             ) : (
-                              <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 px-1.5 py-0.5 rounded-md tracking-tight">
-                                ✨ LÔ NHẬP MỚI
+                              <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                LÔ NHẬP MỚI
                               </span>
                             )}
                           </div>
