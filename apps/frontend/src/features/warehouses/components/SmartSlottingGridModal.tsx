@@ -801,8 +801,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           id: 'msg-1',
           sender: 'ai',
           text: isOutbound
-            ? `CHỈ DẪN XUẤT CHUYỂN KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nQUY TẮC AN TOÀN XUẤT KHO:\n- Bạn chỉ được phép chọn các ô kệ đang lưu trữ đúng mặt hàng "${activeItem?.productName || 'này'}".\n- Các ô kệ trống hoặc chứa hàng khác sẽ tự động khóa để tránh xuất nhầm hàng.\n\nChỉ dẫn vị trí ô lấy hàng: Cần chọn ~${totalBinsNeeded} ô chứa.`
-            : `CHỈ DẪN NHẬP KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nChỉ dẫn: Bạn có thể tự do chọn ô kệ cho 1, 2, 3 mặt hàng tùy ý. Không bắt buộc chọn tất cả.`,
+            ? `🤖 **TRỢ LÝ AI CHỈ DẪN VỊ TRÍ XUẤT KHO SMART WMS**\n\n📦 **Mặt hàng cần xuất**: ${activeItem?.productName || 'Hàng hóa'} (${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n🏢 **Kho xuất**: Kho ${warehouseCode || 'Mặc định'}\n\n🔒 **QUY TẮC AN TOÀN XUẤT KHO**:\n• Bạn chỉ được phép chọn các ô kệ đang lưu trữ đúng mặt hàng "${activeItem?.productName || 'này'}".\n• Các ô kệ trống hoặc chứa sản phẩm khác sẽ tự động khóa để tránh xuất nhầm.\n• Dự kiến cần chọn **~${totalBinsNeeded} ô chứa**.\n\n👉 Bấm *"📦 Chỉ dẫn Kệ Có Hàng"* hoặc *"💡 Tư vấn chọn kho"* để AI hỗ trợ ngay!`
+            : `🤖 **TRỢ LÝ AI CHỈ DẪN VỊ TRÍ & CHỌN KHO LƯU HÀNG SMART WMS**\n\n📦 **Mặt hàng nhập**: ${activeItem?.productName || 'Hàng hóa'} (${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n🏢 **Kho lưu**: Kho ${warehouseCode || 'Mặc định'}\n\n💡 **HƯỚNG DẪN AI SLOTTING**:\n• Tự động gợi ý kho & phân khu bảo quản (Kho Thường, Kho Lạnh, Kho Nhiệt).\n• Phân bổ tầng kệ theo tải trọng: Hàng nặng xếp Tầng 1-2 (Tầng A-B), Hàng nhẹ xếp Tầng 3-4 (Tầng C-D).\n• Ưu tiên hàng luân chuyển nhanh (Loại A) ở đầu dãy kệ R01/R02.\n• Dự kiến cần **~${totalBinsNeeded} ô chứa trống**.\n\n👉 Bấm *"✨ Chỉ dẫn Kệ Trống"* hoặc *"💡 Tư vấn chọn kho"* để AI tự động phân bổ!`,
           time: now,
         },
       ];
@@ -1193,14 +1193,128 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
       const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
 
-      // ACTION 1: Clear/Reset selections
-      if (lower.includes('bỏ chọn') || lower.includes('xóa chọn') || lower.includes('hủy chọn') || lower.includes('chọn lại')) {
+      // Helper to match cell short code (e.g. D1, D2, A1) with cell object
+      const isCellMatchingShortCode = (cell: BinCell, codeStr: string): boolean => {
+        const target = codeStr.trim().toUpperCase();
+        const binLast = (cell.binCode.split('-').pop() || '').trim().toUpperCase();
+        const cellClean = (cell.cellCode || '').replace(/ô/i, '').trim().toUpperCase();
+        return binLast === target || cellClean === target || binLast.endsWith(target);
+      };
+
+      // INTENT 1: Clear/Reset selections
+      if (
+        lower.includes('bỏ chọn') ||
+        lower.includes('xóa chọn') ||
+        lower.includes('hủy chọn') ||
+        lower.includes('chọn lại') ||
+        (lower.includes('reset') && !lower.includes('kệ'))
+      ) {
         if (activeRowId) {
           setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: [] }));
-          aiReply = `Đã thực thi: Đã bỏ chọn tất cả các ô kệ của mặt hàng "${activeItem?.productName || 'hàng hóa'}".`;
+          aiReply = `🧹 **ĐÃ XÓA LỰA CHỌN**:\nĐã bỏ chọn tất cả ô kệ cho mặt hàng "${activeItem?.productName || 'hàng hóa'}". Bạn có thể chọn lại các ô kệ mới.`;
         }
       }
-      // ACTION 1.5: INTENT - CHỈ DẪN KỆ TRỐNG CHO NHẬP KHO (EMPTY RACK GUIDANCE)
+
+      // INTENT 2: Warehouse / Zone / Storage Environment Advice & Selection (Tư vấn chọn kho lưu / phân khu)
+      else if (
+        lower.includes('tư vấn') ||
+        lower.includes('chọn kho') ||
+        lower.includes('lưu kho') ||
+        lower.includes('kho lạnh') ||
+        lower.includes('kho thường') ||
+        lower.includes('nhiệt độ') ||
+        lower.includes('bảo quản') ||
+        lower.includes('phân khu') ||
+        lower.includes('kho nào') ||
+        lower.includes('tầng kệ') ||
+        lower.includes('tải trọng') ||
+        lower.includes('nặng') ||
+        lower.includes('nhẹ') ||
+        lower.includes('abc')
+      ) {
+        const itemName = activeItem?.productName || 'Hàng hóa';
+        const itemQtyVal = activeItem?.qty || 0;
+        const itemUnitName = activeItem?.unit || 'Cái';
+        const isOutbound = mode === 'OUTBOUND_TRANSFER';
+
+        if (isOutbound) {
+          // Outbound advice
+          const matchingBins: { binCode: string; rackName: string; pct: number; qty: number }[] = [];
+          racksTopology.forEach((rk) => {
+            rk.floors.forEach((fl) => {
+              fl.cells.forEach((cl) => {
+                if (isBinMatchingActiveItem(cl)) {
+                  matchingBins.push({
+                    binCode: cl.binCode,
+                    rackName: rk.rackName || rk.rackId,
+                    pct: (cl as any).occupancyPct || 100,
+                    qty: (cl as any).totalPhysical || itemQtyVal,
+                  });
+                }
+              });
+            });
+          });
+
+          if (matchingBins.length > 0) {
+            const lines: string[] = [];
+            lines.push(`💡 **TƯ VẤN XUẤT KHO THÔNG MINH (AI SLOTTING OUTBOUND)**`);
+            lines.push(`📦 **Sản phẩm xuất**: ${itemName} (Cần xuất: ${itemQtyVal} ${itemUnitName})`);
+            lines.push(``);
+            lines.push(`📍 **Vị trí tồn kho khả dụng (${matchingBins.length} ô)**:`);
+            matchingBins.forEach((b, idx) => {
+              const short = b.binCode.split('-').pop() || b.binCode;
+              lines.push(`  ${idx + 1}. **Ô ${short}** (${b.rackName}): Tồn ${b.pct}% (${b.qty} ${itemUnitName})`);
+            });
+            lines.push(``);
+            lines.push(`🎯 **Khuyến nghị AI**: Ưu tiên lấy hàng từ ô có tồn kho nhỏ hơn hoặc ô gần lối đi xuất để giải phóng ô chứa nhanh nhất.`);
+            lines.push(`👉 Bấm *"Chỉ dẫn Kệ Có Hàng"* hoặc bấm trực tiếp lên ô kệ màu xanh lá để tích chọn.`);
+
+            aiReply = lines.join('\n');
+
+            const firstMatch = matchingBins[0];
+            const matchRack = racksTopology.find((rk) => firstMatch.binCode.includes(rk.rackId));
+            if (matchRack) setActiveRackId(matchRack.rackId);
+          } else {
+            aiReply = `⚠️ **CẢNH BÁO TỒN KHO**:\nKhông tìm thấy ô kệ nào trong kho đang lưu trữ mặt hàng "${itemName}". Vui lòng kiểm tra lại số liệu tồn kho.`;
+          }
+        } else {
+          // Inbound advice
+          const lines: string[] = [];
+          lines.push(`💡 **TƯ VẤN CHỌN KHO & VỊ TRÍ LƯU HÀNG (AI SLOTTING INBOUND)**`);
+          lines.push(`📦 **Sản phẩm nhập**: ${itemName} (Số lượng: ${itemQtyVal} ${itemUnitName})`);
+          lines.push(`🏢 **Kho hiện tại**: Kho ${warehouseCode || 'Mặc định'}`);
+          lines.push(``);
+
+          // Evaluate temperature requirement guess
+          const lowerItem = itemName.toLowerCase();
+          let recommendedZone = 'Phân khu A (Kho Thường - Ambient)';
+          let tempNote = 'Bảo quản nhiệt độ môi trường thường (15°C ~ 30°C)';
+
+          if (lowerItem.includes('lạnh') || lowerItem.includes('đông') || lowerItem.includes('kem') || lowerItem.includes('thịt') || lowerItem.includes('hải sản')) {
+            recommendedZone = 'Phân khu C (Kho Lạnh - Cold -18°C ~ 5°C)';
+            tempNote = 'Yêu cầu bảo quản lạnh/cấp đông liên tục';
+          } else if (lowerItem.includes('dược') || lowerItem.includes('thuốc') || lowerItem.includes('mỹ phẩm') || lowerItem.includes('sữa')) {
+            recommendedZone = 'Phân khu B (Kho Nhiệt / Điều Hòa 15°C ~ 22°C)';
+            tempNote = 'Yêu cầu bảo quản mát / điều hòa ổn định';
+          }
+
+          lines.push(`1. **Phân khu & Môi trường**: **${recommendedZone}**`);
+          lines.push(`   • *Đánh giá*: ${tempNote}.`);
+          lines.push(``);
+          lines.push(`2. **Quy tắc Tải trọng & Tầng kệ (Safety Capacity)**:`);
+          lines.push(`   • **Tầng A - B (Tầng 1-2)**: Ưu tiên cho hàng nặng (>50kg/thùng) hoặc lô hàng nhập lớn để đảm bảo kết cấu chân kệ chịu lực an toàn.`);
+          lines.push(`   • **Tầng C - D (Tầng 3-4)**: Phù hợp cho hàng nhẹ, thùng nhỏ hoặc bách hóa lẻ để tối ưu thể tích m³.`);
+          lines.push(``);
+          lines.push(`3. **Vị trí Luân chuyển ABC**:`);
+          lines.push(`   • Đặt tại **Dãy Kệ R01** (đầu phân khu) để rút ngắn 35% quãng đường di chuyển của xe nâng.`);
+          lines.push(``);
+          lines.push(`👉 Bấm *"Chỉ dẫn Kệ Trống"* hoặc *"Tự chọn đủ ô"* để AI tự động tích chọn ô kệ hợp lệ trên sơ đồ 2D.`);
+
+          aiReply = lines.join('\n');
+        }
+      }
+
+      // INTENT 3: Empty Bins Guidance for Inbound (`kệ trống`, `ô trống`, `nhập vào đâu`, `xếp vào đâu`, `gợi ý ô`, `chỉ dẫn nhập`)
       else if (
         lower.includes('kệ trống') ||
         lower.includes('ô trống') ||
@@ -1210,13 +1324,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         lower.includes('nhập vào đâu') ||
         lower.includes('chỉ dẫn nhập') ||
         lower.includes('xếp vào đâu') ||
-        (mode !== 'OUTBOUND_TRANSFER' && (
-          lower.includes('kệ nào') ||
-          lower.includes('ô nào') ||
-          lower.includes('ở đâu') ||
-          lower.includes('trống') ||
-          lower.includes('nhập')
-        ))
+        (mode !== 'OUTBOUND_TRANSFER' && (lower.includes('nhập ở đâu') || lower.includes('kệ nào')))
       ) {
         const rackEmptyMap = new Map<string, { rackName: string; totalBins: number; emptyBins: string[]; emptyCount: number }>();
 
@@ -1245,15 +1353,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         });
 
         const lines: string[] = [];
-        lines.push(`✨ CHỈ DẪN VỊ TRÍ KỆ TRỐNG (NHẬP KHO SLOTTING):`);
-        lines.push(`Mặt hàng đang xếp: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${activeItem?.qty || 0} ${activeItem?.unit || 'Cái'})`);
+        lines.push(`✨ **CHỈ DẪN VỊ TRÍ KỆ TRỐNG (NHẬP KHO SLOTTING)**`);
+        lines.push(`📦 **Mặt hàng**: ${activeItem?.productName || 'Hàng hóa'} (${activeItem?.qty || 0} ${activeItem?.unit || 'Cái'})`);
         lines.push(``);
 
         const candidateBins: string[] = [];
         rackEmptyMap.forEach((data) => {
           const emptyPct = data.totalBins > 0 ? Math.round((data.emptyCount / data.totalBins) * 100) : 0;
           const sampleStr = data.emptyBins.slice(0, 4).join(', ');
-          lines.push(`• Dãy ${data.rackName}: ${data.emptyCount}/${data.totalBins} ô trống (${emptyPct}%) ${sampleStr ? `[Gợi ý ô: ${sampleStr}${data.emptyBins.length > 4 ? '...' : ''}]` : ''}`);
+          lines.push(`• **Dãy ${data.rackName}**: ${data.emptyCount}/${data.totalBins} ô trống (${emptyPct}%) ${sampleStr ? `[Gợi ý ô: ${sampleStr}${data.emptyBins.length > 4 ? '...' : ''}]` : ''}`);
         });
 
         for (const cell of allCellsList) {
@@ -1270,15 +1378,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           const matchRack = racksTopology.find((rk) => firstBin.includes(rk.rackId));
           if (matchRack) setActiveRackId(matchRack.rackId);
           lines.push(``);
-          lines.push(`👉 AI đã tự động tích chọn ${candidateBins.length} ô trống (${candidateBins.map(b => b.split('-').pop()).join(', ')}) trên sơ đồ 2D để bạn nhập hàng ngay!`);
+          lines.push(`👉 **AI đã tự động chọn ${candidateBins.length} ô trống** (${candidateBins.map((b) => b.split('-').pop()).join(', ')}) trên sơ đồ 2D để bạn nhập hàng ngay!`);
         } else {
           lines.push(``);
-          lines.push(`⚠️ Cảnh báo: Tất cả các kệ trong kho đã đầy 100%. Vui lòng xuất bớt hàng hoặc mở rộng sơ đồ kệ.`);
+          lines.push(`⚠️ **CẢNH BÁO**: Tất cả ô kệ trong kho đã đầy. Vui lòng xuất bớt hàng hoặc điều chuyển sang kho khác.`);
         }
 
         aiReply = lines.join('\n');
       }
-      // ACTION 1.8: INTENT - CHỈ DẪN KỆ CÓ HÀNG CHO XUẤT KHO (OCCUPIED STOCK GUIDANCE)
+
+      // INTENT 4: Occupied Stock Guidance for Outbound (`còn hàng`, `có hàng`, `kệ có hàng`, `ô có hàng`, `vị trí xuất`, `chỉ dẫn xuất`)
       else if (
         lower.includes('còn hàng') ||
         lower.includes('có hàng') ||
@@ -1292,14 +1401,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         lower.includes('xuất ở đâu') ||
         lower.includes('vị trí hàng') ||
         lower.includes('chỉ dẫn xuất') ||
-        (mode === 'OUTBOUND_TRANSFER' && (
-          lower.includes('kệ nào') ||
-          lower.includes('ô nào') ||
-          lower.includes('ở đâu') ||
-          lower.includes('xuất') ||
-          lower.includes('hàng') ||
-          lower.includes('có')
-        ))
+        (mode === 'OUTBOUND_TRANSFER' && (lower.includes('kệ nào') || lower.includes('xuất')))
       ) {
         const matchingOccupiedBins: { binCode: string; rackId: string; rackName: string; pct: number; qty: number; pName: string; unit: string }[] = [];
 
@@ -1307,8 +1409,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           rk.floors.forEach((fl) => {
             fl.cells.forEach((cl) => {
               const clAny = cl as any;
-              const isMatch = isBinMatchingActiveItem(cl);
-              if (isMatch) {
+              if (isBinMatchingActiveItem(cl)) {
                 matchingOccupiedBins.push({
                   binCode: cl.binCode,
                   rackId: rk.rackId,
@@ -1324,17 +1425,17 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         });
 
         const lines: string[] = [];
-        lines.push(`📦 CHỈ DẪN VỊ TRÍ KỆ CÓ HÀNG (XUẤT KHO SLOTTING):`);
-        lines.push(`Mặt hàng cần xuất: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất: ${activeItem?.qty || 0} ${activeItem?.unit || 'Cái'})`);
+        lines.push(`📦 **CHỈ DẪN VỊ TRÍ KỆ CÓ HÀNG (XUẤT KHO SLOTTING)**`);
+        lines.push(`📦 **Mặt hàng cần xuất**: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất: ${activeItem?.qty || 0} ${activeItem?.unit || 'Cái'})`);
         lines.push(``);
 
         if (matchingOccupiedBins.length > 0) {
-          lines.push(`Tìm thấy ${matchingOccupiedBins.length} ô kệ đang lưu trữ đúng mặt hàng này:`);
+          lines.push(`Tìm thấy **${matchingOccupiedBins.length} ô kệ** đang lưu trữ đúng mặt hàng này:`);
           const candidateCodes: string[] = [];
 
           matchingOccupiedBins.forEach((bInfo, idx) => {
             const shortCode = bInfo.binCode.split('-').pop() || bInfo.binCode;
-            lines.push(` ${idx + 1}. Ô ${shortCode} (Dãy ${bInfo.rackName}): Đã chứa ${bInfo.pct}% (${bInfo.qty} ${bInfo.unit})`);
+            lines.push(`  ${idx + 1}. **Ô ${shortCode}** (Dãy ${bInfo.rackName}): Đã chứa ${bInfo.pct}% (${bInfo.qty} ${bInfo.unit})`);
             candidateCodes.push(bInfo.binCode);
           });
 
@@ -1346,32 +1447,51 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           }
 
           lines.push(``);
-          lines.push(`👉 AI đã tự động chọn và mở Dãy Kệ ${matchingOccupiedBins[0].rackName} để bạn xuất hàng chính xác!`);
+          lines.push(`👉 **AI đã tự động tích chọn & mở Dãy Kệ ${matchingOccupiedBins[0].rackName}** trên sơ đồ để bạn xuất hàng chính xác!`);
         } else {
-          lines.push(`⚠️ Không tìm thấy ô kệ nào trong kho đang chứa mặt hàng "${activeItem?.productName}". Vui lòng kiểm tra lại tồn kho.`);
+          lines.push(`⚠️ **CẢNH BÁO**: Không tìm thấy ô kệ nào trong kho đang chứa mặt hàng "${activeItem?.productName}". Vui lòng kiểm tra lại tồn kho.`);
         }
 
         aiReply = lines.join('\n');
       }
-      // ACTION 2: Switch Rack view (R01, R02, R03, Kệ 1, Kệ 2...)
-      else if (lower.includes('r01') || lower.includes('r02') || lower.includes('r03') || lower.includes('kệ 1') || lower.includes('kệ 2') || lower.includes('kệ 3') || lower.includes('dãy r')) {
+
+      // INTENT 5: Switch Rack View (`r01`, `r02`, `r03`, `kệ 1`, `kệ 2`, `kệ 3`, `dãy r`)
+      else if (
+        lower.includes('r01') ||
+        lower.includes('r02') ||
+        lower.includes('r03') ||
+        lower.includes('kệ 1') ||
+        lower.includes('kệ 2') ||
+        lower.includes('kệ 3') ||
+        lower.includes('dãy r')
+      ) {
         let matchRackCode = 'R01';
         if (lower.includes('r02') || lower.includes('kệ 2')) matchRackCode = 'R02';
         if (lower.includes('r03') || lower.includes('kệ 3')) matchRackCode = 'R03';
 
-        const matchRack = racksTopology.find((rk) => rk.rackId.toUpperCase().includes(matchRackCode) || rk.rackName.toUpperCase().includes(matchRackCode));
+        const matchRack = racksTopology.find(
+          (rk) => rk.rackId.toUpperCase().includes(matchRackCode) || rk.rackName.toUpperCase().includes(matchRackCode)
+        );
         if (matchRack) {
           setActiveRackId(matchRack.rackId);
-          aiReply = `Đã thực thi: Đã chuyển hiển thị sơ đồ 2D sang Dãy Kệ ${matchRack.rackName || matchRackCode}.`;
+          aiReply = `🗺️ **ĐÃ CHUYỂN DÃY KỆ**:\nSơ đồ 2D đã chuyển sang **Dãy Kệ ${matchRack.rackName || matchRackCode}**.`;
         } else {
-          aiReply = `Không tìm thấy dãy kệ tương ứng với lệnh. Hiện tại hệ thống có các dãy: ${racksTopology.map((r) => r.rackName).join(', ')}.`;
+          aiReply = `⚠️ Không tìm thấy dãy kệ tương ứng. Các dãy kệ hiện có: **${racksTopology.map((r) => r.rackName).join(', ')}**.`;
         }
       }
-      // ACTION 3: Select N bins or 1 bin (e.g. "1 kệ thôi", "chỉ chọn 1 ô", "chọn 2 ô", "tự động chọn")
+
+      // INTENT 6: Select N bins or 1 bin (`1 kệ thôi`, `chỉ chọn 1 ô`, `chọn 2 ô`, `tự động chọn`)
       else if (
-        lower.includes('1 kệ') || lower.includes('1 ô') || lower.includes('một kệ') || lower.includes('một ô') ||
-        lower.includes('2 ô') || lower.includes('3 ô') || lower.includes('tự động') || lower.includes('gợi ý') ||
-        lower.includes('chọn giúp') || lower.includes('chọn ô')
+        lower.includes('1 kệ') ||
+        lower.includes('1 ô') ||
+        lower.includes('một kệ') ||
+        lower.includes('một ô') ||
+        lower.includes('2 ô') ||
+        lower.includes('3 ô') ||
+        lower.includes('tự động') ||
+        lower.includes('gợi ý') ||
+        lower.includes('chọn giúp') ||
+        lower.includes('chọn ô')
       ) {
         let targetCount = requiredCount;
         if (lower.includes('1 kệ') || lower.includes('1 ô') || lower.includes('một kệ') || lower.includes('một ô')) {
@@ -1389,8 +1509,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           if (candidateBins.length >= targetCount) break;
 
           if (isOutbound) {
-            const isMatch = isBinMatchingActiveItem(cell);
-            if (isMatch) candidateBins.push(cell.binCode);
+            if (isBinMatchingActiveItem(cell)) candidateBins.push(cell.binCode);
           } else {
             if (!cell.isOccupied) candidateBins.push(cell.binCode);
           }
@@ -1404,186 +1523,164 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           if (matchRack) setActiveRackId(matchRack.rackId);
 
           const shortNames = candidateBins.map((b) => b.split('-').pop()).join(', ');
-          aiReply = `Đã thực thi: AI đã chọn ${candidateBins.length} ô hợp lệ (${shortNames}) trên sơ đồ 2D cho mặt hàng "${activeItem?.productName}".`;
+          aiReply = `🎯 **AI ĐÃ TÍCH CHỌN**:\nĐã chọn **${candidateBins.length} ô** (${shortNames}) trên sơ đồ cho mặt hàng "${activeItem?.productName}".`;
         } else {
           aiReply = isOutbound
-            ? `Không tìm thấy ô chứa hợp lệ nào đang lưu mặt hàng "${activeItem?.productName}".`
-            : `Không tìm thấy ô kệ trống thích hợp trên sơ đồ.`;
+            ? `⚠️ Không tìm thấy ô chứa nào hợp lệ đang lưu trữ mặt hàng "${activeItem?.productName}".`
+            : `⚠️ Không tìm thấy ô kệ trống thích hợp trên sơ đồ.`;
         }
       }
-      // ACTION 4: Capacity query
+
+      // INTENT 7: Capacity query
       else if (lower.includes('đủ') || lower.includes('mấy ô') || lower.includes('số lượng') || lower.includes('sức chứa')) {
-        aiReply = `Mặt hàng ${activeItem?.productName} (${activeItem?.qty?.toLocaleString('vi-VN')} ${activeItem?.unit}):\n- Cần dùng: ${requiredCount} ô chứa (Đã chọn ${currentSelectedBins.length}/${requiredCount} ô).`;
+        aiReply = `📊 **THÔNG SỐ SỨC CHỨA**:\nMặt hàng **${activeItem?.productName}** (${activeItem?.qty?.toLocaleString('vi-VN')} ${activeItem?.unit}):\n• Dự kiến cần: **${requiredCount} ô chứa**.\n• Trạng thái hiện tại: Đã chọn **${currentSelectedBins.length}/${requiredCount} ô**.`;
       }
-      // Helper to match cell short code (e.g. D1, D2, A1) with cell object
-      const isCellMatchingShortCode = (cell: BinCell, codeStr: string): boolean => {
-        const target = codeStr.trim().toUpperCase();
-        const binLast = (cell.binCode.split('-').pop() || '').trim().toUpperCase();
-        const cellClean = (cell.cellCode || '').replace(/ô/i, '').trim().toUpperCase();
-        return binLast === target || cellClean === target || binLast.endsWith(target);
-      };
 
-      // ACTION 5: Enhanced AI Slotting Intelligence (Percentage, Quantity, Fractions, Multi-bin & Stacking)
-      const binCodeMatch = userText.match(/\b[A-Za-z]\d{1,2}\b/i);
-      const pctMatch = userText.match(/\b(\d{1,3})\s*%/);
-      const qtyNumMatch = userText.match(/\b(\d{1,6})\s*(cái|sp|sản phẩm|thùng|bao|kg|lô)?\b/i);
-      const fractionMatch = userText.match(/1\/2|nửa|1\/3|2\/3|1\/4|3\/4|4\/5|đầy|trống/i);
-      const isCapacityCmd =
-        pctMatch ||
-        fractionMatch ||
-        (qtyNumMatch && (lower.includes('lưu') || lower.includes('chứa') || lower.includes('kệ') || lower.includes('ô') || lower.includes('hàng'))) ||
-        (binCodeMatch &&
-          (lower.includes('độ chứa') ||
-            lower.includes('chứa') ||
-            lower.includes('lưu') ||
-            lower.includes('ghép') ||
-            lower.includes('giảm') ||
-            lower.includes('tăng') ||
-            lower.includes('cài đặt') ||
-            lower.includes('thừa') ||
-            lower.includes('dư') ||
-            lower.includes('kệ')));
+      // INTENT 8: Percentage & Capacity modification (`%`, `cái`, `sức chứa`, `chứa`, `lưu`, `ghép`, `1/2`, `nửa`, `đầy`, `trống`)
+      else {
+        const binCodeMatch = userText.match(/\b[A-Za-z]\d{1,2}\b/i);
+        const pctMatch = userText.match(/\b(\d{1,3})\s*%/);
+        const qtyNumMatch = userText.match(/\b(\d{1,6})\s*(cái|sp|sản phẩm|thùng|bao|kg|lô)?\b/i);
+        const fractionMatch = userText.match(/1\/2|nửa|1\/3|2\/3|1\/4|3\/4|4\/5|đầy|trống/i);
+        const isCapacityCmd =
+          pctMatch ||
+          fractionMatch ||
+          (qtyNumMatch && (lower.includes('lưu') || lower.includes('chứa') || lower.includes('kệ') || lower.includes('ô') || lower.includes('hàng'))) ||
+          (binCodeMatch &&
+            (lower.includes('độ chứa') ||
+              lower.includes('chứa') ||
+              lower.includes('lưu') ||
+              lower.includes('ghép') ||
+              lower.includes('giảm') ||
+              lower.includes('tăng') ||
+              lower.includes('cài đặt') ||
+              lower.includes('thừa') ||
+              lower.includes('dư') ||
+              lower.includes('kệ')));
 
-      if (isCapacityCmd) {
-        const activeItemBins = selectedBinsMap[activeRowId || ''] || [];
-        const fallbackShortCode = activeItemBins[0]
-          ? activeItemBins[0].split('-').pop()?.toUpperCase()
-          : (allCellsList[0]?.cellCode || 'D1').replace(/ô/i, '').trim().toUpperCase();
+        if (isCapacityCmd) {
+          const activeItemBins = selectedBinsMap[activeRowId || ''] || [];
+          const fallbackShortCode = activeItemBins[0]
+            ? activeItemBins[0].split('-').pop()?.toUpperCase()
+            : (allCellsList[0]?.cellCode || 'D1').replace(/ô/i, '').trim().toUpperCase();
 
-        const shortCode = binCodeMatch ? binCodeMatch[0].toUpperCase() : (fallbackShortCode || 'D1');
-        let targetPct = 50;
-        let noteText = '';
+          const shortCode = binCodeMatch ? binCodeMatch[0].toUpperCase() : (fallbackShortCode || 'D1');
+          let targetPct = 50;
+          let noteText = '';
 
-        if (pctMatch) {
-          targetPct = Math.min(100, Math.max(0, parseInt(pctMatch[1], 10)));
-          noteText = `Cài đặt độ chứa: ${targetPct}%`;
-        } else if (fractionMatch) {
-          const frac = fractionMatch[0].toLowerCase();
-          if (frac === '1/2' || frac === 'nửa') targetPct = 50;
-          else if (frac === '1/3') targetPct = 33;
-          else if (frac === '2/3') targetPct = 66;
-          else if (frac === '1/4') targetPct = 25;
-          else if (frac === '3/4') targetPct = 75;
-          else if (frac === '4/5') targetPct = 80;
-          else if (frac === 'đầy') targetPct = 100;
-          else if (frac === 'trống') targetPct = 0;
-          noteText = `AI Cài đặt sức chứa: ${frac.toUpperCase()} (${targetPct}%)`;
-        } else if (qtyNumMatch && (lower.includes('lưu') || lower.includes('chứa') || lower.includes('ghép') || lower.includes('còn') || lower.includes('dư') || lower.includes('thừa'))) {
-          const qtyVal = parseInt(qtyNumMatch[1], 10);
-          targetPct = Math.min(100, Math.max(1, Math.round((qtyVal / 500) * 100)));
-          noteText = `Lưu thêm: ${qtyVal} ${activeItem?.unit || 'sản phẩm'} (${targetPct}% thể tích)`;
-        }
+          if (pctMatch) {
+            targetPct = Math.min(100, Math.max(0, parseInt(pctMatch[1], 10)));
+            noteText = `Cài đặt độ chứa: ${targetPct}%`;
+          } else if (fractionMatch) {
+            const frac = fractionMatch[0].toLowerCase();
+            if (frac === '1/2' || frac === 'nửa') targetPct = 50;
+            else if (frac === '1/3') targetPct = 33;
+            else if (frac === '2/3') targetPct = 66;
+            else if (frac === '1/4') targetPct = 25;
+            else if (frac === '3/4') targetPct = 75;
+            else if (frac === '4/5') targetPct = 80;
+            else if (frac === 'đầy') targetPct = 100;
+            else if (frac === 'trống') targetPct = 0;
+            noteText = `AI Cài đặt sức chứa: ${frac.toUpperCase()} (${targetPct}%)`;
+          } else if (qtyNumMatch && (lower.includes('lưu') || lower.includes('chứa') || lower.includes('ghép') || lower.includes('còn') || lower.includes('dư') || lower.includes('thừa'))) {
+            const qtyVal = parseInt(qtyNumMatch[1], 10);
+            targetPct = Math.min(100, Math.max(1, Math.round((qtyVal / 500) * 100)));
+            noteText = `Lưu thêm: ${qtyVal} ${activeItem?.unit || 'sản phẩm'} (${targetPct}% thể tích)`;
+          }
 
-        if (lower.includes('xuất') || lower.includes('lấy đi') || lower.includes('giảm')) {
-          const reduction = pctMatch ? parseInt(pctMatch[1], 10) : 50;
-          targetPct = Math.max(0, 100 - reduction);
-          noteText = `Giảm sức chứa sau khi lấy hàng: còn ${targetPct}%`;
-        }
+          if (lower.includes('xuất') || lower.includes('lấy đi') || lower.includes('giảm')) {
+            const reduction = pctMatch ? parseInt(pctMatch[1], 10) : 50;
+            targetPct = Math.max(0, 100 - reduction);
+            noteText = `Giảm sức chứa sau khi lấy hàng: còn ${targetPct}%`;
+          }
 
-        const targetCell = allCellsList.find((c) => isCellMatchingShortCode(c, shortCode)) || allCellsList[0];
-        if (targetCell) {
-          const targetBinCode = targetCell.binCode;
+          const targetCell = allCellsList.find((c) => isCellMatchingShortCode(c, shortCode)) || allCellsList[0];
+          if (targetCell) {
+            const targetBinCode = targetCell.binCode;
 
-          // Find existing custom bin occupancy if any
-          let existingPct = 0;
-          const currentSubs = dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || [];
-          currentSubs.forEach((sub: any) => {
-            (sub.racks || []).forEach((rk: any) => {
-              if (targetBinCode.includes(rk.id || rk.rackCode) || rk.id === activeRackId || rk.rackCode === activeRackId) {
-                if (rk.customBins && rk.customBins[targetBinCode]) {
-                  existingPct = Number(rk.customBins[targetBinCode].occupancyPct || 0);
+            let existingPct = 0;
+            const currentSubs = dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || [];
+            currentSubs.forEach((sub: any) => {
+              (sub.racks || []).forEach((rk: any) => {
+                if (targetBinCode.includes(rk.id || rk.rackCode) || rk.id === activeRackId || rk.rackCode === activeRackId) {
+                  if (rk.customBins && rk.customBins[targetBinCode]) {
+                    existingPct = Number(rk.customBins[targetBinCode].occupancyPct || 0);
+                  }
                 }
+              });
+            });
+
+            const isExplicitOverride = lower.includes('100%') || lower.includes('đặt') || lower.includes('sửa') || lower.includes('gán') || lower.includes('cài') || lower.includes('đầy') || lower.includes('trống') || (!lower.includes('thêm') && !lower.includes('ghép'));
+            const finalTotalPct = existingPct > 0 && !isExplicitOverride ? Math.min(100, existingPct + targetPct) : targetPct;
+
+            const detailedNote = existingPct > 0 && !isExplicitOverride
+              ? `Ghép ${activeItem?.productName || 'hàng mới'} (+${targetPct}%): Ô hiện đã chứa tổng ${finalTotalPct}%`
+              : noteText || `AI Cài đặt: Sức chứa ${finalTotalPct}%`;
+
+            updateSubWarehousesTopology(targetBinCode, shortCode, finalTotalPct, detailedNote);
+
+            let updatedBinsMap = selectedBinsMap;
+            if (activeRowId) {
+              updatedBinsMap = { ...selectedBinsMap, [activeRowId]: Array.from(new Set([...(selectedBinsMap[activeRowId] || []), targetBinCode])) };
+              setSelectedBinsMap(updatedBinsMap);
+            }
+
+            const itemLines: string[] = [];
+            items.forEach((it, idx) => {
+              const bList = updatedBinsMap[it.rowId] || [];
+              if (bList.includes(targetBinCode) || bList.some((b) => b.endsWith(shortCode))) {
+                const itemPct = it.rowId === activeRowId ? targetPct : Math.round(existingPct > 0 ? existingPct / Math.max(1, idx) : targetPct);
+                itemLines.push(`- Dòng ${idx + 1} (${it.productName || `Hàng ${idx + 1}`}): ${itemPct}% - ${it.qty || 1} ${it.unit || 'cái'}`);
               }
             });
-          });
 
-          // If stacking / adding percentage to an existing bin vs direct override
-          const isExplicitOverride = lower.includes('100%') || lower.includes('đặt') || lower.includes('sửa') || lower.includes('gán') || lower.includes('cài') || lower.includes('đầy') || lower.includes('trống') || (!lower.includes('thêm') && !lower.includes('ghép'));
-          const finalTotalPct = existingPct > 0 && !isExplicitOverride ? Math.min(100, existingPct + targetPct) : targetPct;
-
-          const detailedNote = existingPct > 0 && !isExplicitOverride
-            ? `Ghép ${activeItem?.productName || 'hàng mới'} (+${targetPct}%): Ô hiện đã chứa tổng ${finalTotalPct}%`
-            : noteText || `AI Cài đặt: Sức chứa ${finalTotalPct}%`;
-
-          updateSubWarehousesTopology(targetBinCode, shortCode, finalTotalPct, detailedNote);
-
-          let updatedBinsMap = selectedBinsMap;
-          if (activeRowId) {
-            updatedBinsMap = { ...selectedBinsMap, [activeRowId]: Array.from(new Set([...(selectedBinsMap[activeRowId] || []), targetBinCode])) };
-            setSelectedBinsMap(updatedBinsMap);
-          }
-
-          // Build line-by-line summary for N items stacked in this bin
-          const itemLines: string[] = [];
-          items.forEach((it, idx) => {
-            const bList = updatedBinsMap[it.rowId] || [];
-            if (bList.includes(targetBinCode) || bList.some((b) => b.endsWith(shortCode))) {
-              const itemPct = it.rowId === activeRowId ? targetPct : Math.round(existingPct > 0 ? existingPct / Math.max(1, idx) : targetPct);
-              itemLines.push(`- Dòng ${idx + 1} (${it.productName || `Hàng ${idx + 1}`}): ${itemPct}% - ${it.qty || 1} ${it.unit || 'cái'}`);
+            if (itemLines.length === 0) {
+              itemLines.push(`- Dòng 1 (${activeItem?.productName || 'Hàng 1'}): ${finalTotalPct}% - ${activeItem?.qty || 1} ${activeItem?.unit || 'cái'}`);
             }
-          });
 
-          if (itemLines.length === 0) {
-            itemLines.push(`- Dòng 1 (${activeItem?.productName || 'Hàng 1'}): ${finalTotalPct}% - ${activeItem?.qty || 1} ${activeItem?.unit || 'cái'}`);
-          }
-
-          const freeCap = 100 - finalTotalPct;
-          aiReply = `Đã lưu ô ${shortCode}:\n${itemLines.join('\n')}\nTrạng thái Ô ${shortCode}: Đã chứa ${finalTotalPct}%${freeCap > 0 ? ` (Còn trống ${freeCap}%)` : ' (Đã đầy 100%)'}.`;
-        } else {
-          aiReply = `Không tìm thấy ô ${shortCode} trên sơ đồ kệ hiện tại. Vui lòng kiểm tra lại mã ô.`;
-        }
-      }
-      // ACTION 6: Direct Cell Selection or Clearing Commands (e.g. D1, D2, A1, B3, bỏ chọn)
-      else if (lower.includes('bỏ chọn') || lower.includes('xóa') || lower.includes('reset')) {
-        setSelectedBinsMap({});
-
-        // Clear all customBins occupancy in subWarehouses topology
-        const cleanedSubs = (dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || []).map((sub: any) => {
-          const racks = (sub.racks || []).map((rk: any) => {
-            const customBins: any = {};
-            Object.keys(rk.customBins || {}).forEach((k) => {
-              customBins[k] = { ...rk.customBins[k], occupancyPct: 0, notes: '' };
-            });
-            return { ...rk, customBins };
-          });
-          return { ...sub, racks };
-        });
-
-        setDbSubWarehouses(cleanedSubs);
-        if (currentWarehouseObj) {
-          const updatedWh = { ...currentWarehouseObj, subWarehouses: cleanedSubs };
-          setCurrentWarehouseObj(updatedWh);
-          saveStoredWarehouses(getStoredWarehouses().map((w) => (w.id === updatedWh.id ? updatedWh : w)));
-          upsertWarehouseToApi(updatedWh).catch((e) => console.error('Lỗi lưu CSDL reset:', e));
-        }
-
-        aiReply = `Đã xóa toàn bộ lựa chọn và làm sạch tất cả ô kệ về 0% (Ô Trống) trong CSDL.`;
-      } else {
-        const matches = userText.match(/\b[A-Za-z]\d{1,2}\b/g);
-        if (matches && matches.length > 0 && activeRowId) {
-          const matchedShortCodes = matches.map((m) => m.toUpperCase());
-          const foundBins: string[] = [];
-
-          for (const cell of allCellsList) {
-            if (matchedShortCodes.some((s) => isCellMatchingShortCode(cell, s))) {
-              if (mode === 'OUTBOUND_TRANSFER' && !isBinMatchingActiveItem(cell)) continue;
-              if (mode !== 'OUTBOUND_TRANSFER' && cell.isOccupied) continue;
-              foundBins.push(cell.binCode);
-            }
-          }
-
-          if (foundBins.length > 0) {
-            setSelectedBinsMap((prev) => {
-              const currentList = prev[activeRowId] || [];
-              const combined = Array.from(new Set([...currentList, ...foundBins]));
-              return { ...prev, [activeRowId]: combined };
-            });
-            aiReply = `Đã chọn các ô (${matchedShortCodes.join(', ')}) trên sơ đồ 2D cho mặt hàng "${activeItem?.productName}".`;
+            const freeCap = 100 - finalTotalPct;
+            aiReply = `✅ **ĐÃ CẬP NHẬT Ô ${shortCode}**:\n${itemLines.join('\n')}\nTrạng thái Ô ${shortCode}: Đã chứa ${finalTotalPct}%${freeCap > 0 ? ` (Còn trống ${freeCap}%)` : ' (Đã đầy 100%)'}.`;
           } else {
-            aiReply = `Không thể chọn ô (${matchedShortCodes.join(', ')}) do ô đã đầy hoặc không khớp mặt hàng.`;
+            aiReply = `⚠️ Không tìm thấy ô ${shortCode} trên sơ đồ kệ hiện tại. Vui lòng kiểm tra lại mã ô.`;
           }
-        } else {
-          aiReply = `AI đã nhận lệnh. Bạn có thể nhập:\n- "Ô D1 còn 200 cái" / "Gán D1 50%"\n- "Chọn ô D1 và D2"\n- "Tự chọn đủ ô" / "Bỏ chọn hết"`;
+        }
+        // Direct matches for bin codes (e.g. "chọn A1", "tích D2", "D1, D2")
+        else if (binCodeMatch && activeRowId) {
+          const matches = userText.match(/\b[A-Za-z]\d{1,2}\b/g);
+          if (matches && matches.length > 0) {
+            const matchedShortCodes = matches.map((m) => m.toUpperCase());
+            const foundBins: string[] = [];
+
+            for (const cell of allCellsList) {
+              if (matchedShortCodes.some((s) => isCellMatchingShortCode(cell, s))) {
+                if (mode === 'OUTBOUND_TRANSFER' && !isBinMatchingActiveItem(cell)) continue;
+                if (mode !== 'OUTBOUND_TRANSFER' && cell.isOccupied) continue;
+                foundBins.push(cell.binCode);
+              }
+            }
+
+            if (foundBins.length > 0) {
+              setSelectedBinsMap((prev) => {
+                const currentList = prev[activeRowId] || [];
+                const combined = Array.from(new Set([...currentList, ...foundBins]));
+                return { ...prev, [activeRowId]: combined };
+              });
+              aiReply = `✅ **ĐÃ TÍCH CHỌN**:\nĐã chọn các ô (**${matchedShortCodes.join(', ')}**) trên sơ đồ 2D cho mặt hàng "${activeItem?.productName}".`;
+            } else {
+              aiReply = `⚠️ Không thể chọn ô (${matchedShortCodes.join(', ')}) do ô đã đầy 100% hoặc không chứa mặt hàng đang xuất.`;
+            }
+          }
+        }
+        // Friendly general fallback response for unclassified queries
+        else {
+          const isOutbound = mode === 'OUTBOUND_TRANSFER';
+          const pName = activeItem?.productName || 'Hàng hóa';
+          const pQty = activeItem?.qty || 0;
+          const pUnit = activeItem?.unit || 'Cái';
+
+          aiReply = isOutbound
+            ? `🤖 **TRỢ LÝ AI XUẤT KHO SMART WMS**\n\n📦 **Mặt hàng xuất**: ${pName} (${pQty} ${pUnit})\n🏢 **Kho xuất**: Kho ${warehouseCode || 'Mặc định'}\n\n💡 **Bạn có thể thử các câu lệnh**:\n• *"Chỉ dẫn Kệ có hàng"* ➔ AI tìm và tích chọn tất cả ô kệ đang lưu hàng\n• *"Tư vấn xuất kho"* ➔ Xem phân tích tồn kho & vị trí lấy hàng ưu tiên\n• *"Tự chọn đủ ô"* ➔ AI tự động tích đủ ô xuất theo số lượng`
+            : `🤖 **TRỢ LÝ AI NHẬP KHO SMART WMS**\n\n📦 **Mặt hàng nhập**: ${pName} (${pQty} ${pUnit})\n🏢 **Kho lưu**: Kho ${warehouseCode || 'Mặc định'}\n\n💡 **Bạn có thể thử các câu lệnh**:\n• *"Chỉ dẫn Kệ trống"* ➔ AI tìm và gợi ý danh sách ô kệ còn trống\n• *"Tư vấn chọn kho"* ➔ Xem gợi ý phân khu (Kho Thường/Lạnh) & tải trọng tầng kệ\n• *"Tự chọn đủ ô"* ➔ AI tự động tích chọn ô trống xếp hàng`;
         }
       }
 
@@ -1689,17 +1786,17 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               </button>
               <button
                 type="button"
-                onClick={() => handleSendMessage(undefined, '1 kệ thôi')}
+                onClick={() => handleSendMessage(undefined, mode === 'OUTBOUND_TRANSFER' ? 'Tư vấn xuất kho' : 'Tư vấn chọn kho')}
                 className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-300 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
-                1 Kệ/Ô thôi
+                💡 Tư vấn chọn kho/kệ
               </button>
               <button
                 type="button"
                 onClick={() => handleSendMessage(undefined, 'Tự động chọn')}
                 className="text-[10px] bg-cyan-50 hover:bg-cyan-100 border border-cyan-300 text-cyan-900 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
               >
-                Tự chọn đủ ô
+                🎯 Tự chọn đủ ô
               </button>
               <button
                 type="button"
