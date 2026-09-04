@@ -105,7 +105,6 @@ function getWarehouseLabel(warehouses: WarehouseRecord[], code?: string) {
   );
   if (!warehouse) {
     if (normalizedCode === 'KHO-NVL') return 'KHO-NVL - Kho nguyên vật liệu';
-    if (normalizedCode === 'KH006') return 'KH006 - Kho NVL Tổng hợp';
     return normalizedCode;
   }
 

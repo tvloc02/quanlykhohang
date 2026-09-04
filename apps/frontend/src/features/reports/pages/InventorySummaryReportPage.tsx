@@ -13,6 +13,7 @@ import {
   Filter,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { getStoredWarehouses, mergeStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -34,155 +35,67 @@ export interface InventorySummaryItem {
   totalStock: number;
 }
 
-const FALLBACK_ITEMS: InventorySummaryItem[] = [
-  {
-    stt: 1,
-    productId: '1',
-    code: '110M',
-    name: 'Attomat BH - D6 6kA 1 cực 10A Mitsubishi',
-    unit: 'Cái',
-    warehouseStocks: { '4445': -1, 'cau_giay': -2, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -3,
-  },
-  {
-    stt: 2,
-    productId: '2',
-    code: '111',
-    name: '2 123',
-    unit: '123',
-    warehouseStocks: { '4445': -31, 'cau_giay': -92, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': -9, 'ric_hn': 0 },
-    totalStock: -132,
-  },
-  {
-    stt: 3,
-    productId: '3',
-    code: '112',
-    name: '2 Bao',
-    unit: 'Bao',
-    warehouseStocks: { '4445': -117, 'cau_giay': -15, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -132,
-  },
-  {
-    stt: 4,
-    productId: '4',
-    code: '16L',
-    name: 'Attomat 1 cực 6A LS HQ',
-    unit: 'Cái',
-    warehouseStocks: { '4445': -5, 'cau_giay': -3, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -8,
-  },
-  {
-    stt: 5,
-    productId: '5',
-    code: '232S',
-    name: 'At A9K27232/ 2 cực 32A Schneider',
-    unit: 'Cái',
-    warehouseStocks: { '4445': -1, 'cau_giay': -3, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -4,
-  },
-  {
-    stt: 6,
-    productId: '6',
-    code: '252122F320',
-    name: 'Dây tổng (6pk2411)',
-    unit: 'Sợi',
-    warehouseStocks: { '4445': 0, 'cau_giay': -3, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -3,
-  },
-  {
-    stt: 7,
-    productId: '7',
-    code: '8934760210336',
-    name: 'Bánh tipo',
-    unit: '123',
-    warehouseStocks: { '4445': 4, 'cau_giay': 4, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: 8,
-  },
-  {
-    stt: 8,
-    productId: '8',
-    code: 'A1',
-    name: 'Thang nhôm 1.5m',
-    unit: 'Chiếc',
-    warehouseStocks: { '4445': -2, 'cau_giay': 0, 'cn2026': 0, 'thanh_xuan': 10, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: 8,
-  },
-  {
-    stt: 9,
-    productId: '9',
-    code: 'A11019',
-    name: 'Attomat 1 cực 10A Sino',
-    unit: 'Cái',
-    warehouseStocks: { '4445': 0, 'cau_giay': -1, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -1,
-  },
-  {
-    stt: 10,
-    productId: '10',
-    code: 'A110S',
-    name: 'Attomat 1 cực 10A Schneider',
-    unit: 'Cái',
-    warehouseStocks: { '4445': -1, 'cau_giay': -102, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -103,
-  },
-  {
-    stt: 11,
-    productId: '11',
-    code: 'A11618',
-    name: 'Attomat 1 cực 16A Vanlock',
-    unit: 'Cái',
-    warehouseStocks: { '4445': 0, 'cau_giay': -1, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -1,
-  },
-  {
-    stt: 12,
-    productId: '12',
-    code: 'A11619',
-    name: 'Attomat 1 cực 16A Sino',
-    unit: 'Cái',
-    warehouseStocks: { '4445': 0, 'cau_giay': -1, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -1,
-  },
-  {
-    stt: 13,
-    productId: '13',
-    code: 'A116P',
-    name: 'Attomat 1 cực 16A Panasonic',
-    unit: 'Cái',
-    warehouseStocks: { '4445': -1, 'cau_giay': -1, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -2,
-  },
-  {
-    stt: 14,
-    productId: '14',
-    code: 'A132S',
-    name: 'At A9K27132/1 cực 32A Schneider',
-    unit: 'Cái',
-    warehouseStocks: { '4445': -2, 'cau_giay': -1, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -3,
-  },
-  {
-    stt: 15,
-    productId: '15',
-    code: 'A140H',
-    name: 'Attomat 1 cực 40A Hager',
-    unit: 'Cái',
-    warehouseStocks: { '4445': 0, 'cau_giay': -6, 'cn2026': 0, 'thanh_xuan': 0, 'cn2': 0, 'ric_hn': 0 },
-    totalStock: -6,
-  },
-];
+export function normalizeWhCanonicalKey(rawLoc: string): string {
+  const s = String(rawLoc || '').trim().toUpperCase();
+  if (!s) return 'UNKNOWN';
 
-const DEFAULT_WAREHOUSES = [
-  { code: '4445', name: '4445' },
-  { code: 'cau_giay', name: 'Cầu Giấy' },
-  { code: 'cn2026', name: 'cn2026' },
-  { code: 'thanh_xuan', name: 'Thanh Xuân' },
-  { code: 'cn2', name: 'Chi nhánh 2' },
-  { code: 'ric_hn', name: 'RIC-HÀ NỘI' },
-];
+  if (s === 'KH001' || s.includes('TỔNG (HÀ NỘI)') || s.includes('TONG (HA NOI)') || s === 'WH_DEFAULT_1') return 'KH001';
+  if (s === 'KH002' || s.includes('CHI NHÁNH HCM') || s.includes('CHI NHANH HCM') || s === 'WH_DEFAULT_2') return 'KH002';
+  if (s === 'KHO-TONG' || s.includes('SPX EXPRESS') || s === 'WH_DEFAULT_3') return 'KHO-TONG';
+  if (s === 'KHO-HN' || s.includes('TRUNG TÂM HÀ NỘI') || s.includes('TRUNG TAM HA NOI') || s === 'WH_DEFAULT_4') return 'KHO-HN';
+  if (s === 'KHO-BD' || s.includes('NGUYÊN VẬT LIỆU') || s.includes('NGUYEN VAT LIEU') || s === 'WH_DEFAULT_5') return 'KHO-BD';
+  if (s === 'KHO-CUCHI' || s.includes('LẠNH CỦ CHI') || s.includes('LANH CU CHI') || s === 'WH_DEFAULT_6') return 'KHO-CUCHI';
+
+  const match = s.match(/(KH\d+|KHO-[A-Z0-9]+)/);
+  if (match) return match[1];
+
+  return s;
+}
+
+export function calculateWarehouseProductStock(productBalances: any[], whCode: string): number {
+  if (!productBalances || !Array.isArray(productBalances) || productBalances.length === 0) return 0;
+  const targetWh = normalizeWhCanonicalKey(whCode);
+
+  const matched = productBalances.filter((b) => normalizeWhCanonicalKey(b.locationCode) === targetWh);
+  if (matched.length === 0) return 0;
+
+  const mainBalances = matched.filter((b) => {
+    const loc = String(b.locationCode || '').trim().toUpperCase();
+    return (
+      loc === targetWh ||
+      !loc.includes('-') ||
+      loc === 'KH001' ||
+      loc === 'KH002' ||
+      loc === 'KHO-TONG' ||
+      loc === 'KHO-HN' ||
+      loc === 'KHO-BD' ||
+      loc === 'KHO-CUCHI'
+    );
+  });
+
+  const binBalances = matched.filter((b) => {
+    const loc = String(b.locationCode || '').trim().toUpperCase();
+    return (
+      loc !== targetWh &&
+      (loc.includes('-ZONE-') || loc.includes('-R0') || loc.includes('-S0') || loc.includes('-C') || loc.startsWith('ZONE-'))
+    );
+  });
+
+  let mainSum = 0;
+  mainBalances.forEach((b) => {
+    const q = b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0);
+    mainSum = Math.max(mainSum, q);
+  });
+
+  const binSum = binBalances.reduce((sum, b) => {
+    return sum + (b.totalPhysical !== undefined ? Number(b.totalPhysical) : Number(b.available || 0));
+  }, 0);
+
+  return mainSum > 0 && binSum > 0 ? Math.max(mainSum, binSum) : mainSum + binSum;
+}
 
 export default function InventorySummaryReportPage() {
-  const [warehouses, setWarehouses] = useState<{ code: string; name: string }[]>(DEFAULT_WAREHOUSES);
+  const [warehouses, setWarehouses] = useState<{ code: string; name: string }[]>([]);
   const [items, setItems] = useState<InventorySummaryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -214,49 +127,28 @@ export default function InventorySummaryReportPage() {
     setError('');
     try {
       // 1. Fetch Warehouses
-      let whList = DEFAULT_WAREHOUSES;
+      let mergedWhs: { code: string; name: string }[] = [];
       try {
         const whRes = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() });
-        if (whRes.ok) {
-          const whData = await whRes.json();
-          if (Array.isArray(whData) && whData.length > 0) {
-            whList = whData.map((w: any) => ({
-              code: String(w.code || w.id),
-              name: String(w.name || w.warehouseName || w.code),
-            }));
-          }
-        }
-      } catch {}
-      setWarehouses(whList);
+        const dbWhData = whRes.ok ? await whRes.json() : [];
+        const fullList = mergeStoredWarehouses(Array.isArray(dbWhData) ? dbWhData : [], getStoredWarehouses());
+        mergedWhs = fullList
+          .filter((w) => w.status !== 'inactive')
+          .map((w) => ({
+            code: String(w.code || w.id).trim(),
+            name: String(w.name || w.code).trim(),
+          }));
+      } catch {
+        mergedWhs = getStoredWarehouses().map((w) => ({ code: w.code, name: w.name }));
+      }
+      setWarehouses(mergedWhs);
 
-      // 2. Fetch Products and Stock Balances
-      let productsList: any[] = [];
-      try {
-        const pRes = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
-        if (pRes.ok) {
-          const pData = await pRes.json();
-          if (Array.isArray(pData)) productsList = pData;
-        }
-      } catch {}
+      // 2. Fetch Products with detailed stock balances
+      const pRes = await fetch(`${API_BASE_URL}/products`, { headers: authHeaders() });
+      if (!pRes.ok) throw new Error('Không thể tải danh sách sản phẩm từ máy chủ');
+      const productsList: any[] = await pRes.json();
 
-      let stockMap: Record<string, number> = {};
-      try {
-        const sRes = await fetch(`${API_BASE_URL}/reports/stock`, { headers: authHeaders() });
-        if (sRes.ok) {
-          const sData = await sRes.json();
-          if (Array.isArray(sData)) {
-            sData.forEach((s: any) => {
-              const whKey = s.locationCode || s.warehouseId || s.branchCode;
-              const pKey = s.sku || s.productCode || s.productId;
-              if (whKey && pKey) {
-                stockMap[`${whKey}_${pKey}`] = Number(s.available !== undefined ? s.available : (s.totalPhysical || 0));
-              }
-            });
-          }
-        }
-      } catch {}
-
-      if (productsList.length > 0) {
+      if (Array.isArray(productsList) && productsList.length > 0) {
         const loadedItems: InventorySummaryItem[] = productsList.map((p, idx) => {
           const pCode = String(p.internalSku || p.sku || p.code || p.id);
           const pName = String(p.name || '');
@@ -265,25 +157,13 @@ export default function InventorySummaryReportPage() {
           const whStocks: Record<string, number> = {};
           let sum = 0;
 
-          whList.forEach((wh) => {
-            const key1 = `${wh.code}_${pCode}`;
-            const key2 = `${wh.code}_${p.id}`;
-            let val = 0;
-
-            if (stockMap[key1] !== undefined) {
-              val = stockMap[key1];
-            } else if (stockMap[key2] !== undefined) {
-              val = stockMap[key2];
-            } else if (p.stockBalances && Array.isArray(p.stockBalances)) {
-              const match = p.stockBalances.find((sb: any) => sb.locationCode === wh.code || sb.warehouseId === wh.code);
-              if (match) val = Number(match.totalPhysical !== undefined ? match.totalPhysical : (match.available || 0));
-            } else {
-              val = Number(p.stock || 0);
-            }
-
-            whStocks[wh.code] = val;
-            sum += val;
+          mergedWhs.forEach((wh) => {
+            const qty = calculateWarehouseProductStock(p.stockBalances, wh.code);
+            whStocks[wh.code] = qty;
+            sum += qty;
           });
+
+          const totalStock = sum > 0 ? sum : Number(p.totalStock ?? 0);
 
           return {
             stt: idx + 1,
@@ -292,17 +172,17 @@ export default function InventorySummaryReportPage() {
             name: pName,
             unit,
             warehouseStocks: whStocks,
-            totalStock: sum,
+            totalStock,
           };
         });
 
         setItems(loadedItems);
       } else {
-        setItems(FALLBACK_ITEMS);
+        setItems([]);
       }
     } catch (err: any) {
       setError(err.message || 'Lỗi tải dữ liệu báo cáo hàng tồn tổng hợp');
-      setItems(FALLBACK_ITEMS);
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -310,7 +190,7 @@ export default function InventorySummaryReportPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [endDate]);
 
   const filteredItems = useMemo(() => {
     const term = searchQuery.trim().toLowerCase();

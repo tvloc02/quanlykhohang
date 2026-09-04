@@ -67,7 +67,7 @@ function renderWarehouse(wh?: string, warehousesList: WarehouseRecord[] = []) {
     }
     return found.name || found.code;
   }
-  if (wh === 'KH006') return 'Kho Thanh Trì (KH006)';
+  if (wh === 'KH001') return 'Kho Tổng (Hà Nội)';
   if (wh === 'KH002') return 'Kho Chi Nhánh HCM (KH002)';
   if (wh === 'KHO-TONG') return 'Kho Tổng Hà Nội (KHO-TONG)';
   if (wh === 'KHO-CN-HCM') return 'Kho Chi Nhánh HCM (KHO-CN-HCM)';
@@ -295,7 +295,7 @@ export default function Delivery() {
       renderWarehouse(o.sourceWarehouse, warehouses),
       renderWarehouse(o.destinationWarehouse, warehouses),
       formatDateTime(o.dispatchDate || o.scheduledDate || o.createdAt),
-      formatDateTime(o.receiveDate || o.createdAt),
+      o.receiveDate ? formatDateTime(o.receiveDate) : 'Chưa nhận',
       o.driverName || '',
       o.driverPhone || '',
       o.vehiclePlate || '',
@@ -658,10 +658,16 @@ export default function Delivery() {
                       )}
                       {columnVis.receiveDate && (
                         <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-semibold text-slate-700">
-                          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
-                            <CalendarDays className="h-4 w-4 text-cyan-600 shrink-0" />
-                            {formatDateTime(order.receiveDate || (order.dispatchDate ? new Date(new Date(order.dispatchDate).getTime() + 86400000).toISOString() : order.createdAt))}
-                          </span>
+                          {order.receiveDate ? (
+                            <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-emerald-700 font-bold">
+                              <CalendarDays className="h-4 w-4 text-emerald-600 shrink-0" />
+                              {formatDateTime(order.receiveDate)}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                              Chờ nhận hàng
+                            </span>
+                          )}
                         </td>
                       )}
                       {columnVis.driver && (

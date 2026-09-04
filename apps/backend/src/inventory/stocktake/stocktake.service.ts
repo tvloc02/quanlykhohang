@@ -297,9 +297,6 @@ export class StocktakeService {
       if (t === 'KH002' || t.includes('HCM') || t.includes('HỒ CHÍ MINH') || t === 'WH_DEFAULT_2') {
         if (b.includes('KH002') || b.includes('HCM') || b.includes('HỒ CHÍ MINH') || b === 'WH_DEFAULT_2') return true;
       }
-      if (t === 'KH006' || t.includes('THANH TRÌ')) {
-        if (b.includes('KH006') || b.includes('KHO-NVL') || b.includes('THANH TRÌ')) return true;
-      }
       return false;
     };
 
@@ -445,9 +442,6 @@ export class StocktakeService {
         }
         if (t === 'KH002' || t.includes('HCM') || t.includes('HỒ CHÍ MINH') || t === 'WH_DEFAULT_2') {
           if (b.includes('KH002') || b.includes('HCM') || b.includes('HỒ CHÍ MINH') || b === 'WH_DEFAULT_2') return true;
-        }
-        if (t === 'KH006' || t.includes('THANH TRÌ')) {
-          if (b.includes('KH006') || b.includes('KHO-NVL') || b.includes('THANH TRÌ')) return true;
         }
         return false;
       };

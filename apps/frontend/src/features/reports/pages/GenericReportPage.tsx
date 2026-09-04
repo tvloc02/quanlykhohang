@@ -340,7 +340,7 @@ export default function GenericReportPage({
                       </button>
                     ))
                   ) : (
-                    ['Kho Chi Nhánh HCM', 'Kho Thanh Trì', 'Kho Hà Đông'].map((bName) => (
+                    ['Kho Tổng (Hà Nội)', 'Kho Chi Nhánh HCM'].map((bName) => (
                       <button
                         key={bName}
                         type="button"

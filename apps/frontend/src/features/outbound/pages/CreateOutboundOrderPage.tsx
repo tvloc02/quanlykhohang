@@ -85,12 +85,6 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
         const normB = bCode.replace(/[^a-z0-9]/g, '');
         if (normB && normTarget && (normB === normTarget || normB.includes(normTarget) || normTarget.includes(normB))) return true;
 
-        if (
-          (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
-          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl' || bCode === 'kho-tong')
-        ) {
-          return true;
-        }
         return false;
       });
 
@@ -125,8 +119,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
       const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
       const normOWh = oWh.replace(/[^a-z0-9]/g, '');
 
-      const isWhMatch = !targetCode || oWh === targetCode || (normOWh && normTarget && (normOWh === normTarget || normOWh.includes(normTarget) || normTarget.includes(normOWh))) ||
-        ((targetCode === 'kh006' || targetCode === 'kho thanh trì') && (oWh === 'kh006' || oWh === 'kho thanh trì' || oWh === 'kho-nvl' || oWh === 'kho-tong'));
+      const isWhMatch = !targetCode || oWh === targetCode || (normOWh && normTarget && (normOWh === normTarget || normOWh.includes(normTarget) || normTarget.includes(normOWh)));
 
       if (!isWhMatch) return;
 

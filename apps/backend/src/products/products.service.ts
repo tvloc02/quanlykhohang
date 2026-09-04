@@ -20,7 +20,6 @@ export function normalizeWhCanonicalKey(rawLoc: string): string {
   if (s === 'KHO-HN' || s.includes('TRUNG TÂM HÀ NỘI') || s.includes('TRUNG TAM HA NOI') || s === 'WH_DEFAULT_4') return 'KHO-HN';
   if (s === 'KHO-BD' || s.includes('NGUYÊN VẬT LIỆU') || s.includes('NGUYEN VAT LIEU') || s === 'WH_DEFAULT_5') return 'KHO-BD';
   if (s === 'KHO-CUCHI' || s.includes('LẠNH CỦ CHI') || s.includes('LANH CU CHI') || s === 'WH_DEFAULT_6') return 'KHO-CUCHI';
-  if (s === 'KH006' || s.includes('THANH TRÌ') || s.includes('KHO-NVL')) return 'KH006';
 
   const match = s.match(/(KH\d+|KHO-[A-Z0-9]+)/);
   if (match) return match[1];
@@ -390,10 +389,10 @@ export class ProductsService {
       const orderCode = String(h.orderCode || '').trim().toUpperCase();
       if (orderCode) seenKeys.add(orderCode);
 
-      const whCode = h.warehouseCode && h.warehouseCode !== 'KHO-NVL' ? h.warehouseCode : 'KH006';
-      const whName = h.warehouseName && h.warehouseName !== 'Kho KHO-NVL' && h.warehouseName !== 'KHO-NVL' && h.warehouseName !== 'Kho KH006'
+      const whCode = h.warehouseCode && h.warehouseCode !== 'KHO-NVL' ? h.warehouseCode : 'KH001';
+      const whName = h.warehouseName && h.warehouseName !== 'Kho KHO-NVL' && h.warehouseName !== 'KHO-NVL'
         ? h.warehouseName
-        : (whCode === 'KH006' ? 'Kho Thanh Trì' : `Kho ${whCode}`);
+        : (whCode === 'KH001' ? 'Kho Tổng (Hà Nội)' : `Kho ${whCode}`);
 
       combined.push({
         id: h.id,
@@ -429,8 +428,8 @@ export class ProductsService {
         'DRAFT': 'Đơn nháp',
       };
       const rawWh = d.warehouseCode || (d.inboundReceipt as any)?.warehouseCode;
-      const whCode = rawWh && rawWh !== 'KHO-NVL' ? rawWh : 'KH006';
-      const whName = whCode === 'KH006' ? 'Kho Thanh Trì' : `Kho ${whCode}`;
+      const whCode = rawWh && rawWh !== 'KHO-NVL' ? rawWh : 'KH001';
+      const whName = whCode === 'KH001' ? 'Kho Tổng (Hà Nội)' : (whCode === 'KH002' ? 'Kho Chi Nhánh HCM' : `Kho ${whCode}`);
 
       combined.push({
         id: d.id,

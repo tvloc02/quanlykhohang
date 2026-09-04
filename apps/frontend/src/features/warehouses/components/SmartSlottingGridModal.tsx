@@ -541,7 +541,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       return Array.from({ length: cellsCount }).map((_, idx) => {
         const cellNum = idx + 1;
         const binShortCode = `${shelfPrefix}${cellNum}`; // e.g. A1, A2, B1, B2...
-        const fullBinCode = `${zonePrefix}-${rackId}-${binShortCode}`; // e.g. KH006-ZA-R01-A1
+        const fullBinCode = `${zonePrefix}-${rackId}-${binShortCode}`; // e.g. KH001-ZA-R01-A1
         const legacyBinCode = `${zonePrefix}-${rackId}-S${String(shelfNum).padStart(2, '0')}-C${String(cellNum).padStart(2, '0')}`;
 
         let isOccupied = false;

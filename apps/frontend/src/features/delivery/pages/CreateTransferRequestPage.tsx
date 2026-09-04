@@ -157,13 +157,6 @@ export function isLocationInWarehouse(locCode?: string, whCode?: string): boolea
   const normL = l.replace(/[^a-z0-9]/g, '');
   const normW = w.replace(/[^a-z0-9]/g, '');
   if (normL === normW) return true;
-  if (normW.length >= 3 && normL.startsWith(normW)) return true;
-  if (
-    (w === 'kh006' || w === 'kho thanh trì') &&
-    (l === 'kh006' || l === 'kho thanh trì' || l === 'kho-nvl' || l.startsWith('kho-nvl-'))
-  ) {
-    return true;
-  }
   return false;
 }
 
@@ -940,9 +933,8 @@ export default function CreateTransferRequestPage({
                     ))
                   ) : (
                     <>
-                      <option value="KHO-CN-HCM">KHO-CN-HCM - Kho Hàng TP.HCM</option>
-                      <option value="KHO-CN-DN">KHO-CN-DN - Kho Hàng Đà Nẵng</option>
-                      <option value="KH006">KH006 - Kho NVL Tổng hợp</option>
+                      <option value="KH001">KH001 - Kho Tổng (Hà Nội)</option>
+                      <option value="KH002">KH002 - Kho Chi Nhánh HCM</option>
                     </>
                   )}
                 </select>
@@ -1282,9 +1274,8 @@ export default function CreateTransferRequestPage({
                               ))
                             ) : (
                               <>
-                                <option value="KHO-CN-HCM">KHO-CN-HCM</option>
-                                <option value="KHO-CN-DN">KHO-CN-DN</option>
-                                <option value="KH006">KH006</option>
+                                <option value="KH001">KH001</option>
+                                <option value="KH002">KH002</option>
                               </>
                             )}
                           </select>

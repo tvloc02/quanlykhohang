@@ -454,7 +454,7 @@ function buildEmptyForm(warehousesList: any[] = []): ProductForm {
     if (key) initialWarehouseStocks[key] = 0;
   });
 
-  const defaultWhName = warehousesList.find((w) => w.isDefault)?.name || warehousesList[0]?.name || 'Kho Thanh Trì';
+  const defaultWhName = warehousesList.find((w) => w.isDefault)?.name || warehousesList[0]?.name || 'Kho Tổng (Hà Nội)';
 
   return {
     barcode: '',
@@ -621,7 +621,6 @@ export function normalizeWhCanonicalKey(rawLoc: string): string {
   if (s === 'KHO-HN' || s.includes('TRUNG TÂM HÀ NỘI') || s.includes('TRUNG TAM HA NOI') || s === 'WH_DEFAULT_4') return 'KHO-HN';
   if (s === 'KHO-BD' || s.includes('NGUYÊN VẬT LIỆU') || s.includes('NGUYEN VAT LIEU') || s === 'WH_DEFAULT_5') return 'KHO-BD';
   if (s === 'KHO-CUCHI' || s.includes('LẠNH CỦ CHI') || s.includes('LANH CU CHI') || s === 'WH_DEFAULT_6') return 'KHO-CUCHI';
-  if (s === 'KH006' || s.includes('THANH TRÌ') || s.includes('KHO-NVL')) return 'KH006';
 
   const match = s.match(/(KH\d+|KHO-[A-Z0-9]+)/);
   if (match) return match[1];
@@ -1170,7 +1169,7 @@ export default function Products() {
       category: categoryOptions[0]?.name || '',
       unit: unitOptions[0]?.name || 'Cái',
       managementType: managementTypeOptions[0]?.name || '',
-      defaultWarehouse: warehouses.find((w: any) => w.isDefault)?.name || warehouses[0]?.name || 'Kho Thanh Trì',
+      defaultWarehouse: warehouses.find((w: any) => w.isDefault)?.name || warehouses[0]?.name || 'Kho Tổng (Hà Nội)',
       location: locationOptions[0]?.name || '',
     });
     setModalMode('create');
@@ -1383,7 +1382,7 @@ export default function Products() {
       webTitle: (product as any).webTitle || '',
       webDescription: (product as any).webDescription || '',
       comboItems: (product as any).comboItems || [],
-      defaultWarehouse: product.defaultWarehouse || warehouses[0]?.name || 'Kho Thanh Trì',
+      defaultWarehouse: product.defaultWarehouse || warehouses[0]?.name || 'Kho Tổng (Hà Nội)',
       location: product.location || '',
       managementType: product.managementType || '',
       supplier: product.supplier || '',

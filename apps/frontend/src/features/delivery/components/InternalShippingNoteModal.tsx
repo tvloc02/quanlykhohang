@@ -87,8 +87,8 @@ export default function InternalShippingNoteModal({
       const sWh = raw.sourceWarehouse || raw.sourceWarehouseCode || '';
       const dWh = raw.destinationWarehouse || raw.destinationWarehouseCode || '';
 
-      const sWhLabel = sWh === 'KH006' ? 'Kho Thanh Trì (KH006)' : sWh === 'KH002' ? 'Kho Chi Nhánh HCM (KH002)' : sWh;
-      const dWhLabel = dWh === 'KH006' ? 'Kho Thanh Trì (KH006)' : dWh === 'KH002' ? 'Kho Chi Nhánh HCM (KH002)' : dWh;
+      const sWhLabel = sWh === 'KH001' ? 'Kho Tổng (Hà Nội)' : sWh === 'KH002' ? 'Kho Chi Nhánh HCM (KH002)' : sWh;
+      const dWhLabel = dWh === 'KH001' ? 'Kho Tổng (Hà Nội)' : dWh === 'KH002' ? 'Kho Chi Nhánh HCM (KH002)' : dWh;
 
       setSenderName(initialData.senderName || sWhLabel || 'Kho xuất hàng');
       setReceiverName(initialData.receiverName || dWhLabel || 'Kho nhập hàng');

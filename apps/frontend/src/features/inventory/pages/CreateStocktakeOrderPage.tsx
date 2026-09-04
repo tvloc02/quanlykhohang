@@ -188,9 +188,7 @@ export function getProductWarehouseStock(p: ProductOption, whCode: string): numb
         bCode === targetCode ||
         bCode.startsWith(targetCode + '-') ||
         bCode.startsWith(targetCode + '_') ||
-        bCode.startsWith(targetCode + '/') ||
-        ((targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
-          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl' || bCode.startsWith('kho-nvl-')));
+        bCode.startsWith(targetCode + '/');
 
       if (matches) {
         found = true;
@@ -209,9 +207,7 @@ export function getProductWarehouseStock(p: ProductOption, whCode: string): numb
       if (
         kLower === targetCode ||
         kLower.startsWith(targetCode + '-') ||
-        kLower.startsWith(targetCode + '_') ||
-        ((targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
-          (kLower === 'kh006' || kLower === 'kho thanh trì' || kLower === 'kho-nvl'))
+        kLower.startsWith(targetCode + '_')
       ) {
         const val = Number(v);
         if (!isNaN(val)) return val;
@@ -294,7 +290,6 @@ export function findProductStockAndBinsByZone(
           bBins.forEach((bin) => bin && res.binsSet.add(bin));
         } else if (
           bLoc === normWh ||
-          bLoc === 'KH006' ||
           bLoc === 'KHO-NVL' ||
           bLoc === 'KHO-TONG'
         ) {
@@ -499,7 +494,7 @@ export default function CreateStocktakeOrderPage({
         const whData = await whRes.json();
         setWarehouses(whData);
         if (whData.length > 0 && !locationCode) {
-          setLocationCode(whData[0].code || whData[0].id || 'KH006');
+          setLocationCode(whData[0].code || whData[0].id || 'KH001');
         }
       }
       if (uRes && uRes.ok) {
@@ -1036,7 +1031,7 @@ export default function CreateStocktakeOrderPage({
         isOpen={!!rackModalData}
         onClose={() => setRackModalData(null)}
         mode="OUTBOUND_TRANSFER"
-        warehouseCode={locationCode || 'KH006'}
+        warehouseCode={locationCode || 'KH001'}
         items={items.map((it) => ({
           rowId: String(it.product.id),
           productId: String(it.product.id),
@@ -1044,7 +1039,7 @@ export default function CreateStocktakeOrderPage({
           productName: it.product.name,
           unit: it.product.unit || 'Cái',
           qty: it.zones.reduce((s, z) => s + (z.countedQty || 0), 0),
-          warehouseCode: locationCode || 'KH006',
+          warehouseCode: locationCode || 'KH001',
         }))}
         targetRowId={rackModalData ? String(rackModalData.product.id) : null}
         products={products}
@@ -1116,8 +1111,7 @@ export default function CreateStocktakeOrderPage({
                 ))
               ) : (
                 <>
-                  <option value="KH006">KH006 - Kho Thanh Trì</option>
-                  <option value="KH001">KH001 - Kho Hà Đông</option>
+                  <option value="KH001">KH001 - Kho Tổng (Hà Nội)</option>
                   <option value="KH002">KH002 - Kho Chi Nhánh HCM</option>
                 </>
               )}

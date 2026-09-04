@@ -30,6 +30,7 @@ import {
   MapPin,
   User,
   Calendar,
+  CalendarCheck,
   Layers,
   Bot,
 } from 'lucide-react';
@@ -78,7 +79,7 @@ function renderWarehouse(wh?: string, warehousesList: WarehouseRecord[] = []) {
     }
     return found.name || found.code;
   }
-  if (wh === 'KH006') return 'Kho Thanh Trì (KH006)';
+  if (wh === 'KH001') return 'Kho Tổng (Hà Nội)';
   if (wh === 'KH002') return 'Kho Chi Nhánh HCM (KH002)';
   return wh;
 }
@@ -86,6 +87,18 @@ function renderWarehouse(wh?: string, warehousesList: WarehouseRecord[] = []) {
 function renderCreator(creator?: string | null) {
   if (!creator || creator === 'NPT_Staff') return 'System Administrator';
   return creator;
+}
+
+function toLocalDateTimeInput(isoString?: string | null) {
+  if (!isoString) {
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  }
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 export default function TransferRequestsPage() {
@@ -107,6 +120,7 @@ export default function TransferRequestsPage() {
   const [receiveModalOrder, setReceiveModalOrder] = useState<TransferOrder | null>(null);
   const [receiveItems, setReceiveItems] = useState<any[]>([]);
   const [receiveSaving, setReceiveSaving] = useState(false);
+  const [receiveDateInput, setReceiveDateInput] = useState<string>('');
 
   // Pick Bin Slotting Modal state
   const [slottingModalOpen, setSlottingModalOpen] = useState(false);
@@ -223,6 +237,7 @@ export default function TransferRequestsPage() {
   // Open Receive & Bin Slotting View mode (Inverted CreateTransferOrderPage for Stock-In)
   const openReceiveModal = (order: TransferOrder) => {
     setReceiveModalOrder(order);
+    setReceiveDateInput(order.receiveDate ? toLocalDateTimeInput(order.receiveDate) : toLocalDateTimeInput(new Date().toISOString()));
     const preparedItems = (order.items || []).map((it, idx) => ({
       rowId: `rec-row-${it.id || idx}`,
       productId: it.id || '',
@@ -270,9 +285,13 @@ export default function TransferRequestsPage() {
         note: it.note ? String(it.note).trim() : undefined,
       }));
 
+      const finalReceiveDate = receiveDateInput
+        ? new Date(receiveDateInput).toISOString()
+        : new Date().toISOString();
+
       await deliveryApi.updateTransferOrder(receiveModalOrder.id, {
         status: 'DELIVERED',
-        receiveDate: new Date().toISOString(),
+        receiveDate: finalReceiveDate,
         items: updatedItems,
       });
 
@@ -364,7 +383,7 @@ export default function TransferRequestsPage() {
       renderWarehouse(o.sourceWarehouse, warehouses),
       renderWarehouse(o.destinationWarehouse, warehouses),
       formatDateTime(o.dispatchDate || o.scheduledDate || o.createdAt),
-      formatDateTime(o.receiveDate || o.createdAt),
+      o.receiveDate ? formatDateTime(o.receiveDate) : 'Chưa nhận',
       o.driverName || '',
       o.driverPhone || '',
       o.vehiclePlate || '',
@@ -511,7 +530,7 @@ export default function TransferRequestsPage() {
             Thông Tin Phiếu Điều Chuyển Đến
           </h3>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 text-xs font-bold text-slate-800">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5 text-xs font-bold text-slate-800">
             {/* Kho chuyển */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
               <span className="text-slate-500 font-semibold block mb-1">Kho Chuyển (Nơi gửi):</span>
@@ -524,20 +543,38 @@ export default function TransferRequestsPage() {
               <span className="text-sm font-black text-cyan-950 block">{destWhName}</span>
             </div>
 
-            {/* Tài xế & Xe */}
+            {/* Ngày chuyển */}
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-              <span className="text-slate-500 font-semibold block mb-1">Tài Xế & Biển Số Xe:</span>
-              <span className="text-sm font-black text-slate-900 block">
-                {receiveModalOrder.driverName || 'Chưa cập nhật'} {receiveModalOrder.vehiclePlate ? `(${receiveModalOrder.vehiclePlate})` : ''}
+              <span className="text-slate-500 font-semibold block mb-1 flex items-center gap-1">
+                <Clock className="h-3.5 w-3.5 text-cyan-600" />
+                Ngày Vận Chuyển:
               </span>
-            </div>
-
-            {/* Ngày chuyển / Nhận */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-              <span className="text-slate-500 font-semibold block mb-1">Ngày Vận Chuyển:</span>
               <span className="text-sm font-black text-slate-900 block">
                 {formatDateTime(receiveModalOrder.dispatchDate || receiveModalOrder.createdAt)}
               </span>
+            </div>
+
+            {/* Tài xế & Xe */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+              <span className="text-slate-500 font-semibold block mb-1">Tài Xế & Xe:</span>
+              <span className="text-sm font-black text-slate-900 block truncate" title={`${receiveModalOrder.driverName || ''} ${receiveModalOrder.vehiclePlate || ''}`}>
+                {receiveModalOrder.driverName || 'Chưa có'} {receiveModalOrder.vehiclePlate ? `(${receiveModalOrder.vehiclePlate})` : ''}
+              </span>
+            </div>
+
+            {/* Ngày & Giờ Thực Nhận (Kho nhận duyệt điền) */}
+            <div className="rounded-xl border-2 border-emerald-500/60 bg-emerald-50/60 p-3">
+              <span className="text-emerald-800 font-bold block mb-1 flex items-center gap-1">
+                <CalendarCheck className="h-3.5 w-3.5 text-emerald-600" />
+                Ngày & Giờ Thực Nhận:
+              </span>
+              <input
+                type="datetime-local"
+                step="1"
+                value={receiveDateInput}
+                onChange={(e) => setReceiveDateInput(e.target.value)}
+                className="w-full h-8 px-2 text-xs font-bold rounded-lg border border-emerald-400 bg-white text-emerald-950 outline-none focus:border-emerald-600 shadow-xs"
+              />
             </div>
           </div>
         </div>
@@ -721,31 +758,9 @@ export default function TransferRequestsPage() {
           </div>
         </div>
 
-        {/* Toolbar Buttons Bar (Matching Image 2: + Thêm mới, Copy, Xóa, In báo cáo, Export Excel, Hiển thị, Maximize) */}
+        {/* Toolbar Buttons Bar: Xóa, In báo cáo, Export Excel, Hiển thị, Maximize (Đã bỏ tạo mới phiếu nhập kho nội bộ theo quy trình WMS chuẩn) */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* 1. + Thêm mới */}
-          <button
-            type="button"
-            onClick={() => {
-              navigate('/delivery/receive-transfer-order', { state: { mode: 'receive', fromRequests: true } });
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <Plus className="h-4 w-4 text-cyan-700" />
-            Thêm mới
-          </button>
-
-          {/* 2. Copy */}
-          <button
-            type="button"
-            onClick={handleCopySelected}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <Copy className="h-4 w-4 text-cyan-700" />
-            Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
-          </button>
-
-          {/* 3. Xóa */}
+          {/* 1. Xóa */}
           <button
             type="button"
             onClick={handleDeleteSelected}
@@ -963,10 +978,16 @@ export default function TransferRequestsPage() {
                       )}
                       {columnVis.receiveDate && (
                         <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-semibold text-slate-700">
-                          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
-                            <CalendarDays className="h-4 w-4 text-cyan-600 shrink-0" />
-                            {formatDateTime(order.receiveDate || (order.dispatchDate ? new Date(new Date(order.dispatchDate).getTime() + 86400000).toISOString() : order.createdAt))}
-                          </span>
+                          {order.receiveDate ? (
+                            <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap text-emerald-700 font-bold">
+                              <CalendarDays className="h-4 w-4 text-emerald-600 shrink-0" />
+                              {formatDateTime(order.receiveDate)}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                              Chờ nhận hàng
+                            </span>
+                          )}
                         </td>
                       )}
                       {columnVis.driver && (
@@ -1083,7 +1104,7 @@ export default function TransferRequestsPage() {
               ) : (
                 <tr>
                   <td colSpan={15} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                    Chưa có phiếu nhập kho nội bộ. Hãy bấm nút "Thêm mới" để bắt đầu.
+                    Hiện chưa có phiếu điều chuyển nào gửi tới kho nhận này.
                   </td>
                 </tr>
               )}

@@ -711,11 +711,7 @@ function App() {
         />
         <Route
           path="/delivery/create-transfer-request"
-          element={
-            <RoleRoute menuId="delivery-transfer-requests">
-              <CreateTransferRequestPage />
-            </RoleRoute>
-          }
+          element={<Navigate to="/delivery/transfer-requests" replace />}
         />
         <Route
           path="/inventory"

@@ -88,7 +88,7 @@ export class DeliveryService implements OnModuleInit {
       dto.sourceWarehouse ||
       (dto as any).sourceWarehouseCode ||
       (dto as any).fromWarehouse ||
-      'KH006'
+      'KH001'
     ).trim();
 
     let destinationWarehouse = (
@@ -99,13 +99,13 @@ export class DeliveryService implements OnModuleInit {
     ).trim();
 
     if (sourceWarehouse === destinationWarehouse) {
-      destinationWarehouse = sourceWarehouse === 'KH006' ? 'KH002' : 'KH006';
+      destinationWarehouse = sourceWarehouse === 'KH001' ? 'KH002' : 'KH001';
     }
 
     const rawOrderDate = dto.scheduledDate || (dto as any).orderDate || (dto as any).createdAt;
     const parsedScheduled = parseDate(rawOrderDate) || new Date();
     const parsedDispatch = parseDate(dto.dispatchDate || dto.scheduledDate || rawOrderDate) || parsedScheduled;
-    const parsedReceive = parseDate(dto.receiveDate) || new Date(Date.now() + 86400000);
+    const parsedReceive = parseDate(dto.receiveDate) || undefined;
 
     const entity = this.transferOrderRepo.create({
       transferNo,
@@ -173,7 +173,7 @@ export class DeliveryService implements OnModuleInit {
 
     const rawSource = dto.sourceWarehouse || (dto as any).sourceWarehouseCode || (dto as any).fromWarehouse;
     if (rawSource !== undefined && rawSource !== null) {
-      order.sourceWarehouse = String(rawSource).trim() || 'KH006';
+      order.sourceWarehouse = String(rawSource).trim() || 'KH001';
     }
 
     const rawDest = dto.destinationWarehouse || (dto as any).destinationWarehouseCode || (dto as any).toWarehouse;
@@ -197,7 +197,7 @@ export class DeliveryService implements OnModuleInit {
       order.scheduledDate = parseDate(dto.scheduledDate) || order.scheduledDate;
     }
     if (dto.dispatchDate !== undefined) order.dispatchDate = parseDate(dto.dispatchDate) || order.dispatchDate;
-    if (dto.receiveDate !== undefined) order.receiveDate = parseDate(dto.receiveDate) || order.receiveDate;
+    if (dto.receiveDate !== undefined) order.receiveDate = dto.receiveDate ? (parseDate(dto.receiveDate) || undefined) : undefined;
     if (dto.driverName !== undefined) order.driverName = dto.driverName.trim() || undefined;
     if (dto.driverPhone !== undefined) order.driverPhone = dto.driverPhone.trim() || undefined;
     if (dto.vehiclePlate !== undefined) order.vehiclePlate = dto.vehiclePlate.trim() || undefined;
@@ -245,9 +245,8 @@ export class DeliveryService implements OnModuleInit {
       if (!lc) return false;
       if (lc === target) return true;
       if (lc.startsWith(`${target}-`) || lc.startsWith(`${target}_`) || lc.startsWith(`${target}/`)) return true;
-      if ((target === 'KH006' || target === 'KHO-NVL') && (lc === 'KHO-NVL' || lc === 'KH006' || lc.includes('THANH TRÌ'))) return true;
       if (target === 'KH002' && (lc === 'KH002' || lc.includes('HCM') || lc.includes('CHI NHÁNH'))) return true;
-      if (target === 'KH001' && (lc === 'KH001' || lc.includes('HÀ ĐÔNG'))) return true;
+      if (target === 'KH001' && (lc === 'KH001' || lc.includes('HÀ ĐÔNG') || lc.includes('HÀ NỘI'))) return true;
       return false;
     });
   }
@@ -256,7 +255,7 @@ export class DeliveryService implements OnModuleInit {
     const status = (order.status || '').toUpperCase();
     if (status === 'DRAFT') return;
 
-    const sourceWh = (order.sourceWarehouse || 'KH006').trim().toUpperCase();
+    const sourceWh = (order.sourceWarehouse || 'KH001').trim().toUpperCase();
     const destWh = (order.destinationWarehouse || 'KH002').trim().toUpperCase();
     const items = order.items || [];
 
@@ -401,7 +400,7 @@ export class DeliveryService implements OnModuleInit {
     const status = (order.status || '').toUpperCase();
     if (status === 'DRAFT') return;
 
-    const sourceWh = (order.sourceWarehouse || 'KH006').trim().toUpperCase();
+    const sourceWh = (order.sourceWarehouse || 'KH001').trim().toUpperCase();
     const destWh = (order.destinationWarehouse || 'KH002').trim().toUpperCase();
     const items = order.items || [];
 
@@ -487,7 +486,7 @@ export class DeliveryService implements OnModuleInit {
   private serialize(order: TransferOrder) {
     const orderDate = order.scheduledDate || order.createdAt || order.dispatchDate;
     const dispatchDate = order.dispatchDate || order.scheduledDate || order.createdAt;
-    const receiveDate = order.receiveDate || (dispatchDate ? new Date(new Date(dispatchDate).getTime() + 86400000) : null);
+    const receiveDate = order.receiveDate ? new Date(order.receiveDate).toISOString() : null;
 
     const items = order.items || [];
     const itemCount = order.itemCount || items.length;
@@ -498,7 +497,7 @@ export class DeliveryService implements OnModuleInit {
       orderDate: orderDate ? new Date(orderDate).toISOString() : null,
       scheduledDate: order.scheduledDate ? order.scheduledDate.toISOString() : (orderDate ? new Date(orderDate).toISOString() : null),
       dispatchDate: dispatchDate ? new Date(dispatchDate).toISOString() : null,
-      receiveDate: receiveDate ? new Date(receiveDate).toISOString() : null,
+      receiveDate,
       createdAt: order.createdAt ? order.createdAt.toISOString() : (orderDate ? new Date(orderDate).toISOString() : null),
       updatedAt: order.updatedAt ? order.updatedAt.toISOString() : null,
       driverName: order.driverName || null,

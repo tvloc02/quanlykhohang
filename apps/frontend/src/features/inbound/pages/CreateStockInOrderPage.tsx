@@ -303,7 +303,7 @@ function generateOrderCode() {
   return `PNK${dateStr}-${randomSuffix}`;
 }
 
-function makeEmptyRow(index: number, defaultWhCode = 'KH006'): FormDetailRow {
+function makeEmptyRow(index: number, defaultWhCode = 'KH001'): FormDetailRow {
   return {
     rowId: `row-${Date.now()}-${index}-${Math.random()}`,
     productId: '',
@@ -333,7 +333,7 @@ function makeEmptyRow(index: number, defaultWhCode = 'KH006'): FormDetailRow {
   };
 }
 
-function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultWhCode = 'KH006'): FormDetailRow[] {
+function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultWhCode = 'KH001'): FormDetailRow[] {
   return Array.from({ length: count }, (_, i) => makeEmptyRow(i, defaultWhCode));
 }
 
@@ -2034,7 +2034,7 @@ const PutawaySummaryReportModal: React.FC<PutawaySummaryReportModalProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-300">
                   {validItems.map((item, idx) => {
-                    const whCode = item.warehouseCode || warehouseCode || 'KH006';
+                    const whCode = item.warehouseCode || warehouseCode || 'KH001';
                     const loc = formatLocationDisplay(item, idx);
                     const impPrice = Number(item.price || 0);
                     const wsPrice = Math.round(impPrice * 1.15);
@@ -2140,7 +2140,7 @@ function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'): 
     tabId: `tab-${Date.now()}-${tabIndex}`,
     title: `# ${tabIndex}`,
     orderNo: generateOrderCode(),
-    warehouseCode: 'KH006',
+    warehouseCode: 'KH001',
     employeeName: currentUserName || 'Quản lý kho',
     supplierName: '',
     supplierPhone: '',
@@ -2155,7 +2155,7 @@ function createNewInboundTab(tabIndex = 1, currentUserName = 'Quản lý kho'): 
     paymentAccount: '',
     amountPaid: 0,
     status: 'READY',
-    details: makeInitialRows(DEFAULT_ROWS_COUNT, 'KH006'),
+    details: makeInitialRows(DEFAULT_ROWS_COUNT, 'KH001'),
   };
 }
 
@@ -2441,7 +2441,7 @@ export default function CreateStockInOrderPage({
 
         if (!orderData) return;
 
-        const orderWhCode = orderData.warehouseCode || orderData.details?.[0]?.warehouseCode || 'KH006';
+        const orderWhCode = orderData.warehouseCode || orderData.details?.[0]?.warehouseCode || 'KH001';
 
         const detailsList: FormDetailRow[] = (orderData.details || []).map((d: any, idx: number) => {
           const p = d.product || {};
@@ -3020,7 +3020,7 @@ export default function CreateStockInOrderPage({
 
       const hasEmptyRow = mergedDetails.some((r) => !r.productId && !r.productName?.trim());
       if (!hasEmptyRow) {
-        mergedDetails.push(makeEmptyRow(mergedDetails.length + 1, tab.warehouseCode || 'KH006'));
+        mergedDetails.push(makeEmptyRow(mergedDetails.length + 1, tab.warehouseCode || 'KH001'));
       }
 
       return {
@@ -4366,7 +4366,7 @@ export default function CreateStockInOrderPage({
           setAiSlottingTargetRowId(null);
         }}
         mode="INBOUND"
-        warehouseCode={activeTab?.warehouseCode || 'KH006'}
+        warehouseCode={activeTab?.warehouseCode || 'KH001'}
         items={activeTab?.details || []}
         targetRowId={aiSlottingTargetRowId}
         products={products}
@@ -4463,14 +4463,14 @@ export default function CreateStockInOrderPage({
                       storageInfoBalances.map((b: any, idx: number) => {
                         const avail = Number(b.available || 0);
                         const phys = Number(b.totalPhysical || avail);
-                        const loc = b.locationCode || 'KH006';
+                        const loc = b.locationCode || 'KH001';
                         const matchedWh = warehouses.find(w => {
                           if (!w.code) return false;
                           const wCode = w.code.trim().toLowerCase();
                           const lCode = loc.trim().toLowerCase();
                           return lCode === wCode || lCode.startsWith(wCode + '-') || lCode.startsWith(wCode + '_');
                         });
-                        const whName = matchedWh?.name || (loc === 'KH006' ? 'Kho Thanh Trì' : `Kho ${loc}`);
+                        const whName = matchedWh?.name || (loc === 'KH001' ? 'Kho Tổng (Hà Nội)' : `Kho ${loc}`);
                         const pFound = products.find(p => String(p.id) === String(storageInfoProduct?.productId));
                         const totalProductStock = Number(pFound?.stock || 0);
                         const impPrice = Number(pFound?.importPrice || pFound?.price || 0);
