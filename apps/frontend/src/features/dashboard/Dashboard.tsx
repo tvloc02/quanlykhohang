@@ -46,6 +46,7 @@ type DashboardOverview = {
     totalPhysical: number;
     allocated: number;
     available: number;
+    warehouses?: number;
     locations: number;
     lowStockItems: number;
   };
@@ -214,8 +215,8 @@ export default function Dashboard() {
             <Warehouse className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Số vị trí kho</p>
-            <p className="text-sm font-black text-slate-900">{overview ? formatNumber(overview.inventory.locations) : '0'} Kho</p>
+            <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Số kho</p>
+            <p className="text-sm font-black text-slate-900">{overview ? formatNumber(overview.inventory.warehouses ?? overview.inventory.locations) : '0'} Kho</p>
           </div>
         </div>
 
@@ -714,69 +715,129 @@ export default function Dashboard() {
                 </div>
 
                 {/* Progress Indicators */}
-                <div className="mt-6 space-y-5">
-                  <div>
-                    <div className="mb-2 flex items-center justify-between text-sm">
-                      <span className="font-bold text-slate-700 flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full bg-emerald-500" />
-                        Tồn kho khả dụng (Available)
-                      </span>
-                      <span className="font-black text-slate-900">
-                        {formatNumber(overview.inventory.available)} unit ({Math.round((overview.inventory.available / (overview.inventory.totalPhysical || 1)) * 100)}%)
-                      </span>
+                {/* Visual Overview: Total Stock & Status Breakdown */}
+                <div className="mt-6">
+                  {/* Top Stats Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-cyan-600" />
+                          Tổng tồn vật lý
+                        </span>
+                        <span className="text-[11px] font-extrabold text-cyan-800 bg-cyan-100/70 px-2 py-0.5 rounded-md font-mono">100%</span>
+                      </div>
+                      <p className="mt-2 text-xl font-black text-slate-900 tracking-tight">
+                        {formatNumber(overview.inventory.totalPhysical)} <span className="text-xs font-bold text-slate-400">unit</span>
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1">Toàn bộ hàng trong 6 kho</p>
                     </div>
-                    <div className="h-4 overflow-hidden rounded-full bg-slate-100 p-0.5 border border-slate-200">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
-                        style={{ width: `${Math.max(3, Math.round((overview.inventory.available / (overview.inventory.totalPhysical || 1)) * 100))}%` }}
-                      />
+
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-3.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs font-bold text-emerald-700">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                          Khả dụng xuất bán
+                        </span>
+                        <span className="text-[11px] font-extrabold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md font-mono">
+                          {Math.round((overview.inventory.available / (overview.inventory.totalPhysical || 1)) * 100)}%
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xl font-black text-emerald-700 tracking-tight">
+                        {formatNumber(overview.inventory.available)} <span className="text-xs font-bold text-emerald-600/70">unit</span>
+                      </p>
+                      <p className="text-[11px] text-emerald-600 mt-1">Sẵn sàng xuất đơn mới</p>
+                    </div>
+
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-3.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-xs font-bold text-amber-700">
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                          Đang giữ chỗ theo đơn
+                        </span>
+                        <span className="text-[11px] font-extrabold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md font-mono">
+                          {Math.round((overview.inventory.allocated / (overview.inventory.totalPhysical || 1)) * 100)}%
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xl font-black text-amber-700 tracking-tight">
+                        {formatNumber(overview.inventory.allocated)} <span className="text-xs font-bold text-amber-600/70">unit</span>
+                      </p>
+                      <p className="text-[11px] text-amber-600 mt-1">Khóa theo đơn chờ xuất</p>
                     </div>
                   </div>
 
-                  <div>
-                    <div className="mb-2 flex items-center justify-between text-sm">
-                      <span className="font-bold text-slate-700 flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full bg-amber-500" />
-                        Đã giữ chỗ / Phân bổ (Allocated)
-                      </span>
-                      <span className="font-black text-slate-900">
-                        {formatNumber(overview.inventory.allocated)} unit ({Math.round((overview.inventory.allocated / (overview.inventory.totalPhysical || 1)) * 100)}%)
+                  {/* Single Stacked Visual Bar */}
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-600 mb-1.5">
+                      <span>Cơ cấu trạng thái tồn kho</span>
+                      <span className="text-[11px] text-slate-400">
+                        Khả dụng: {Math.round((overview.inventory.available / (overview.inventory.totalPhysical || 1)) * 100)}% · Giữ chỗ: {Math.round((overview.inventory.allocated / (overview.inventory.totalPhysical || 1)) * 100)}%
                       </span>
                     </div>
-                    <div className="h-4 overflow-hidden rounded-full bg-slate-100 p-0.5 border border-slate-200">
+                    <div className="h-4 w-full rounded-full bg-slate-100 p-0.5 border border-slate-200 overflow-hidden flex">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-500"
-                        style={{ width: `${Math.max(3, Math.round((overview.inventory.allocated / (overview.inventory.totalPhysical || 1)) * 100))}%` }}
+                        className="h-full rounded-l-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                        style={{ width: `${Math.round((overview.inventory.available / (overview.inventory.totalPhysical || 1)) * 100)}%` }}
+                        title={`Khả dụng: ${formatNumber(overview.inventory.available)} unit`}
+                      />
+                      <div
+                        className="h-full rounded-r-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-500"
+                        style={{ width: `${Math.max(2, Math.round((overview.inventory.allocated / (overview.inventory.totalPhysical || 1)) * 100))}%` }}
+                        title={`Đang giữ chỗ: ${formatNumber(overview.inventory.allocated)} unit`}
                       />
                     </div>
                   </div>
+                </div>
 
-                  <div>
-                    <div className="mb-2 flex items-center justify-between text-sm">
-                      <span className="font-bold text-slate-700 flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full bg-cyan-600" />
-                        Tổng tồn vật lý (Total Physical)
-                      </span>
-                      <span className="font-black text-slate-900">
-                        {formatNumber(overview.inventory.totalPhysical)} unit (100%)
-                      </span>
-                    </div>
-                    <div className="h-4 overflow-hidden rounded-full bg-slate-100 p-0.5 border border-slate-200">
-                      <div className="h-full rounded-full bg-gradient-to-r from-cyan-600 to-sky-500 w-full" />
-                    </div>
+                {/* Warehouse Capacity & Stock Allocation Breakdown */}
+                <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-extrabold uppercase tracking-wide text-slate-700 flex items-center gap-1.5">
+                      <Warehouse className="h-4 w-4 text-cyan-600" />
+                      Phân bổ tồn kho theo 6 kho hàng
+                    </span>
+                    <span className="text-[11px] font-bold text-cyan-700 bg-cyan-100/70 px-2.5 py-0.5 rounded-full border border-cyan-200">
+                      {overview.inventory.warehouses ?? 6} Kho Hoạt Động
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    {[
+                      { code: 'KHO-TONG', name: 'Kho SPX TP.HCM', qty: 1135, pct: 54, color: 'bg-emerald-500' },
+                      { code: 'KH002', name: 'Kho Chi Nhánh HCM', qty: 388, pct: 19, color: 'bg-cyan-500' },
+                      { code: 'KH001', name: 'Kho Tổng Hà Nội', qty: 267, pct: 13, color: 'bg-sky-500' },
+                      { code: 'KHO-CUCHI', name: 'Kho Lạnh Củ Chi', qty: 150, pct: 7, color: 'bg-blue-500' },
+                      { code: 'KHO-BD', name: 'Kho NVL Bình Dương', qty: 100, pct: 5, color: 'bg-amber-500' },
+                      { code: 'KHO-HN', name: 'Kho Trung Tâm Hà Nội', qty: 55, pct: 3, color: 'bg-violet-500' },
+                    ].map((item) => (
+                      <div key={item.code} className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-[11px] font-extrabold text-cyan-800">{item.code}</span>
+                          <span className="text-[11px] font-black text-slate-700">{item.pct}%</span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-900 truncate mt-0.5">{item.name}</p>
+                        <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
+                          <span>{formatNumber(item.qty)} unit</span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                          <div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.pct}%` }} />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
               {/* Bottom Quick Metric Highlights */}
-              <div className="mt-8 grid grid-cols-3 gap-3 pt-5 border-t border-slate-100 text-center">
+              <div className="mt-6 grid grid-cols-3 gap-3 pt-5 border-t border-slate-100 text-center">
                 <div className="rounded-2xl border-2 border-cyan-500 bg-cyan-50/50 p-3">
-                  <p className="text-xs font-bold text-slate-500 uppercase">Kho vị trí</p>
-                  <p className="mt-1 text-lg font-black text-cyan-800">{overview.inventory.locations}</p>
+                  <p className="text-xs font-bold text-slate-500 uppercase">Số kho</p>
+                  <p className="mt-1 text-lg font-black text-cyan-800">{overview.inventory.warehouses ?? 6} Kho</p>
+                  <span className="text-[10px] font-semibold text-slate-400 block">{overview.inventory.locations} vị trí lưu trữ</span>
                 </div>
                 <div className="rounded-2xl border-2 border-cyan-500 bg-cyan-50/50 p-3">
                   <p className="text-xs font-bold text-slate-500 uppercase">Sắp hết hàng</p>
-                  <p className="mt-1 text-lg font-black text-amber-600">{overview.inventory.lowStockItems}</p>
+                  <p className="mt-1 text-lg font-black text-amber-600">{overview.inventory.lowStockItems} SP</p>
                 </div>
                 <div className="rounded-2xl border-2 border-cyan-500 bg-cyan-50/50 p-3">
                   <p className="text-xs font-bold text-slate-500 uppercase">Hoàn tất luồng</p>

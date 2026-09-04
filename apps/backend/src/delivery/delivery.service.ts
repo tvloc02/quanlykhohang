@@ -102,15 +102,20 @@ export class DeliveryService implements OnModuleInit {
       destinationWarehouse = sourceWarehouse === 'KH006' ? 'KH002' : 'KH006';
     }
 
+    const rawOrderDate = dto.scheduledDate || (dto as any).orderDate || (dto as any).createdAt;
+    const parsedScheduled = parseDate(rawOrderDate) || new Date();
+    const parsedDispatch = parseDate(dto.dispatchDate || dto.scheduledDate || rawOrderDate) || parsedScheduled;
+    const parsedReceive = parseDate(dto.receiveDate) || new Date(Date.now() + 86400000);
+
     const entity = this.transferOrderRepo.create({
       transferNo,
       requestId: dto.requestId?.trim() || undefined,
       requestNumber: dto.requestNumber?.trim() || undefined,
       sourceWarehouse,
       destinationWarehouse,
-      scheduledDate: parseDate(dto.scheduledDate) || new Date(),
-      dispatchDate: parseDate(dto.dispatchDate || dto.scheduledDate) || new Date(),
-      receiveDate: parseDate(dto.receiveDate) || new Date(Date.now() + 86400000),
+      scheduledDate: parsedScheduled,
+      dispatchDate: parsedDispatch,
+      receiveDate: parsedReceive,
       driverName: dto.driverName?.trim() || undefined,
       driverPhone: dto.driverPhone?.trim() || undefined,
       vehiclePlate: dto.vehiclePlate?.trim() || undefined,
@@ -123,6 +128,16 @@ export class DeliveryService implements OnModuleInit {
     });
 
     const saved = await this.transferOrderRepo.save(entity);
+    if (parsedScheduled) {
+      try {
+        await this.dataSource.query(
+          `UPDATE transfer_orders SET scheduledDate = ?, createdAt = ? WHERE id = ?`,
+          [parsedScheduled, parsedScheduled, saved.id],
+        );
+        saved.scheduledDate = parsedScheduled;
+        saved.createdAt = parsedScheduled;
+      } catch {}
+    }
     await this.applyTransferStockMovement(saved);
 
     try {
@@ -165,7 +180,22 @@ export class DeliveryService implements OnModuleInit {
     if (rawDest !== undefined && rawDest !== null) {
       order.destinationWarehouse = String(rawDest).trim() || 'KH002';
     }
-    if (dto.scheduledDate !== undefined) order.scheduledDate = parseDate(dto.scheduledDate) || order.scheduledDate;
+    const rawOrderDate = (dto as any).orderDate || (dto as any).createdAt || dto.scheduledDate;
+    if (rawOrderDate !== undefined) {
+      const parsedOrderDate = parseDate(rawOrderDate);
+      if (parsedOrderDate) {
+        order.scheduledDate = parsedOrderDate;
+        order.createdAt = parsedOrderDate;
+        try {
+          await this.dataSource.query(
+            `UPDATE transfer_orders SET scheduledDate = ?, createdAt = ? WHERE id = ?`,
+            [parsedOrderDate, parsedOrderDate, id],
+          );
+        } catch {}
+      }
+    } else if (dto.scheduledDate !== undefined) {
+      order.scheduledDate = parseDate(dto.scheduledDate) || order.scheduledDate;
+    }
     if (dto.dispatchDate !== undefined) order.dispatchDate = parseDate(dto.dispatchDate) || order.dispatchDate;
     if (dto.receiveDate !== undefined) order.receiveDate = parseDate(dto.receiveDate) || order.receiveDate;
     if (dto.driverName !== undefined) order.driverName = dto.driverName.trim() || undefined;
@@ -455,6 +485,7 @@ export class DeliveryService implements OnModuleInit {
   }
 
   private serialize(order: TransferOrder) {
+    const orderDate = order.scheduledDate || order.createdAt || order.dispatchDate;
     const dispatchDate = order.dispatchDate || order.scheduledDate || order.createdAt;
     const receiveDate = order.receiveDate || (dispatchDate ? new Date(new Date(dispatchDate).getTime() + 86400000) : null);
 
@@ -464,10 +495,11 @@ export class DeliveryService implements OnModuleInit {
 
     return {
       ...order,
-      scheduledDate: order.scheduledDate ? order.scheduledDate.toISOString() : (dispatchDate ? new Date(dispatchDate).toISOString() : null),
+      orderDate: orderDate ? new Date(orderDate).toISOString() : null,
+      scheduledDate: order.scheduledDate ? order.scheduledDate.toISOString() : (orderDate ? new Date(orderDate).toISOString() : null),
       dispatchDate: dispatchDate ? new Date(dispatchDate).toISOString() : null,
       receiveDate: receiveDate ? new Date(receiveDate).toISOString() : null,
-      createdAt: order.createdAt ? order.createdAt.toISOString() : null,
+      createdAt: order.createdAt ? order.createdAt.toISOString() : (orderDate ? new Date(orderDate).toISOString() : null),
       updatedAt: order.updatedAt ? order.updatedAt.toISOString() : null,
       driverName: order.driverName || null,
       driverPhone: order.driverPhone || null,

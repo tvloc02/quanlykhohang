@@ -59,6 +59,13 @@ export interface ProductOption {
   salePrice?: number;
   price?: number;
   stock?: number;
+  stockBalances?: Array<{
+    id?: string;
+    locationCode: string;
+    totalPhysical?: number;
+    allocated?: number;
+    available?: number;
+  }>;
 }
 
 export interface SupplierOption {
@@ -2347,6 +2354,7 @@ export default function CreateStockInOrderPage({
             salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
             price: Number(p.importPrice || p.purchasePrice || p.price || 0),
             stock: Number(p.stock || 0),
+            stockBalances: Array.isArray(p.stockBalances) ? p.stockBalances : [],
           }));
           setProducts(filterOutDeletedProducts(normalized));
         }
@@ -4456,7 +4464,13 @@ export default function CreateStockInOrderPage({
                         const avail = Number(b.available || 0);
                         const phys = Number(b.totalPhysical || avail);
                         const loc = b.locationCode || 'KH006';
-                        const whName = warehouses.find(w => w.code === loc)?.name || (loc === 'KH006' ? 'Kho Thanh Trì' : `Kho ${loc}`);
+                        const matchedWh = warehouses.find(w => {
+                          if (!w.code) return false;
+                          const wCode = w.code.trim().toLowerCase();
+                          const lCode = loc.trim().toLowerCase();
+                          return lCode === wCode || lCode.startsWith(wCode + '-') || lCode.startsWith(wCode + '_');
+                        });
+                        const whName = matchedWh?.name || (loc === 'KH006' ? 'Kho Thanh Trì' : `Kho ${loc}`);
                         const pFound = products.find(p => String(p.id) === String(storageInfoProduct?.productId));
                         const totalProductStock = Number(pFound?.stock || 0);
                         const impPrice = Number(pFound?.importPrice || pFound?.price || 0);

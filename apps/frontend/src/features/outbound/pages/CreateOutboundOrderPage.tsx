@@ -537,6 +537,32 @@ export default function CreateOutboundOrderPage({
   // Fullscreen & Modal state
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
+  const [isScannerConnected, setIsScannerConnected] = useState<boolean>(true);
+
+  // Auto-detect WebHID USB scanner connection
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'hid' in navigator) {
+      const checkHid = async () => {
+        try {
+          const devices = await (navigator as any).hid.getDevices();
+          setIsScannerConnected(Boolean(devices && devices.length > 0));
+        } catch (e) {}
+      };
+      checkHid();
+
+      const onConnect = () => setIsScannerConnected(true);
+      const onDisconnect = () => setIsScannerConnected(false);
+
+      (navigator as any).hid.addEventListener('connect', onConnect);
+      (navigator as any).hid.addEventListener('disconnect', onDisconnect);
+
+      return () => {
+        (navigator as any).hid.removeEventListener('connect', onConnect);
+        (navigator as any).hid.removeEventListener('disconnect', onDisconnect);
+      };
+    }
+  }, []);
+
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [pickBinModalOpen, setPickBinModalOpen] = useState(false);
   const [activePickBinRowId, setActivePickBinRowId] = useState<string | null>(null);
@@ -1982,9 +2008,9 @@ export default function CreateOutboundOrderPage({
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
           <div className={`flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullScreen ? 'flex-1 h-full' : ''}`}>
             {/* Product Section Top Control Bar */}
-            <div className="px-4 py-3 border-b-2 border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
-              <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs sm:text-sm">
-                <Package className="h-4.5 w-4.5 text-cyan-600" />
+            <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2 text-cyan-900 font-black text-xs sm:text-sm">
+                <Package className="h-4 w-4 text-cyan-600" />
                 <span>
                   {isDisposal
                     ? `THÔNG TIN HÀNG HÓA TIÊU HỦY (${activeValidItems.length} MẶT HÀNG - TỔNG SL HỦY: ${totalQty})`
@@ -1992,20 +2018,37 @@ export default function CreateOutboundOrderPage({
                 </span>
               </div>
 
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setShowScannerModal(true)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-cyan-600 bg-white px-3.5 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer shadow-xs"
+                  title="Mở camera để quét mã vạch"
                 >
                   <ScanLine className="h-4 w-4 text-cyan-600" />
-                  <span>Quét Barcode</span>
+                  <span>Quét Camera</span>
                 </button>
+
+                {/* Ô Tự động Phát hiện Trạng thái Máy Quét */}
+                <div
+                  className={`inline-flex items-center px-3.5 py-1.5 rounded-lg border-2 text-xs font-extrabold shadow-2xs select-none ${
+                    isScannerConnected
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                      : 'border-amber-400 bg-amber-50 text-amber-900'
+                  }`}
+                  title={
+                    isScannerConnected
+                      ? 'Máy quét mã vạch đã kết nối & sẵn sàng quét'
+                      : 'Máy quét chưa kết nối'
+                  }
+                >
+                  <span>Máy quét: {isScannerConnected ? 'Đã kết nối' : 'Chưa kết nối'}</span>
+                </div>
 
                 <button
                   type="button"
                   onClick={handleAddBlankRow}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-cyan-600 px-4 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Thêm dòng mới</span>
@@ -2014,10 +2057,10 @@ export default function CreateOutboundOrderPage({
                 <button
                   type="button"
                   onClick={() => setIsFullScreen(!isFullScreen)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-500 bg-cyan-50 px-2.5 py-1.5 text-xs font-bold text-cyan-800 hover:bg-cyan-100 transition cursor-pointer shadow-xs"
                   title={isFullScreen ? 'Thu nhỏ cửa sổ' : 'Phóng to toàn màn hình'}
                 >
-                  {isFullScreen ? <Minimize2 className="h-4 w-4 text-slate-600" /> : <Maximize2 className="h-4 w-4 text-slate-600" />}
+                  {isFullScreen ? <Minimize2 className="h-4 w-4 text-cyan-700" /> : <Maximize2 className="h-4 w-4 text-cyan-700" />}
                   <span>{isFullScreen ? 'Thu nhỏ' : 'Phóng to'}</span>
                 </button>
               </div>

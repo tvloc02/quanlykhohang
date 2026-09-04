@@ -436,6 +436,30 @@ export default function CreateStocktakeOrderPage({
   const [submitting, setSubmitting] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
 
+  // WebHID Hardware Barcode Scanner Auto-Detection State
+  const [isScannerConnected, setIsScannerConnected] = useState<boolean>(false);
+
+  useEffect(() => {
+    const checkScanner = async () => {
+      try {
+        if (typeof navigator !== 'undefined' && 'hid' in navigator) {
+          // @ts-expect-error WebHID API
+          const devices = await navigator.hid.getDevices();
+          setIsScannerConnected(devices.length > 0);
+        }
+      } catch {
+        setIsScannerConnected(false);
+      }
+    };
+    checkScanner();
+    if (typeof navigator !== 'undefined' && 'hid' in navigator) {
+      // @ts-expect-error WebHID API
+      navigator.hid.addEventListener('connect', () => setIsScannerConnected(true));
+      // @ts-expect-error WebHID API
+      navigator.hid.addEventListener('disconnect', checkScanner);
+    }
+  }, []);
+
   // Storage Info Modal State
   const [storageInfoProduct, setStorageInfoProduct] = useState<{
     productId: string;
@@ -1039,15 +1063,6 @@ export default function CreateStocktakeOrderPage({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setScannerOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-3.5 py-1.5 text-xs font-extrabold text-cyan-700 shadow-xs hover:bg-cyan-50 transition cursor-pointer"
-          >
-            <ScanLine className="h-4 w-4" />
-            <span>Quét Barcode</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleClose}
             className="inline-flex items-center gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 transition shadow-2xs cursor-pointer"
           >
@@ -1130,29 +1145,46 @@ export default function CreateStocktakeOrderPage({
         {/* ── LEFT COLUMN (9/12 width): PRODUCT TABLE WITH ROWSPAN ── */}
         <div className="lg:col-span-9 flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden">
           {/* Section Header */}
-          <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs">
+          <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2 text-cyan-900 font-black text-xs sm:text-sm">
               <Package className="h-4 w-4 text-cyan-600" />
-              <span>DANH SÁCH HÀNG HÓA KIỂM KÊ ({items.length} SẢN PHẨM)</span>
+              <span>DANH SÁCH HÀNG HÓA KIỂM KÊ ({items.length} MẶT HÀNG - TỔNG SL SỔ SÁCH: {totalSystemQty})</span>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setScannerOpen(true)}
-                className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer shadow-xs"
+                title="Mở camera để quét mã vạch"
               >
-                <ScanLine className="h-3.5 w-3.5 text-cyan-600" />
-                <span>Quét Barcode</span>
+                <ScanLine className="h-4 w-4 text-cyan-600" />
+                <span>Quét Camera</span>
               </button>
+
+              {/* Ô Tự động Phát hiện Trạng thái Máy Quét */}
+              <div
+                className={`inline-flex items-center px-3.5 py-1.5 rounded-lg border-2 text-xs font-extrabold shadow-2xs select-none ${
+                  isScannerConnected
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                    : 'border-amber-400 bg-amber-50 text-amber-900'
+                }`}
+                title={
+                  isScannerConnected
+                    ? 'Máy quét mã vạch đã kết nối & sẵn sàng quét'
+                    : 'Máy quét chưa kết nối'
+                }
+              >
+                <span>Máy quét: {isScannerConnected ? 'Đã kết nối' : 'Chưa kết nối'}</span>
+              </div>
 
               <button
                 type="button"
                 onClick={loadMasterData}
-                className="inline-flex items-center gap-1 rounded-lg border-2 border-slate-300 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-lg border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer shadow-xs"
                 title="Làm mới dữ liệu"
               >
-                <RefreshCw className="h-3.5 w-3.5 text-cyan-600" />
+                <RefreshCw className="h-4 w-4 text-cyan-600" />
                 <span>Làm mới</span>
               </button>
             </div>

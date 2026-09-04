@@ -4,6 +4,8 @@ import {
   Building2,
   Package,
   PlusCircle,
+  Plus,
+  ScanLine,
   Trash2,
   Phone,
   User,
@@ -635,12 +637,12 @@ export function PurchaseOrderFormModal({
 
               {/* BẢNG HÀNG HÓA */}
               <section>
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-5 w-5 text-cyan-600" />
-                    <h4 className="font-black text-slate-900">Chi tiết hàng hóa</h4>
+                <div className="mb-3 px-3 py-2.5 rounded-xl border-2 border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-cyan-900 font-black text-xs sm:text-sm">
+                    <Package className="h-4 w-4 text-cyan-600" />
+                    <span>THÔNG TIN HÀNG HÓA NHẬP HÀNG ({form.items.length} MẶT HÀNG - TỔNG SL: {totalQuantity})</span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     {mode !== 'view' && selectedRows.length > 0 && (
                       <button
                         type="button"
@@ -648,10 +650,10 @@ export function PurchaseOrderFormModal({
                           selectedRows.forEach(id => onRemoveRow(id));
                           setSelectedRows([]);
                         }}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-600 transition hover:bg-red-100"
+                        className="inline-flex items-center gap-1.5 rounded-lg border-2 border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 transition cursor-pointer shadow-xs"
                       >
                         <Trash2 className="h-4 w-4" />
-                        Xóa ({selectedRows.length})
+                        <span>Xóa ({selectedRows.length})</span>
                       </button>
                     )}
                     {mode !== 'view' && (
@@ -659,17 +661,19 @@ export function PurchaseOrderFormModal({
                         <button
                           type="button"
                           onClick={onScannerOpen}
-                          className="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white hover:bg-slate-900 transition"
+                          className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer shadow-xs"
+                          title="Mở camera để quét mã vạch"
                         >
-                          Quét Barcode
+                          <ScanLine className="h-4 w-4 text-cyan-600" />
+                          <span>Quét Camera</span>
                         </button>
                         <button
                           type="button"
                           onClick={onAddRow}
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-700 transition hover:bg-cyan-100"
+                          className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
                         >
-                          <PlusCircle className="h-4 w-4" />
-                          Thêm dòng
+                          <Plus className="h-4 w-4" />
+                          <span>Thêm dòng mới</span>
                         </button>
                       </>
                     )}

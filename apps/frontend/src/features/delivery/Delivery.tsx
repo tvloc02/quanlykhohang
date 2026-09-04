@@ -302,7 +302,7 @@ export default function Delivery() {
       renderCreator(o.createdBy),
       o.items?.length || o.itemCount || 0,
       o.totalQuantity || 0,
-      formatDateTime(o.createdAt),
+      formatDateTime(o.scheduledDate || (o as any).orderDate || o.createdAt),
       statusConfig[o.status]?.label || o.status,
     ]);
     const csv = [header, ...rows].map((r) => r.map((cell) => `"${cell}"`).join(',')).join('\n');
@@ -340,7 +340,8 @@ export default function Delivery() {
 
       let matchesTime = true;
       if (timeFilter !== 'all') {
-        const orderDate = order.createdAt ? new Date(order.createdAt) : null;
+        const rawD = order.scheduledDate || (order as any).orderDate || order.createdAt;
+        const orderDate = rawD ? new Date(rawD) : null;
         if (!orderDate || Number.isNaN(orderDate.getTime())) {
           matchesTime = false;
         } else if (timeFilter === 'this-month') {
@@ -701,7 +702,7 @@ export default function Delivery() {
                       )}
                       {columnVis.createdAt && (
                         <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-semibold text-slate-700">
-                          {formatDateTime(order.createdAt)}
+                          {formatDateTime(order.scheduledDate || (order as any).orderDate || order.createdAt)}
                         </td>
                       )}
                       {columnVis.status && (

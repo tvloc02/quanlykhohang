@@ -40,6 +40,14 @@ export class CreateTransferOrderDto {
 
   @IsOptional()
   @IsString()
+  orderDate?: string;
+
+  @IsOptional()
+  @IsString()
+  createdAt?: string;
+
+  @IsOptional()
+  @IsString()
   dispatchDate?: string;
 
   @IsOptional()

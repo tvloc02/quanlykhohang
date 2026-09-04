@@ -125,7 +125,8 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'inventory-initial-stock', label: 'Nhập hàng tồn đầu kỳ', parentId: 'nhap-xuat' },
   { id: 'inventory-stocktake', label: 'Kiểm kho', parentId: 'nhap-xuat' },
   { id: 'outbound-sales-orders', label: 'Đơn đặt hàng', parentId: 'nhap-xuat' },
-  { id: 'inbound-purchase-orders', label: 'Đơn đặt hàng NCC', parentId: 'nhap-xuat' },
+  // Tạm thời ẩn chức năng đơn hàng nhà cung cấp
+  // { id: 'inbound-purchase-orders', label: 'Đơn đặt hàng NCC', parentId: 'nhap-xuat' },
   { id: 'documents-quotes', label: 'Báo giá', parentId: 'nhap-xuat' },
   { id: 'outbound-disposal', label: 'Xuất hủy', parentId: 'nhap-xuat' },
   { id: 'inbound-assembly', label: 'Tạo bộ/Combo', parentId: 'nhap-xuat' },
@@ -174,12 +175,7 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'customer-groups', label: 'Nhóm KH/NCC', parentId: 'danh-muc' },
   { id: 'price-lists', label: 'Bảng giá', parentId: 'danh-muc' },
 
-  // 8. Chăm sóc Khách hàng
-  { id: 'cham-soc-khach-hang', label: 'Chăm sóc Khách hàng', isHeader: true },
-  { id: 'cskh-customers', label: 'Danh sách Khách hàng', parentId: 'cham-soc-khach-hang' },
-  { id: 'cskh-suppliers', label: 'Nhà cung cấp', parentId: 'cham-soc-khach-hang' },
-
-  // 9. Hệ thống
+  // 8. Hệ thống
   { id: 'he-thong', label: 'Hệ thống', isHeader: true },
   { id: 'logout', label: 'Đăng xuất', parentId: 'he-thong' },
   { id: 'change-password', label: 'Đổi mật khẩu', parentId: 'he-thong' },

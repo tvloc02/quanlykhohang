@@ -396,15 +396,10 @@ function App() {
             </RoleRoute>
           }
         />
+        {/* Tạm thời ẩn chức năng đơn hàng nhà cung cấp */}
         <Route
           path="/inbound/purchase-orders"
-          element={
-            <RoleRoute menuId="inbound-purchase-orders">
-              <MainLayout>
-                <PurchaseOrdersPage />
-              </MainLayout>
-            </RoleRoute>
-          }
+          element={<Navigate to="/inbound/stock-in-orders" replace />}
         />
         <Route
           path="/inbound/return-requests"

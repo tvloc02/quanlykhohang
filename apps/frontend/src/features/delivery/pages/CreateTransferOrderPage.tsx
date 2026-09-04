@@ -146,33 +146,44 @@ export function getProductPrice(p?: ProductOption | any): number {
   );
 }
 
+export function isLocationInWarehouse(locCode?: string, whCode?: string): boolean {
+  if (!locCode || !whCode) return false;
+  const l = locCode.trim().toLowerCase();
+  const w = whCode.trim().toLowerCase();
+  if (l === w) return true;
+  if (l.startsWith(w + '-') || l.startsWith(w + '_') || l.startsWith(w + '/')) return true;
+  const normL = l.replace(/[^a-z0-9]/g, '');
+  const normW = w.replace(/[^a-z0-9]/g, '');
+  if (normL === normW) return true;
+  if (normW.length >= 3 && normL.startsWith(normW)) return true;
+  if (
+    (w === 'kh006' || w === 'kho thanh trì') &&
+    (l === 'kh006' || l === 'kho thanh trì' || l === 'kho-nvl' || l.startsWith('kho-nvl-'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function getProductWarehouseStock(p: ProductOption, whCode?: string): number {
   if (!p) return 0;
   const targetCode = (whCode || '').trim().toLowerCase();
 
   if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
     if (targetCode) {
-      const match = p.stockBalances.find((b) => {
-        const bCode = (b.locationCode || '').trim().toLowerCase();
-        if (bCode === targetCode) return true;
-        if (
-          (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
-          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl')
-        ) {
-          return true;
+      let sum = 0;
+      let matched = false;
+      p.stockBalances.forEach((b) => {
+        if (isLocationInWarehouse(b.locationCode, targetCode)) {
+          matched = true;
+          const qty = b.available !== undefined && b.available !== null ? Number(b.available) : Number(b.totalPhysical || 0);
+          sum += qty;
         }
-        return false;
       });
 
-      if (match) {
-        if (match.available !== undefined && match.available !== null) {
-          return Number(match.available);
-        }
-        if (match.totalPhysical !== undefined && match.totalPhysical !== null) {
-          return Number(match.totalPhysical);
-        }
+      if (matched) {
+        return sum;
       }
-
       return 0;
     }
   }
@@ -212,6 +223,14 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT, defaultSourceWh = 'KHO-TONG
 }
 
 function formatISOWithSeconds(d = new Date()): string {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function toLocalDateTimeInputString(dateInput?: string | Date | null): string {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (Number.isNaN(d.getTime())) return '';
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
@@ -301,6 +320,33 @@ export default function CreateTransferOrderPage({
     });
   };
 
+  // Hardware Barcode Scanner Auto-Detection State
+  const [isScannerConnected, setIsScannerConnected] = useState<boolean>(true);
+
+  // Auto-detect WebHID USB scanner connection
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'hid' in navigator) {
+      const checkHid = async () => {
+        try {
+          const devices = await (navigator as any).hid.getDevices();
+          setIsScannerConnected(Boolean(devices && devices.length > 0));
+        } catch (e) {}
+      };
+      checkHid();
+
+      const onConnect = () => setIsScannerConnected(true);
+      const onDisconnect = () => setIsScannerConnected(false);
+
+      (navigator as any).hid.addEventListener('connect', onConnect);
+      (navigator as any).hid.addEventListener('disconnect', onDisconnect);
+
+      return () => {
+        (navigator as any).hid.removeEventListener('connect', onConnect);
+        (navigator as any).hid.removeEventListener('disconnect', onDisconnect);
+      };
+    }
+  }, []);
+
   useEffect(() => {
     const handleShippersUpdate = () => setShippers(getStoredShippers());
     window.addEventListener('shippers-updated', handleShippersUpdate);
@@ -353,14 +399,14 @@ export default function CreateTransferOrderPage({
           sourceWarehouseCode: targetEditData.sourceWarehouse || 'KHO-TONG',
           destinationWarehouseCode: targetEditData.destinationWarehouse || 'KHO-CN-HCM',
           assignedStaffEmail: targetEditData.createdBy || currentStaffEmail,
-          orderDate: targetEditData.scheduledDate
-            ? (new Date(targetEditData.scheduledDate).toISOString().slice(0, 19))
+          orderDate: (targetEditData.scheduledDate || (targetEditData as any).orderDate || targetEditData.createdAt || targetEditData.dispatchDate)
+            ? toLocalDateTimeInputString(targetEditData.scheduledDate || (targetEditData as any).orderDate || targetEditData.createdAt || targetEditData.dispatchDate)
             : formatISOWithSeconds(),
-          dispatchDate: targetEditData.dispatchDate
-            ? (new Date(targetEditData.dispatchDate).toISOString().slice(0, 19))
-            : (targetEditData.scheduledDate ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19) : formatISOWithSeconds()),
+          dispatchDate: (targetEditData.dispatchDate || targetEditData.scheduledDate || targetEditData.createdAt)
+            ? toLocalDateTimeInputString(targetEditData.dispatchDate || targetEditData.scheduledDate || targetEditData.createdAt)
+            : formatISOWithSeconds(),
           receiveDate: targetEditData.receiveDate
-            ? (new Date(targetEditData.receiveDate).toISOString().slice(0, 19))
+            ? toLocalDateTimeInputString(targetEditData.receiveDate)
             : formatISOWithSeconds(new Date(Date.now() + 86400000)),
           driverName: targetEditData.driverName || '',
           driverPhone: targetEditData.driverPhone || '',
@@ -462,16 +508,14 @@ export default function CreateTransferOrderPage({
       sourceWarehouseCode: targetEditData.sourceWarehouse || 'KH006',
       destinationWarehouseCode: targetEditData.destinationWarehouse || 'KH002',
       assignedStaffEmail: targetEditData.createdBy || currentStaffEmail,
-      orderDate: targetEditData.scheduledDate
-        ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19)
+      orderDate: (targetEditData.scheduledDate || (targetEditData as any).orderDate || targetEditData.createdAt || targetEditData.dispatchDate)
+        ? toLocalDateTimeInputString(targetEditData.scheduledDate || (targetEditData as any).orderDate || targetEditData.createdAt || targetEditData.dispatchDate)
         : formatISOWithSeconds(),
-      dispatchDate: targetEditData.dispatchDate
-        ? new Date(targetEditData.dispatchDate).toISOString().slice(0, 19)
-        : targetEditData.scheduledDate
-        ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19)
+      dispatchDate: (targetEditData.dispatchDate || targetEditData.scheduledDate || targetEditData.createdAt)
+        ? toLocalDateTimeInputString(targetEditData.dispatchDate || targetEditData.scheduledDate || targetEditData.createdAt)
         : formatISOWithSeconds(),
       receiveDate: targetEditData.receiveDate
-        ? new Date(targetEditData.receiveDate).toISOString().slice(0, 19)
+        ? toLocalDateTimeInputString(targetEditData.receiveDate)
         : formatISOWithSeconds(new Date(Date.now() + 86400000)),
       driverName: targetEditData.driverName || '',
       driverPhone: targetEditData.driverPhone || '',
@@ -483,6 +527,47 @@ export default function CreateTransferOrderPage({
 
     setTabs([editTab]);
     setActiveTabId(editTab.tabId);
+  }, [targetEditData?.id]);
+
+  // Load fresh order information directly from server database when editing
+  useEffect(() => {
+    if (!targetEditData?.id) return;
+    let isCancelled = false;
+
+    deliveryApi.getTransferOrder(targetEditData.id)
+      .then((serverOrder) => {
+        if (isCancelled || !serverOrder) return;
+        const sOrderDate = serverOrder.scheduledDate || (serverOrder as any).orderDate || serverOrder.createdAt || serverOrder.dispatchDate;
+        const sDispatchDate = serverOrder.dispatchDate || serverOrder.scheduledDate || serverOrder.createdAt;
+        const sReceiveDate = serverOrder.receiveDate;
+
+        setTabs((prevTabs) =>
+          prevTabs.map((tab) => {
+            if (tab.id !== targetEditData.id) return tab;
+            return {
+              ...tab,
+              orderDate: sOrderDate ? toLocalDateTimeInputString(sOrderDate) : tab.orderDate,
+              dispatchDate: sDispatchDate ? toLocalDateTimeInputString(sDispatchDate) : tab.dispatchDate,
+              receiveDate: sReceiveDate ? toLocalDateTimeInputString(sReceiveDate) : tab.receiveDate,
+              sourceWarehouseCode: serverOrder.sourceWarehouse || tab.sourceWarehouseCode,
+              destinationWarehouseCode: serverOrder.destinationWarehouse || tab.destinationWarehouseCode,
+              assignedStaffEmail: serverOrder.createdBy || tab.assignedStaffEmail,
+              driverName: serverOrder.driverName || tab.driverName,
+              driverPhone: serverOrder.driverPhone || tab.driverPhone,
+              vehiclePlate: serverOrder.vehiclePlate || tab.vehiclePlate,
+              generalNote: serverOrder.note || tab.generalNote,
+              status: serverOrder.status || tab.status,
+            };
+          })
+        );
+      })
+      .catch((err) => {
+        console.warn('Không thể đồng bộ chi tiết phiếu chuyển từ server:', err);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [targetEditData?.id]);
 
   // Sync draft tabs to sessionStorage (when not in edit mode)
@@ -811,9 +896,11 @@ export default function CreateTransferOrderPage({
         sourceWarehouseCode: sourceWh,
         destinationWarehouse: destWh,
         destinationWarehouseCode: destWh,
-        scheduledDate: activeTab.dispatchDate || activeTab.orderDate || new Date().toISOString(),
-        dispatchDate: activeTab.dispatchDate || activeTab.orderDate || new Date().toISOString(),
-        receiveDate: activeTab.receiveDate || new Date(Date.now() + 86400000).toISOString(),
+        scheduledDate: activeTab.orderDate ? new Date(activeTab.orderDate).toISOString() : new Date().toISOString(),
+        orderDate: activeTab.orderDate ? new Date(activeTab.orderDate).toISOString() : new Date().toISOString(),
+        createdAt: activeTab.orderDate ? new Date(activeTab.orderDate).toISOString() : undefined,
+        dispatchDate: activeTab.dispatchDate ? new Date(activeTab.dispatchDate).toISOString() : (activeTab.orderDate ? new Date(activeTab.orderDate).toISOString() : new Date().toISOString()),
+        receiveDate: activeTab.receiveDate ? new Date(activeTab.receiveDate).toISOString() : new Date(Date.now() + 86400000).toISOString(),
         driverName: activeTab.driverName ? activeTab.driverName.trim() : undefined,
         driverPhone: activeTab.driverPhone ? activeTab.driverPhone.trim() : undefined,
         vehiclePlate: activeTab.vehiclePlate ? activeTab.vehiclePlate.trim() : undefined,
@@ -896,37 +983,26 @@ export default function CreateTransferOrderPage({
         </div>
       )}
 
-      {/* Top Header Strip with Action Buttons on the Right */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap">
-        {/* Title Pill Badge */}
-        <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
-          <Truck className="h-5 w-5 text-cyan-100" />
-          <h1 className="text-base font-black tracking-tight uppercase">
-            {isReceiveMode ? 'TẠO PHIẾU NHẬP CHUYỂN CHI NHÁNH' : 'TẠO PHIẾU XUẤT CHUYỂN CHI NHÁNH'}
-          </h1>
-        </div>
-
-        {/* Action Buttons at Top Right */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Transfer Order Code Pill */}
-          <div className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm">
-            <FileText className="h-3.5 w-3.5 text-cyan-100" />
-            <span>{activeTab?.transferNo || 'PHIẾU MỚI'}</span>
+      {/* Top Header Strip with Action Buttons on the Right (Hidden in Fullscreen) */}
+      {!isFullscreen && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap flex-shrink-0">
+          {/* Title Pill Badge */}
+          <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
+            <Truck className="h-5 w-5 text-cyan-100" />
+            <h1 className="text-base font-black tracking-tight uppercase">
+              {isReceiveMode ? 'TẠO PHIẾU NHẬP CHUYỂN CHI NHÁNH' : 'TẠO PHIẾU XUẤT CHUYỂN CHI NHÁNH'}
+            </h1>
           </div>
 
-          {!isReadOnly && (
-            <>
-              {/* Barcode Scanner Button */}
-              <button
-                type="button"
-                onClick={() => setShowScannerModal(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 px-3.5 py-1.5 text-xs font-bold text-cyan-700 transition shadow-xs cursor-pointer"
-              >
-                <ScanLine className="h-4 w-4 text-cyan-600" />
-                <span>Quét mã vạch</span>
-              </button>
+          {/* Action Buttons at Top Right */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Transfer Order Code Pill */}
+            <div className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm">
+              <FileText className="h-3.5 w-3.5 text-cyan-100" />
+              <span>{activeTab?.transferNo || 'PHIẾU MỚI'}</span>
+            </div>
 
-              {/* Reset / Clear Form Button */}
+            {!isReadOnly && (
               <button
                 type="button"
                 onClick={handleClearCurrentTab}
@@ -936,36 +1012,25 @@ export default function CreateTransferOrderPage({
                 <RotateCcw className="h-4 w-4 text-amber-600" />
                 <span>Làm mới phiếu</span>
               </button>
-            </>
-          )}
+            )}
 
-          {/* Fullscreen Toggle */}
-          <button
-            type="button"
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 px-3.5 py-1.5 text-xs font-bold text-cyan-700 transition shadow-xs cursor-pointer"
-            title={isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}
-          >
-            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            <span>{isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}</span>
-          </button>
-
-          {/* Back button */}
-          <button
-            type="button"
-            onClick={handleBackNavigation}
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 px-4 py-1.5 text-xs font-bold text-cyan-700 transition shadow-xs cursor-pointer"
-          >
-            <ArrowLeft size={16} />
-            <span>Quay lại</span>
-          </button>
+            {/* Back button */}
+            <button
+              type="button"
+              onClick={handleBackNavigation}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 px-4 py-1.5 text-xs font-bold text-cyan-700 transition shadow-xs cursor-pointer"
+            >
+              <ArrowLeft size={16} />
+              <span>Quay lại</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Top Information Control Card (2 Rows Layout - Cyan Theme) */}
-      <div className="rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md space-y-3.5">
+      <div className="rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md space-y-3.5 flex-shrink-0">
         {/* Row 1: Thông tin Lệnh & Kho xuất nhập */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
           {/* Mã HĐ / Lệnh */}
           <div>
             <label className="mb-1 block text-xs font-bold text-slate-700">MÃ PHIẾU / LỆNH</label>
@@ -976,6 +1041,22 @@ export default function CreateTransferOrderPage({
               onChange={(e) => updateActiveTab((t) => ({ ...t, transferNo: e.target.value }))}
               placeholder="Tạo tự động"
               className="h-10 w-full rounded-xl border-2 border-cyan-200 bg-cyan-50/50 px-3 text-xs font-black text-cyan-900 outline-none focus:border-cyan-500 uppercase disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
+            />
+          </div>
+
+          {/* Ngày Lập Phiếu (Lấy chuẩn từ server CSDL) */}
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
+              <Calendar className="h-3.5 w-3.5 text-cyan-600" />
+              <span>NGÀY LẬP PHIẾU</span>
+            </label>
+            <input
+              type="datetime-local"
+              step="1"
+              disabled={isReadOnly}
+              value={activeTab?.orderDate ? (activeTab.orderDate.length > 16 ? activeTab.orderDate.slice(0, 16) : activeTab.orderDate) : ''}
+              onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
+              className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-cyan-500 disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
             />
           </div>
 
@@ -1070,7 +1151,7 @@ export default function CreateTransferOrderPage({
               step="1"
               disabled={isReadOnly}
               value={activeTab?.dispatchDate ? (activeTab.dispatchDate.length > 16 ? activeTab.dispatchDate.slice(0, 16) : activeTab.dispatchDate) : ''}
-              onChange={(e) => updateActiveTab((t) => ({ ...t, dispatchDate: e.target.value, orderDate: e.target.value }))}
+              onChange={(e) => updateActiveTab((t) => ({ ...t, dispatchDate: e.target.value }))}
               className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-cyan-500 disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
             />
           </div>
@@ -1177,28 +1258,70 @@ export default function CreateTransferOrderPage({
         </div>
       </div>
 
-      {/* 2-Column Main Section: Left Table (9 Cols) + Right Summary Panel (3 Cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      {/* 2-Column Main Section: Left Table + Right Summary Panel */}
+      <div className={`flex flex-col lg:flex-row gap-3 items-stretch ${isFullscreen ? 'flex-1 min-h-0' : 'items-start'}`}>
         {/* LEFT COLUMN: Product Table */}
-        <div className="lg:col-span-9 flex flex-col rounded-2xl border-2 border-cyan-200 bg-white shadow-sm overflow-hidden">
-          {/* Table Header Strip */}
-          <div className="px-4 py-3 border-b border-cyan-200 bg-cyan-50/80 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-cyan-950 font-black text-xs uppercase tracking-wide">
-              <Truck className="h-4.5 w-4.5 text-cyan-600" />
+        <div className={`flex-1 min-w-0 flex flex-col ${isFullscreen ? 'h-full' : ''}`}>
+          <div className={`flex flex-col rounded-2xl border-2 border-cyan-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullscreen ? 'flex-1 h-full' : ''}`}>
+          {/* Table Header Controls */}
+          <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2 text-cyan-900 font-black text-xs sm:text-sm">
+              <Package className="h-4 w-4 text-cyan-600" />
               <span>
-                {isReceiveMode ? 'THÔNG TIN HÀNG HÓA NHẬP CHUYỂN' : 'THÔNG TIN HÀNG HÓA XUẤT CHUYỂN'} ({displayDetails.length} DÒNG - TỔNG SL: {totalQty})
+                {isReceiveMode ? 'THÔNG TIN HÀNG HÓA NHẬP CHUYỂN' : 'THÔNG TIN HÀNG HÓA XUẤT CHUYỂN'} ({activeValidItems.length} MẶT HÀNG - TỔNG SL: {totalQty})
               </span>
             </div>
-            {!isReadOnly && (
+
+            <div className="flex items-center gap-2">
+              {!isReadOnly && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowScannerModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-600 bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer shadow-xs"
+                    title="Mở camera để quét mã vạch"
+                  >
+                    <ScanLine className="h-4 w-4 text-cyan-600" />
+                    <span>Quét Camera</span>
+                  </button>
+
+                  {/* Ô Tự động Phát hiện Trạng thái Máy Quét */}
+                  <div
+                    className={`inline-flex items-center px-3.5 py-1.5 rounded-lg border-2 text-xs font-extrabold shadow-2xs select-none ${
+                      isScannerConnected
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-amber-400 bg-amber-50 text-amber-900'
+                    }`}
+                    title={
+                      isScannerConnected
+                        ? 'Máy quét mã vạch đã kết nối & sẵn sàng quét'
+                        : 'Máy quét chưa kết nối'
+                    }
+                  >
+                    <span>Máy quét: {isScannerConnected ? 'Đã kết nối' : 'Chưa kết nối'}</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddBlankRow}
+                    className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-extrabold text-white shadow-sm hover:bg-cyan-700 transition cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Thêm dòng mới</span>
+                  </button>
+                </>
+              )}
+
               <button
                 type="button"
-                onClick={handleAddBlankRow}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 px-3.5 py-1.5 text-xs font-black text-white shadow-sm transition cursor-pointer"
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                className="inline-flex items-center gap-1 rounded-lg border-2 border-cyan-500 bg-cyan-50 px-2.5 py-1.5 text-xs font-bold text-cyan-800 hover:bg-cyan-100 transition cursor-pointer shadow-xs"
+                title={isFullscreen ? 'Thu nhỏ cửa sổ' : 'Phóng to toàn màn hình'}
               >
-                <Plus className="h-4 w-4" />
-                <span>Thêm dòng mới</span>
+                {isFullscreen ? <Minimize2 className="h-4 w-4 text-cyan-700" /> : <Maximize2 className="h-4 w-4 text-cyan-700" />}
+                <span>{isFullscreen ? 'Thu nhỏ' : 'Phóng to'}</span>
               </button>
-            )}
+            </div>
           </div>
 
           {/* Grid Product Table (Rộng rãi, xóa cột SKU & Kho xuất) */}
@@ -1272,6 +1395,9 @@ export default function CreateTransferOrderPage({
                               ) : (
                                 getFilteredProductsForRow(row.productName).map((p) => {
                                   const stockInSource = getProductWarehouseStock(p, activeTab?.sourceWarehouseCode);
+                                  const totalSys = Array.isArray(p.stockBalances) && p.stockBalances.length > 0
+                                    ? p.stockBalances.reduce((s, b) => s + (Number(b.available) || Number(b.totalPhysical) || 0), 0)
+                                    : Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0);
                                   return (
                                     <div
                                       key={p.id}
@@ -1290,9 +1416,16 @@ export default function CreateTransferOrderPage({
                                     >
                                       <span className="w-1/3 font-bold text-cyan-800">{p.internalSku || 'SKU---'}</span>
                                       <span className="w-1/3 font-semibold text-slate-800 truncate pr-1">{p.name}</span>
-                                      <span className="w-1/3 text-right text-cyan-900 font-black font-mono">
-                                        {stockInSource.toLocaleString('vi-VN')} {p.unit || 'Cái'}
-                                      </span>
+                                      <div className="w-1/3 text-right">
+                                        <span className={`font-black font-mono ${stockInSource > 0 ? 'text-emerald-700 font-bold' : 'text-slate-400'}`}>
+                                          {stockInSource.toLocaleString('vi-VN')} {p.unit || 'Cái'}
+                                        </span>
+                                        {stockInSource === 0 && totalSys > 0 && (
+                                          <span className="block text-[10px] text-amber-600 font-semibold">
+                                            (Kho khác: {totalSys.toLocaleString('vi-VN')})
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
                                   );
                                 })
@@ -1487,108 +1620,111 @@ export default function CreateTransferOrderPage({
               </span>
             </div>
           </div>
+          </div>
         </div>
 
-        {/* RIGHT COLUMN (3/12 width): SUMMARY CARD & ACTIONS */}
-        <div className="lg:col-span-3 rounded-2xl border-2 border-cyan-200 bg-white p-4 shadow-sm space-y-4 flex flex-col justify-between h-full">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 border-b border-cyan-200 pb-2.5 text-cyan-950 font-black text-xs uppercase tracking-wide">
-              <Package className="h-4.5 w-4.5 text-cyan-600" />
-              <span>{isReceiveMode ? 'THÔNG TIN NHẬP CHUYỂN NỘI BỘ' : 'THÔNG TIN ĐIỀU CHUYỂN NỘI BỘ'}</span>
-            </div>
+        {/* RIGHT COLUMN: SUMMARY CARD & ACTIONS */}
+        <div className={`w-full lg:w-80 xl:w-96 flex-shrink-0 flex flex-col ${isFullscreen ? 'h-full' : ''}`}>
+          <div className={`rounded-2xl border-2 border-cyan-200 bg-white p-4 shadow-sm flex flex-col justify-between ${isFullscreen ? 'h-full overflow-y-auto custom-scrollbar' : 'space-y-4'}`}>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 border-b border-cyan-200 pb-2.5 text-cyan-950 font-black text-xs uppercase tracking-wide">
+                <Package className="h-4.5 w-4.5 text-cyan-600" />
+                <span>{isReceiveMode ? 'THÔNG TIN NHẬP CHUYỂN NỘI BỘ' : 'THÔNG TIN ĐIỀU CHUYỂN NỘI BỘ'}</span>
+              </div>
 
-            {/* Quick Route Overview - Stacked Button Pill Style */}
-            <div className="rounded-2xl border-2 border-cyan-200 bg-cyan-50/40 p-3.5 space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">KHO XUẤT HÀNG (KHO NGUỒN)</label>
-                <div className="w-full py-2 px-3 rounded-xl border-2 border-cyan-400 bg-white text-cyan-950 font-black text-xs text-center shadow-xs">
-                  [{activeTab?.sourceWarehouseCode}] {warehouses.find(w => w.code === activeTab?.sourceWarehouseCode)?.name || 'Kho Tổng'}
+              {/* Quick Route Overview - Stacked Button Pill Style */}
+              <div className="rounded-2xl border-2 border-cyan-200 bg-cyan-50/40 p-3.5 space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">KHO XUẤT HÀNG (KHO NGUỒN)</label>
+                  <div className="w-full py-2 px-3 rounded-xl border-2 border-cyan-400 bg-white text-cyan-950 font-black text-xs text-center shadow-xs">
+                    [{activeTab?.sourceWarehouseCode}] {warehouses.find(w => w.code === activeTab?.sourceWarehouseCode)?.name || 'Kho Tổng'}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">KHO NHẬP (CHI NHÁNH NHẬN)</label>
+                  <div className="w-full py-2 px-3 rounded-xl border-2 border-cyan-400 bg-white text-cyan-950 font-black text-xs text-center shadow-xs">
+                    [{activeTab?.destinationWarehouseCode}] {warehouses.find(w => w.code === activeTab?.destinationWarehouseCode)?.name || 'Chi Nhánh Nhận'}
+                  </div>
                 </div>
               </div>
+
+              {/* Ghi chú điều chuyển */}
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">KHO NHẬP (CHI NHÁNH NHẬN)</label>
-                <div className="w-full py-2 px-3 rounded-xl border-2 border-cyan-400 bg-white text-cyan-950 font-black text-xs text-center shadow-xs">
-                  [{activeTab?.destinationWarehouseCode}] {warehouses.find(w => w.code === activeTab?.destinationWarehouseCode)?.name || 'Chi Nhánh Nhận'}
+                <label className="mb-1.5 block text-xs font-bold text-slate-700">Lý do / Ghi chú điều chuyển</label>
+                <textarea
+                  rows={3}
+                  disabled={isReadOnly}
+                  value={activeTab?.generalNote || ''}
+                  onChange={(e) => updateActiveTab((t) => ({ ...t, generalNote: e.target.value }))}
+                  placeholder="Nhập lý do điều chuyển nội bộ (VD: Điều chuyển cân bằng tồn kho)..."
+                  className="w-full p-3 rounded-xl border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
+                />
+              </div>
+
+              {/* Highlight Total Card - Cyan & White Theme */}
+              <div className="bg-cyan-50 border-2 border-cyan-300 rounded-2xl p-4 shadow-sm space-y-2.5 text-xs">
+                <div className="flex items-center justify-between text-slate-700 font-bold">
+                  <span>{isReceiveMode ? 'Số mặt hàng nhập:' : 'Số mặt hàng xuất:'}</span>
+                  <span className="font-black text-cyan-950 text-sm">{activeValidItems.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-700 font-bold">
+                  <span>{isReceiveMode ? 'Tổng số lượng nhập:' : 'Tổng số lượng xuất:'}</span>
+                  <span className="font-black text-cyan-950 text-sm">{totalQty}</span>
+                </div>
+                <div className="flex items-center justify-between pt-2.5 border-t border-cyan-200">
+                  <span className="font-black text-cyan-950 text-xs uppercase tracking-wide">TỔNG GIÁ TRỊ:</span>
+                  <span className="font-black text-cyan-700 text-lg">{formatMoney(grandTotal)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Ghi chú điều chuyển */}
-            <div>
-              <label className="mb-1.5 block text-xs font-bold text-slate-700">Lý do / Ghi chú điều chuyển</label>
-              <textarea
-                rows={3}
-                disabled={isReadOnly}
-                value={activeTab?.generalNote || ''}
-                onChange={(e) => updateActiveTab((t) => ({ ...t, generalNote: e.target.value }))}
-                placeholder="Nhập lý do điều chuyển nội bộ (VD: Điều chuyển cân bằng tồn kho)..."
-                className="w-full p-3 rounded-xl border-2 border-slate-200 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 resize-none text-xs disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200"
-              />
-            </div>
-
-            {/* Highlight Total Card - Cyan & White Theme */}
-            <div className="bg-cyan-50 border-2 border-cyan-300 rounded-2xl p-4 shadow-sm space-y-2.5 text-xs">
-              <div className="flex items-center justify-between text-slate-700 font-bold">
-                <span>{isReceiveMode ? 'Số mặt hàng nhập:' : 'Số mặt hàng xuất:'}</span>
-                <span className="font-black text-cyan-950 text-sm">{activeValidItems.length}</span>
-              </div>
-              <div className="flex items-center justify-between text-slate-700 font-bold">
-                <span>{isReceiveMode ? 'Tổng số lượng nhập:' : 'Tổng số lượng xuất:'}</span>
-                <span className="font-black text-cyan-950 text-sm">{totalQty}</span>
-              </div>
-              <div className="flex items-center justify-between pt-2.5 border-t border-cyan-200">
-                <span className="font-black text-cyan-950 text-xs uppercase tracking-wide">TỔNG GIÁ TRỊ:</span>
-                <span className="font-black text-cyan-700 text-lg">{formatMoney(grandTotal)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="pt-3 border-t border-slate-200 space-y-2.5">
-            {isReadOnly ? (
-              <button
-                type="button"
-                onClick={handleBackNavigation}
-                className="w-full py-3 px-4 rounded-xl border-2 border-cyan-600 bg-cyan-600 hover:bg-cyan-700 text-white font-black uppercase tracking-wide shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer active:scale-95"
-              >
-                <ArrowLeft className="h-4.5 w-4.5" />
-                <span>QUAY LẠI DANH SÁCH (CHỈ XEM)</span>
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => handleSaveTransfer(isReceiveMode ? 'DELIVERED' : 'APPROVED')}
-                  className="w-full py-3 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-black uppercase tracking-wide shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50 active:scale-95"
-                >
-                  <Save className="h-4.5 w-4.5 text-cyan-100" />
-                  <span>
-                    {activeTab?.id
-                      ? (isReceiveMode ? 'Xác nhận nhập kho & Lưu ô kệ' : 'Lưu thay đổi phiếu')
-                      : (isReceiveMode ? 'LƯU PHIẾU NHẬP CHUYỂN KHO' : 'LƯU PHIẾU CHUYỂN')}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => handleSaveTransfer('DRAFT')}
-                  className="w-full py-2.5 px-4 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 text-cyan-900 font-extrabold shadow-2xs transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4 text-cyan-600" />
-                  <span>Lưu Nháp Phiếu</span>
-                </button>
-
+            {/* Action Buttons */}
+            <div className="pt-3 border-t border-slate-200 space-y-2.5">
+              {isReadOnly ? (
                 <button
                   type="button"
                   onClick={handleBackNavigation}
-                  className="w-full py-2.5 px-4 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
+                  className="w-full py-3 px-4 rounded-xl border-2 border-cyan-600 bg-cyan-600 hover:bg-cyan-700 text-white font-black uppercase tracking-wide shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer active:scale-95"
                 >
-                  Quay lại danh sách
+                  <ArrowLeft className="h-4.5 w-4.5" />
+                  <span>QUAY LẠI DANH SÁCH (CHỈ XEM)</span>
                 </button>
-              </>
-            )}
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => handleSaveTransfer(isReceiveMode ? 'DELIVERED' : 'APPROVED')}
+                    className="w-full py-3 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-black uppercase tracking-wide shadow-md transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50 active:scale-95"
+                  >
+                    <Save className="h-4.5 w-4.5 text-cyan-100" />
+                    <span>
+                      {activeTab?.id
+                        ? (isReceiveMode ? 'Xác nhận nhập kho & Lưu ô kệ' : 'Lưu thay đổi phiếu')
+                        : (isReceiveMode ? 'LƯU PHIẾU NHẬP CHUYỂN KHO' : 'LƯU PHIẾU CHUYỂN')}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => handleSaveTransfer('DRAFT')}
+                    className="w-full py-2.5 px-4 rounded-xl border-2 border-cyan-500 bg-white hover:bg-cyan-50 text-cyan-900 font-extrabold shadow-2xs transition flex items-center justify-center gap-2 text-xs cursor-pointer disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4 text-cyan-600" />
+                    <span>Lưu Nháp Phiếu</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleBackNavigation}
+                    className="w-full py-2.5 px-4 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
+                  >
+                    Quay lại danh sách
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

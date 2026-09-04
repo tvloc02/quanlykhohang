@@ -991,7 +991,11 @@ export default function WarehouseManagement() {
                   );
 
                   const totalRacks = w.subWarehouses?.reduce((acc, z) => acc + (z.racks?.length || z.racksCount || 0), 0) || 0;
-                  const occupancy = w.occupancyRate ?? 0;
+                  const customBinsList = w.subWarehouses?.flatMap((z) => z.racks?.flatMap((r) => Object.values(r.customBins || {})) || []) || [];
+                  const avgOccupancy = customBinsList.length > 0
+                    ? Math.round(customBinsList.reduce((sum: number, b: any) => sum + (Number(b.occupancyPct) || 0), 0) / customBinsList.length)
+                    : 0;
+                  const occupancy = (w.occupancyRate !== undefined && w.occupancyRate > 0) ? w.occupancyRate : avgOccupancy;
 
                   return (
                     <tr key={w.id} className={`group border-b border-slate-200 transition ${w.isFrozen ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-cyan-50/40'}`}>

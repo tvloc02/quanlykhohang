@@ -24,6 +24,7 @@ export type TransferOrder = {
   requestNumber?: string;
   sourceWarehouse: string;
   destinationWarehouse: string;
+  orderDate?: string | null;
   scheduledDate?: string | null;
   dispatchDate?: string | null;
   receiveDate?: string | null;
@@ -46,9 +47,11 @@ export type CreateTransferOrderInput = {
   requestNumber?: string;
   sourceWarehouse: string;
   destinationWarehouse: string;
+  orderDate?: string;
   scheduledDate?: string;
   dispatchDate?: string;
   receiveDate?: string;
+  createdAt?: string;
   driverName?: string;
   driverPhone?: string;
   vehiclePlate?: string;
@@ -77,6 +80,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const deliveryApi = {
   listTransferOrders: () => requestJson<TransferOrder[]>('/delivery/transfer-orders'),
+  getTransferOrder: (id: string) => requestJson<TransferOrder>(`/delivery/transfer-orders/${id}`),
   createTransferOrder: (payload: CreateTransferOrderInput) =>
     requestJson<TransferOrder>('/delivery/transfer-orders', {
       method: 'POST',

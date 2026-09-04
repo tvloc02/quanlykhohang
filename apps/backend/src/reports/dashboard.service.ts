@@ -67,6 +67,7 @@ export class DashboardService {
       outboundStatusRows,
       openPickingTasks,
       barcodeMappedProducts,
+      totalWarehouses,
     ] = await Promise.all([
       this.userRepo.count(),
       this.roleRepo.count(),
@@ -98,6 +99,7 @@ export class DashboardService {
         .where('product.supplierBarcode IS NOT NULL')
         .andWhere("product.supplierBarcode != ''")
         .getCount(),
+      this.warehouseRepo.count(),
     ]);
 
     const inboundByStatus = this.toStatusMap(inboundStatusRows);
@@ -122,6 +124,7 @@ export class DashboardService {
         totalPhysical: Number(stockTotals?.totalPhysical || 0),
         allocated: Number(stockTotals?.allocated || 0),
         available: Number(stockTotals?.available || 0),
+        warehouses: totalWarehouses,
         locations: Number(totalLocations?.count || 0),
         lowStockItems,
       },

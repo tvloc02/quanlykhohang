@@ -117,7 +117,8 @@ const menuItems: MenuItem[] = [
       { id: 'inventory-initial-stock', icon: PlusCircle, label: 'Nhập hàng tồn đầu kỳ', path: '/inventory/initial-stock' },
       { id: 'inventory-stocktake', icon: FileCheck, label: 'Kiểm kho', path: '/inventory/stocktake' },
       { id: 'outbound-sales-orders', icon: ShoppingCart, label: 'Đơn đặt hàng', path: '/outbound/sales-orders' },
-      { id: 'inbound-purchase-orders', icon: PackageCheck, label: 'Đơn đặt hàng NCC', path: '/inbound/purchase-orders' },
+      // Tạm thời ẩn chức năng đơn hàng nhà cung cấp
+      // { id: 'inbound-purchase-orders', icon: PackageCheck, label: 'Đơn đặt hàng NCC', path: '/inbound/purchase-orders' },
       { id: 'outbound-disposal', icon: FileX, label: 'Xuất hủy', path: '/outbound/disposal' },
       { id: 'inbound-assembly', icon: LinkIcon, label: 'Tạo bộ/Combo', path: '/inbound/assembly' },
     ],
@@ -192,19 +193,7 @@ const menuItems: MenuItem[] = [
       { id: 'bank-accounts', icon: Landmark, label: 'Tài khoản Ngân hàng|Ví TM', path: '/bank-accounts' },
     ],
   },
-  // 8. Chăm sóc Khách hàng
-  {
-    id: 'cham-soc-khach-hang',
-    icon: PhoneCall,
-    label: 'Chăm sóc Khách hàng',
-    path: '/customers',
-    allowedRoles: ['admin', 'manager', 'staff'],
-    children: [
-      { id: 'cskh-customers', icon: UserPlus, label: 'Danh sách Khách hàng', path: '/customers' },
-      { id: 'cskh-suppliers', icon: Contact, label: 'Nhà cung cấp', path: '/suppliers' },
-    ],
-  },
-  // 9. Hệ thống
+  // 8. Hệ thống
   {
     id: 'he-thong',
     icon: Settings,

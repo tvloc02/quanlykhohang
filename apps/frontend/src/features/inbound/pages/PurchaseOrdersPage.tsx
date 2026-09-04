@@ -167,7 +167,7 @@ function authHeaders() {
   };
 }
 
-function makeRow(warehouseCode = 'KHO-NVL'): FormLine {
+function makeRow(warehouseCode = 'KHO-TONG'): FormLine {
   return {
     rowId: `${Date.now()}-${Math.random()}`,
     productId: '',
@@ -604,6 +604,10 @@ function PurchaseOrdersPageContent() {
           newItems[existingIndex].unitPrice = defaultPrice;
         }
       } else {
+        const productWhCode = product.stockBalances && product.stockBalances.length > 0 && product.stockBalances[0].locationCode
+          ? product.stockBalances[0].locationCode.split('-')[0]
+          : (current.warehouseCode || 'KHO-TONG');
+
         // 2. Nếu chưa có, nếu dòng cuối cùng đang trống (chưa chọn sản phẩm), thì ghi đè lên dòng đó
         const lastIndex = newItems.length - 1;
         if (lastIndex >= 0 && !newItems[lastIndex].productId) {
@@ -612,7 +616,7 @@ function PurchaseOrdersPageContent() {
             productId: product.id,
             expectedQty: qty.toString(),
             unitPrice: defaultPrice,
-            warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : current.warehouseCode || 'KHO-NVL',
+            warehouseCode: current.warehouseCode || productWhCode,
           };
         } else {
           // 3. Thêm dòng mới
@@ -622,7 +626,7 @@ function PurchaseOrdersPageContent() {
             expectedQty: qty.toString(),
             receivedQty: '0',
             unitPrice: defaultPrice,
-            warehouseCode: product.stockBalances?.length > 0 ? product.stockBalances[0].locationCode : current.warehouseCode || 'KHO-NVL',
+            warehouseCode: current.warehouseCode || productWhCode,
           });
         }
       }
@@ -937,13 +941,13 @@ function PurchaseOrdersPageContent() {
               id: detail.id,
               rowId: `${detail.id}-${Date.now()}`,
               productId: detail.product?.id || '',
-              warehouseCode: detail.warehouseCode || 'KHO-NVL',
+              warehouseCode: detail.warehouseCode || 'KHO-TONG',
               expectedQty: String(detail.expectedQty || 0),
               receivedQty: String(detail.receivedQty || 0),
               unitPrice: String(detail.unitPrice || 0),
               supplierPrice: detail.supplierPrice ? String(detail.supplierPrice) : undefined,
             }))
-            : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
+            : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-TONG')],
         creatorName: (full as any).creatorName || '',
         creatorPhone: (full as any).creatorPhone || '',
         warehouseCode: (full as any).warehouseCode || accessibleWarehouses[0]?.code || '',
@@ -1003,13 +1007,13 @@ function PurchaseOrdersPageContent() {
               id: detail.id,
               rowId: `${detail.id}-${Date.now()}`,
               productId: detail.product?.id || '',
-              warehouseCode: detail.warehouseCode || 'KHO-NVL',
+              warehouseCode: detail.warehouseCode || 'KHO-TONG',
               expectedQty: String(detail.expectedQty || 0),
               receivedQty: String(detail.receivedQty || 0),
               unitPrice: String(detail.unitPrice || 0),
               supplierPrice: detail.supplierPrice ? String(detail.supplierPrice) : undefined,
             }))
-            : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-NVL')],
+            : [makeRow((full as any).warehouseCode || accessibleWarehouses[0]?.code || 'KHO-TONG')],
         creatorName: (full as any).creatorName || '',
         creatorPhone: (full as any).creatorPhone || '',
         warehouseCode: (full as any).warehouseCode || accessibleWarehouses[0]?.code || '',
