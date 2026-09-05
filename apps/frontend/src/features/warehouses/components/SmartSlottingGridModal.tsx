@@ -1152,14 +1152,38 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         Object.values(newMap).forEach((bList) => {
           bList.forEach((b) => {
             if (normalizeBinKey(b) === normTarget || b.startsWith(cleanBinCode)) {
-              const m = b.match(/\((\d+)%\)/);
+              const m = b.match(/\((\d+(?:\.\d+)?)%\)/);
               if (m) totalPctForBin += Number(m[1]);
               else totalPctForBin += 100;
             }
           });
         });
 
-        updateSubWarehousesTopology(cleanBinCode, shortCode, totalPctForBin, notes || `Đã chứa: ${totalPctForBin}%`);
+        // Determine target topology occupancy percentage
+        let targetTopologyPct = totalPctForBin;
+        if (notes && notes.startsWith('REMAINING:')) {
+          const rem = parseFloat(notes.replace('REMAINING:', ''));
+          if (!isNaN(rem)) {
+            targetTopologyPct = rem;
+          }
+        } else if (mode === 'OUTBOUND_TRANSFER' || mode === 'STOCKTAKE') {
+          let initialBinOccupancy = 100;
+          (dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || []).forEach((sub: any) => {
+            (sub.racks || []).forEach((rk: any) => {
+              const cb = rk.customBins?.[cleanBinCode] || rk.customBins?.[shortCode];
+              if (cb && cb.occupancyPct !== undefined) {
+                initialBinOccupancy = cb.occupancyPct;
+              }
+            });
+          });
+          targetTopologyPct = Math.max(0, Number((initialBinOccupancy - totalPctForBin).toFixed(1)));
+        }
+
+        const noteText = notes || (mode === 'OUTBOUND_TRANSFER' || mode === 'STOCKTAKE'
+          ? `Còn chứa: ${targetTopologyPct}% (Đã xuất trừ: ${totalPctForBin}%)`
+          : `Đã chứa: ${totalPctForBin}%`);
+
+        updateSubWarehousesTopology(cleanBinCode, shortCode, targetTopologyPct, noteText);
         return newMap;
       });
     } else {

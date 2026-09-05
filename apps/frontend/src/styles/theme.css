@@ -335,3 +335,59 @@ input[type=number] {
 .animate-header-marquee:hover {
   animation-play-state: paused;
 }
+
+/* ══════════════════════════════════════════════════════════════════ */
+/* GLOBAL PRINT OPTIMIZATIONS: HIDE CHATBOT, STRIP ALL BACKGROUNDS   */
+/* ══════════════════════════════════════════════════════════════════ */
+@media print {
+  /* 1. Hide floating chatbot, controls, sidebars, headers, and UI controls */
+  #dify-chatbot-bubble-button,
+  #dify-chatbot-bubble-window,
+  .dify-custom-controls,
+  iframe[src*="dify"],
+  div[id*="dify"],
+  button[id*="dify"],
+  aside,
+  nav,
+  header,
+  footer,
+  .print\:hidden {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+
+  /* 2. Strip dark/colored theme backgrounds so printout is clean black & white */
+  html,
+  html.dark,
+  body,
+  html.dark body,
+  #root,
+  main,
+  div,
+  section {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* 3. Strip table dark mode overrides */
+  html.dark table,
+  html.dark table tbody,
+  html.dark table thead,
+  html.dark table tfoot,
+  html.dark thead tr,
+  html.dark tbody tr,
+  html.dark tfoot tr,
+  html.dark th,
+  html.dark td,
+  html.dark div[class*="overflow-x-auto"],
+  html.dark .table-container {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-color: #333333 !important;
+  }
+}

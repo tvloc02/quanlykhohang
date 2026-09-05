@@ -1218,6 +1218,21 @@ export default function Outbound({
     return filteredOrders.slice(start, start + pageSize);
   }, [filteredOrders, currentPage, pageSize]);
 
+  const reportTotals = useMemo(() => {
+    return paginatedOrders.reduce(
+      (acc, ord) => {
+        acc.subtotal += Number(ord.subtotal || ord.totalAmount || 0);
+        acc.discount += Number(ord.discount || 0);
+        acc.vatAmount += Number(ord.vatAmount || 0);
+        acc.totalAmount += Number(ord.totalAmount || 0);
+        acc.amountPaid += Number(ord.amountPaid || ord.totalAmount || 0);
+        acc.totalQty += Number(ord.totalQty || 0);
+        return acc;
+      },
+      { subtotal: 0, discount: 0, vatAmount: 0, totalAmount: 0, amountPaid: 0, totalQty: 0 }
+    );
+  }, [paginatedOrders]);
+
   // Outbound KPI Metrics
   const outboundTotals = useMemo(() => {
     return orders.reduce(
@@ -1288,11 +1303,196 @@ export default function Outbound({
     <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6' : ''}`}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
+      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
+      <style>{`
+        @page {
+          size: landscape;
+          margin: 5mm 6mm;
+        }
+        @media print {
+          @page {
+            size: landscape;
+            margin: 5mm 6mm;
+          }
+
+          /* 1. Ẩn toàn bộ thanh điều hướng, nút bấm, chatbot góc phải */
+          #dify-chatbot-bubble-button,
+          #dify-chatbot-bubble-window,
+          .dify-custom-controls,
+          iframe,
+          aside,
+          nav,
+          header,
+          footer,
+          .print\\:hidden {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+          }
+
+          /* 2. Đưa toàn bộ trang về nền trắng giấy in thuần túy, chữ đen, không màu mè */
+          html, body, #root, main, div, section {
+            background: #ffffff !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+          }
+
+          .overflow-hidden,
+          .overflow-x-auto,
+          .custom-scrollbar,
+          .rounded-2xl {
+            overflow: visible !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+
+          /* 3. Bảng in tự động co giãn vừa khít 100% chiều rộng khổ giấy A4 ngang, đường kẻ đen rõ nét */
+          table,
+          table[class*="min-w-"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: auto !important;
+            border-collapse: collapse !important;
+            border: 1px solid #000000 !important;
+            margin-top: 4px !important;
+            background: #ffffff !important;
+          }
+
+          /* 4. Kẻ dọc đầy đủ cho TẤT CẢ các ô (cả tiêu đề thead, nội dung tbody và dòng tổng tfoot) */
+          table, thead, tbody, tfoot, tr, th, td,
+          table thead th,
+          table tbody td,
+          table tfoot td,
+          th, td,
+          th[class*="border-"],
+          td[class*="border-"],
+          th[class*="min-w-"],
+          td[class*="min-w-"],
+          th[class*="whitespace-nowrap"],
+          td[class*="whitespace-nowrap"] {
+            min-width: 0 !important;
+            width: auto !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            font-size: 6.8pt !important;
+            line-height: 1.2 !important;
+            padding: 2px 1.5px !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            color: #000000 !important;
+            background: #ffffff !important;
+          }
+
+          thead {
+            display: table-header-group !important;
+          }
+
+          thead tr {
+            background: #f1f5f9 !important;
+          }
+
+          /* Tiêu đề bảng có kẻ dọc đậm rõ nét */
+          thead th,
+          table thead th {
+            background: #f1f5f9 !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            font-size: 7.2pt !important;
+            text-align: center !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            padding: 3px 1.5px !important;
+          }
+
+          tfoot {
+            display: table-footer-group !important;
+          }
+
+          tfoot tr {
+            background: #f8fafc !important;
+          }
+
+          /* Dòng tổng cộng căn lề phải, kẻ viền đầy đủ ra sát lề phải bảng */
+          tfoot td,
+          table tfoot td {
+            background: #f8fafc !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            font-size: 6.8pt !important;
+            text-align: right !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            padding: 2.5px 1.5px !important;
+            white-space: nowrap !important;
+          }
+
+          td button, td a {
+            color: #000000 !important;
+            text-decoration: none !important;
+            font-weight: 700 !important;
+            cursor: default !important;
+          }
+
+          td span[class*="rounded"] {
+            background: transparent !important;
+            color: #000000 !important;
+            border: none !important;
+            padding: 0 !important;
+            font-weight: 600 !important;
+            font-size: 6.8pt !important;
+          }
+        }
+      `}</style>
+
+      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
+      <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
+        <div className="flex justify-between items-start mb-2 text-xs">
+          <div>
+            <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
+            <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+          </div>
+          <div className="text-right text-[11px] text-slate-600">
+            <p>Mẫu biểu báo cáo hệ thống</p>
+            <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+          </div>
+        </div>
+        <div className="text-center my-2">
+          <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+            {isDisposal ? 'LẬP BÁO CÁO PHIẾU XUẤT HỦY HÀNG HÓA' : 'LẬP BÁO CÁO PHIẾU XUẤT KHO'}
+          </h1>
+          <p className="text-xs text-slate-600 italic mt-0.5">
+            {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
+          </p>
+        </div>
+        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
+          <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
+          <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
+        </div>
+      </div>
+
       {/* ═══ WHEN FORM IS CLOSED: SHOW TITLE, ACTION BUTTONS, KPI CARDS & ORDER LIST TABLE ═══ */}
       {!showFormModal ? (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* Top Header Section matching Permission Groups & Sales Report */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
             <div className="flex items-center gap-3">
               <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 dark:bg-indigo-600 px-5 py-2.5 text-white shadow-md">
                 {isDisposal ? (
@@ -1469,9 +1669,9 @@ export default function Outbound({
           </div>
 
           {/* Main Order List Table */}
-          <div className="overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] shadow-sm">
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className={`w-full border-collapse text-left ${isDisposal ? 'min-w-[1350px]' : 'min-w-[1850px]'}`}>
+          <div className="overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] shadow-sm print:overflow-visible print:border-none print:shadow-none print:rounded-none print:bg-white print:p-0">
+            <div className="overflow-x-auto custom-scrollbar print:overflow-visible print:p-0">
+              <table className={`w-full border-collapse text-left print:min-w-0 print:w-full print:table-auto ${isDisposal ? 'min-w-[1350px]' : 'min-w-[1850px]'}`}>
                 <thead className="bg-cyan-50 dark:bg-indigo-950/80 sticky top-0 z-20 shadow-sm">
                   <tr className="border-b-2 border-slate-200 dark:border-indigo-900/60 text-slate-800 dark:text-slate-100 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
                     <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center print:hidden">
@@ -1693,6 +1893,74 @@ export default function Outbound({
                     })
                   )}
                 </tbody>
+                <tfoot className="bg-slate-100 dark:bg-slate-900 font-extrabold border-t-2 border-slate-300 dark:border-indigo-900/80">
+                  <tr className="text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
+                    <td className="print:hidden p-2 text-center" />
+                    <td
+                      colSpan={
+                        isDisposal
+                          ? 1 +
+                            (columnVis.code ? 1 : 0) +
+                            (columnVis.date ? 1 : 0) +
+                            (columnVis.customerName ? 1 : 0) +
+                            (columnVis.branch ? 1 : 0) +
+                            (columnVis.nv ? 1 : 0)
+                          : 1 +
+                            (columnVis.code ? 1 : 0) +
+                            (columnVis.date ? 1 : 0) +
+                            (columnVis.customerName ? 1 : 0) +
+                            (columnVis.customerPhone ? 1 : 0) +
+                            (columnVis.customerAddress ? 1 : 0) +
+                            (columnVis.branch ? 1 : 0) +
+                            (columnVis.nv ? 1 : 0)
+                      }
+                      className="p-3 text-right font-black uppercase tracking-wider text-cyan-900 dark:text-indigo-300 border-r border-slate-200 dark:border-indigo-900/40"
+                    >
+                      TỔNG CỘNG ({paginatedOrders.length} PHIẾU):
+                    </td>
+                    {isDisposal ? (
+                      <>
+                        <td className="p-3 text-center font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                          {reportTotals.totalQty.toLocaleString('vi-VN')}
+                        </td>
+                        <td className="p-3 text-right font-black text-cyan-950 dark:text-indigo-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                          {reportTotals.totalAmount.toLocaleString('vi-VN')} đ
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        {columnVis.subtotal && (
+                          <td className="p-3 text-right font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.subtotal.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.discount && (
+                          <td className="p-3 text-right font-black text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.discount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.vat && (
+                          <td className="p-3 text-right font-black text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.vatAmount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.totalAmount && (
+                          <td className="p-3 text-right font-black text-cyan-950 dark:text-indigo-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.totalAmount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.amountPaid && (
+                          <td className="p-3 text-right font-black text-emerald-800 dark:text-emerald-400 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.amountPaid.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                      </>
+                    )}
+                    {columnVis.note && <td className="border-r border-slate-200 dark:border-indigo-900/40 p-2">&nbsp;</td>}
+                    {columnVis.status && <td className="border-r border-slate-200 dark:border-indigo-900/40 p-2">&nbsp;</td>}
+                    <td className="print:hidden border-l border-slate-200 dark:border-indigo-900/60" />
+                  </tr>
+                </tfoot>
               </table>
             </div>
 
@@ -1759,6 +2027,28 @@ export default function Outbound({
                   <ChevronsRight size={18} strokeWidth={2.5} />
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+          <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+              <div className="h-20" />
+              <p className="font-bold text-slate-900">{currentUserName}</p>
+            </div>
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+              <div className="h-20" />
+              <p className="text-slate-400 italic font-medium">................................................</p>
+            </div>
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
+              <div className="h-20" />
+              <p className="text-slate-400 italic font-medium">................................................</p>
             </div>
           </div>
         </div>
