@@ -1480,6 +1480,53 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         }
       }
 
+      // INTENT 5.5: Select ALL items in order (`tất cả`, `toàn bộ`, `chọn hết`, `tự chọn tất cả`, `tất cả sản phẩm`)
+      else if (
+        lower.includes('tất cả') ||
+        lower.includes('toàn bộ') ||
+        lower.includes('chọn hết') ||
+        lower.includes('hết các mặt hàng') ||
+        lower.includes('tất cả sản phẩm') ||
+        lower.includes('tự chọn tất cả')
+      ) {
+        const isOutbound = mode === 'OUTBOUND_TRANSFER';
+        const newMap: Record<string, string[]> = { ...selectedBinsMap };
+        const usedBinsSet = new Set<string>();
+        const lines: string[] = ['🚀 **AI ĐÃ TỰ ĐỘNG CHỌN Ô CHO TOÀN BỘ ĐƠN HÀNG**:'];
+
+        // Lần lượt phân bổ cho từng mặt hàng (Shadow Reservation)
+        items.forEach((it, idx) => {
+          const reqC = Math.max(1, Math.ceil((it.qty || 1) / 100));
+          const allocatedForThisItem: string[] = [];
+
+          for (const cell of allCellsList) {
+            if (allocatedForThisItem.length >= reqC) break;
+            if (usedBinsSet.has(cell.binCode)) continue; // Tránh trùng ô giữa các mặt hàng
+
+            if (isOutbound) {
+              if (cell.productName === it.productName || (cell as any).productId === (it as any).productId) {
+                allocatedForThisItem.push(cell.binCode);
+                usedBinsSet.add(cell.binCode);
+              }
+            } else {
+              if (!cell.isOccupied) {
+                allocatedForThisItem.push(cell.binCode);
+                usedBinsSet.add(cell.binCode);
+              }
+            }
+          }
+
+          newMap[it.rowId] = allocatedForThisItem;
+          const shortNames = allocatedForThisItem.map((b) => b.split('-').pop()).join(', ') || 'Chưa tìm được ô';
+          lines.push(`• **#${idx + 1} ${it.productName || 'Mặt hàng ' + (idx + 1)}**: ${allocatedForThisItem.length} ô [${shortNames}]`);
+        });
+
+        setSelectedBinsMap(newMap);
+        lines.push('');
+        lines.push('👉 **Tất cả các mặt hàng đã được gán ô kệ tối ưu thành công!** Bạn có thể click từng tab đơn hàng phía trên để xem hoặc bấm **Lưu & Áp Dụng** ngay.');
+        aiReply = lines.join('\n');
+      }
+
       // INTENT 6: Select N bins or 1 bin (`1 kệ thôi`, `chỉ chọn 1 ô`, `chọn 2 ô`, `tự động chọn`)
       else if (
         lower.includes('1 kệ') ||
@@ -1798,6 +1845,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               >
                 🎯 Tự chọn đủ ô
               </button>
+              {items.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(undefined, 'Tự chọn tất cả')}
+                  className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 px-2.5 py-1 rounded-lg font-black transition cursor-pointer shadow-sm flex items-center gap-1"
+                >
+                  🚀 Tự chọn TẤT CẢ ({items.length} SP)
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleSendMessage(undefined, 'Chuyển kệ R01')}
