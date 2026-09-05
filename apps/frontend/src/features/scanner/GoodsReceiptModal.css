@@ -199,12 +199,12 @@
 
 /* --- PRINT RULES --- */
 @media print {
-  /* Ẩn mọi thứ ngoài modal đang in */
-  body * {
+  /* Chỉ ẩn khi modal biên nhận đang mở */
+  body:has(.receipt-modal-overlay) * {
     visibility: hidden;
   }
   
-  .receipt-modal-overlay {
+  body:has(.receipt-modal-overlay) .receipt-modal-overlay {
     position: absolute;
     left: 0;
     top: 0;
@@ -214,18 +214,19 @@
     background: transparent;
   }
   
-  .receipt-modal-content {
+  body:has(.receipt-modal-overlay) .receipt-modal-content {
     box-shadow: none;
     border: none;
     width: 100%;
     max-width: none;
   }
 
-  .printable-receipt, .printable-receipt * {
+  body:has(.receipt-modal-overlay) .printable-receipt,
+  body:has(.receipt-modal-overlay) .printable-receipt * {
     visibility: visible;
   }
 
-  .printable-receipt {
+  body:has(.receipt-modal-overlay) .printable-receipt {
     position: absolute;
     left: 0;
     top: 0;
@@ -234,7 +235,7 @@
   }
 
   /* Ẩn các nút */
-  .no-print {
+  .receipt-modal-overlay .no-print {
     display: none !important;
   }
 

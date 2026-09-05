@@ -221,17 +221,21 @@ export default function MainLayout({ children }: LayoutProps) {
   });
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-[#060913] font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex h-screen print:h-auto print:overflow-visible bg-slate-50 dark:bg-[#060913] print:bg-white font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
       {/* Sidebar Component */}
-      <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+      <div className="print:hidden">
+        <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+      </div>
 
       {/* Main Content Area */}
-      <div className={`${sidebarOpen ? 'ml-80' : 'ml-20'} flex-1 flex flex-col overflow-hidden lg:ml-0 transition-all duration-300`}>
+      <div className={`${sidebarOpen ? 'ml-80' : 'ml-20'} flex-1 flex flex-col overflow-hidden print:overflow-visible print:ml-0 lg:ml-0 transition-all duration-300`}>
         {/* Sync Status Banner */}
-        <SyncStatusBanner />
+        <div className="print:hidden">
+          <SyncStatusBanner />
+        </div>
 
         {/* Header matching dem.cmcu.edu.vn sample */}
-        <header className="relative bg-white dark:bg-[#090d16] border-b-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between px-6 z-40 transition-all duration-300 h-20 box-border shadow-xs">
+        <header className="relative bg-white dark:bg-[#090d16] border-b-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between px-6 z-40 transition-all duration-300 h-20 box-border shadow-xs print:hidden">
           {/* Left Section: Toggle & Clock */}
           <div className="flex items-center gap-4 flex-shrink-0">
             <button
@@ -472,7 +476,7 @@ export default function MainLayout({ children }: LayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-6 bg-slate-50 dark:bg-[#060913] transition-colors duration-300">
+        <main className="flex-1 overflow-y-auto print:overflow-visible print:p-0 print:bg-white p-6 bg-slate-50 dark:bg-[#060913] transition-colors duration-300">
           {children || (
             <div className="flex items-center justify-center h-full text-slate-400 dark:text-indigo-300/60 font-semibold text-xs">
               Nội dung trang web sẽ hiển thị ở đây
