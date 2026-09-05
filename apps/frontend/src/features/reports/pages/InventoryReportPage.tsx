@@ -16,6 +16,8 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { reportsApi } from '../api/reportsApi';
+import { ReportPrintHeader } from '../components/ReportPrintHeader';
+import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
 const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
 
@@ -189,9 +191,21 @@ export default function InventoryReportPage() {
   };
 
   return (
-    <div className="space-y-4 pb-12 animate-in fade-in duration-200">
-      {/* ═══ TOP HEADER SECTION matching Sales Report Standard ═══ */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <>
+      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
+      <ReportPrintHeader
+        title="BÁO CÁO HÀNG TỒN KHO"
+        subtitle={
+          startDate && endDate
+            ? `Kỳ báo cáo: Từ ngày ${startDate} đến ngày ${endDate}`
+            : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`
+        }
+        subInfo={`Tổng số mặt hàng: ${allItems.length} mặt hàng`}
+      />
+
+      <div className="space-y-4 pb-12 animate-in fade-in duration-200">
+        {/* ═══ TOP HEADER SECTION matching Sales Report Standard ═══ */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
             <Package className="h-5 w-5" />
@@ -250,7 +264,7 @@ export default function InventoryReportPage() {
       </div>
 
       {/* ═══ FILTER & SEARCH PANEL ═══ */}
-      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3 print:hidden">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative flex-1 min-w-[300px]">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
@@ -408,7 +422,7 @@ export default function InventoryReportPage() {
         </div>
 
         {/* Pagination Footer */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
           <div className="flex items-center gap-2">
             <span>Hiển thị:</span>
             <select
@@ -472,9 +486,12 @@ export default function InventoryReportPage() {
         </div>
       </div>
 
+      {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+      <ReportPrintFooter />
+
       {/* ═══ COLUMN VISIBILITY MODAL ═══ */}
       {showColumnSettings && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in print:hidden">
           <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="font-extrabold text-cyan-900 text-sm flex items-center gap-2 uppercase">
@@ -524,6 +541,10 @@ export default function InventoryReportPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+
+      {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+      <ReportPrintFooter />
+    </>
   );
 }

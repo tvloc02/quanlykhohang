@@ -337,9 +337,21 @@ input[type=number] {
 }
 
 /* ══════════════════════════════════════════════════════════════════ */
-/* GLOBAL PRINT OPTIMIZATIONS: HIDE CHATBOT, STRIP ALL BACKGROUNDS   */
 /* ══════════════════════════════════════════════════════════════════ */
+/* GLOBAL PRINT OPTIMIZATIONS: HIDE CHATBOT, STRIP ALL BACKGROUNDS   */
+/* REPORT PRINT RULES: FORCE LANDSCAPE, FULL BORDERS, TABLE-ONLY     */
+/* ══════════════════════════════════════════════════════════════════ */
+@page {
+  size: landscape;
+  margin: 5mm 6mm;
+}
+
 @media print {
+  @page {
+    size: landscape;
+    margin: 5mm 6mm;
+  }
+
   /* 1. Hide floating chatbot, controls, sidebars, headers, and UI controls */
   #dify-chatbot-bubble-button,
   #dify-chatbot-bubble-window,
@@ -357,7 +369,21 @@ input[type=number] {
     opacity: 0 !important;
   }
 
-  /* 2. Strip dark/colored theme backgrounds so printout is clean black & white */
+  /* 2. Hide all interactive buttons, inputs, dropdowns on printed reports */
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* Show printable report headers and footers */
+  .print-report-header,
+  .print-report-footer {
+    display: block !important;
+  }
+
+  /* 3. Strip dark/colored theme backgrounds so printout is clean black & white */
   html,
   html.dark,
   body,
@@ -373,7 +399,113 @@ input[type=number] {
     text-shadow: none !important;
   }
 
-  /* 3. Strip table dark mode overrides */
+  /* 4. Reset table containers so table expands full width */
+  .overflow-hidden,
+  .overflow-x-auto,
+  .custom-scrollbar,
+  .rounded-2xl {
+    overflow: visible !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* 5. Clean report table styling: 100% width, black borders, compact font */
+  table,
+  table[class*="min-w-"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    border: 1px solid #000000 !important;
+    margin-top: 4px !important;
+    background: #ffffff !important;
+  }
+
+  /* 6. Vertical & horizontal black borders for ALL cells (th, td, tfoot) */
+  table th,
+  table td,
+  table thead th,
+  table tbody td,
+  table tfoot td,
+  th, td,
+  th[class*="border-"],
+  td[class*="border-"],
+  th[class*="min-w-"],
+  td[class*="min-w-"],
+  th[class*="whitespace-nowrap"],
+  td[class*="whitespace-nowrap"] {
+    min-width: 0 !important;
+    width: auto !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    font-size: 7.2pt !important;
+    line-height: 1.25 !important;
+    padding: 3px 2px !important;
+    border: 1px solid #000000 !important;
+    border-left: 1px solid #000000 !important;
+    border-right: 1px solid #000000 !important;
+    border-top: 1px solid #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  thead tr,
+  table thead tr {
+    background: #f1f5f9 !important;
+  }
+
+  thead th,
+  table thead th {
+    background: #f1f5f9 !important;
+    color: #000000 !important;
+    font-weight: 800 !important;
+    font-size: 7.6pt !important;
+    text-align: center !important;
+    border: 1px solid #000000 !important;
+    border-left: 1px solid #000000 !important;
+    border-right: 1px solid #000000 !important;
+    border-top: 1px solid #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+    padding: 4px 2px !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  tfoot tr,
+  tr.bg-slate-100 {
+    background: #f8fafc !important;
+  }
+
+  tfoot td,
+  table tfoot td,
+  tr.bg-slate-100 td {
+    background: #f8fafc !important;
+    color: #000000 !important;
+    font-weight: 800 !important;
+    font-size: 7.2pt !important;
+    border: 1px solid #000000 !important;
+    border-left: 1px solid #000000 !important;
+    border-right: 1px solid #000000 !important;
+    border-top: 1px solid #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+    padding: 3px 2px !important;
+  }
+
+  /* 7. Strip table dark mode overrides */
   html.dark table,
   html.dark table tbody,
   html.dark table thead,
@@ -388,6 +520,6 @@ input[type=number] {
     background: #ffffff !important;
     background-color: #ffffff !important;
     color: #000000 !important;
-    border-color: #333333 !important;
+    border-color: #000000 !important;
   }
 }

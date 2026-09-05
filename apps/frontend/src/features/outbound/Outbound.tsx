@@ -1300,7 +1300,7 @@ export default function Outbound({
   };
 
   return (
-    <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6' : ''}`}>
+    <div className={isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
       {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
@@ -1491,29 +1491,29 @@ export default function Outbound({
       {/* ═══ WHEN FORM IS CLOSED: SHOW TITLE, ACTION BUTTONS, KPI CARDS & ORDER LIST TABLE ═══ */}
       {!showFormModal ? (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Top Header Section matching Permission Groups & Sales Report */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
-            <div className="flex items-center gap-3">
-              <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 dark:bg-indigo-600 px-5 py-2.5 text-white shadow-md">
+          {/* Top Header Section matching PurchaseOrdersPage */}
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between print:hidden">
+            <div>
+              <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
                 {isDisposal ? (
-                  <FileX className="h-5 w-5" />
+                  <FileX className="h-5 w-5 text-cyan-100" />
                 ) : (featureMode as string) === 'return-supplier' ? (
-                  <CornerUpRight className="h-5 w-5" />
+                  <CornerUpRight className="h-5 w-5 text-cyan-100" />
                 ) : featureMode === 'retail' ? (
-                  <Receipt className="h-5 w-5" />
+                  <Receipt className="h-5 w-5 text-cyan-100" />
                 ) : featureMode === 'sales-order' ? (
-                  <ShoppingCart className="h-5 w-5" />
+                  <ShoppingCart className="h-5 w-5 text-cyan-100" />
                 ) : featureMode === 'transfer-out' ? (
-                  <Send className="h-5 w-5" />
+                  <Send className="h-5 w-5 text-cyan-100" />
                 ) : (
-                  <TrendingUp className="h-5 w-5" />
+                  <TrendingUp className="h-5 w-5 text-cyan-100" />
                 )}
-                <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
+                <h1 className="text-lg font-bold tracking-tight text-white">{title}</h1>
               </div>
             </div>
 
-            {/* Action Buttons Top Right aligned in Cyan/Indigo style */}
-            <div className="flex flex-wrap items-center gap-3 print:hidden">
+            {/* Action Buttons Top Right aligned matching PurchaseOrdersPage */}
+            <div className="flex flex-wrap items-center justify-end gap-2 print:hidden">
               {/* 1. Thêm mới */}
               {canCreate && (
                 <button
@@ -1528,10 +1528,9 @@ export default function Outbound({
                     setActiveTabId(newTab.tabId);
                     handleOpenFormModal('create');
                   }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <Plus className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
-                  Thêm mới
+                  <Plus className="h-4 w-4" /> Thêm mới
                 </button>
               )}
 
@@ -1540,10 +1539,9 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={handleCopySelected}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <Copy className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
-                  Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+                  <Copy className="h-4 w-4" /> Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
                 </button>
               )}
 
@@ -1552,10 +1550,9 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={handleDeleteSelected}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <Trash2 className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
-                  Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+                  <Trash2 className="h-4 w-4" /> Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
                 </button>
               )}
 
@@ -1564,10 +1561,9 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <Printer className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
-                  In báo cáo
+                  <Printer className="h-4 w-4" /> In báo cáo
                 </button>
               )}
 
@@ -1576,10 +1572,9 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={handleExportCSV}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
-                  Export Excel
+                  <FileSpreadsheet className="h-4 w-4" /> Export Excel
                 </button>
               )}
 
@@ -1587,21 +1582,19 @@ export default function Outbound({
               <button
                 type="button"
                 onClick={() => setShowColumnSettings(true)}
-                className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-700 dark:text-indigo-300 font-extrabold text-sm shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
-                title="Cấu hình hiển thị cột"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
               >
-                <Settings className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
-                <span>Hiển thị</span>
+                <Settings className="h-4 w-4" /> Hiển thị
               </button>
 
               {/* 7. Toàn màn hình */}
               <button
                 type="button"
                 onClick={toggleBrowserFullscreen}
-                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 shadow-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 cursor-pointer"
-                title="Toàn màn hình"
+                aria-label="Toàn màn hình"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-cyan-700 transition hover:bg-cyan-50 cursor-pointer"
               >
-                {isFullScreen ? <Minimize2 className="h-4.5 w-4.5" /> : <Maximize2 className="h-4.5 w-4.5" />}
+                {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </button>
             </div>
           </div>

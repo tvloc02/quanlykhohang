@@ -14,6 +14,8 @@ import {
   Check,
 } from 'lucide-react';
 import { reportsApi } from '../api/reportsApi';
+import { ReportPrintHeader } from '../components/ReportPrintHeader';
+import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
 interface Props {
   title: string;
@@ -222,9 +224,21 @@ export default function GenericReportPage({
   }, [validKeys, rows]);
 
   return (
-    <div className={`space-y-4 pb-12 animate-in fade-in duration-200 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
-      {/* ═══ HEADER TITLE - GOLD CYAN BADGE & MATCHED ACTION BUTTONS ═══ */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <>
+      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
+      <ReportPrintHeader
+        title={title.toUpperCase()}
+        subtitle={
+          startDate && endDate
+            ? `Kỳ báo cáo: Từ ngày ${startDate} đến ngày ${endDate}`
+            : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`
+        }
+        subInfo={`Kho: ${selectedBranch === 'ALL' ? 'Tất cả chi nhánh' : selectedBranch} | Tổng số dòng: ${rows.length} dòng`}
+      />
+
+      <div className={`space-y-4 pb-12 animate-in fade-in duration-200 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+        {/* ═══ HEADER TITLE - GOLD CYAN BADGE & MATCHED ACTION BUTTONS ═══ */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
             <FileText className="h-5 w-5 text-white" />
@@ -270,7 +284,7 @@ export default function GenericReportPage({
       </div>
 
       {/* ═══ FILTER CONTROL PANEL WITH CUSTOM STYLED WAREHOUSE DROPDOWN ═══ */}
-      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3 print:hidden">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative flex-1 min-w-[280px]">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -555,6 +569,11 @@ export default function GenericReportPage({
           </div>
         )}
       </div>
-    </div>
+
+      </div>
+
+      {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+      <ReportPrintFooter />
+    </>
   );
 }

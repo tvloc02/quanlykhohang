@@ -1376,7 +1376,7 @@ export default function Inbound({
   }
 
   return (
-    <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6' : ''}`}>
+    <div className={isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
       {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
