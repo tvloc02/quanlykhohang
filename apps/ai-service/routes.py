@@ -13,20 +13,21 @@ from fastapi import APIRouter, HTTPException
 from models import (
     SlottingRequest, SlottingResponse,
     ReSlottingRequest, ReSlottingResponse,
+    BatchSlottingRequest, BatchSlottingResponse,
     ScoringWeights,
 )
-from engine.solver import solve_slotting, solve_reslotting
+from engine.solver import solve_slotting, solve_reslotting, solve_batch_slotting
 
 router = APIRouter(prefix="/engine", tags=["AI Slotting Engine"])
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.1.0"
 ENGINE_NAME = "Smart WMS AI Slotting Engine"
 
 
 @router.post("/solve", response_model=SlottingResponse)
 async def solve_endpoint(request: SlottingRequest) -> SlottingResponse:
     """
-    Realtime Inbound Slotting – Tìm vị trí cất hàng tối ưu.
+    Realtime Inbound Slotting – Tìm vị trí cất hàng tối ưu cho 1 SKU.
 
     Pipeline 4 tầng:
       1. Hard Constraint Filtering
@@ -41,6 +42,24 @@ async def solve_endpoint(request: SlottingRequest) -> SlottingResponse:
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Engine error: {str(e)}")
+
+
+@router.post("/solve-batch", response_model=BatchSlottingResponse)
+async def solve_batch_endpoint(request: BatchSlottingRequest) -> BatchSlottingResponse:
+    """
+    Multi-SKU Batch Slotting – Tối ưu hóa cất hàng đồng thời cho nhiều SKU.
+
+    Tính năng nâng cao:
+      1. Sắp xếp thứ tự ưu tiên (Priority & FFD)
+      2. Giữ chỗ ảo (Shadow Reservation) tránh va chạm/quá tải ô
+      3. Tự động phân tách lô (Auto-splitting Quantity)
+      4. Gom cụm tương quan mua kèm (Affinity Clustering)
+    """
+    try:
+        result = solve_batch_slotting(request)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch engine error: {str(e)}")
 
 
 @router.post("/re-slot", response_model=ReSlottingResponse)

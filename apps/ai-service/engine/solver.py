@@ -10,11 +10,14 @@ Quy trình:
 
 from __future__ import annotations
 import time
+from typing import Any, Optional
 import numpy as np
 
 from models import (
     SlottingRequest, SlottingResponse, BinRecommendation, ScoreBreakdown,
     ReSlottingRequest, ReSlottingResponse, RelocationOrder,
+    BatchSlottingRequest, BatchSlottingResponse, BatchSlottingAllocation,
+    AllocatedBin, BatchSlottingItem, ExistingItem, BinCandidate, ZoneType, ABCClass,
 )
 from engine.constraints import apply_all_filters
 from engine.scoring import compute_total_score
@@ -206,3 +209,217 @@ def _estimate_current_score(item, current_bin, request) -> float:
         [current_bin], sku, request.scoring_weights, affinity_skus,
     )
     return float(scores[0]) if len(scores) > 0 else 50.0
+
+
+# ─── Multi-SKU Batch Slotting ─────────────────────────
+
+def _batch_item_priority(item: BatchSlottingItem):
+    """Tính thứ tự ưu tiên sắp xếp cho từng SKU trong lô hàng."""
+    p_override = item.priority_override if item.priority_override is not None else 99
+
+    # Phân vùng nhiệt độ đặc biệt ưu tiên trước
+    zone_order = 2
+    if item.sku_profile.required_zone_type == ZoneType.COLD:
+        zone_order = 0
+    elif item.sku_profile.required_zone_type == ZoneType.THERMAL:
+        zone_order = 1
+
+    # ABC Velocity: A ưu tiên trước để lấy Golden Zone
+    abc_order = 2
+    if item.sku_profile.abc_class == ABCClass.A:
+        abc_order = 0
+    elif item.sku_profile.abc_class == ABCClass.B:
+        abc_order = 1
+
+    # Trọng lượng & Thể tích giảm dần (FFD Heuristic)
+    unit_vol = item.sku_profile.dimensions.volume
+    tot_weight = item.sku_profile.weight * item.sku_profile.quantity
+    tot_vol = unit_vol * item.sku_profile.quantity
+
+    return (p_override, zone_order, abc_order, -tot_weight, -tot_vol)
+
+
+def solve_batch_slotting(request: BatchSlottingRequest) -> BatchSlottingResponse:
+    """
+    Multi-SKU Batch Slotting Pipeline:
+      1. Sắp xếp thứ tự ưu tiên (Zone đặc biệt -> ABC Velocity -> FFD Heavy/Bulky).
+      2. Giữ chỗ ảo (Shadow Reservation) cập nhật liên tục dung tích ô trong bộ nhớ.
+      3. Tự động phân tách lô (Auto-splitting) khi số lượng vượt dung tích 1 ô.
+      4. Gom cụm sản phẩm có liên quan mua kèm (Affinity / Co-occurrence).
+    """
+    start_time = time.perf_counter()
+
+    # 1. Tạo shadow state mutable cho các ô
+    shadow_bins: dict[str, Any] = {
+        b.code: b.model_copy(deep=True) for b in request.candidate_bins
+    }
+
+    # 2. Sắp xếp danh sách mặt hàng theo độ ưu tiên
+    sorted_items = sorted(request.items, key=_batch_item_priority)
+
+    allocations: list[BatchSlottingAllocation] = []
+    utilized_bin_codes: set[str] = set()
+    total_units_requested = sum(it.sku_profile.quantity for it in request.items)
+    total_units_allocated = 0
+    fully_allocated_count = 0
+
+    # 3. Phân bổ từng sản phẩm theo chuỗi giữ chỗ ảo
+    for batch_item in sorted_items:
+        sku = batch_item.sku_profile
+        orig_qty = sku.quantity
+        rem_qty = orig_qty
+        allocated_bins: list[AllocatedBin] = []
+
+        # Ghép danh sách affinity skus với các sku đã được xếp trong batch
+        effective_affinity = list(set(batch_item.affinity_skus))
+
+        while rem_qty > 0:
+            # Lọc các ô còn khả năng tiếp nhận ít nhất 1 đơn vị
+            valid_candidates = []
+            for b in shadow_bins.values():
+                # Ràng buộc zone
+                if b.zone_type != sku.required_zone_type:
+                    continue
+                # Ràng buộc tải trọng còn lại
+                rem_w = b.max_weight - b.current_weight
+                if rem_w < sku.weight:
+                    continue
+                # Ràng buộc thể tích còn lại
+                unit_vol = sku.dimensions.volume
+                rem_v = b.max_volume - b.current_volume
+                if rem_v < unit_vol:
+                    continue
+                # Kích thước 1 chiều
+                bd = b.bin_dimensions
+                sd = sku.dimensions
+                if not (sd.length <= bd.length and sd.width <= bd.width and sd.height <= bd.height):
+                    # Kiểm tra xoay hướng cơ bản
+                    dims_sorted_sku = sorted([sd.length, sd.width, sd.height])
+                    dims_sorted_bin = sorted([bd.length, bd.width, bd.height])
+                    if not all(s <= b for s, b in zip(dims_sorted_sku, dims_sorted_bin)):
+                        continue
+
+                valid_candidates.append(b)
+
+            if not valid_candidates:
+                # Hết ô phù hợp
+                break
+
+            # Tính điểm đa mục tiêu cho các ô hợp lệ
+            scores, breakdowns = compute_total_score(
+                valid_candidates, sku, request.scoring_weights, effective_affinity,
+            )
+
+            # Sắp xếp ứng viên theo điểm cao nhất
+            ranked_indices = np.argsort(scores)[::-1]
+
+            allocated_in_round = False
+
+            for idx in ranked_indices:
+                cand_bin = valid_candidates[int(idx)]
+                breakdown = breakdowns[int(idx)]
+
+                # Tính số lượng tối đa ô có thể nhận
+                avail_w = cand_bin.max_weight - cand_bin.current_weight
+                avail_v = cand_bin.max_volume - cand_bin.current_volume
+                unit_vol = sku.dimensions.volume
+
+                max_w_qty = int(avail_w // sku.weight) if sku.weight > 0 else 999999
+                max_v_qty = int(avail_v // unit_vol) if unit_vol > 0 else 999999
+                max_fitting = max(1, min(max_w_qty, max_v_qty))
+
+                if not request.allow_split and max_fitting < rem_qty:
+                    # Nếu không cho phép tách lô và ô này không đủ chứa hết, tìm ô khác
+                    continue
+
+                alloc_qty = min(rem_qty, max_fitting)
+
+                # Kiểm tra 3D Geometric Packing
+                fits_3d, _ = verify_3d_fit(sku.dimensions, cand_bin, alloc_qty)
+
+                # Tạo explanation tags
+                explanation_tags = generate_explanation_tags(
+                    breakdown, sku, cand_bin, fits_3d,
+                )
+                verdict = generate_overall_verdict(breakdown["total"])
+                explanation_tags.insert(0, verdict)
+
+                if alloc_qty < orig_qty:
+                    explanation_tags.append(
+                        f"⚡ Phân tách lô: Xếp {alloc_qty}/{orig_qty} kiện vào ô này do giới hạn sức chứa",
+                    )
+
+                # Cập nhật Shadow Reservation của ô
+                alloc_weight = sku.weight * alloc_qty
+                alloc_volume = unit_vol * alloc_qty
+
+                cand_bin.current_weight += alloc_weight
+                cand_bin.current_volume += alloc_volume
+                if sku.sku_id not in cand_bin.stored_sku_ids:
+                    cand_bin.stored_sku_ids.append(sku.sku_id)
+                cand_bin.existing_items.append(
+                    ExistingItem(sku_id=sku.sku_id, dimensions=sku.dimensions, position=(0, 0, 0))
+                )
+
+                remaining_pct = 0.0
+                if cand_bin.max_volume > 0:
+                    remaining_pct = max(0, ((cand_bin.max_volume - cand_bin.current_volume) / cand_bin.max_volume) * 100)
+
+                allocated_bins.append(AllocatedBin(
+                    bin_code=cand_bin.code,
+                    zone=cand_bin.zone,
+                    rack=cand_bin.rack,
+                    shelf_level=cand_bin.shelf_level,
+                    allocated_quantity=alloc_qty,
+                    score=ScoreBreakdown(
+                        s_abc=breakdown["s_abc"],
+                        s_ergo=breakdown["s_ergo"],
+                        s_fill=breakdown["s_fill"],
+                        s_affinity=breakdown["s_affinity"],
+                        total=breakdown["total"],
+                    ),
+                    explanation_tags=explanation_tags,
+                    fits_3d=fits_3d,
+                    remaining_capacity_pct=round(remaining_pct, 1),
+                ))
+
+                utilized_bin_codes.add(cand_bin.code)
+                rem_qty -= alloc_qty
+                allocated_in_round = True
+                break
+
+            if not allocated_in_round:
+                # Không còn ô nào có thể nhận thêm
+                break
+
+        allocated_count = orig_qty - rem_qty
+        total_units_allocated += allocated_count
+        is_full = (rem_qty == 0)
+        if is_full:
+            fully_allocated_count += 1
+
+        allocations.append(BatchSlottingAllocation(
+            sku_id=sku.sku_id,
+            name=sku.name,
+            requested_quantity=orig_qty,
+            allocated_quantity=allocated_count,
+            unallocated_quantity=rem_qty,
+            is_fully_allocated=is_full,
+            is_split=(len(allocated_bins) > 1),
+            bins=allocated_bins,
+        ))
+
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+    return BatchSlottingResponse(
+        success=True,
+        source="AI_ENGINE_BATCH",
+        allocations=allocations,
+        total_skus=len(request.items),
+        total_units_requested=total_units_requested,
+        total_units_allocated=total_units_allocated,
+        bins_utilized_count=len(utilized_bin_codes),
+        fully_allocated_skus_count=fully_allocated_count,
+        computation_ms=round(elapsed_ms, 2),
+        message=f"Đã phân bổ {total_units_allocated}/{total_units_requested} kiện hàng cho {len(allocations)} SKUs",
+    )

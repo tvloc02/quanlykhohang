@@ -33,6 +33,19 @@ export class SmartInventoryController {
     return this.service.suggestSlotting(productId, requiredQty);
   }
 
+  // ─── AI Batch Slotting (Multi-SKU Inbound) ─────────
+
+  @Post('smart-slotting/batch-suggest')
+  @Roles('admin', 'manager', 'staff')
+  async suggestBatchSlotting(
+    @Body() body: {
+      items: Array<{ productId: string; quantity: number; priority?: number }>;
+      allowSplit?: boolean;
+    },
+  ) {
+    return this.service.suggestBatchSlotting(body.items, body.allowSplit ?? true);
+  }
+
   // ─── AI Engine Health Check ────────────────────────
 
   @Get('smart-slotting/ai-engine-health')

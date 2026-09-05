@@ -186,3 +186,59 @@ class ReSlottingResponse(BaseModel):
     items_to_relocate: int
     estimated_improvement_pct: float = Field(description="% cải thiện hiệu suất ước tính")
     computation_ms: float
+
+
+# ─── Multi-SKU Batch Slotting Models ──────────────────
+
+class BatchSlottingItem(BaseModel):
+    """Một mặt hàng trong lô nhập kho"""
+    sku_profile: SKUProfile
+    affinity_skus: list[str] = Field(default_factory=list, description="Danh sách SKU thường mua chung")
+    priority_override: Optional[int] = Field(default=None, description="Ưu tiên thủ công (nếu có)")
+
+
+class AllocatedBin(BaseModel):
+    """Chi tiết ô được gán cho một phần hoặc toàn bộ SKU"""
+    bin_code: str
+    zone: str
+    rack: str
+    shelf_level: int
+    allocated_quantity: int = Field(ge=1, description="Số lượng đơn vị gán vào ô này")
+    score: ScoreBreakdown
+    explanation_tags: list[str] = Field(description="Giải trình XAI")
+    fits_3d: bool = True
+    remaining_capacity_pct: float = Field(description="Dung lượng ô còn lại sau khi gán (%)")
+
+
+class BatchSlottingAllocation(BaseModel):
+    """Kết quả phân bổ vị trí cho một SKU"""
+    sku_id: str
+    name: str = ""
+    requested_quantity: int
+    allocated_quantity: int
+    unallocated_quantity: int
+    is_fully_allocated: bool
+    is_split: bool = Field(default=False, description="True nếu phải chia nhỏ vào nhiều ô")
+    bins: list[AllocatedBin]
+
+
+class BatchSlottingRequest(BaseModel):
+    """Yêu cầu cất hàng cho toàn bộ lô hàng đa sản phẩm"""
+    items: list[BatchSlottingItem]
+    candidate_bins: list[BinCandidate]
+    scoring_weights: ScoringWeights = Field(default_factory=ScoringWeights)
+    allow_split: bool = Field(default=True, description="Cho phép tự động phân tách số lượng vào nhiều ô nếu 1 ô không đủ")
+
+
+class BatchSlottingResponse(BaseModel):
+    """Kết quả cất hàng cho toàn bộ lô hàng"""
+    success: bool = True
+    source: str = Field(default="AI_ENGINE_BATCH")
+    allocations: list[BatchSlottingAllocation]
+    total_skus: int
+    total_units_requested: int
+    total_units_allocated: int
+    bins_utilized_count: int
+    fully_allocated_skus_count: int
+    computation_ms: float
+    message: str = "Batch slotting optimized successfully"

@@ -79,6 +79,71 @@ export interface AiSlottingResult {
   computation_ms: number;
 }
 
+export interface BatchSlottingItemPayload {
+  sku_profile: {
+    sku_id: string;
+    name: string;
+    dimensions: { length: number; width: number; height: number };
+    weight: number;
+    quantity: number;
+    required_zone_type: 'COLD' | 'AMBIENT' | 'THERMAL';
+    abc_class: 'A' | 'B' | 'C';
+    hazard_class?: string;
+  };
+  affinity_skus?: string[];
+  priority_override?: number;
+}
+
+export interface BatchSlottingPayload {
+  items: BatchSlottingItemPayload[];
+  candidate_bins: AiSlottingPayload['candidate_bins'];
+  scoring_weights?: {
+    w_abc: number;
+    w_ergo: number;
+    w_fill: number;
+    w_affinity: number;
+  };
+  allow_split?: boolean;
+}
+
+export interface BatchSlottingResult {
+  success: boolean;
+  source: string;
+  allocations: Array<{
+    sku_id: string;
+    name: string;
+    requested_quantity: number;
+    allocated_quantity: number;
+    unallocated_quantity: number;
+    is_fully_allocated: boolean;
+    is_split: boolean;
+    bins: Array<{
+      bin_code: string;
+      zone: string;
+      rack: string;
+      shelf_level: number;
+      allocated_quantity: number;
+      score: {
+        s_abc: number;
+        s_ergo: number;
+        s_fill: number;
+        s_affinity: number;
+        total: number;
+      };
+      explanation_tags: string[];
+      fits_3d: boolean;
+      remaining_capacity_pct: number;
+    }>;
+  }>;
+  total_skus: number;
+  total_units_requested: number;
+  total_units_allocated: number;
+  bins_utilized_count: number;
+  fully_allocated_skus_count: number;
+  computation_ms: number;
+  message: string;
+}
+
 export interface AiEngineHealth {
   status: string;
   engine: string;
@@ -131,6 +196,36 @@ export class AiEngineClient {
       } else {
         this.logger.warn(`AI Engine unreachable: ${error.message} – falling back to heuristic`);
       }
+      return null;
+    }
+  }
+
+  /**
+   * Gọi AI Engine cho bài toán Multi-SKU Batch Slotting.
+   * Timeout: 2000ms.
+   */
+  async solveBatchSlotting(payload: BatchSlottingPayload): Promise<BatchSlottingResult | null> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const response = await fetch(`${this.baseUrl}/engine/solve-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        this.logger.warn(`AI Batch Engine returned ${response.status}: ${response.statusText}`);
+        return null;
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      this.logger.warn(`AI Batch Engine error: ${error.message} – falling back`);
       return null;
     }
   }
