@@ -10,14 +10,38 @@ services:
     volumes:
       - db_data:/var/lib/mysql
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+
   backend:
     build: ./apps/backend
     depends_on:
       - db
+      - redis
     environment:
       DATABASE_URL: mysql://root:root@db:3306/smart_wms
+      AI_ENGINE_URL: http://ai-engine:8000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AUDIT_HASH_SALT: SmartWMS_AuditChain_2026
     ports:
       - '3000:3000'
+
+  ai-engine:
+    build: ./apps/ai-service
+    ports:
+      - '8000:8000'
+    environment:
+      - WORKERS=2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/engine/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   frontend:
     build: ./apps/frontend
@@ -26,3 +50,4 @@ services:
 
 volumes:
   db_data:
+  redis_data:

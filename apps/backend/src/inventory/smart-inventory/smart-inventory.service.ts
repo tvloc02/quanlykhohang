@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { StockBalance } from '../entities/stock-balance.entity';
@@ -6,6 +6,7 @@ import { Product } from '../../entities/product.entity';
 import { Warehouse } from '../../entities/warehouse.entity';
 import { Stocktake } from '../stocktake/entities/stocktake.entity';
 import { StocktakeDetail } from '../stocktake/entities/stocktake-detail.entity';
+import { AiEngineClient, AiSlottingPayload } from './ai-engine.client';
 
 export interface AbcProductClassification {
   productId: string;
@@ -21,13 +22,19 @@ export interface SlottingSuggestion {
   locationCode: string;
   zone: string;
   rack: string;
-  proximityScore: number; // 0 to 100
+  shelfLevel?: number;
+  proximityScore: number;
   abcCategory: 'A' | 'B' | 'C';
   currentPhysical: number;
   maxCapacity: number;
   availableCapacity: number;
   occupancyRate: number;
   recommendationReason: string;
+  // AI Engine enhanced fields
+  scoreBreakdown?: { s_abc: number; s_ergo: number; s_fill: number; s_affinity: number; total: number };
+  explanationTags?: string[];
+  fits3d?: boolean;
+  source: 'AI_ENGINE' | 'FALLBACK_HEURISTIC';
 }
 
 export interface DigitalTwinCell {
@@ -39,15 +46,17 @@ export interface DigitalTwinCell {
   allocated: number;
   available: number;
   maxCapacity: number;
-  occupancyRate: number; // 0 to 100
+  occupancyRate: number;
   isFrozen: boolean;
   activityCount: number;
-  heatmapIntensity: number; // 0.0 to 1.0
+  heatmapIntensity: number;
   productsCount: number;
 }
 
 @Injectable()
 export class SmartInventoryService {
+  private readonly logger = new Logger(SmartInventoryService.name);
+
   constructor(
     @InjectRepository(StockBalance) private balanceRepo: Repository<StockBalance>,
     @InjectRepository(Product) private productRepo: Repository<Product>,
@@ -55,6 +64,7 @@ export class SmartInventoryService {
     @InjectRepository(Stocktake) private stocktakeRepo: Repository<Stocktake>,
     @InjectRepository(StocktakeDetail) private stocktakeDetailRepo: Repository<StocktakeDetail>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly aiEngine: AiEngineClient,
   ) {}
 
   // ─── 1. SMART SLOTTING & ABC ANALYSIS ─────────────────────────
@@ -119,6 +129,12 @@ export class SmartInventoryService {
     });
   }
 
+  /**
+   * Gợi ý vị trí cất hàng – Pipeline:
+   * 1. Thu thập SKU profile + candidate bins từ DB
+   * 2. Gọi AI Engine (Python FastAPI)
+   * 3. Nếu AI Engine lỗi/timeout → Fallback heuristic
+   */
   async suggestSlotting(productId: string, requiredQty = 10): Promise<SlottingSuggestion[]> {
     const product = await this.productRepo.findOneBy({ id: productId });
     if (!product) throw new NotFoundException('Product not found');
@@ -127,7 +143,127 @@ export class SmartInventoryService {
     const abcInfo = abcList.find((a) => a.productId === productId);
     const category = abcInfo?.category || 'C';
 
-    // Generate grid location topology
+    // ─── Attempt AI Engine ───────────────────────────
+    const aiResult = await this.tryAiEngineSlotting(product, category, requiredQty);
+    if (aiResult && aiResult.length > 0) {
+      this.logger.log(`🧠 AI Engine returned ${aiResult.length} recommendations for ${product.internalSku}`);
+      return aiResult;
+    }
+
+    // ─── Fallback Heuristic (logic cũ) ──────────────
+    this.logger.warn(`⚠️ Falling back to heuristic for ${product.internalSku}`);
+    return this.fallbackHeuristicSlotting(product, category, requiredQty);
+  }
+
+  /**
+   * Gọi Python AI Engine qua HTTP.
+   * Trả về null nếu engine không khả dụng.
+   */
+  private async tryAiEngineSlotting(
+    product: Product,
+    abcCategory: 'A' | 'B' | 'C',
+    quantity: number,
+  ): Promise<SlottingSuggestion[] | null> {
+    try {
+      // Build payload for AI Engine
+      const payload = this.buildAiPayload(product, abcCategory, quantity);
+      const result = await this.aiEngine.solveSlotting(payload);
+
+      if (!result || !result.recommendations || result.recommendations.length === 0) {
+        return null;
+      }
+
+      // Map AI response → SlottingSuggestion[]
+      return result.recommendations.map((rec) => ({
+        locationCode: rec.bin_code,
+        zone: rec.zone,
+        rack: rec.rack,
+        shelfLevel: rec.shelf_level,
+        proximityScore: rec.score.s_abc,
+        abcCategory,
+        currentPhysical: 0,
+        maxCapacity: 500,
+        availableCapacity: Math.round(rec.remaining_capacity_pct * 5),
+        occupancyRate: Math.round(100 - rec.remaining_capacity_pct),
+        recommendationReason: rec.explanation_tags.join(' | '),
+        scoreBreakdown: rec.score,
+        explanationTags: rec.explanation_tags,
+        fits3d: rec.fits_3d,
+        source: 'AI_ENGINE' as const,
+      }));
+    } catch (error: any) {
+      this.logger.warn(`AI Engine call failed: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Build payload theo format Python AI Engine.
+   */
+  private buildAiPayload(product: Product, abcCategory: 'A' | 'B' | 'C', quantity: number): AiSlottingPayload {
+    const zones = ['A', 'B', 'C', 'D'];
+    const candidateBins: AiSlottingPayload['candidate_bins'] = [];
+
+    for (const zone of zones) {
+      for (let rack = 1; rack <= 4; rack++) {
+        for (let shelf = 1; shelf <= 4; shelf++) {
+          for (let cell = 1; cell <= 3; cell++) {
+            const code = `${zone}-R${String(rack).padStart(2, '0')}-S${String(shelf).padStart(2, '0')}-C${String(cell).padStart(2, '0')}`;
+            const heightFromGround = (shelf - 1) * 0.45;
+            const distanceToGate = (zones.indexOf(zone) * 20) + (rack - 1) * 5 + (cell - 1) * 1.5;
+
+            candidateBins.push({
+              code,
+              zone: `Zone-${zone}`,
+              rack: `Rack-${zone}${String(rack).padStart(2, '0')}`,
+              shelf_level: shelf,
+              cell: `C${String(cell).padStart(2, '0')}`,
+              zone_type: product.requiredZoneType || 'AMBIENT',
+              max_weight: 200,
+              current_weight: 0,
+              max_volume: 500000, // 50×100×100 cm³
+              current_volume: 0,
+              bin_dimensions: { length: 100, width: 50, height: 100 },
+              height_from_ground: heightFromGround,
+              distance_to_gate: distanceToGate,
+              status: 'EMPTY',
+              existing_items: [],
+              stored_sku_ids: [],
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      sku_profile: {
+        sku_id: product.id,
+        name: product.name,
+        dimensions: {
+          length: Number(product.length) || 30,
+          width: Number(product.width) || 20,
+          height: Number(product.height) || 15,
+        },
+        weight: Number(product.weight) || 1,
+        quantity,
+        required_zone_type: product.requiredZoneType || 'AMBIENT',
+        abc_class: abcCategory,
+        hazard_class: product.hazardClass || undefined,
+      },
+      candidate_bins: candidateBins,
+      affinity_skus: [],
+      max_results: 6,
+    };
+  }
+
+  /**
+   * Fallback Heuristic – Logic cũ (giữ nguyên) khi AI Engine không khả dụng.
+   */
+  private async fallbackHeuristicSlotting(
+    product: Product,
+    category: 'A' | 'B' | 'C',
+    requiredQty: number,
+  ): Promise<SlottingSuggestion[]> {
     const zones = ['A', 'B', 'C', 'D'];
     const suggestions: SlottingSuggestion[] = [];
 
@@ -142,7 +278,6 @@ export class SmartInventoryService {
 
           if (frozenCodes.has(locCode) || frozenCodes.has(zone)) continue;
 
-          // Compute Gate Proximity Score (Zone A/Rack 1 closest to gate = 95-100)
           let proximityScore = 100;
           if (zone === 'A') proximityScore = 95 - (rack - 1) * 5 - (bin - 1) * 2;
           else if (zone === 'B') proximityScore = 80 - (rack - 1) * 5 - (bin - 1) * 2;
@@ -151,7 +286,7 @@ export class SmartInventoryService {
 
           const locBalances = balances.filter((b) => b.locationCode === locCode);
           const currentPhysical = locBalances.reduce((sum, b) => sum + b.totalPhysical, 0);
-          const maxCapacity = 500; // Standard bin capacity
+          const maxCapacity = 500;
           const availableCapacity = Math.max(maxCapacity - currentPhysical, 0);
           const occupancyRate = Math.round((currentPhysical / maxCapacity) * 100);
 
@@ -178,6 +313,7 @@ export class SmartInventoryService {
               availableCapacity,
               occupancyRate,
               recommendationReason: reason,
+              source: 'FALLBACK_HEURISTIC',
             });
           }
         }
@@ -263,7 +399,7 @@ export class SmartInventoryService {
       }
     }
 
-    // Process any additional specific bin location codes stored in stock_balances (e.g. ZONE-A-R01-S05-C01)
+    // Process any additional specific bin location codes stored in stock_balances
     balances.forEach((b) => {
       if (!b.locationCode || processedCodes.has(b.locationCode)) return;
       processedCodes.add(b.locationCode);
@@ -291,8 +427,6 @@ export class SmartInventoryService {
         productsCount: locBalances.length,
       });
     });
-
-    return cells;
 
     return cells;
   }
@@ -425,5 +559,15 @@ export class SmartInventoryService {
       where: { id: savedStocktake.id },
       relations: ['details', 'details.product'],
     });
+  }
+
+  // ─── 4. AI ENGINE HEALTH CHECK ─────────────────────────────────
+
+  async getAiEngineHealth() {
+    const health = await this.aiEngine.healthCheck();
+    return {
+      available: !!health,
+      ...(health || { status: 'unreachable', engine: 'N/A', version: 'N/A', capabilities: [] }),
+    };
   }
 }

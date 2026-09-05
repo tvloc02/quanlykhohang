@@ -7,6 +7,8 @@ import { Product } from '../../entities/product.entity';
 import { Warehouse } from '../../entities/warehouse.entity';
 import { Stocktake } from '../stocktake/entities/stocktake.entity';
 import { StocktakeDetail } from '../stocktake/entities/stocktake-detail.entity';
+import { AiEngineClient } from './ai-engine.client';
+import { ReSlottingModule } from './re-slotting/re-slotting.module';
 
 @Module({
   imports: [
@@ -17,9 +19,10 @@ import { StocktakeDetail } from '../stocktake/entities/stocktake-detail.entity';
       Stocktake,
       StocktakeDetail,
     ]),
+    ReSlottingModule,
   ],
   controllers: [SmartInventoryController],
-  providers: [SmartInventoryService],
+  providers: [SmartInventoryService, AiEngineClient],
   exports: [SmartInventoryService],
 })
 export class SmartInventoryModule {}

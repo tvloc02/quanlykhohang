@@ -43,4 +43,44 @@ export class Product extends BaseEntity {
 
   @Column({ type: 'boolean', default: false })
   isVisible: boolean;
+
+  // ─── AI Slotting: Thuộc tính vật lý 3D ──────────────
+
+  /** Chiều dài bao bì (cm) */
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Chiều dài (cm)' })
+  length?: number;
+
+  /** Chiều rộng bao bì (cm) */
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Chiều rộng (cm)' })
+  width?: number;
+
+  /** Chiều cao bao bì (cm) */
+  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true, comment: 'Chiều cao (cm)' })
+  height?: number;
+
+  /** Trọng lượng thực tế (kg) */
+  @Column({ type: 'decimal', precision: 10, scale: 3, nullable: true, comment: 'Trọng lượng (kg)' })
+  weight?: number;
+
+  /** Yêu cầu bảo quản: COLD (-18°C), AMBIENT (thường), THERMAL (điều hòa) */
+  @Column({
+    type: 'enum',
+    enum: ['COLD', 'AMBIENT', 'THERMAL'],
+    default: 'AMBIENT',
+    comment: 'Yêu cầu bảo quản',
+  })
+  requiredZoneType: 'COLD' | 'AMBIENT' | 'THERMAL';
+
+  /** Phân loại nguy hiểm: FLAMMABLE, CORROSIVE, FOOD, TOXIC, null */
+  @Column({ type: 'varchar', length: 50, nullable: true, comment: 'Phân loại nguy hiểm' })
+  hazardClass?: string;
+
+  /** Cache kết quả phân loại ABC (cập nhật bởi batch job) */
+  @Column({
+    type: 'enum',
+    enum: ['A', 'B', 'C'],
+    nullable: true,
+    comment: 'Phân loại ABC (cache)',
+  })
+  abcClass?: 'A' | 'B' | 'C';
 }
