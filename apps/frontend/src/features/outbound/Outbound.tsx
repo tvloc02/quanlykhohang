@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import CreateOutboundOrderPage from './pages/CreateOutboundOrderPage';
+import OutboundPrintModal from './components/OutboundPrintModal';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 
 const getOutboundMenuId = (mode?: string) => {
@@ -1312,7 +1313,7 @@ export default function Outbound({
             </div>
 
             {/* Action Buttons Top Right aligned in Cyan/Indigo style */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 print:hidden">
               {/* 1. Thêm mới */}
               {canCreate && (
                 <button
@@ -1406,7 +1407,7 @@ export default function Outbound({
           </div>
 
           {/* Filter & Search Panel */}
-          <div className="rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] p-4 shadow-sm">
+          <div className="rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] p-4 shadow-sm print:hidden">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               {/* Search input */}
               <div className="relative flex-1 min-w-[320px]">
@@ -1473,7 +1474,7 @@ export default function Outbound({
               <table className={`w-full border-collapse text-left ${isDisposal ? 'min-w-[1350px]' : 'min-w-[1850px]'}`}>
                 <thead className="bg-cyan-50 dark:bg-indigo-950/80 sticky top-0 z-20 shadow-sm">
                   <tr className="border-b-2 border-slate-200 dark:border-indigo-900/60 text-slate-800 dark:text-slate-100 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
-                    <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center">
+                    <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center print:hidden">
                       <input
                         type="checkbox"
                         checked={paginatedOrders.length > 0 && selectedIds.size === paginatedOrders.length}
@@ -1509,7 +1510,7 @@ export default function Outbound({
                     )}
                     {columnVis.note && <th className="min-w-[200px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">{isDisposal ? 'Phương án / Ghi chú' : 'Ghi chú'}</th>}
                     {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Trạng thái</th>}
-                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 dark:bg-indigo-900/90 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 text-cyan-950 dark:text-indigo-100 font-black">Thao tác</th>
+                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 dark:bg-indigo-900/90 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 text-cyan-950 dark:text-indigo-100 font-black print:hidden">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40 bg-white dark:bg-slate-950">
@@ -1531,7 +1532,7 @@ export default function Outbound({
                       return (
                         <React.Fragment key={ord.id}>
                           <tr className={`group transition cursor-pointer border-b border-slate-200 dark:border-indigo-900/40 ${isSelected ? 'bg-cyan-100/60 dark:bg-indigo-950/70' : 'hover:bg-cyan-50/60 dark:hover:bg-indigo-950/40'}`}>
-                            <td className="border-r border-slate-200 dark:border-indigo-900/40 px-2 py-3.5 text-center">
+                            <td className="border-r border-slate-200 dark:border-indigo-900/40 px-2 py-3.5 text-center print:hidden">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -1592,7 +1593,7 @@ export default function Outbound({
                                 <StatusBadge status={ord.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng')} />
                               </td>
                             )}
-                            <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60">
+                            <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                               <div className="flex items-center justify-center gap-1.5">
                                 {canEdit && (() => {
                                   const isFinalized = ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed'].includes((ord.status || '').toLowerCase());
@@ -1696,7 +1697,7 @@ export default function Outbound({
             </div>
 
             {/* Pagination Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-t-2 border-slate-200 dark:border-indigo-900/60 bg-slate-50/90 dark:bg-slate-900/90 px-4 py-3.5 text-sm font-bold text-slate-700 dark:text-slate-300">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t-2 border-slate-200 dark:border-indigo-900/60 bg-slate-50/90 dark:bg-slate-900/90 px-4 py-3.5 text-sm font-bold text-slate-700 dark:text-slate-300 print:hidden">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-extrabold text-slate-700 dark:text-slate-200">Hiển thị:</span>
@@ -1942,9 +1943,25 @@ export default function Outbound({
                   {isDisposal ? `Chi tiết Phiếu Xuất Hủy Hàng Hóa #${selectedOrder.orderNo}` : `Chi tiết Phiếu Xuất Kho #${selectedOrder.orderNo}`}
                 </h2>
               </div>
-              <button onClick={() => setShowDetailModal(false)} className="rounded-xl p-1.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300 transition">
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {canPrint && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDetailModal(false);
+                      setShowPrintModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-cyan-50 dark:bg-indigo-950/60 px-3 py-1.5 text-xs font-bold text-cyan-700 dark:text-indigo-300 hover:bg-cyan-100 dark:hover:bg-indigo-900 transition cursor-pointer shadow-xs"
+                    title="In phiếu xuất"
+                  >
+                    <Printer size={15} />
+                    <span>In phiếu</span>
+                  </button>
+                )}
+                <button onClick={() => setShowDetailModal(false)} className="rounded-xl p-1.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300 transition">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4 rounded-xl border border-cyan-200 dark:border-indigo-900/50 bg-cyan-50/50 dark:bg-indigo-950/40 p-3.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -1999,71 +2016,16 @@ export default function Outbound({
         document.body
       )}
 
-      {/* ─── MODAL PRINT ────────────────────────────────────────────── */}
-      {showPrintModal && selectedOrder && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 dark:bg-slate-950/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border-2 border-cyan-500 dark:border-indigo-500">
-            <div className="mb-4 flex items-center justify-between border-b-2 border-cyan-100 dark:border-indigo-900/40 pb-3">
-              <h2 className="text-base font-black text-slate-900 dark:text-slate-100">
-                {isDisposal ? 'Xem trước Biên Bản Xuất Hủy Hàng Hóa' : 'Xem trước Phiếu Xuất Bán Hàng'}
-              </h2>
-              <button onClick={() => setShowPrintModal(false)} className="rounded-xl p-1.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300 transition">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4 border-2 border-slate-200 dark:border-indigo-900/60 rounded-xl space-y-3 text-xs bg-slate-50/50 dark:bg-slate-950/50">
-              <div className="text-center">
-                <h2 className="text-base font-black uppercase text-cyan-950 dark:text-slate-100">
-                  {isDisposal ? 'BIÊN BẢN XUẤT HỦY HÀNG HÓA' : 'PHIẾU XUẤT BÁN HÀNG'}
-                </h2>
-                <p className="text-slate-500 dark:text-slate-400 font-semibold mt-1">Mã phiếu: {selectedOrder.orderNo} - Ngày: {formatDateDisplay(selectedOrder.orderDate || (selectedOrder as any).createdAt)}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 font-semibold text-slate-800 dark:text-slate-200">
-                <p>{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'} <span className="font-extrabold">{selectedOrder.customer}</span></p>
-                <p>{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'} <span className="font-extrabold">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></p>
-                {!isDisposal && <p>SĐT: <span className="font-bold">{selectedOrder.customerPhone || '-'}</span></p>}
-                <p>{isDisposal ? 'Người lập / Giám sát:' : 'Người lập:'} <span className="font-bold">{selectedOrder.employeeName}</span></p>
-              </div>
-              <table className="w-full border-collapse border-2 border-slate-300 dark:border-indigo-900/60 text-xs bg-white dark:bg-slate-950">
-                <thead className="bg-cyan-100 dark:bg-indigo-950 font-bold text-center text-cyan-950 dark:text-indigo-300">
-                  <tr>
-                    <th className="border border-slate-300 dark:border-indigo-900/60 p-2">STT</th>
-                    <th className="border border-slate-300 dark:border-indigo-900/60 p-2">Tên hàng</th>
-                    <th className="border border-slate-300 dark:border-indigo-900/60 p-2">ĐVT</th>
-                    <th className="border border-slate-300 dark:border-indigo-900/60 p-2">Vị trí kệ lấy hàng</th>
-                    <th className="border border-slate-300 dark:border-indigo-900/60 p-2">SL {isDisposal ? 'hủy' : ''}</th>
-                    <th className="border border-slate-300 dark:border-indigo-900/60 p-2">{isDisposal ? 'Giá vốn (đ)' : 'Đơn giá'}</th>
-                    <th className="border border-slate-300 dark:border-indigo-900/60 p-2">{isDisposal ? 'Giá trị hủy (đ)' : 'Thành tiền'}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedOrder.details?.map((d, i) => (
-                    <tr key={i} className="text-center">
-                      <td className="border border-slate-300 dark:border-indigo-900/40 p-2 dark:text-slate-300">{i + 1}</td>
-                      <td className="border border-slate-300 dark:border-indigo-900/40 p-2 text-left font-semibold dark:text-slate-200">{d.productName}</td>
-                      <td className="border border-slate-300 dark:border-indigo-900/40 p-2 dark:text-slate-300">{d.unit}</td>
-                      <td className="border border-slate-300 dark:border-indigo-900/40 p-2 font-bold text-cyan-800 dark:text-indigo-400">{(d as any).locationBin || (d as any).binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}</td>
-                      <td className="border border-slate-300 dark:border-indigo-900/40 p-2 font-bold dark:text-slate-100">{d.qty}</td>
-                      <td className="border border-slate-300 dark:border-indigo-900/40 p-2 text-right dark:text-slate-300">{d.price.toLocaleString('vi-VN')}</td>
-                      <td className="border border-slate-300 dark:border-indigo-900/40 p-2 text-right font-bold dark:text-slate-100">{(d.qty * d.price).toLocaleString('vi-VN')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="text-right font-black text-sm text-cyan-950 dark:text-slate-100">
-                {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng tiền: '}
-                <span className="text-cyan-700 dark:text-indigo-400 font-extrabold">{selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ</span>
-              </div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 dark:bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 dark:hover:bg-indigo-500 cursor-pointer shadow-md transition">
-                <Printer size={16} /> In Phiếu
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* ─── MODAL PRINT PHIẾU XUẤT KHO ────────────────────────────── */}
+      <OutboundPrintModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        order={selectedOrder}
+        warehouses={warehouses}
+        isDisposal={isDisposal}
+        featureMode={featureMode}
+        title={title}
+      />
 
       {/* ─── MODAL BARCODE SCANNER ───────────────────────────────────── */}
       {showScannerModal && (
