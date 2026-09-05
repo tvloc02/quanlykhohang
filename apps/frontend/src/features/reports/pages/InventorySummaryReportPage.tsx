@@ -13,6 +13,8 @@ import {
   Filter,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { ReportPrintHeader } from '../components/ReportPrintHeader';
+import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -365,9 +367,17 @@ export default function InventorySummaryReportPage() {
   };
 
   return (
-    <div className={`space-y-4 pb-12 animate-in fade-in duration-200 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
-      {/* ═══ TOP HEADER SECTION ═══ */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <>
+      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
+      <ReportPrintHeader
+        title="BÁO CÁO HÀNG TỒN TỔNG HỢP"
+        subtitle={`Đến ngày: ${endDate || new Date().toLocaleDateString('vi-VN')}`}
+        subInfo={`Tổng số mặt hàng: ${filteredItems.length} mặt hàng`}
+      />
+
+      <div className={`space-y-4 pb-12 animate-in fade-in duration-200 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+        {/* ═══ TOP HEADER SECTION ═══ */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
         {/* Left Title Badge */}
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
@@ -418,7 +428,7 @@ export default function InventorySummaryReportPage() {
       </div>
 
       {/* ═══ FILTER & CONTROL TOOLBAR ═══ */}
-      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3 print:hidden">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           {/* Live Search input */}
           <div className="relative flex-1 min-w-[300px]">
@@ -570,6 +580,11 @@ export default function InventorySummaryReportPage() {
           </table>
         </div>
       </div>
-    </div>
+
+      </div>
+
+      {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+      <ReportPrintFooter />
+    </>
   );
 }

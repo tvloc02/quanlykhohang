@@ -86,6 +86,108 @@ const normalizeBinKey = (code: string): string => {
   return code.trim().toUpperCase().replace(/_/g, '-');
 };
 
+export interface BinAllocationResult {
+  formattedBins: string[];
+  binQtyMap: Record<string, number>;
+  binPctMap: Record<string, number>;
+}
+
+export const allocateBinsForInbound = (
+  rawBinCodes: string[],
+  targetQty: number,
+  manualMap: Record<string, { qty: number; pct: number }> = {}
+): BinAllocationResult => {
+  if (!rawBinCodes || rawBinCodes.length === 0) {
+    return { formattedBins: [], binQtyMap: {}, binPctMap: {} };
+  }
+
+  const uniqueBins: string[] = [];
+  const seenKeys = new Set<string>();
+  for (const b of rawBinCodes) {
+    if (!b) continue;
+    const clean = b.split('(')[0].trim();
+    const key = normalizeBinKey(clean);
+    if (key && !seenKeys.has(key)) {
+      seenKeys.add(key);
+      uniqueBins.push(clean);
+    }
+  }
+
+  const totalBins = uniqueBins.length;
+  if (totalBins === 0) {
+    return { formattedBins: [], binQtyMap: {}, binPctMap: {} };
+  }
+
+  const binQtyMap: Record<string, number> = {};
+  const binPctMap: Record<string, number> = {};
+
+  let manualTotalQty = 0;
+  let manualTotalPct = 0;
+  const manualBins: { cleanB: string; key: string; short: string; qty: number; pct: number }[] = [];
+  const autoBins: { cleanB: string; key: string; short: string }[] = [];
+
+  uniqueBins.forEach((cleanB) => {
+    const key = normalizeBinKey(cleanB);
+    const short = (cleanB.split('-').pop() || cleanB).toUpperCase();
+    const manualEntry = manualMap[key] || manualMap[cleanB] || manualMap[short];
+    if (manualEntry && (manualEntry.qty > 0 || manualEntry.pct > 0)) {
+      manualBins.push({ cleanB, key, short, qty: manualEntry.qty, pct: manualEntry.pct });
+      manualTotalQty += manualEntry.qty;
+      manualTotalPct += manualEntry.pct;
+    } else {
+      autoBins.push({ cleanB, key, short });
+    }
+  });
+
+  manualBins.forEach(({ cleanB, key, short, qty, pct }) => {
+    binQtyMap[key] = qty;
+    binQtyMap[cleanB] = qty;
+    binQtyMap[short] = qty;
+
+    const computedPct = pct > 0 ? pct : (targetQty > 0 ? Math.round((qty / targetQty) * 100) : 100);
+    binPctMap[key] = computedPct;
+    binPctMap[cleanB] = computedPct;
+    binPctMap[short] = computedPct;
+  });
+
+  if (autoBins.length > 0) {
+    const remainingQty = Math.max(0, targetQty - manualTotalQty);
+    const remainingPct = Math.max(0, 100 - manualTotalPct);
+
+    const baseQty = Math.floor(remainingQty / autoBins.length);
+    const remainderQty = remainingQty % autoBins.length;
+
+    const basePct = Math.floor(remainingPct / autoBins.length);
+    const remainderPct = remainingPct % autoBins.length;
+
+    autoBins.forEach(({ cleanB, key, short }, idx) => {
+      const binQty = baseQty + (idx < remainderQty ? 1 : 0);
+      binQtyMap[key] = binQty;
+      binQtyMap[cleanB] = binQty;
+      binQtyMap[short] = binQty;
+
+      let binPct = basePct + (idx < remainderPct ? 1 : 0);
+      if (targetQty > 0 && manualBins.length === 0) {
+        binPct = Math.floor(100 / autoBins.length) + (idx < (100 % autoBins.length) ? 1 : 0);
+      } else if (remainingQty === 0 && manualTotalQty >= targetQty) {
+        binPct = 0;
+      }
+
+      binPctMap[key] = binPct;
+      binPctMap[cleanB] = binPct;
+      binPctMap[short] = binPct;
+    });
+  }
+
+  const formattedBins = uniqueBins.map((cleanB) => {
+    const key = normalizeBinKey(cleanB);
+    const pct = binPctMap[key] !== undefined ? binPctMap[key] : (binPctMap[cleanB] ?? 100);
+    return cleanB + ' (' + pct + '%)';
+  });
+
+  return { formattedBins, binQtyMap, binPctMap };
+};
+
 export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemRow>({
   isOpen,
   onClose,
@@ -112,6 +214,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     Map<string, { productId: string; sku: string; productName: string; qty: number }>
   >(new Map());
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
+  const [manualBinAllocations, setManualBinAllocations] = useState<Record<string, Record<string, { qty: number; pct: number }>>>({});
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -727,6 +830,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     setActiveRowId(initialTargetId);
 
     const initialMap: Record<string, string[]> = {};
+    const initialManualMap: Record<string, Record<string, { qty: number; pct: number }>> = {};
 
     // Preserve existing assigned bins from order rows ONLY (no forced auto-allocation for all items)
     items.forEach((item) => {
@@ -755,18 +859,33 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       if (validBins.length > 0) {
         if (mode !== 'OUTBOUND_TRANSFER') {
           const itemQty = Number(item.qty || 1);
-          const totalBins = validBins.length;
-          const maxPerBin = Math.ceil(itemQty / totalBins);
-          const maxBinCap = 500;
+          initialManualMap[item.rowId] = {};
+          validBins.forEach((b) => {
+            const m = b.match(/\((\d+(?:\.\d+)?)%\)/);
+            if (m) {
+              const cleanB = b.split('(')[0].trim();
+              const pctVal = Number(m[1]);
+              const qtyVal = Math.round((pctVal / 100) * itemQty);
+              const k = normalizeBinKey(cleanB);
+              initialManualMap[item.rowId][k] = { qty: qtyVal, pct: pctVal };
+              initialManualMap[item.rowId][cleanB] = { qty: qtyVal, pct: pctVal };
+            }
+          });
 
-          initialMap[item.rowId] = validBins.map((b, bIdx) => {
-            if (b.includes('%')) return b;
-            const cleanB = b.split('(')[0].trim();
-            const qtyForThisBin = bIdx < totalBins - 1
-              ? Math.min(itemQty, maxPerBin)
-              : Math.max(1, itemQty - maxPerBin * (totalBins - 1));
-            const pctPerBin = Math.max(1, Math.min(100, Math.round((qtyForThisBin / maxBinCap) * 100)));
-            return pctPerBin < 100 ? `${cleanB} (${pctPerBin}%)` : cleanB;
+          const { formattedBins, binQtyMap, binPctMap } = allocateBinsForInbound(
+            validBins,
+            itemQty,
+            initialManualMap[item.rowId]
+          );
+          initialMap[item.rowId] = formattedBins;
+
+          formattedBins.forEach((bCodeStr) => {
+            const cleanB = bCodeStr.split('(')[0].trim();
+            const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+            const keyB = normalizeBinKey(cleanB);
+            const binPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
+            const binQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
+            updateSubWarehousesTopology(cleanB, shortB, binPct, 'Đã chọn nhập: ' + binQty + ' ' + (item.unit || 'cái') + ' (' + binPct + '%)');
           });
         } else {
           initialMap[item.rowId] = [...validBins];
@@ -775,6 +894,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     });
 
     setSelectedBinsMap(initialMap);
+    setManualBinAllocations(initialManualMap);
 
     // Auto-switch rack view to the first selected rack if any
     const activeItemBins = initialMap[initialTargetId] || [];
@@ -915,6 +1035,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     const binCode = cell.binCode;
     const shortCode = (binCode.split('-').pop() || binCode).toUpperCase();
     const normKey = normalizeBinKey(binCode);
+    const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
+    const targetQty = Number(activeItem?.qty || 1);
 
     setSelectedBinsMap((prev) => {
       const currentList = prev[activeRowId] || [];
@@ -930,6 +1052,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         updatedRawList = currentList.filter((b) => {
           const normB = normalizeBinKey(b);
           return normB !== normKey && !b.startsWith(binCode) && b !== binCode && !b.includes(shortCode);
+        });
+
+        // Clean up manual allocations for this unselected bin
+        setManualBinAllocations((prevManual) => {
+          const rowManual = { ...(prevManual[activeRowId] || {}) };
+          delete rowManual[normKey];
+          delete rowManual[binCode];
+          delete rowManual[shortCode];
+          return { ...prevManual, [activeRowId]: rowManual };
         });
 
         // Check if ANY OTHER item in selectedBinsMap is still using this bin
@@ -948,11 +1079,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         }
       } else {
         // CHECKING BIN: Add to current item's selection
-        const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
-        const targetQty = Number(activeItem?.qty || 1);
-
         if (mode === 'OUTBOUND_TRANSFER') {
-          // 1. Check if bin is assigned to another item in current order
           const assignedToOtherItem = Object.entries(prev).find(([rId, bList]) => {
             if (rId === activeRowId) return false;
             return bList.some((b) => normalizeBinKey(b) === normKey || b.startsWith(binCode) || b.includes(shortCode));
@@ -965,7 +1092,6 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             return prev;
           }
 
-          // 2. Verify that the bin actually stores the active product being exported if valid bins are identified
           if (outboundValidBins.length > 0) {
             const isValidForActiveProduct = outboundValidBins.some(
               (b) => normalizeBinKey(b) === normKey || b === binCode || b.includes(shortCode) || normalizeBinKey(b) === normalizeBinKey(shortCode)
@@ -976,7 +1102,6 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             }
           }
 
-          // 3. Check if total stock from selected bins already satisfies target export quantity
           let currentSelectedStock = 0;
           currentList.forEach((bCode) => {
             const cleanCode = bCode.split('(')[0].trim();
@@ -989,78 +1114,48 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             setWarningMessage(`✅ Đã chọn đủ ${currentSelectedStock}/${targetQty} ${activeItem?.unit || 'Cái'} cần xuất cho "${activeItem?.productName || 'mặt hàng'}"! Hệ thống đã khóa không cho chọn thêm.`);
             return prev;
           }
-        } else {
-          // INBOUND MODE / STOCKIN / STOCKTAKE: Sequential capacity filling validation
-          const maxBinCap = 500;
-          let currentStackedQty = 0;
-
-          currentList.forEach((bCodeStr) => {
-            const cleanB = bCodeStr.split('(')[0].trim();
-            let occupiedByOthers = 0;
-            Object.entries(prev).forEach(([rId, bList]) => {
-              if (rId === activeRowId) return;
-              const matchStr = bList.find((b) => normalizeBinKey(b) === normalizeBinKey(cleanB) || b.startsWith(cleanB));
-              if (matchStr) {
-                const m = matchStr.match(/\((\d+)%\)/);
-                occupiedByOthers += m ? Number(m[1]) : 100;
-              }
-            });
-
-            const availCapPct = Math.max(0, 100 - occupiedByOthers);
-            const availCapQty = Math.round((availCapPct / 100) * maxBinCap);
-            const remainingToStack = Math.max(0, targetQty - currentStackedQty);
-            const alloc = Math.min(remainingToStack, availCapQty);
-            currentStackedQty += alloc;
-          });
-
-          if (currentStackedQty >= targetQty) {
-            setWarningMessage(`✅ Đã xếp đầy đủ ${targetQty}/${targetQty} ${activeItem?.unit || 'Cái'} cần nhập vào các ô kệ đã chọn! Nếu muốn chuyển sang ô kệ khác, vui lòng bỏ chọn ô vừa rồi trước.`);
-            return prev;
-          }
         }
 
+        // INBOUND MODE: NO BLOCKING QUOTA! Free selection with even distribution
         const filtered = currentList.filter((b) => normalizeBinKey(b) !== normKey);
         updatedRawList = [...filtered, binCode];
       }
 
-      // SEQUENTIAL CAPACITY FILLING PER BIN IN INBOUND / STOCKIN / STOCKTAKE MODE
-      const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
-      const targetQty = Number(activeItem?.qty || 1);
-      const totalBins = updatedRawList.length;
+      // CAPACITY ALLOCATION PER BIN IN INBOUND / STOCKIN / STOCKTAKE MODE
+      if (mode !== 'OUTBOUND_TRANSFER') {
+        if (updatedRawList.length === 0) {
+          return { ...prev, [activeRowId]: [] };
+        }
 
-      if (mode !== 'OUTBOUND_TRANSFER' && totalBins > 0) {
-        const maxBinCap = 500;
-        let remainingToAllocate = targetQty;
+        const rowManual = { ...(manualBinAllocations[activeRowId] || {}) };
+        if (isCurrentlySelected) {
+          delete rowManual[normKey];
+          delete rowManual[binCode];
+          delete rowManual[shortCode];
+        }
 
-        const formattedList = updatedRawList.map((bCodeStr) => {
+        const { formattedBins, binQtyMap, binPctMap } = allocateBinsForInbound(
+          updatedRawList,
+          targetQty,
+          rowManual
+        );
+
+        formattedBins.forEach((bCodeStr) => {
           const cleanB = bCodeStr.split('(')[0].trim();
           const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+          const keyB = normalizeBinKey(cleanB);
+          const binPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
+          const binQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
 
-          let occupiedByOthers = 0;
-          Object.entries(prev).forEach(([rId, bList]) => {
-            if (rId === activeRowId) return;
-            const matchStr = bList.find((b) => normalizeBinKey(b) === normalizeBinKey(cleanB) || b.startsWith(cleanB));
-            if (matchStr) {
-              const m = matchStr.match(/\((\d+)%\)/);
-              occupiedByOthers += m ? Number(m[1]) : 100;
-            }
-          });
-
-          const availCapPct = Math.max(0, 100 - occupiedByOthers);
-          const availCapQty = Math.round((availCapPct / 100) * maxBinCap);
-
-          const qtyForThisBin = Math.min(remainingToAllocate, availCapQty);
-          remainingToAllocate = Math.max(0, remainingToAllocate - qtyForThisBin);
-
-          const pctForThisBin = Math.max(1, Math.min(100, Math.round((qtyForThisBin / maxBinCap) * 100)));
-          const netPct = Math.min(100, occupiedByOthers + pctForThisBin);
-
-          updateSubWarehousesTopology(cleanB, shortB, netPct, `Đã chứa: ${netPct}% (${qtyForThisBin} ${activeItem?.unit || 'cái'})`);
-
-          return pctForThisBin < 100 ? `${cleanB} (${pctForThisBin}%)` : cleanB;
+          updateSubWarehousesTopology(
+            cleanB,
+            shortB,
+            binPct,
+            'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)'
+          );
         });
 
-        return { ...prev, [activeRowId]: formattedList };
+        return { ...prev, [activeRowId]: formattedBins };
       }
 
       return { ...prev, [activeRowId]: updatedRawList };
@@ -1121,17 +1216,62 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     const normTarget = normalizeBinKey(cleanBinCode);
 
     const rId = targetRowId || activeRowId;
+    const targetItem = items.find((i) => i.rowId === rId) || items[0];
+    const totalItemQty = Number(targetItem?.qty || 1);
 
-    if (newQty !== undefined && newQty > 0 && rId && items) {
-      const targetItem = items.find((i) => i.rowId === rId);
-      if (targetItem) {
-        targetItem.qty = newQty;
-        if ((targetItem as any).expectedQty !== undefined) (targetItem as any).expectedQty = newQty;
-        if ((targetItem as any).receivedQty !== undefined) (targetItem as any).receivedQty = newQty;
-        if ((targetItem as any).requiredQty !== undefined) (targetItem as any).requiredQty = newQty;
-      }
+    if (mode !== 'OUTBOUND_TRANSFER') {
+      // INBOUND: USER EXPLICITLY EDITED THIS SHELF'S QUANTITY / PERCENTAGE
+      setManualBinAllocations((prevManual) => {
+        const rowManual = { ...(prevManual[rId] || {}) };
+        if (pct <= 0 && (!newQty || newQty <= 0)) {
+          delete rowManual[normTarget];
+          delete rowManual[cleanBinCode];
+          delete rowManual[shortCode];
+        } else {
+          const calcQty = newQty !== undefined && newQty > 0 ? newQty : Math.round(((pct || 100) / 100) * totalItemQty);
+          const calcPct = pct > 0 ? pct : (totalItemQty > 0 ? Math.round((calcQty / totalItemQty) * 100) : 100);
+          rowManual[normTarget] = { qty: calcQty, pct: calcPct };
+          rowManual[cleanBinCode] = { qty: calcQty, pct: calcPct };
+          rowManual[shortCode] = { qty: calcQty, pct: calcPct };
+        }
+
+        // Reallocate bins with this updated manualMap
+        setSelectedBinsMap((prev) => {
+          let currentList = prev[rId] || [];
+          if (pct <= 0 && (!newQty || newQty <= 0)) {
+            currentList = currentList.filter((b) => normalizeBinKey(b) !== normTarget && !b.startsWith(cleanBinCode));
+            updateSubWarehousesTopology(cleanBinCode, shortCode, 0, 'Ô Trống (500kg)');
+          } else {
+            const isAlready = currentList.some((b) => normalizeBinKey(b) === normTarget || b.startsWith(cleanBinCode));
+            if (!isAlready) {
+              currentList = [...currentList, cleanBinCode];
+            }
+          }
+
+          const { formattedBins, binQtyMap, binPctMap } = allocateBinsForInbound(
+            currentList,
+            totalItemQty,
+            rowManual
+          );
+
+          formattedBins.forEach((bCodeStr) => {
+            const cleanB = bCodeStr.split('(')[0].trim();
+            const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+            const keyB = normalizeBinKey(cleanB);
+            const bPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
+            const bQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
+            updateSubWarehousesTopology(cleanB, shortB, bPct, 'Đã chọn nhập: ' + bQty + ' ' + (targetItem?.unit || 'cái') + ' (' + bPct + '%)');
+          });
+
+          return { ...prev, [rId]: formattedBins };
+        });
+
+        return { ...prevManual, [rId]: rowManual };
+      });
+      return;
     }
 
+    // OUTBOUND / STOCKTAKE MODE
     if (rId) {
       setSelectedBinsMap((prev) => {
         const currentList = prev[rId] || [];
@@ -1142,7 +1282,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           const entryToSave = cleanBinCode;
           newMap = { ...prev, [rId]: [entryToSave] };
         } else if (pct > 0) {
-          const entryToSave = `${cleanBinCode} (${pct}%)`;
+          const entryToSave = cleanBinCode + ' (' + pct + '%)';
           newMap = { ...prev, [rId]: [...filtered, entryToSave] };
         } else {
           newMap = { ...prev, [rId]: filtered };
@@ -1159,7 +1299,6 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           });
         });
 
-        // Determine target topology occupancy percentage
         let targetTopologyPct = totalPctForBin;
         if (notes && notes.startsWith('REMAINING:')) {
           const rem = parseFloat(notes.replace('REMAINING:', ''));
@@ -1179,10 +1318,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           targetTopologyPct = Math.max(0, Number((initialBinOccupancy - totalPctForBin).toFixed(1)));
         }
 
-        const noteText = notes || (mode === 'OUTBOUND_TRANSFER' || mode === 'STOCKTAKE'
-          ? `Còn chứa: ${targetTopologyPct}% (Đã xuất trừ: ${totalPctForBin}%)`
-          : `Đã chứa: ${totalPctForBin}%`);
-
+        const noteText = notes || ('Còn chứa: ' + targetTopologyPct + '% (Đã xuất trừ: ' + totalPctForBin + '%)');
         updateSubWarehousesTopology(cleanBinCode, shortCode, targetTopologyPct, noteText);
         return newMap;
       });
@@ -1217,6 +1353,29 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
       const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
 
+      const setCandidateBinsForActiveItem = (candidateBins: string[]) => {
+        if (!activeRowId) return;
+        if (mode !== 'OUTBOUND_TRANSFER') {
+          const itemQty = Number(activeItem?.qty || 1);
+          const { formattedBins, binQtyMap, binPctMap } = allocateBinsForInbound(
+            candidateBins,
+            itemQty,
+            manualBinAllocations[activeRowId] || {}
+          );
+          setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: formattedBins }));
+          formattedBins.forEach((bCodeStr) => {
+            const cleanB = bCodeStr.split('(')[0].trim();
+            const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+            const keyB = normalizeBinKey(cleanB);
+            const binPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
+            const binQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
+            updateSubWarehousesTopology(cleanB, shortB, binPct, 'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)');
+          });
+        } else {
+          setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: candidateBins }));
+        }
+      };
+
       // INTENT 1: HEAVY GOODS / BOTTOM TIER INTENT ("hàng nặng", "dưới cùng", "tầng a", "kệ dưới", "chịu lực")
       const isHeavyIntent =
         lower.includes('nặng') ||
@@ -1241,7 +1400,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         if (tierABins.length > 0) {
           const candidateBins = tierABins.slice(0, Math.max(1, requiredCount)).map((cl) => cl.binCode);
           if (activeRowId) {
-            setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: candidateBins }));
+            setCandidateBinsForActiveItem(candidateBins);
             const firstBin = candidateBins[0];
             const matchRack = racksTopology.find((rk) => firstBin.includes(rk.rackId));
             if (matchRack) setActiveRackId(matchRack.rackId);
@@ -1294,7 +1453,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         if (topBins.length > 0) {
           const candidateBins = topBins.slice(0, Math.max(1, requiredCount)).map((cl) => cl.binCode);
           if (activeRowId) {
-            setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: candidateBins }));
+            setCandidateBinsForActiveItem(candidateBins);
             const firstBin = candidateBins[0];
             const matchRack = racksTopology.find((rk) => firstBin.includes(rk.rackId));
             if (matchRack) setActiveRackId(matchRack.rackId);
@@ -1377,7 +1536,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         }
 
         if (candidateBins.length > 0 && activeRowId) {
-          setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: candidateBins }));
+          setCandidateBinsForActiveItem(candidateBins);
           const firstBin = candidateBins[0];
           const matchRack = racksTopology.find((rk) => firstBin.includes(rk.rackId));
           if (matchRack) setActiveRackId(matchRack.rackId);
@@ -2013,7 +2172,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 })()}
                 mode="select"
                 isOutbound={mode === 'OUTBOUND_TRANSFER' || mode === 'STOCKTAKE'}
-                maxBinsAllowed={Math.max(1, Math.ceil(((items.find((i) => i.rowId === activeRowId) || items[0])?.qty || 1) / 100))}
+                maxBinsAllowed={mode === 'OUTBOUND_TRANSFER' ? Math.max(1, Math.ceil(((items.find((i) => i.rowId === activeRowId) || items[0])?.qty || 1) / 100)) : 999}
                 orderItems={items}
                 selectedBinsMap={selectedBinsMap}
                 activeRowId={activeRowId}
