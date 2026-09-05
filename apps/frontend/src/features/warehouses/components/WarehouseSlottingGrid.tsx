@@ -850,38 +850,96 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   const [editingBinConfig, setEditingBinConfig] = useState<{
     binCode: string;
     shortCode: string;
+    rackCode?: string;
     currentPct: number;
   } | null>(null);
   const [inputPctVal, setInputPctVal] = useState<number>(0);
   const [isAddMode, setIsAddMode] = useState<boolean>(true);
-  const [editableBinItems, setEditableBinItems] = useState<Array<{ rowId?: string; productName: string; qty: number; occupancyPct: number; isExistingStock?: boolean }>>([]);
+  const [editableBinItems, setEditableBinItems] = useState<Array<{
+    rowId?: string;
+    productName: string;
+    sku?: string;
+    unit?: string;
+    qty: number;
+    occupancyPct: number;
+    isExistingStock?: boolean;
+    stockQty?: number;
+    stockPct?: number;
+    matchedSku?: string;
+  }>>([]);
 
   useEffect(() => {
     if (!editingBinConfig) return;
     const binShortCode = editingBinConfig.shortCode;
     const fullBinCode = editingBinConfig.binCode;
     const normTarget = normalizeBinKey(fullBinCode);
+    const rackCode = editingBinConfig.rackCode || '';
 
-    const storedGoods = getGoodsList(fullBinCode, binShortCode, '');
-    const storedInfo = getOccupiedInfo(fullBinCode, binShortCode, '');
+    const storedGoods = getGoodsList(fullBinCode, binShortCode, rackCode);
+    const storedInfo = getOccupiedInfo(fullBinCode, binShortCode, rackCode);
 
-    const realStockQty = Number(storedInfo?.totalPhysical || (storedGoods && storedGoods.length > 0 ? storedGoods[0].quantity : 0) || 0);
+    const realStockQty = Number(storedInfo?.totalPhysical || (storedGoods && storedGoods.length > 0 ? storedGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0) : 0) || 0);
     const realStockPct = Number(storedInfo?.occupancyPct !== undefined ? storedInfo.occupancyPct : (editingBinConfig.currentPct || 0));
 
-    const assigned: Array<{ rowId: string; productName: string; qty: number; occupancyPct: number; isExistingStock?: boolean }> = [];
+    const assigned: Array<{
+      rowId?: string;
+      productName: string;
+      sku?: string;
+      unit?: string;
+      qty: number;
+      occupancyPct: number;
+      isExistingStock?: boolean;
+      stockQty?: number;
+      stockPct?: number;
+      matchedSku?: string;
+    }> = [];
 
     if (isOutbound) {
+      let allStored: BinGoodsDetail[] = storedGoods && storedGoods.length > 0 ? [...storedGoods] : [];
+      if (allStored.length === 0 && storedInfo && (storedInfo.totalPhysical || storedInfo.occupancyPct)) {
+        allStored = [{
+          binCode: fullBinCode,
+          productName: storedInfo.productName || 'Hàng tồn kho',
+          sku: storedInfo.sku || 'SKU-001',
+          quantity: storedInfo.totalPhysical || 0,
+          allocated: storedInfo.allocated || 0,
+          supplierName: storedInfo.supplierName || '',
+          inboundDate: storedInfo.inboundDate || '',
+          orderCode: storedInfo.orderCode || '',
+          unit: storedInfo.unit || 'Cái',
+          occupancyPct: storedInfo.occupancyPct !== undefined ? storedInfo.occupancyPct : (editingBinConfig.currentPct || 100),
+        }];
+      }
+
       const activeItem = (orderItems && activeRowId) ? orderItems.find((i: any) => i.rowId === activeRowId) : (orderItems && orderItems.length > 0 ? orderItems[0] : null);
-      const requestedQty = activeItem?.qty && Number(activeItem.qty) > 0 ? Number(activeItem.qty) : 250;
-      const exportQty = Math.min(realStockQty > 0 ? realStockQty : requestedQty, requestedQty);
-      const exportPct = realStockQty > 0 ? Math.min(100, Math.round((exportQty / realStockQty) * realStockPct)) : 50;
+
+      const matchedStored = allStored.find((g) =>
+        (activeItem?.productSku && g.sku && activeItem.productSku.trim().toUpperCase() === g.sku.trim().toUpperCase()) ||
+        (activeItem?.productName && g.productName && activeItem.productName.trim().toLowerCase() === g.productName.trim().toLowerCase())
+      ) || allStored[0];
+
+      const itemStockQty = matchedStored ? Number(matchedStored.quantity) : realStockQty;
+      const itemStockPct = matchedStored && matchedStored.occupancyPct !== undefined ? Number(matchedStored.occupancyPct) : (realStockPct || editingBinConfig.currentPct || 100);
+
+      const requestedQty = activeItem?.qty && Number(activeItem.qty) > 0 ? Number(activeItem.qty) : 10;
+      const exportQty = Math.min(itemStockQty > 0 ? itemStockQty : requestedQty, requestedQty);
+      let exportPct = 0;
+      if (itemStockQty > 0 && itemStockPct > 0) {
+        exportPct = Number(((exportQty / itemStockQty) * itemStockPct).toFixed(1));
+        if (exportPct === 0 && exportQty > 0) exportPct = 0.1;
+      }
 
       assigned.push({
         rowId: activeItem?.rowId || 'row-out-0',
-        productName: activeItem?.productName || (storedGoods && storedGoods[0]?.productName) || 'Hàng xuất kho',
+        productName: activeItem?.productName || matchedStored?.productName || 'Hàng xuất kho',
+        sku: activeItem?.productSku || matchedStored?.sku || '',
+        unit: activeItem?.unit || matchedStored?.unit || 'Cái',
         qty: exportQty,
         occupancyPct: exportPct,
         isExistingStock: false,
+        stockQty: itemStockQty,
+        stockPct: itemStockPct,
+        matchedSku: matchedStored?.sku,
       });
     } else {
       // INBOUND MODE
@@ -1125,9 +1183,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
         if (normRack && normCell && normK.includes(normRack) && normK.endsWith(normCell)) {
           return val;
         }
+        if (normCell && (normK === normCell || normK.endsWith(`-${normCell}`) || normK.endsWith(`_${normCell}`))) {
+          return val;
+        }
       }
 
-      if (!normRack && normCell && occupiedGoodsListMap.has(binCodeShort)) {
+      if (normCell && occupiedGoodsListMap.has(normCell)) {
+        return occupiedGoodsListMap.get(normCell)!;
+      }
+
+      if (occupiedGoodsListMap.has(binCodeShort)) {
         return occupiedGoodsListMap.get(binCodeShort)!;
       }
     }
@@ -1483,6 +1548,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                         setEditingBinConfig({
                                           binCode: fullBinCode,
                                           shortCode: binCodeShort,
+                                          rackCode: rackCode || (activeRack as any)?.rackCode || '',
                                           currentPct: curr,
                                         });
                                         setInputPctVal(curr);
