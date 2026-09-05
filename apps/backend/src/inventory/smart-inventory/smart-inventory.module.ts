@@ -22,7 +22,7 @@ import { ReSlottingModule } from './re-slotting/re-slotting.module';
     ReSlottingModule,
   ],
   controllers: [SmartInventoryController],
-  providers: [SmartInventoryService, AiEngineClient],
+  providers: [SmartInventoryService],
   exports: [SmartInventoryService],
 })
 export class SmartInventoryModule {}

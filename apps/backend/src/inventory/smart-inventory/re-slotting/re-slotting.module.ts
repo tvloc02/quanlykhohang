@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ReSlottingProducer } from './re-slotting.producer';
 import { ReSlottingProcessor } from './re-slotting.processor';
 import { ReSlottingScheduler } from './re-slotting.scheduler';
+import { AiEngineClient } from '../ai-engine.client';
+
 
 /**
  * ReSlotting Module – Dynamic Re-slotting Queue (BullMQ / Redis)
@@ -13,7 +15,12 @@ import { ReSlottingScheduler } from './re-slotting.scheduler';
  *   Producer → Redis Queue → Processor (Worker) → AI Engine → Relocation Orders
  */
 @Module({
-  providers: [ReSlottingProducer, ReSlottingProcessor, ReSlottingScheduler],
-  exports: [ReSlottingProducer],
+  providers: [
+    ReSlottingProducer,
+    ReSlottingProcessor,
+    ReSlottingScheduler,
+    AiEngineClient,
+  ],
+  exports: [ReSlottingProducer, AiEngineClient],
 })
-export class ReSlottingModule {}
+export class ReSlottingModule { }
