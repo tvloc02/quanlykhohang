@@ -44,7 +44,7 @@ export class DocumentsService {
       status: order.status || 'COMPLETED',
       items: (order.details || []).map((d) => ({
         id: d.id,
-        productCode: d.productSku || d.product?.internalSku || d.product?.sku || 'SKU-ITEM',
+        productCode: d.productSku || d.product?.internalSku || 'SKU-ITEM',
         productName: d.productName || d.product?.name || 'Sản phẩm kinh doanh',
         unit: d.unit || d.product?.unit || 'Cái',
         quantity: d.requiredQty || d.pickedQty || 1,
@@ -71,7 +71,7 @@ export class DocumentsService {
       status: order.status || 'COMPLETED',
       items: (order.details || []).map((d) => ({
         id: d.id,
-        productCode: d.product?.internalSku || d.product?.sku || 'SKU-001',
+        productCode: d.product?.internalSku || 'SKU-001',
         productName: d.product?.name || 'Sản phẩm nhập kho',
         unit: d.product?.unit || 'Chiếc',
         quantityExpected: d.requestedQty || 1,
@@ -104,7 +104,7 @@ export class DocumentsService {
       status: order.status || 'COMPLETED',
       items: (order.details || []).map((d) => ({
         id: d.id,
-        productCode: d.productSku || d.product?.internalSku || d.product?.sku || 'SKU-OUT',
+        productCode: d.productSku || d.product?.internalSku || 'SKU-OUT',
         productName: d.productName || d.product?.name || 'Hàng xuất kho',
         unit: d.unit || d.product?.unit || 'Bộ',
         quantity: d.requiredQty || d.pickedQty || 1,
