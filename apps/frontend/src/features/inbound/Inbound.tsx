@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import { usePermissions } from '../../shared/hooks/usePermissions';
+import { parseAssignedBinsFromNote } from '../../shared/utils/warehouseAssignments';
 
 const getInboundMenuId = (mode?: string) => {
   if (mode === 'purchase-order') return 'inbound-purchase-orders';
@@ -1047,10 +1048,7 @@ export default function Inbound({
 
           let parsedLocationBin = d.locationBin || '';
           if (!parsedLocationBin && d.note && d.note.includes('[Vị trí Ô:')) {
-            const match = d.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-            if (match && match[1]) {
-              parsedLocationBin = match[1];
-            }
+            parsedLocationBin = parseAssignedBinsFromNote(d.note).join(', ');
           }
           if (!parsedLocationBin && Array.isArray(d.assignedBins) && d.assignedBins.length > 0) {
             parsedLocationBin = d.assignedBins.join(', ');

@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, buildWarehouseRackTopology, upsertWarehouseToApi, type WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig, clearAllDraftSlotLocks, releaseActiveDraftSlotLocks } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, buildWarehouseRackTopology, upsertWarehouseToApi, type WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig, clearAllDraftSlotLocks, releaseActiveDraftSlotLocks, parseAssignedBinsFromNote, stripAssignedBinsFromNote } from '../../../shared/utils/warehouseAssignments';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
@@ -120,10 +120,7 @@ export function formatLocationDisplay(row: { note?: string; assignedBins?: strin
   } else if (row.locationBin && row.locationBin.trim()) {
     binsArr = row.locationBin.split(',').map((s) => s.trim()).filter(Boolean);
   } else if (row.note && row.note.includes('Vị trí Ô:')) {
-    const match = row.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-    if (match && match[1]) {
-      binsArr = match[1].split(',').map((s) => s.trim()).filter(Boolean);
-    }
+    binsArr = parseAssignedBinsFromNote(row.note);
   }
 
   if (binsArr.length > 0) {
@@ -1069,12 +1066,9 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         );
       }
       if (validBins.length === 0 && item.note) {
-        const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-        if (match) {
-          validBins = match[1].split(',').map((s) => s.trim()).filter(
-            (b) => b && b.trim() !== '' && b !== item.warehouseCode
-          );
-        }
+        validBins = parseAssignedBinsFromNote(item.note).filter(
+          (b) => b && b.trim() !== '' && b !== item.warehouseCode
+        );
       }
       return validBins;
     };
@@ -1519,7 +1513,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     const updatedRows = items.map((r) => {
       const chosenBins = selectedBinsMap[r.rowId] || [];
       if (chosenBins.length > 0) {
-        const cleanNote = (r.note || '').replace(/\[Vị trí Ô:\s*[^\]]+\]/g, '').trim();
+        const cleanNote = stripAssignedBinsFromNote(r.note);
         return {
           ...r,
           assignedBins: chosenBins,
@@ -1527,7 +1521,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
           note: cleanNote ? `${cleanNote} [Vị trí Ô: ${chosenBins.join(', ')}]` : `[Vị trí Ô: ${chosenBins.join(', ')}]`,
         };
       } else {
-        const cleanNote = (r.note || '').replace(/\[Vị trí Ô:\s*[^\]]+\]/g, '').trim();
+        const cleanNote = stripAssignedBinsFromNote(r.note);
         return {
           ...r,
           assignedBins: [],
@@ -2484,10 +2478,7 @@ export default function CreateStockInOrderPage({
           }
 
           if (parsedBins.length === 0 && d.note && typeof d.note === 'string' && d.note.includes('[Vị trí Ô:')) {
-            const match = d.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-            if (match && match[1]) {
-              parsedBins = match[1].split(',').map((b: string) => b.trim()).filter((b: string) => b && b.length > 2 && b !== rowWhCode);
-            }
+            parsedBins = parseAssignedBinsFromNote(d.note).filter((b: string) => b && b.length > 2 && b !== rowWhCode);
           }
 
           const rowAllocations: Record<string, { qty: number; pct: number; isManual: boolean; isCustomQty: boolean }> = {};
@@ -3172,8 +3163,9 @@ export default function CreateStockInOrderPage({
           noteText = noteText ? `${noteText} [HSD: ${r.expiryDate}]` : `[HSD: ${r.expiryDate}]`;
         }
         const binStr = r.locationBin || (Array.isArray(r.assignedBins) ? r.assignedBins.join(', ') : '');
-        if (binStr && !noteText.includes('[Vị trí Ô:')) {
-          noteText = noteText ? `${noteText} [Vị trí Ô: ${binStr}]` : `[Vị trí Ô: ${binStr}]`;
+        if (binStr) {
+          const clean = stripAssignedBinsFromNote(noteText);
+          noteText = clean ? `${clean} [Vị trí Ô: ${binStr}]` : `[Vị trí Ô: ${binStr}]`;
         }
         return {
           productId: r.productId,
@@ -4454,7 +4446,9 @@ export default function CreateStockInOrderPage({
         subWarehouses={activeTab?.stagedSubWarehouses}
         orderNo={activeTab?.orderNo}
         tabId={activeTab?.tabId}
+        readOnly={isReadOnly}
         onConfirmAll={(updatedRows, updatedSubWarehouses) => {
+          if (isReadOnly) return;
           updateActiveTab((t) => ({
             ...t,
             details: updatedRows,

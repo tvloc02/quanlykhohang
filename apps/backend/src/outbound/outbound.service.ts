@@ -14,6 +14,7 @@ import { StockBalance } from '../inventory/entities/stock-balance.entity';
 import { IdempotencyService } from '../erp-integration/idempotency/idempotency.service';
 import { OutboxService } from '../erp-integration/outbox/outbox.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { parseAssignedBinsFromNote } from '../inbound/inbound.service';
 
 type SerializedOutbound = {
   id: string;
@@ -760,11 +761,12 @@ export class OutboundService implements OnModuleInit {
         const reqQty = parseNumber(d.requiredQty);
         const picQty = parseNumber(d.pickedQty);
         const effectiveQty = reqQty > 0 ? reqQty : (picQty > 0 ? picQty : 1);
-        const locBin = (d as any).locationBin || (d.note ? (d.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/)?.[1] || '') : '');
+        const parsedNoteBins = parseAssignedBinsFromNote(d.note);
+        const locBin = (d as any).locationBin || parsedNoteBins.join(', ');
         const rawAssigned = (d as any).assignedBins;
         const binArr = Array.isArray(rawAssigned) && rawAssigned.length > 0
           ? rawAssigned
-          : (locBin ? locBin.split(',').map((s: string) => s.trim()) : []);
+          : (parsedNoteBins.length > 0 ? parsedNoteBins : (locBin ? locBin.split(',').map((s: string) => s.trim()) : []));
 
         return {
           id: d.id,
