@@ -116,7 +116,6 @@ const menuItems: MenuItem[] = [
       { id: 'outbound-sales-orders', icon: ShoppingCart, label: 'Đơn đặt hàng', path: '/outbound/sales-orders' },
       { id: 'inbound-purchase-orders', icon: PackageCheck, label: 'Đơn đặt hàng NCC', path: '/inbound/purchase-orders' },
       { id: 'outbound-disposal', icon: FileX, label: 'Xuất hủy', path: '/outbound/disposal' },
-      { id: 'inbound-assembly', icon: LinkIcon, label: 'Tạo bộ/Combo', path: '/inbound/assembly' },
     ],
   },
   // 3. Thu chi
@@ -197,8 +196,8 @@ const menuItems: MenuItem[] = [
     path: '/system-menu',
     children: [
       { id: 'settings', icon: Settings, label: 'Cấu hình hệ thống', path: '/settings' },
-      { id: 'personnel', icon: Users, label: 'Nhân viên & Phân quyền', path: '/personnel' },
-      { id: 'areas', icon: Warehouse, label: 'Cấu hình Chi nhánh', path: '/areas' },
+      { id: 'personnel', icon: Users, label: 'Nhân viên', path: '/personnel' },
+      { id: 'permission-groups', icon: ShieldCheck, label: 'Nhóm người dùng', path: '/personnel/permission-groups' },
       { id: 'evat-config', icon: FileEdit, label: 'Hóa đơn & VAT', path: '/vat/management' },
       { id: 'print-templates', icon: Printer, label: 'Mẫu in Chứng từ', path: '/documents' },
       { id: 'audit-log', icon: History, label: 'Nhật ký Hoạt động', path: '/audit-log' },
@@ -210,7 +209,17 @@ function isRouteActive(currentPath: string, targetPath: string) {
   if (targetPath === '/dashboard') {
     return currentPath === '/dashboard' || currentPath === '/';
   }
-  return currentPath.startsWith(targetPath);
+  if (currentPath === targetPath) {
+    return true;
+  }
+  // Prevent prefix collision between /personnel and /personnel/permission-groups
+  if (targetPath === '/personnel') {
+    return currentPath === '/personnel';
+  }
+  if (currentPath.startsWith(targetPath + '/')) {
+    return true;
+  }
+  return false;
 }
 
 export default function Sidebar({ isOpen, onToggle }: SidebarProps) {

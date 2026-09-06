@@ -128,7 +128,6 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'inbound-purchase-orders', label: 'Đơn đặt hàng NCC', parentId: 'nhap-xuat' },
   { id: 'documents-quotes', label: 'Báo giá', parentId: 'nhap-xuat' },
   { id: 'outbound-disposal', label: 'Xuất hủy', parentId: 'nhap-xuat' },
-  { id: 'inbound-assembly', label: 'Tạo bộ/Combo', parentId: 'nhap-xuat' },
 
   // 3. Thu chi
   { id: 'thu-chi', label: 'Thu chi', isHeader: true },
@@ -177,12 +176,11 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   // 9. Hệ thống
   { id: 'he-thong', label: 'Hệ thống', isHeader: true },
   { id: 'settings', label: 'Cấu hình hệ thống', parentId: 'he-thong' },
-  { id: 'personnel', label: 'Nhân viên & Phân quyền', parentId: 'he-thong' },
-  { id: 'areas', label: 'Cấu hình Chi nhánh', parentId: 'he-thong' },
+  { id: 'personnel', label: 'Nhân viên', parentId: 'he-thong' },
+  { id: 'permission-groups', label: 'Nhóm người dùng', parentId: 'he-thong' },
   { id: 'evat-config', label: 'Hóa đơn & VAT', parentId: 'he-thong' },
   { id: 'print-templates', label: 'Mẫu in Chứng từ', parentId: 'he-thong' },
   { id: 'audit-log', label: 'Nhật ký Hoạt động', parentId: 'he-thong' },
-  { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
   { id: 'logout', label: 'Đăng xuất', parentId: 'he-thong' },
   { id: 'change-password', label: 'Đổi mật khẩu', parentId: 'he-thong' },
 
