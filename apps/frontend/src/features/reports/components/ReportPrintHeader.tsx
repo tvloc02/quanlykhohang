@@ -21,33 +21,36 @@ export const ReportPrintHeader: React.FC<ReportPrintHeaderProps> = ({
     <div
       hidden
       className="print-report-header"
-      style={{ display: 'none' }}
+      style={{
+        display: 'none',
+        fontFamily: "'Times New Roman', Tinos, 'Liberation Serif', Times, serif",
+      }}
     >
-      <div className="mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
+      <div className="mb-3 border-b border-black pb-2 text-slate-900 bg-white" style={{ borderColor: '#000000' }}>
         <div className="flex justify-between items-start mb-2 text-xs">
           <div>
-            <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
-            <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+            <p className="font-extrabold uppercase text-black text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
+            <p className="text-[11px] text-slate-700">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
           </div>
-          <div className="text-right text-[11px] text-slate-600">
+          <div className="text-right text-[11px] text-slate-700">
             <p>Mẫu biểu báo cáo hệ thống</p>
             <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
           </div>
         </div>
         <div className="text-center my-2">
-          <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+          <h1 className="text-xl font-black uppercase tracking-wider text-black">
             {title}
           </h1>
           {subtitle && (
-            <p className="text-xs text-slate-600 italic mt-0.5">
+            <p className="text-xs text-slate-700 italic mt-0.5">
               {subtitle}
             </p>
           )}
         </div>
-        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
-          <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{resolvedCreator}</strong></span>
+        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-black" style={{ borderColor: '#000000' }}>
+          <span>Người lập báo cáo: <strong className="text-black font-black">{resolvedCreator}</strong></span>
           {subInfo && (
-            <span><strong className="text-slate-950 font-black">{subInfo}</strong></span>
+            <span><strong className="text-black font-black">{subInfo}</strong></span>
           )}
         </div>
       </div>

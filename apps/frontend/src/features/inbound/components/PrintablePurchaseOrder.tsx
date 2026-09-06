@@ -59,7 +59,7 @@ export const PrintablePurchaseOrder = React.forwardRef<HTMLDivElement, Props>(({
         ref={ref}
         className="bg-white p-8 text-slate-900 w-full"
         style={{
-          fontFamily: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+          fontFamily: "'Times New Roman', Tinos, 'Liberation Serif', Times, serif",
           WebkitPrintColorAdjust: 'exact',
           colorAdjust: 'exact',
         }}

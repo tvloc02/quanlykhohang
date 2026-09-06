@@ -1,6 +1,7 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import PrintTemplatesPage from './pages/PrintTemplatesPage';
 
 export default function DocumentsPage() {
-  return <Navigate to="/documents/sales-invoice" replace />;
+  return <PrintTemplatesPage />;
 }
+

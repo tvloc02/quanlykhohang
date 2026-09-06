@@ -21,28 +21,35 @@ export class DocumentsService {
 
   async getSalesInvoices() {
     const orders = await this.stockOutOrderRepo.find({
+      order: { createdAt: 'DESC' },
       relations: ['details', 'details.product', 'customer'],
     });
 
     return orders.map((order, idx) => ({
       id: order.id,
-      invoiceNo: `HD-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
+      invoiceNo: order.orderNo || `HD-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
       invoiceName: order.description?.trim() || order.orderNo || 'Hóa đơn bán hàng',
       orderCode: order.orderNo || `SO-${order.id.slice(0, 6)}`,
-      customerName: order.customer?.name || 'Khách hàng cá nhân',
+      customerName: order.customerName || order.customer?.name || 'Khách hàng cá nhân',
       customerTaxCode: '0101234567',
-      address: order.customer?.address || 'Hà Nội, Việt Nam',
-      issuedDate: order.expectedDate ? new Date(order.expectedDate).toISOString() : new Date().toISOString(),
+      address: order.customerAddress || order.customer?.address || 'Việt Nam',
+      issuedDate: order.orderDate
+        ? new Date(order.orderDate).toISOString()
+        : order.expectedDate
+        ? new Date(order.expectedDate).toISOString()
+        : order.createdAt
+        ? new Date(order.createdAt).toISOString()
+        : new Date().toISOString(),
       paymentMethod: 'Chuyển khoản / Tiền mặt',
       status: order.status || 'COMPLETED',
       items: (order.details || []).map((d) => ({
         id: d.id,
-        productCode: d.product?.internalSku || 'SKU-ITEM',
-        productName: d.product?.name || 'Sản phẩm kinh doanh',
-        unit: d.product?.unit || 'Cái',
-        quantity: d.requiredQty || 1,
-        unitPrice: Number(d.unitPrice) || 5000000,
-        taxRate: 10,
+        productCode: d.productSku || d.product?.internalSku || d.product?.sku || 'SKU-ITEM',
+        productName: d.productName || d.product?.name || 'Sản phẩm kinh doanh',
+        unit: d.unit || d.product?.unit || 'Cái',
+        quantity: d.requiredQty || d.pickedQty || 1,
+        unitPrice: Number(d.unitPrice) || 0,
+        taxRate: Number(d.vatPercent) || Number(order.vatRate) || 10,
       })),
     }));
   }
@@ -64,7 +71,7 @@ export class DocumentsService {
       status: order.status || 'COMPLETED',
       items: (order.details || []).map((d) => ({
         id: d.id,
-        productCode: d.product?.internalSku || 'SKU-001',
+        productCode: d.product?.internalSku || d.product?.sku || 'SKU-001',
         productName: d.product?.name || 'Sản phẩm nhập kho',
         unit: d.product?.unit || 'Chiếc',
         quantityExpected: d.requestedQty || 1,
@@ -76,25 +83,32 @@ export class DocumentsService {
 
   async getStockOutNotes() {
     const orders = await this.stockOutOrderRepo.find({
+      order: { createdAt: 'DESC' },
       relations: ['details', 'details.product', 'customer'],
     });
 
     return orders.map((order, idx) => ({
       id: order.id,
       noteNo: order.orderNo || `PXK-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
-      receiverName: order.customer?.name || 'Người nhận hàng',
-      destinationAddress: order.customer?.address || 'Địa chỉ giao hàng',
-      exportWarehouse: order.details?.[0]?.warehouseCode || order.branchCode || '',
-      createdDate: order.expectedDate ? new Date(order.expectedDate).toISOString() : new Date().toISOString(),
+      receiverName: order.receiver || order.customerName || order.customer?.name || 'Người nhận hàng',
+      destinationAddress: order.customerAddress || order.customer?.address || 'Địa chỉ giao hàng',
+      exportWarehouse: order.branchCode || order.details?.[0]?.warehouseCode || 'Kho Tổng',
+      createdDate: order.orderDate
+        ? new Date(order.orderDate).toISOString()
+        : order.expectedDate
+        ? new Date(order.expectedDate).toISOString()
+        : order.createdAt
+        ? new Date(order.createdAt).toISOString()
+        : new Date().toISOString(),
       reason: order.description || 'Xuất kho bán hàng theo hóa đơn',
       status: order.status || 'COMPLETED',
       items: (order.details || []).map((d) => ({
         id: d.id,
-        productCode: d.product?.internalSku || 'SKU-OUT',
-        productName: d.product?.name || 'Hàng xuất kho',
-        unit: d.product?.unit || 'Bộ',
-        quantity: d.requiredQty || 1,
-        unitPrice: Number(d.unitPrice) || 4500000,
+        productCode: d.productSku || d.product?.internalSku || d.product?.sku || 'SKU-OUT',
+        productName: d.productName || d.product?.name || 'Hàng xuất kho',
+        unit: d.unit || d.product?.unit || 'Bộ',
+        quantity: d.requiredQty || d.pickedQty || 1,
+        unitPrice: Number(d.unitPrice) || 0,
       })),
     }));
   }

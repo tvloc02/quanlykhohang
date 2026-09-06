@@ -132,7 +132,7 @@ export default function OutboundPrintModal({
             box-shadow: none !important;
             font-size: 10.5pt !important;
             line-height: 1.35 !important;
-            font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+            font-family: 'Times New Roman', Tinos, 'Liberation Serif', Times, serif !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
@@ -175,8 +175,8 @@ export default function OutboundPrintModal({
         {/* ─── VÙNG IN PHIẾU XUẤT KHO MẪU SỐ 02-VT ─── */}
         <div
           id="printable-form-02vt"
-          className="relative bg-white text-slate-900 p-6 sm:p-8 rounded-xl border-[3px] border-double border-cyan-600 shadow-sm font-sans leading-relaxed select-text"
-          style={{ fontFamily: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}
+          className="relative bg-white text-slate-900 p-6 sm:p-8 rounded-xl border-[3px] border-double border-cyan-600 shadow-sm leading-relaxed select-text"
+          style={{ fontFamily: "'Times New Roman', Tinos, 'Liberation Serif', Times, serif" }}
         >
           {/* Header 2 bên: Công ty & Mẫu số 02-VT */}
           <div className="flex justify-between items-start mb-2 text-xs sm:text-sm">
@@ -265,36 +265,39 @@ export default function OutboundPrintModal({
 
           {/* ─── BẢNG HÀNG HÓA MẪU 02-VT (HEADER VÀNG KEM, ĐÁNH DẤU A B C D 1 2 3 4) ─── */}
           <div className="overflow-x-auto w-full mb-3 relative">
-            <table className="w-full border-collapse border border-slate-900 text-xs sm:text-sm text-slate-900 text-left">
+            <table
+              className="w-full border-collapse text-xs sm:text-sm text-slate-900 text-left"
+              style={{ borderCollapse: 'collapse', border: '1px solid #000000', width: '100%' }}
+            >
               <thead>
                 {/* Dòng tiêu đề 1 */}
-                <tr className="bg-[#fef9c3] print:bg-[#fef9c3] font-bold text-center text-slate-950 border-b border-slate-900">
-                  <th className="border border-slate-900 p-2 text-center w-10">STT</th>
-                  <th className="border border-slate-900 p-2 text-center min-w-[180px]">
+                <tr className="bg-[#fef9c3] print:bg-[#fef9c3] font-bold text-center text-slate-950">
+                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-10">STT</th>
+                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center min-w-[180px]">
                     Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ, sản phẩm, hàng hóa
                   </th>
-                  <th className="border border-slate-900 p-2 text-center w-24">Mã số</th>
-                  <th className="border border-slate-900 p-2 text-center w-16">Đơn vị tính</th>
-                  <th className="border border-slate-900 p-1 text-center" colSpan={2}>
-                    <div>Số lượng</div>
-                    <div className="grid grid-cols-2 border-t border-slate-900 font-normal mt-1">
-                      <span className="border-r border-slate-900 p-1 font-bold">Yêu cầu</span>
-                      <span className="p-1 font-bold">Thực xuất</span>
+                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-24">Mã số</th>
+                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-16">Đơn vị tính</th>
+                  <th style={{ border: '1px solid #000000', padding: '0' }} className="text-center" colSpan={2}>
+                    <div style={{ borderBottom: '1px solid #000000', padding: '4px' }} className="font-bold">Số lượng</div>
+                    <div className="flex w-full">
+                      <span style={{ borderRight: '1px solid #000000', padding: '4px', width: '50%' }} className="font-bold">Yêu cầu</span>
+                      <span style={{ padding: '4px', width: '50%' }} className="font-bold">Thực xuất</span>
                     </div>
                   </th>
-                  <th className="border border-slate-900 p-2 text-center w-28">Đơn giá</th>
-                  <th className="border border-slate-900 p-2 text-center w-32">Thành tiền</th>
+                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-28">Đơn giá</th>
+                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-32">Thành tiền</th>
                 </tr>
                 {/* Dòng đánh mã cột A B C D 1 2 3 4 */}
-                <tr className="bg-[#fef08a] print:bg-[#fef08a] text-center italic text-xs font-semibold text-slate-800 border-b border-slate-900">
-                  <th className="border border-slate-900 p-0.5 text-center">A</th>
-                  <th className="border border-slate-900 p-0.5 text-center">B</th>
-                  <th className="border border-slate-900 p-0.5 text-center">C</th>
-                  <th className="border border-slate-900 p-0.5 text-center">D</th>
-                  <th className="border border-slate-900 p-0.5 text-center w-14">1</th>
-                  <th className="border border-slate-900 p-0.5 text-center w-14">2</th>
-                  <th className="border border-slate-900 p-0.5 text-center">3</th>
-                  <th className="border border-slate-900 p-0.5 text-center">4</th>
+                <tr className="bg-[#fef08a] print:bg-[#fef08a] text-center italic text-xs font-semibold text-slate-800">
+                  <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">A</th>
+                  <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">B</th>
+                  <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">C</th>
+                  <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">D</th>
+                  <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center w-14">1</th>
+                  <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center w-14">2</th>
+                  <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">3</th>
+                  <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">4</th>
                 </tr>
               </thead>
               <tbody>
@@ -302,20 +305,20 @@ export default function OutboundPrintModal({
                   const lineTotal = d.totalLineAmount || (d.qty * d.price);
                   return (
                     <tr key={i} className="hover:bg-slate-50 transition">
-                      <td className="border border-slate-900 p-2 text-center font-medium">{i + 1}</td>
-                      <td className="border border-slate-900 p-2 font-bold text-slate-950">{nfc(d.productName)}</td>
-                      <td className="border border-slate-900 p-2 text-center font-mono text-xs">{nfc(d.productSku || '-')}</td>
-                      <td className="border border-slate-900 p-2 text-center">{nfc(d.unit || 'Bộ')}</td>
-                      <td className="border border-slate-900 p-2 text-center font-bold">
+                      <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-medium">{i + 1}</td>
+                      <td style={{ border: '1px solid #000000', padding: '6px' }} className="font-bold text-slate-950">{nfc(d.productName)}</td>
+                      <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-mono text-xs">{nfc(d.productSku || '-')}</td>
+                      <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center">{nfc(d.unit || 'Bộ')}</td>
+                      <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-bold">
                         {String(d.qty).padStart(2, '0')}
                       </td>
-                      <td className="border border-slate-900 p-2 text-center font-bold">
+                      <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-bold">
                         {String(d.qty).padStart(2, '0')}
                       </td>
-                      <td className="border border-slate-900 p-2 text-right font-medium">
+                      <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-right font-medium">
                         {Number(d.price || 0).toLocaleString('vi-VN')}
                       </td>
-                      <td className="border border-slate-900 p-2 text-right font-bold text-slate-950">
+                      <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-right font-bold text-slate-950">
                         {lineTotal.toLocaleString('vi-VN')}
                       </td>
                     </tr>
@@ -325,29 +328,29 @@ export default function OutboundPrintModal({
                 {/* Các dòng trống mô phỏng sổ kế toán */}
                 {Array.from({ length: emptyRowsCount }).map((_, emptyIdx) => (
                   <tr key={`empty-${emptyIdx}`} className="h-7 text-transparent">
-                    <td className="border border-slate-900 p-1 text-center">&nbsp;</td>
-                    <td className="border border-slate-900 p-1">&nbsp;</td>
-                    <td className="border border-slate-900 p-1">&nbsp;</td>
-                    <td className="border border-slate-900 p-1">&nbsp;</td>
-                    <td className="border border-slate-900 p-1">&nbsp;</td>
-                    <td className="border border-slate-900 p-1">&nbsp;</td>
-                    <td className="border border-slate-900 p-1">&nbsp;</td>
-                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                    <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center">&nbsp;</td>
+                    <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
+                    <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
+                    <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
+                    <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
+                    <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
+                    <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
+                    <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
                   </tr>
                 ))}
 
                 {/* Dòng Cộng tổng (Nền xanh lá cây nhạt chuẩn mẫu) */}
-                <tr className="bg-[#86efac]/80 print:bg-[#86efac]/80 font-black text-slate-950 border-t-2 border-slate-900">
-                  <td className="border border-slate-900 p-2 text-center uppercase tracking-wider font-extrabold">
+                <tr className="bg-[#86efac]/80 print:bg-[#86efac]/80 font-black text-slate-950">
+                  <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center uppercase tracking-wider font-extrabold">
                     Cộng
                   </td>
-                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
-                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
-                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
-                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
-                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
-                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
-                  <td className="border border-slate-900 p-2 text-right font-black text-base">
+                  <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-bold">x</td>
+                  <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-bold">x</td>
+                  <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-bold">x</td>
+                  <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-bold">x</td>
+                  <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-bold">x</td>
+                  <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-bold">x</td>
+                  <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-right font-black text-base">
                     {totalAmount.toLocaleString('vi-VN')}
                   </td>
                 </tr>

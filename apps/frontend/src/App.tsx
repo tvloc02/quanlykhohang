@@ -82,6 +82,7 @@ import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
 import ErpSyncStatusPage from './features/erp-status/pages/ErpSyncStatusPage';
 
 import DocumentsPage from './features/documents/DocumentsPage';
+import PrintTemplatesPage from './features/documents/pages/PrintTemplatesPage';
 import SalesInvoiceDocPage from './features/documents/pages/SalesInvoiceDocPage';
 import StockInDocPage from './features/documents/pages/StockInDocPage';
 import StockOutDocPage from './features/documents/pages/StockOutDocPage';
@@ -1067,7 +1068,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <SalesInvoiceDocPage />
+                <PrintTemplatesPage initialType="sales-invoice" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1077,7 +1078,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <StockInDocPage />
+                <PrintTemplatesPage initialType="stock-in-note" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1087,7 +1088,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <StockOutDocPage />
+                <PrintTemplatesPage initialType="stock-out-note" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1097,7 +1098,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <TransferDocPage />
+                <PrintTemplatesPage initialType="transfer-note" />
               </MainLayout>
             </RoleRoute>
           }

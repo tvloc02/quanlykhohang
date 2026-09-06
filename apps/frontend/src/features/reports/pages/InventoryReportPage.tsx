@@ -333,7 +333,7 @@ export default function InventoryReportPage() {
                 {columnVis.unitPrice && <th className="min-w-[130px] border-r border-cyan-500/50 px-3 py-3.5 text-center">Giá vốn (đ)</th>}
                 {columnVis.totalValue && <th className="min-w-[160px] border-r border-cyan-500/50 px-3 py-3.5 text-center text-white font-black">Giá trị tồn (đ)</th>}
                 {columnVis.pendingExportQty && <th className="min-w-[110px] border-r border-cyan-500/50 px-3 py-3.5 text-center">Chưa giao</th>}
-                {columnVis.pendingOrderQty && <th className="min-w-[110px] px-3 py-3.5 text-center">Đang đặt</th>}
+                {columnVis.pendingOrderQty && <th className="min-w-[110px] border-r border-cyan-500/50 px-3 py-3.5 text-center">Đang đặt</th>}
               </tr>
               {/* Summary Row inside Header */}
               <tr className="bg-slate-100 border-b-2 border-slate-300 font-black text-slate-900 text-xs sm:text-sm">
@@ -347,7 +347,7 @@ export default function InventoryReportPage() {
                 {columnVis.unitPrice && <td className="py-3 px-3 text-right border-r border-slate-200">-</td>}
                 {columnVis.totalValue && <td className="py-3 px-3 text-right border-r border-slate-200 text-slate-900 font-black">{fmt(totals.val)} đ</td>}
                 {columnVis.pendingExportQty && <td className="py-3 px-3 text-right border-r border-slate-200">0</td>}
-                {columnVis.pendingOrderQty && <td className="py-3 px-3 text-right">0</td>}
+                {columnVis.pendingOrderQty && <td className="py-3 px-3 text-right border-r border-slate-200">0</td>}
               </tr>
             </thead>
 
@@ -371,8 +371,8 @@ export default function InventoryReportPage() {
                   return (
                     <React.Fragment key={group.groupName || 'group'}>
                       {showGroups && (
-                        <tr className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-slate-200">
-                          <td colSpan={11} className="py-2.5 px-4 text-left uppercase tracking-wider">{group.groupName || 'Nhóm hàng'}</td>
+                        <tr className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-b border-slate-200">
+                          <td colSpan={11} className="py-2.5 px-4 text-left border-r border-slate-200 uppercase tracking-wider">{group.groupName || 'Nhóm hàng'}</td>
                         </tr>
                       )}
                       {items.map((row, idx) => (
@@ -391,7 +391,7 @@ export default function InventoryReportPage() {
                           {columnVis.unitPrice && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{fmt(row.unitPrice)} đ</td>}
                           {columnVis.totalValue && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{fmt(row.totalValue)} đ</td>}
                           {columnVis.pendingExportQty && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{row.pendingExportQty}</td>}
-                          {columnVis.pendingOrderQty && <td className="py-3.5 px-3 text-right font-normal text-slate-900">{row.pendingOrderQty}</td>}
+                          {columnVis.pendingOrderQty && <td className="py-3.5 px-3 text-right border-r border-slate-200 font-normal text-slate-900">{row.pendingOrderQty}</td>}
                         </tr>
                       ))}
                       {showGroups && (
@@ -404,7 +404,7 @@ export default function InventoryReportPage() {
                           {columnVis.unitPrice && <td className="py-2.5 px-3 border-r border-slate-200 font-bold">-</td>}
                           {columnVis.totalValue && <td className="py-2.5 px-3 text-right border-r border-slate-200 text-slate-900 font-bold">{fmt(grpValue)} đ</td>}
                           {columnVis.pendingExportQty && <td className="py-2.5 px-3 text-right border-r border-slate-200 font-bold">0</td>}
-                          {columnVis.pendingOrderQty && <td className="py-2.5 px-3 text-right font-bold">0</td>}
+                          {columnVis.pendingOrderQty && <td className="py-2.5 px-3 text-right border-r border-slate-200 font-bold">0</td>}
                         </tr>
                       )}
                     </React.Fragment>
