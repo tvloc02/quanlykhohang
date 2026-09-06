@@ -62,6 +62,8 @@ export interface WarehouseSlottingGridProps {
   orderItems?: any[];
   selectedBinsMap?: Record<string, string[]>;
   activeRowId?: string;
+  binQtyMap?: Record<string, number>;
+  customQtyBinsMap?: Record<string, boolean>;
   onSelectBin?: (binCode: string, binInfo: any) => void;
   onBinClick?: (
     binCode: string,
@@ -106,19 +108,26 @@ export async function fetchWarehouseOccupiedBins(
     const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
     const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
 
+    // If creating a new warehouse, it has 0 inventory balances
+    if (!currentWhCode && !currentWhId || currentWhId === 'temp-id' || currentWhId === 'new' || currentWhId.startsWith('wh_new')) {
+      return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
+    }
+
     const isWhMatch = (wCode?: string, wId?: string, binCodeStr?: string) => {
       const cCode = String(wCode || '').trim().toUpperCase();
       const cId = String(wId || '').trim().toLowerCase();
 
-      if (!currentWhCode && !currentWhId) return true;
-      if (!cCode && !cId) return true;
+      if (!currentWhCode && !currentWhId) return false;
+      if (!cCode && !cId) return false;
       if (binCodeStr && currentWhCode && binCodeStr.toUpperCase().includes(currentWhCode)) return true;
-      if (currentWhCode && cCode && (cCode === currentWhCode || cCode.includes(currentWhCode) || currentWhCode.includes(cCode))) return true;
-      if (currentWhId && cId && (cId === currentWhId || cId.includes(currentWhId) || currentWhId.includes(cId))) return true;
-      if (currentWhCode && cId && cId.includes(currentWhCode.toLowerCase())) return true;
-      if (currentWhId && cCode && cCode.includes(currentWhId.toUpperCase())) return true;
-      if (cCode === 'KHO-NVL' || cCode === 'SPX001' || cCode === 'KHO-TONG' || cCode === 'KHO' || cCode === 'DEFAULT') return true;
-      if ((currentWhCode === 'KH002' || currentWhId === 'wh_default_2') && (cCode === 'KH002' || cId === 'wh_default_2' || cCode.includes('HCM'))) return true;
+      if (currentWhCode && cCode && (cCode === currentWhCode || cCode === `KHO-${currentWhCode}`)) return true;
+      if (currentWhId && cId && cId === currentWhId) return true;
+      if (currentWhCode && cId && cId === currentWhCode.toLowerCase()) return true;
+      if (currentWhId && cCode && cCode === currentWhId.toUpperCase()) return true;
+      // Match default system warehouse codes specifically for default warehouses
+      if ((currentWhCode === 'KH001' || currentWhCode === 'KHO-TONG' || currentWhId === 'wh-1' || currentWhId === 'wh_default_1') && (cCode === 'KHO-TONG' || cCode === 'KHO' || cCode === 'SPX001' || cCode === 'DEFAULT')) return true;
+      if ((currentWhCode === 'KH002' || currentWhCode === 'KHO-HN' || currentWhId === 'wh-2' || currentWhId === 'wh_default_2') && (cCode === 'KH002' || cCode === 'KHO-HN' || cCode.includes('HN'))) return true;
+      if ((currentWhCode === 'KH003' || currentWhCode === 'KHO-BD' || currentWhId === 'wh-3') && (cCode === 'KHO-NVL' || cCode === 'KHO-BD')) return true;
       return false;
     };
 
@@ -425,78 +434,6 @@ export async function fetchWarehouseOccupiedBins(
       console.error('Error loading stock-in orders for bins:', e);
     }
 
-    // 2.5 Parse active inbound order creation draft tabs
-    try {
-      const draftTabsStr = sessionStorage.getItem('inbound_tabs_draft') || localStorage.getItem('inbound_tabs_draft');
-      if (draftTabsStr) {
-        const draftTabs: any[] = JSON.parse(draftTabsStr);
-        if (Array.isArray(draftTabs)) {
-          draftTabs.forEach((tab) => {
-            const isAlreadySaved = allStockInOrders.some((ao: any) =>
-              (tab.orderNo && (ao.poNumber === tab.orderNo || ao.receiptNo === tab.orderNo || ao.orderCode === tab.orderNo)) ||
-              (tab.id && String(ao.id) === String(tab.id))
-            );
-            if (isAlreadySaved) return;
-
-            const tabWhCode = String(tab.branchCode || tab.warehouseCode || '').trim().toUpperCase();
-            (tab.details || []).forEach((item: any) => {
-              const pName = item.productName || 'Sản phẩm nhập kho';
-              const pSku = item.productSku || item.sku || 'SKU-001';
-              const pQty = Number(item.qty || item.quantity || item.receivedQty || item.expectedQty || item.requiredQty || item.pickedQty || 1);
-              const pUnit = item.unit || 'Cái';
-
-              let rawBins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
-              if (rawBins.length === 0 && item.locationBin) {
-                rawBins = String(item.locationBin).split(',').map((s: string) => s.trim());
-              }
-              if (rawBins.length === 0 && item.note) {
-                const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match) rawBins = match[1].split(',').map((s: string) => s.trim());
-              }
-
-              const uniqueBinsMap = new Map<string, string>();
-              rawBins.forEach((b) => {
-                if (!b) return;
-                const cleanCode = b.split('(')[0].trim();
-                const normKey = normalizeBinKey(cleanCode);
-                if (cleanCode && (!normKey || !uniqueBinsMap.has(normKey))) {
-                  uniqueBinsMap.set(normKey || cleanCode, b);
-                }
-              });
-              const bins = Array.from(uniqueBinsMap.values());
-              const pQtyPerBin = Math.max(1, pQty);
-
-              bins.forEach((bCode) => {
-                if (!bCode) return;
-                if (!isWhMatch(tabWhCode, '', bCode)) return;
-                const pctMatch = bCode.match(/^([^(]+)\s*\((?:Dư\s*)?(\d+)%\)/i);
-                let itemPct: number | undefined = item.occupancyPct !== undefined ? Number(item.occupancyPct) : undefined;
-                if (pctMatch) {
-                  itemPct = Number(pctMatch[2]);
-                }
-                const calcQty = itemPct !== undefined && itemPct > 0 ? Math.round((pQty * itemPct) / 100) : pQtyPerBin;
-                const info: BinOccupiedInfo = {
-                  totalPhysical: calcQty,
-                  allocated: 0,
-                  productsCount: 1,
-                  productName: pName,
-                  sku: pSku,
-                  supplierName: tab.supplier || 'Nhà cung cấp',
-                  inboundDate: 'Đang xếp',
-                  orderCode: tab.receiptNo || 'PNK-DRAFT',
-                  unit: pUnit,
-                  occupancyPct: itemPct || 100,
-                };
-                addBinOccupied(bCode, info);
-              });
-            });
-          });
-        }
-      }
-    } catch (eDraft) {
-      console.error('Error loading inbound draft tabs for bins:', eDraft);
-    }
-
     // 3. Fetch transfer orders (from API & localStorage)
     const transferRes = await fetch(`${API_BASE_URL}/delivery/transfer-orders`, { headers }).catch(() => null);
     let transferOrders: any[] = [];
@@ -700,68 +637,6 @@ export async function fetchWarehouseOccupiedBins(
     } catch (eOut) {
       console.error('Error loading outbound orders for bins:', eOut);
     }
-
-    // 2.9 Parse active outbound order creation draft tabs
-    try {
-      const draftOutboundTabsStr = sessionStorage.getItem('outbound_tabs_draft') || localStorage.getItem('outbound_tabs_draft');
-      if (draftOutboundTabsStr) {
-        const draftTabs: any[] = JSON.parse(draftOutboundTabsStr);
-        if (Array.isArray(draftTabs)) {
-          draftTabs.forEach((tab) => {
-            const isAlreadySaved = allOutboundOrders.some((ao: any) =>
-              (tab.orderNo && (ao.orderNo === tab.orderNo || ao.orderCode === tab.orderNo)) ||
-              (tab.id && String(ao.id) === String(tab.id))
-            );
-            if (isAlreadySaved) return;
-
-            const tabWhCode = String(tab.branchCode || tab.warehouseCode || '').trim().toUpperCase();
-            (tab.details || []).forEach((item: any) => {
-              const pName = item.productName || 'Sản phẩm xuất kho';
-              const pSku = item.productSku || item.sku || 'SKU-001';
-              const pQty = Number(item.qty || item.quantity || item.requiredQty || item.pickedQty || 1);
-              const pUnit = item.unit || 'Cái';
-
-              let bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : [];
-              if (bins.length === 0 && item.locationBin) {
-                bins = String(item.locationBin).split(',').map((s: string) => s.trim());
-              }
-              if (bins.length === 0 && item.note) {
-                const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match) bins = match[1].split(',').map((s: string) => s.trim());
-              }
-
-              const exportQty = Math.max(1, pQty);
-
-              bins.forEach((bCode) => {
-                if (!bCode) return;
-                if (!isWhMatch(tabWhCode, '', bCode)) return;
-                const pctMatch = bCode.match(/^([^(]+)\s*\((?:Dư\s*)?(\d+)%\)/i);
-                let itemPct: number | undefined = item.occupancyPct !== undefined ? Number(item.occupancyPct) : undefined;
-                if (pctMatch) {
-                  itemPct = Number(pctMatch[2]);
-                }
-                const info: BinOccupiedInfo = {
-                  totalPhysical: exportQty,
-                  allocated: 0,
-                  productsCount: 1,
-                  productName: pName,
-                  sku: pSku,
-                  supplierName: tab.customer || 'Đơn xuất nháp',
-                  inboundDate: 'Đang chọn',
-                  orderCode: tab.orderNo || 'PXK-DRAFT',
-                  unit: pUnit,
-                  occupancyPct: itemPct || 100,
-                  isOutbound: true,
-                };
-                addBinOccupied(bCode, info);
-              });
-            });
-          });
-        }
-      }
-    } catch (eDraftOut) {
-      console.error('Error loading outbound draft tabs for bins:', eDraftOut);
-    }
     // Post-processing: Retain full order quantities without splitting across bin keys
 
     // Clean up redundant placeholder 'TỒN-KHO' entries when explicit order records exist
@@ -834,6 +709,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   orderItems = [],
   selectedBinsMap = {},
   activeRowId,
+  binQtyMap = {},
+  customQtyBinsMap = {},
   onSelectBin,
   onBinClick,
   onUpdateBinCapacity,
@@ -866,6 +743,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     stockQty?: number;
     stockPct?: number;
     matchedSku?: string;
+    isCustomQty?: boolean;
   }>>([]);
 
   useEffect(() => {
@@ -875,11 +753,25 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     const normTarget = normalizeBinKey(fullBinCode);
     const rackCode = editingBinConfig.rackCode || '';
 
-    const storedGoods = getGoodsList(fullBinCode, binShortCode, rackCode);
-    const storedInfo = getOccupiedInfo(fullBinCode, binShortCode, rackCode);
+    const rawStoredGoods = getGoodsList(fullBinCode, binShortCode, rackCode);
+    const storedGoods = rawStoredGoods.filter(
+      (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
+    );
+    const rawStoredInfo = getOccupiedInfo(fullBinCode, binShortCode, rackCode);
+    const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
+    const storedInfo = isDraftInfo ? null : rawStoredInfo;
 
-    const realStockQty = Number(storedInfo?.totalPhysical || (storedGoods && storedGoods.length > 0 ? storedGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0) : 0) || 0);
-    const realStockPct = Number(storedInfo?.occupancyPct !== undefined ? storedInfo.occupancyPct : (editingBinConfig.currentPct || 0));
+    const hasPhysicalStoredStock = (storedGoods && storedGoods.length > 0) || Boolean(storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0));
+    const realStockQty = Number(
+      storedInfo?.totalPhysical ||
+      (storedGoods && storedGoods.length > 0 ? storedGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0) : 0) ||
+      0
+    );
+    const realStockPct = hasPhysicalStoredStock && storedInfo?.occupancyPct !== undefined
+      ? Number(storedInfo.occupancyPct)
+      : (hasPhysicalStoredStock && storedGoods && storedGoods.length > 0
+          ? storedGoods.reduce((a, b) => a + (Number(b.occupancyPct) || 0), 0)
+          : 0);
 
     const assigned: Array<{
       rowId?: string;
@@ -892,6 +784,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       stockQty?: number;
       stockPct?: number;
       matchedSku?: string;
+      isCustomQty?: boolean;
     }> = [];
 
     if (isOutbound) {
@@ -943,21 +836,35 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       });
     } else {
       // INBOUND MODE
-      // Step 1: Always include currently stored stock in bin as Line 1 if present
-      if (realStockPct > 0 || realStockQty > 0) {
-        const storedProdName = storedInfo?.productName || (storedGoods && storedGoods[0]?.productName) || 'Hàng tồn kho';
-        const cleanName = storedProdName.replace(/\s*\(Tồn tại kệ\)/i, '');
-        assigned.push({
-          rowId: 'existing-stock-line',
-          productName: `${cleanName} (Tồn tại kệ)`,
-          qty: realStockQty,
-          occupancyPct: realStockPct,
-          isExistingStock: true,
-        });
+      // Step 1: Include currently stored stock in bin ONLY IF IT ACTUALLY EXISTS IN PHYSICAL STORAGE
+      if (hasPhysicalStoredStock && (realStockPct > 0 || realStockQty > 0)) {
+        if (storedGoods && storedGoods.length > 0) {
+          storedGoods.forEach((sg, sgIdx) => {
+            const cleanName = (sg.productName || 'Hàng tồn kho').replace(/\s*\(Tồn tại kệ\)/i, '');
+            assigned.push({
+              rowId: `existing-stock-line-${sgIdx}`,
+              productName: `${cleanName} (Tồn tại kệ)`,
+              qty: Number(sg.quantity) || 0,
+              occupancyPct: sg.occupancyPct !== undefined ? Number(sg.occupancyPct) : 0,
+              isExistingStock: true,
+            });
+          });
+        } else if (storedInfo) {
+          const storedProdName = storedInfo.productName || 'Hàng tồn kho';
+          const cleanName = storedProdName.replace(/\s*\(Tồn tại kệ\)/i, '');
+          assigned.push({
+            rowId: 'existing-stock-line',
+            productName: `${cleanName} (Tồn tại kệ)`,
+            qty: realStockQty,
+            occupancyPct: realStockPct,
+            isExistingStock: true,
+          });
+        }
       }
 
       // Step 2: Add ONLY the active item being selected in this order tab (NOT all items in the order!)
-      const remainingPct = Math.max(0, 100 - (assigned[0]?.occupancyPct || 0));
+      const existingStoredPct = assigned.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+      const remainingEmptyPct = Math.max(0, 100 - existingStoredPct);
 
       let targetItems: any[] = [];
       if (orderItems && orderItems.length > 0) {
@@ -984,20 +891,54 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
           const totalItemQty = it.qty && Number(it.qty) > 0 ? Number(it.qty) : 100;
 
           const bList = selectedBinsMap?.[rowId] || [];
-          const matchBinEntry = bList.find((b: string) => normalizeBinKey(b) === normTarget || b.includes(fullBinCode));
+          const strippedTarget = fullBinCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const matchBinEntry = bList.find((b: string) => {
+            const clean = b.split('(')[0].trim();
+            const normClean = normalizeBinKey(clean);
+            return (
+              normClean === normTarget ||
+              clean === fullBinCode ||
+              b.includes(fullBinCode) ||
+              clean.endsWith(`-${binShortCode}`) ||
+              clean === binShortCode ||
+              clean.toUpperCase().replace(/[^A-Z0-9]/g, '') === strippedTarget
+            );
+          });
           let calcPctForItem = 100;
           if (matchBinEntry) {
             const m = matchBinEntry.match(/\((\d+(?:\.\d+)?)%\)/);
             if (m) calcPctForItem = Number(m[1]);
-            else if (bList.length > 0) calcPctForItem = Math.round(100 / bList.length);
-          } else if (bList.length > 0) {
-            calcPctForItem = Math.round(100 / bList.length);
+            else calcPctForItem = 100;
+          } else {
+            calcPctForItem = 100;
           }
 
-          let qtyPerBinForItem = totalItemQty > 0 ? Math.round((totalItemQty * calcPctForItem) / 100) : 100;
-          if (qtyPerBinForItem === 0 && totalItemQty > 0) {
+          let qtyPerBinForItem: number | undefined = undefined;
+          if (binQtyMap) {
+            qtyPerBinForItem =
+              binQtyMap[fullBinCode] ??
+              binQtyMap[binShortCode] ??
+              binQtyMap[normTarget] ??
+              binQtyMap[strippedTarget] ??
+              binQtyMap[fullBinCode.toUpperCase().replace(/_/g, '-')] ??
+              binQtyMap[binShortCode.toUpperCase()];
+          }
+          if (matchBinEntry) {
+            const mQty = matchBinEntry.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+            if (mQty && Number(mQty[1]) > 0) {
+              qtyPerBinForItem = Number(mQty[1]);
+            }
+          }
+          if (qtyPerBinForItem === undefined || qtyPerBinForItem <= 0) {
             qtyPerBinForItem = Math.max(1, Math.round(totalItemQty / (bList.length || 1)));
           }
+
+          const isAlreadyCustom = Boolean(
+            customQtyBinsMap?.[fullBinCode] ||
+            customQtyBinsMap?.[binShortCode] ||
+            customQtyBinsMap?.[normTarget] ||
+            customQtyBinsMap?.[strippedTarget]
+          );
 
           assigned.push({
             rowId,
@@ -1005,6 +946,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
             qty: qtyPerBinForItem,
             occupancyPct: calcPctForItem,
             isExistingStock: false,
+            isCustomQty: isAlreadyCustom,
           });
         });
       } else {
@@ -1012,14 +954,15 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
           rowId: 'row-new-0',
           productName: 'Mặt hàng nhập mới (Lô nhập mới)',
           qty: 100,
-          occupancyPct: remainingPct > 0 ? remainingPct : (assigned.length > 0 ? 25 : 100),
+          occupancyPct: remainingEmptyPct > 0 ? remainingEmptyPct : (assigned.length > 0 ? 25 : 100),
           isExistingStock: false,
+          isCustomQty: false,
         });
       }
     }
 
     setEditableBinItems(assigned);
-  }, [editingBinConfig, orderItems, selectedBinsMap, activeRowId]);
+  }, [editingBinConfig, orderItems, selectedBinsMap, activeRowId, binQtyMap, customQtyBinsMap]);
 
   const handleSaveBinPct = (binCode: string, pct: number) => {
     const currentPct = editingBinConfig?.currentPct || 0;
@@ -1677,11 +1620,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               const binShort = editingBinConfig.shortCode;
               const binFull = editingBinConfig.binCode;
               const rackCode = editingBinConfig.rackCode || '';
-              const storedGoods = getGoodsList(binFull, binShort, rackCode);
-              const storedInfo = getOccupiedInfo(binFull, binShort, rackCode);
+              const rawStoredGoods = getGoodsList(binFull, binShort, rackCode);
+              const storedGoods = rawStoredGoods.filter(
+                (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
+              );
+              const rawStoredInfo = getOccupiedInfo(binFull, binShort, rackCode);
+              const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
+              const storedInfo = isDraftInfo ? null : rawStoredInfo;
 
               let allStoredGoods: BinGoodsDetail[] = storedGoods && storedGoods.length > 0 ? [...storedGoods] : [];
-              if (allStoredGoods.length === 0 && storedInfo && (storedInfo.totalPhysical || storedInfo.occupancyPct)) {
+              if (allStoredGoods.length === 0 && storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0)) {
                 allStoredGoods = [{
                   binCode: binFull,
                   productName: storedInfo.productName || 'Hàng tồn kho',
@@ -1692,13 +1640,15 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                   inboundDate: storedInfo.inboundDate || '',
                   orderCode: storedInfo.orderCode || '',
                   unit: storedInfo.unit || 'Cái',
-                  occupancyPct: storedInfo.occupancyPct !== undefined ? storedInfo.occupancyPct : (editingBinConfig.currentPct || 100),
+                  occupancyPct: storedInfo.occupancyPct !== undefined ? Number(storedInfo.occupancyPct) : 0,
                 }];
               }
 
               const totalStoredQty = allStoredGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0);
               const totalStoredPct = allStoredGoods.reduce((a, b) => a + (Number(b.occupancyPct) || 0), 0);
-              const binOccupancyPct = editingBinConfig.currentPct > 0 ? editingBinConfig.currentPct : (totalStoredPct > 0 ? totalStoredPct : 100);
+              const binOccupancyPct = isOutbound
+                ? (totalStoredPct > 0 ? totalStoredPct : (editingBinConfig.currentPct || 0))
+                : totalStoredPct;
 
               return (
                 <>
@@ -1712,7 +1662,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                       <div className="flex flex-col">
                         <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">Trạng thái ô ({binShort}):</span>
                         <span className="text-sm font-black text-slate-900 dark:text-white">
-                          {binOccupancyPct > 0 ? `Đang lưu trữ ${totalStoredQty.toLocaleString('vi-VN')} cái` : 'Ô đang trống'}
+                          {totalStoredQty > 0 ? `Đang lưu trữ ${totalStoredQty.toLocaleString('vi-VN')} cái` : 'Ô đang trống (0 cái)'}
                         </span>
                       </div>
                       <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700 hidden sm:block" />
@@ -2020,7 +1970,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                       {(() => {
                         const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
                         const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
-                        const initialBinPct = editingBinConfig.currentPct || binOccupancyPct || 100;
+                        const initialBinPct = totalStoredPct > 0 ? totalStoredPct : (editingBinConfig.currentPct || 100);
                         const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
                         const remainingEmptyPct = Math.max(0, Number((100 - remainingAfterExport).toFixed(1)));
 
@@ -2089,9 +2039,20 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                           TỒN TẠI KỆ
                                         </span>
                                       ) : (
-                                        <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
-                                          LÔ NHẬP MỚI
-                                        </span>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                            LÔ NHẬP MỚI
+                                          </span>
+                                          {item.isCustomQty ? (
+                                            <span className="text-[9.5px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
+                                              Cố định {item.qty} cái
+                                            </span>
+                                          ) : (
+                                            <span className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
+                                              Tự chia đều
+                                            </span>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
                                   </td>
@@ -2108,11 +2069,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                         placeholder="—"
                                         onChange={(e) => {
                                           const val = Number(e.target.value) || 0;
-                                          const targetItem = (orderItems || []).find((oi: any) => oi.rowId === item.rowId) || (orderItems || [])[0];
-                                          const totalItemQty = targetItem && Number(targetItem.qty) > 0 ? Number(targetItem.qty) : 0;
-                                          const calcPct = totalItemQty > 0 ? Math.min(100, Math.max(0, Math.round((val / totalItemQty) * 100))) : (item.occupancyPct || 0);
                                           setEditableBinItems((prev) =>
-                                            prev.map((it, i) => (i === idx ? { ...it, qty: val, occupancyPct: calcPct } : it))
+                                            prev.map((it, i) => (i === idx ? { ...it, qty: val, isCustomQty: val > 0 } : it))
                                           );
                                         }}
                                         className="w-20 px-2 py-1 text-right text-xs font-bold border border-emerald-300 focus:border-emerald-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg outline-none"
@@ -2141,11 +2099,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                             }
                                             const parsed = parseInt(raw, 10);
                                             const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
-                                            const targetItem = (orderItems || []).find((oi: any) => oi.rowId === item.rowId) || (orderItems || [])[0];
-                                            const totalItemQty = targetItem && Number(targetItem.qty) > 0 ? Number(targetItem.qty) : 0;
-                                            const calcQty = totalItemQty > 0 ? Math.round((val / 100) * totalItemQty) : item.qty;
+                                            // The occupancyPct represents how much of the shelf capacity is occupied, NOT a percentage of total goods
                                             setEditableBinItems((prev) =>
-                                              prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val, qty: calcQty } : it))
+                                              prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val } : it))
                                             );
                                           }}
                                           className="w-full px-2 py-1 pr-5 text-right text-xs font-bold border border-emerald-300 focus:border-emerald-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg outline-none"
@@ -2268,7 +2224,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           Number(item.occupancyPct) || 0,
                           undefined,
                           item.rowId,
-                          item.qty && Number(item.qty) > 0 ? Number(item.qty) : undefined
+                          item.isCustomQty && Number(item.qty) > 0 ? Number(item.qty) : undefined
                         );
                       }
                     });
