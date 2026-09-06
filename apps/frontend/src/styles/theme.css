@@ -340,16 +340,15 @@ input[type=number] {
 /* ══════════════════════════════════════════════════════════════════ */
 /* GLOBAL PRINT OPTIMIZATIONS: HIDE CHATBOT, STRIP ALL BACKGROUNDS   */
 /* REPORT PRINT RULES: FORCE LANDSCAPE, FULL BORDERS, TABLE-ONLY     */
-/* ══════════════════════════════════════════════════════════════════ */
 @page {
-  size: landscape;
-  margin: 5mm 6mm;
+  size: auto;
+  margin: 8mm 10mm;
 }
 
 @media print {
   @page {
-    size: landscape;
-    margin: 5mm 6mm;
+    size: auto;
+    margin: 8mm 10mm;
   }
 
   /* 1. Hide floating chatbot, controls, sidebars, headers, and UI controls */
