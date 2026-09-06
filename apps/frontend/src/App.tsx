@@ -371,7 +371,7 @@ function App() {
           path="/warehouses/create"
           element={
             <RoleRoute menuId="warehouses">
-              <CreateWarehousePage />
+              <CreateWarehousePage key="create" />
             </RoleRoute>
           }
         />

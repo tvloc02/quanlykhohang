@@ -698,7 +698,17 @@ export class InboundService {
         product = await this.resolveProductFromSupplierProduct(item.supplierProductId);
       }
 
-      const qty = parseNumber(item.receivedQty ?? item.expectedQty ?? item.qty);
+      const expQty = parseNumber(
+        (item.expectedQty !== undefined && Number(item.expectedQty) > 0)
+          ? item.expectedQty
+          : ((item.qty !== undefined && Number(item.qty) > 0)
+              ? item.qty
+              : item.receivedQty)
+      );
+      const recQty = parseNumber(
+        item.receivedQty !== undefined ? item.receivedQty : (receipt.status === 'RECEIVED' || receipt.status === 'COMPLETED' ? expQty : 0)
+      );
+      const qty = expQty > 0 ? expQty : recQty;
       if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
 
       const unitPrice = parseNumber(item.unitPrice ?? item.price ?? (product?.price || 0));
@@ -732,8 +742,8 @@ export class InboundService {
         inboundReceipt: receipt,
         product: product || undefined,
         warehouseCode: targetWhCode,
-        expectedQty: qty,
-        receivedQty: qty,
+        expectedQty: expQty > 0 ? expQty : qty,
+        receivedQty: receipt.status === 'RECEIVED' || receipt.status === 'COMPLETED' ? (recQty > 0 ? recQty : expQty) : recQty,
         unitPrice: unitPrice.toFixed(2),
         requestedPrice: unitPrice.toFixed(2),
         discountPercent: discPercent,
@@ -859,7 +869,7 @@ export class InboundService {
       const mainWhCode = detail.warehouseCode || 'KHO-NVL';
       const noteText = detail.note || '';
 
-      const specificBins: string[] = [];
+      const specificBins: Array<{ locCode: string; qty: number }> = [];
       if (noteText.includes('[Vị trí Ô:')) {
         const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
         if (match && match[1]) {
@@ -867,7 +877,9 @@ export class InboundService {
             const rawCode = c.trim();
             if (rawCode) {
               const cleanCode = rawCode.split('(')[0].trim();
-              if (cleanCode) specificBins.push(cleanCode);
+              const qMatch = rawCode.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+              const customBinQty = qMatch ? Number(qMatch[1]) : 0;
+              if (cleanCode) specificBins.push({ locCode: cleanCode, qty: customBinQty });
             }
           });
         }
@@ -898,8 +910,10 @@ export class InboundService {
 
       // 2. Also record specific bin locations if specified
       if (specificBins.length > 0) {
-        const qtyPerBin = Math.max(1, Math.floor(qty / specificBins.length));
-        for (const locCode of specificBins) {
+        const fallbackQtyPerBin = Math.max(1, Math.floor(qty / specificBins.length));
+        for (const item of specificBins) {
+          const locCode = item.locCode;
+          const qtyPerBin = item.qty > 0 ? item.qty : fallbackQtyPerBin;
           let [binBal] = await this.dataSource.query(
             `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
             [productId, locCode],

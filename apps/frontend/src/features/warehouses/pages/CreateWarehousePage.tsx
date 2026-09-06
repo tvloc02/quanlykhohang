@@ -660,7 +660,67 @@ export default function CreateWarehousePage() {
     }
   };
 
-  const hasWarehouseGoods = code ? localStorage.getItem(`cleared_warehouse_goods_${code.trim().toUpperCase()}`) !== 'true' : false;
+  const [occupiedBinsCount, setOccupiedBinsCount] = useState<number>(0);
+
+  // A warehouse is ONLY locked if in edit mode AND actually has physical goods assigned
+  const hasWarehouseGoods = Boolean(
+    isEditMode &&
+    occupiedBinsCount > 0 &&
+    code &&
+    localStorage.getItem(`cleared_warehouse_goods_${code.trim().toUpperCase()}`) !== 'true'
+  );
+
+  const resetCreateForm = useCallback(() => {
+    const stored = getStoredWarehouses();
+    let maxNum = 0;
+    stored.forEach((w) => {
+      const m = w.code?.match(/KH(\d+)/i);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    });
+    const nextCode = `KH${String(maxNum + 1).padStart(3, '0')}`;
+    setCode(nextCode);
+    setName('');
+    setProvince(VIETNAM_PROVINCES[0].name);
+    setWard(VIETNAM_PROVINCES[0].wards[0]);
+    setDetailAddress('');
+    setStatus('active');
+    setLength(50);
+    setWidth(30);
+    setHeight(12);
+
+    const defaultRL = 18;
+    const defaultRW = 1.2;
+    const defaultRH = 5;
+    const initialZone: SubWarehouse = {
+      id: `sub-${Date.now()}`,
+      code: 'ZONE-A',
+      name: 'Phân Khu Kho Thường 1',
+      zoneType: 'AMBIENT',
+      status: 'active',
+      length: 20,
+      width: 12,
+      height: 6,
+      rackLength: defaultRL,
+      rackWidth: defaultRW,
+      rackHeight: defaultRH,
+      racksCount: 3,
+      shelvesPerRack: 5,
+      binsPerShelf: 2,
+      racks: generateDefaultRacks(3, 20, 6, 6, 5, 2, defaultRL, defaultRW, defaultRH),
+    };
+    setSubWarehouses([initialZone]);
+    setActiveZoneId(initialZone.id);
+    if (initialZone.racks && initialZone.racks.length > 0) {
+      setActiveRackId(initialZone.racks[0].id);
+    }
+    setSelectedRackCodes([]);
+    setActiveBinGoodsDetails(null);
+    setEditingBinCode(null);
+    setOccupiedBinsCount(0);
+  }, []);
 
   const populateWarehouse = useCallback((target: WarehouseRecord) => {
     const norm = normalizeWarehouseRecord(target);
@@ -751,15 +811,20 @@ export default function CreateWarehousePage() {
         }
       }
       loadWarehouseFromApi();
+
+      // Check occupied goods count specifically for this edited warehouse
+      fetchWarehouseOccupiedBins(localTarget?.code || targetId, targetId).then(({ occupiedMap }) => {
+        if (isMounted) {
+          setOccupiedBinsCount(occupiedMap.size);
+        }
+      }).catch(() => {});
     } else {
-      setCode(`KH${Math.floor(100 + Math.random() * 900)}`);
-      setName('');
-      setSubWarehouses([]);
+      resetCreateForm();
     }
     return () => {
       isMounted = false;
     };
-  }, [id, isEditMode, populateWarehouse]);
+  }, [id, isEditMode, populateWarehouse, resetCreateForm]);
 
   // Active Zone reference
   const activeZone = subWarehouses.find((z) => z.id === activeZoneId) || subWarehouses[0];
@@ -1046,6 +1111,23 @@ export default function CreateWarehousePage() {
               onClick={handleSaveWarehouse}
               disabled={saving}
               className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
+            >
+              <Save className="h-4.5 w-4.5 text-cyan-700" />
+              {isEditMode ? 'Lưu thay đổi' : 'Lưu kho hàng'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (isEditMode) {
+                  navigate('/warehouses/create');
+                } else {
+                  resetCreateForm();
+                  setSuccess('Đã làm mới biểu mẫu tạo kho hàng!');
+                }
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Tạo mới kho hàng sạch hoàn toàn"
             >
               <Plus className="h-4.5 w-4.5 text-cyan-700" />
               Thêm mới

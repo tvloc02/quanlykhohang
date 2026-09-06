@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, buildWarehouseRackTopology, upsertWarehouseToApi, type WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, buildWarehouseRackTopology, upsertWarehouseToApi, type WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig, clearAllDraftSlotLocks, releaseActiveDraftSlotLocks } from '../../../shared/utils/warehouseAssignments';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
@@ -2262,6 +2262,7 @@ export default function CreateStockInOrderPage({
       setToast({ message: 'Không thể đóng tab duy nhất', type: 'error' });
       return;
     }
+    releaseActiveDraftSlotLocks(tabIdToClose);
     const nextTabs = tabs.filter((t) => t.tabId !== tabIdToClose);
     setTabs(nextTabs);
     if (activeTabId === tabIdToClose) {
@@ -2283,6 +2284,18 @@ export default function CreateStockInOrderPage({
     const timer = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // Clean stale uncommitted draft locks on mount/create
+  useEffect(() => {
+    const isCreate = (
+      actionParam === 'create' ||
+      window.location.search.includes('action=create') ||
+      window.location.search.includes('mode=create')
+    );
+    if (isCreate) {
+      clearAllDraftSlotLocks();
+    }
+  }, [actionParam]);
 
   // Click outside listener for dropdowns
   useEffect(() => {
@@ -2574,6 +2587,10 @@ export default function CreateStockInOrderPage({
   const handleBackNavigation = () => {
     sessionStorage.removeItem('inbound_tabs_draft');
     sessionStorage.removeItem('inbound_active_tab_id');
+    if (activeTab?.tabId) {
+      releaseActiveDraftSlotLocks(activeTab.tabId);
+    }
+    clearAllDraftSlotLocks();
     if (onBack) {
       onBack();
     } else {
@@ -3244,6 +3261,10 @@ export default function CreateStockInOrderPage({
       if (whCodeToClean) {
         localStorage.removeItem(`cleared_warehouse_goods_${whCodeToClean}`);
       }
+      if (activeTab?.tabId) {
+        releaseActiveDraftSlotLocks(activeTab.tabId);
+      }
+      clearAllDraftSlotLocks();
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
       window.dispatchEvent(new Event('storage'));
 
