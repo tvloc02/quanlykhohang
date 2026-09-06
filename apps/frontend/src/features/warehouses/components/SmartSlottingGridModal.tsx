@@ -15,6 +15,8 @@ import {
   saveActiveDraftSlotLocks,
   releaseActiveDraftSlotLocks,
   getActiveDraftSlotLocks,
+  parseAssignedBinsFromNote,
+  stripAssignedBinsFromNote,
 } from '../../../shared/utils/warehouseAssignments';
 import { WarehouseSlottingGrid } from './WarehouseSlottingGrid';
 import {
@@ -69,6 +71,7 @@ export interface SmartSlottingGridModalProps<T extends SlottingItemRow = Slottin
   subWarehouses?: any[];
   orderNo?: string;
   tabId?: string;
+  readOnly?: boolean;
   onConfirmAll: (updatedRows: T[], updatedSubWarehouses?: any[]) => void;
 }
 
@@ -217,6 +220,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   subWarehouses,
   orderNo = 'PNK',
   tabId = 'default-draft',
+  readOnly = false,
   onConfirmAll,
 }: SmartSlottingGridModalProps<T>) {
   const [dbSubWarehouses, setDbSubWarehouses] = useState<any[]>([]);
@@ -345,8 +349,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 bins = item.locationBin.split(',').map((s: string) => s.trim());
               }
               if (bins.length === 0 && item.note) {
-                const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-                if (match) bins = match[1].split(',').map((s: string) => s.trim());
+                bins = parseAssignedBinsFromNote(item.note);
               }
 
               bins.forEach((bCode) => {
@@ -441,8 +444,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             bins = item.locationBin.split(',').map((s: string) => s.trim());
           }
           if (bins.length === 0 && item.note) {
-            const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-            if (match) bins = match[1].split(',').map((s: string) => s.trim());
+            bins = parseAssignedBinsFromNote(item.note);
           }
 
           bins.forEach((bCode) => {
@@ -857,15 +859,18 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
     // Preserve existing assigned bins from order rows ONLY (no forced auto-allocation for all items)
     items.forEach((item) => {
-      let validBins = (item.assignedBins || []).filter(
-        (b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C'))
-      );
-      if (validBins.length === 0 && item.locationBin) {
-        validBins = item.locationBin
-          .split(',')
-          .map((s) => s.trim())
-          .filter((b) => b && (b.includes('-S0') || b.includes('-R0') || b.includes('-C')));
+      let rawBinsList: string[] = [];
+      if (Array.isArray(item.assignedBins) && item.assignedBins.length > 0) {
+        rawBinsList = item.assignedBins;
+      } else if (item.locationBin) {
+        rawBinsList = item.locationBin.split(',').map((s) => s.trim()).filter(Boolean);
+      } else if (item.note) {
+        rawBinsList = parseAssignedBinsFromNote(item.note);
       }
+
+      let validBins = rawBinsList.filter(
+        (b) => b && b.trim().length > 1 && b.trim() !== warehouseCode
+      );
 
       const targetPrefix = warehouseCode ? warehouseCode.toUpperCase() : '';
       if (targetPrefix && validBins.length > 0) {
@@ -993,19 +998,25 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       const totalBinsNeeded = Math.max(1, Math.ceil(itemQty / 100));
       const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
       const isOutbound = mode === 'OUTBOUND_TRANSFER';
+      const assignedForThisItem = initialMap[activeItem?.rowId || ''] || activeItem?.assignedBins || [];
+      const binListStr = assignedForThisItem.length > 0
+        ? assignedForThisItem.map((b) => `  • ${b}`).join('\n')
+        : '  • Chưa phân bổ vị trí ô kệ';
 
       return [
         {
           id: 'msg-1',
           sender: 'ai',
-          text: isOutbound
+          text: readOnly
+            ? `SƠ ĐỒ VỊ TRÍ Ô KỆ ĐÃ LƯU KHO (CHẾ ĐỘ XEM)\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng số lượng: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nTrạng thái: Phiếu nhập kho đã được lưu vào hệ thống.\nVị trí các ô kệ đang lưu trữ hàng hóa:\n${binListStr}\n\nℹ️ Bạn đang ở Chế độ xem chi tiết. Vị trí các ô kệ đã lưu hiển thị màu xanh trên sơ đồ.`
+            : isOutbound
             ? `CHỈ DẪN XUẤT CHUYỂN KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nQUY TẮC AN TOÀN XUẤT KHO:\n- Bạn chỉ được phép chọn các ô kệ đang lưu trữ đúng mặt hàng "${activeItem?.productName || 'này'}".\n- Các ô kệ trống hoặc chứa hàng khác sẽ tự động khóa để tránh xuất nhầm hàng.\n\nChỉ dẫn vị trí ô lấy hàng: Cần chọn ~${totalBinsNeeded} ô chứa.`
             : `CHỈ DẪN NHẬP KHO AI SMART WMS\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nChỉ dẫn: Bạn có thể tự do chọn ô kệ cho 1, 2, 3 mặt hàng tùy ý. Không bắt buộc chọn tất cả.`,
           time: now,
         },
       ];
     });
-  }, [isOpen]);
+  }, [isOpen, readOnly]);
 
   if (!isOpen) return null;
 
@@ -1108,6 +1119,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   };
 
   const toggleBinSelection = (cell: BinCell) => {
+    if (readOnly) return;
     if (!activeRowId || !currentItem) return;
 
     const binCode = cell.binCode;
@@ -1242,11 +1254,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   };
 
   const handleConfirmSelections = async () => {
+    if (readOnly) {
+      onClose();
+      return;
+    }
     const updatedSubs = dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || [];
     const updatedRows = items.map((r) => {
       const chosenBins = selectedBinsMap[r.rowId] || [];
       if (chosenBins.length > 0) {
-        const cleanNote = (r.note || '').replace(/\[Vị trí Ô:\s*[^\]]+\]/g, '').trim();
+        const cleanNote = stripAssignedBinsFromNote(r.note);
         const formattedBins = chosenBins.map((bCode) => bCode);
 
         const rowQtyMap = allocatedQtyMap[r.rowId] || {};
@@ -1295,6 +1311,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   };
 
   const handleUpdateBinCapacity = (binCode: string, pct: number, notes?: string, targetRowId?: string, newQty?: number) => {
+    if (readOnly) return;
     const cleanBinCode = binCode.split('(')[0].trim();
     const shortCode = (cleanBinCode.split('-').pop() || cleanBinCode).toUpperCase();
     const normTarget = normalizeBinKey(cleanBinCode);
@@ -2013,10 +2030,17 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
             <div>
               <h3 className="text-base font-black uppercase tracking-wide flex items-center gap-2">
-                Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Kho (Smart WMS Slotting Grid)
+                <span>Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Kho (Smart WMS Slotting Grid)</span>
+                {readOnly && (
+                  <span className="bg-amber-400 text-amber-950 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase border border-amber-300 tracking-normal shadow-2xs">
+                    Chế độ xem
+                  </span>
+                )}
               </h3>
               <p className="text-xs text-cyan-100 dark:text-indigo-200 font-medium">
-                {mode === 'STOCKTAKE'
+                {readOnly
+                  ? 'Xem chi tiết sơ đồ vị trí các ô kệ đã lưu trữ hàng hóa • Chế độ chỉ xem, không thể chỉnh sửa'
+                  : mode === 'STOCKTAKE'
                   ? 'SƠ ĐỒ VỊ TRÍ KỆ KIỂM KÊ • Ô KỆ ĐANG LƯU HÀNG HÓA HIỆN MÀU XANH, KỆ KHÔNG LƯU HÀNG SẼ IN CHÌM'
                   : mode === 'OUTBOUND_TRANSFER'
                   ? 'Tự động khóa các ô không hợp lệ • CHỈ CHO PHÉP TICK chọn các Ô KỆ ĐANG LƯU ĐÚNG HÀNG HÓA để xuất chuyển'
@@ -2082,60 +2106,73 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
 
             {/* Quick Prompts */}
-            <div className="px-3 py-2 bg-white dark:bg-slate-950 border-t border-cyan-100 dark:border-indigo-900/40 flex flex-wrap gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => handleSendMessage(undefined, mode === 'OUTBOUND_TRANSFER' ? 'Kệ có hàng' : 'Kệ trống')}
-                className="text-[10px] bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg font-black transition cursor-pointer shadow-2xs flex items-center gap-1"
-              >
-                {mode === 'OUTBOUND_TRANSFER' ? '📦 Chỉ dẫn Kệ Có Hàng' : '✨ Chỉ dẫn Kệ Trống'}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage(undefined, '1 kệ thôi')}
-                className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
-              >
-                1 Kệ/Ô thôi
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage(undefined, 'Tự động chọn')}
-                className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
-              >
-                Tự chọn đủ ô
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage(undefined, 'Chuyển kệ R01')}
-                className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
-              >
-                Xem Kệ R01
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage(undefined, 'Bỏ chọn')}
-                className="text-[10px] bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
-              >
-                Bỏ chọn hết
-              </button>
-            </div>
+            {readOnly ? (
+              <div className="px-3 py-2 bg-white dark:bg-slate-950 border-t border-cyan-100 dark:border-indigo-900/40 flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 shrink-0">
+                <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                <span>Chế độ xem • Vị trí ô kệ đã lưu cố định theo phiếu nhập</span>
+              </div>
+            ) : (
+              <div className="px-3 py-2 bg-white dark:bg-slate-950 border-t border-cyan-100 dark:border-indigo-900/40 flex flex-wrap gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(undefined, mode === 'OUTBOUND_TRANSFER' ? 'Kệ có hàng' : 'Kệ trống')}
+                  className="text-[10px] bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg font-black transition cursor-pointer shadow-2xs flex items-center gap-1"
+                >
+                  {mode === 'OUTBOUND_TRANSFER' ? '📦 Chỉ dẫn Kệ Có Hàng' : '✨ Chỉ dẫn Kệ Trống'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(undefined, '1 kệ thôi')}
+                  className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                >
+                  1 Kệ/Ô thôi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(undefined, 'Tự động chọn')}
+                  className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                >
+                  Tự chọn đủ ô
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(undefined, 'Chuyển kệ R01')}
+                  className="text-[10px] bg-cyan-50 dark:bg-indigo-950/60 hover:bg-cyan-100 dark:hover:bg-indigo-900/60 border border-cyan-300 dark:border-indigo-800 text-cyan-900 dark:text-indigo-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                >
+                  Xem Kệ R01
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage(undefined, 'Bỏ chọn')}
+                  className="text-[10px] bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                >
+                  Bỏ chọn hết
+                </button>
+              </div>
+            )}
 
             {/* Chat Input */}
-            <form onSubmit={(e) => handleSendMessage(e)} className="p-3 bg-white dark:bg-slate-950 border-t border-cyan-200 dark:border-indigo-900/40 flex items-center gap-2 shrink-0">
-              <input
-                type="text"
-                value={inputMsg}
-                onChange={(e) => setInputMsg(e.target.value)}
-                placeholder="Ra lệnh AI (VD: 1 kệ thôi, chọn ô D1, R02)..."
-                className="flex-1 h-9 px-3 text-xs border border-slate-300 dark:border-indigo-900/60 rounded-xl outline-none focus:border-cyan-600 focus:dark:border-indigo-500 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-slate-100"
-              />
-              <button
-                type="submit"
-                className="h-9 px-3.5 bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white rounded-xl flex items-center justify-center transition cursor-pointer shadow-sm active:scale-95"
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </form>
+            {readOnly ? (
+              <div className="p-3 bg-white dark:bg-slate-950 border-t border-cyan-200 dark:border-indigo-900/40 text-center text-xs font-semibold text-slate-400 dark:text-slate-500 shrink-0">
+                🔒 Chế độ xem: Không thể thay đổi các ô kệ đã lưu kho
+              </div>
+            ) : (
+              <form onSubmit={(e) => handleSendMessage(e)} className="p-3 bg-white dark:bg-slate-950 border-t border-cyan-200 dark:border-indigo-900/40 flex items-center gap-2 shrink-0">
+                <input
+                  type="text"
+                  value={inputMsg}
+                  onChange={(e) => setInputMsg(e.target.value)}
+                  placeholder="Ra lệnh AI (VD: 1 kệ thôi, chọn ô D1, R02)..."
+                  className="flex-1 h-9 px-3 text-xs border border-slate-300 dark:border-indigo-900/60 rounded-xl outline-none focus:border-cyan-600 focus:dark:border-indigo-500 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-slate-100"
+                />
+                <button
+                  type="submit"
+                  className="h-9 px-3.5 bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white rounded-xl flex items-center justify-center transition cursor-pointer shadow-sm active:scale-95"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
+            )}
           </div>
 
           {/* Right Column: Interactive Visual Rack Topology Grid */}
@@ -2281,6 +2318,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                   return map;
                 })()}
                 mode="select"
+                readOnly={readOnly}
                 isOutbound={mode === 'OUTBOUND_TRANSFER' || mode === 'STOCKTAKE'}
                 maxBinsAllowed={mode === 'OUTBOUND_TRANSFER' ? Math.max(1, Math.ceil(((items.find((i) => i.rowId === activeRowId) || items[0])?.qty || 1) / 100)) : 999}
                 binQtyMap={allocatedQtyMap[activeRowId || items[0]?.rowId || ''] || {}}
@@ -2299,16 +2337,19 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 selectedBinsMap={selectedBinsMap}
                 activeRowId={activeRowId || items[0]?.rowId || ''}
                 onSelectBin={(fullBinCode) => {
+                  if (readOnly) return;
                   toggleBinSelection({ binCode: fullBinCode, cellCode: fullBinCode } as any);
                 }}
-                onUpdateBinCapacity={handleUpdateBinCapacity}
+                onUpdateBinCapacity={readOnly ? undefined : handleUpdateBinCapacity}
               />
             </div>
 
             {/* Footer Summary & Action Buttons */}
             <div className="mt-3 pt-3 border-t border-slate-200 dark:border-indigo-900/40 flex items-center justify-between gap-3">
               <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                <span className="text-slate-500 dark:text-slate-400">{mode === 'OUTBOUND_TRANSFER' ? 'Các Ô đang chọn xuất:' : 'Các Ô đang chọn nhập:'}</span>
+                <span className="text-slate-500 dark:text-slate-400">
+                  {readOnly ? 'Vị trí ô đã lưu trữ:' : mode === 'OUTBOUND_TRANSFER' ? 'Các Ô đang chọn xuất:' : 'Các Ô đang chọn nhập:'}
+                </span>
                 <span className="text-cyan-900 dark:text-indigo-300 font-black bg-cyan-100 dark:bg-indigo-950 px-2.5 py-1 rounded-lg border border-cyan-300 dark:border-indigo-800">
                   {currentSelectedBins.length > 0 ? currentSelectedBins.join(', ') : 'Chưa chọn ô nào'}
                 </span>
@@ -2318,17 +2359,19 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-indigo-900/60 bg-slate-100 dark:bg-slate-950 hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                  className="px-6 py-2.5 rounded-xl border border-slate-300 dark:border-indigo-900/60 bg-slate-100 dark:bg-slate-950 hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 transition cursor-pointer"
                 >
                   Đóng
                 </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmSelections}
-                  className="px-6 py-2.5 rounded-xl bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-xs font-black text-white tracking-wide shadow-md transition cursor-pointer active:scale-95 flex items-center gap-2"
-                >
-                  Lưu
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={handleConfirmSelections}
+                    className="px-6 py-2.5 rounded-xl bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-xs font-black text-white tracking-wide shadow-md transition cursor-pointer active:scale-95 flex items-center gap-2"
+                  >
+                    Lưu
+                  </button>
+                )}
               </div>
             </div>
           </div>

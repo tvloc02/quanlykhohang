@@ -759,3 +759,73 @@ export function clearAllDraftSlotLocks(warehouseCode?: string) {
   }
 }
 
+/**
+ * Robust extractor for assigned bins inside note string: "[Vị trí Ô: ...]"
+ * Safely handles nested brackets like "[400 cái]" without truncating.
+ */
+export function parseAssignedBinsFromNote(note: string | null | undefined): string[] {
+  if (!note || typeof note !== 'string') return [];
+  const prefix = '[Vị trí Ô:';
+  const startIdx = note.indexOf(prefix);
+  if (startIdx === -1) return [];
+
+  let depth = 0;
+  const contentStart = startIdx + prefix.length;
+  let contentEnd = -1;
+
+  for (let i = startIdx; i < note.length; i++) {
+    if (note[i] === '[') {
+      depth++;
+    } else if (note[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        contentEnd = i;
+        break;
+      }
+    }
+  }
+
+  const rawContent = contentEnd !== -1
+    ? note.slice(contentStart, contentEnd)
+    : note.slice(contentStart);
+
+  return rawContent
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Safely strips "[Vị trí Ô: ...]" from note, accounting for nested brackets.
+ */
+export function stripAssignedBinsFromNote(note: string | null | undefined): string {
+  if (!note || typeof note !== 'string') return '';
+  const prefix = '[Vị trí Ô:';
+  const startIdx = note.indexOf(prefix);
+  if (startIdx === -1) return note.trim();
+
+  let depth = 0;
+  let contentEnd = -1;
+
+  for (let i = startIdx; i < note.length; i++) {
+    if (note[i] === '[') {
+      depth++;
+    } else if (note[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        contentEnd = i;
+        break;
+      }
+    }
+  }
+
+  if (contentEnd !== -1) {
+    const before = note.slice(0, startIdx);
+    const after = note.slice(contentEnd + 1);
+    return `${before} ${after}`.replace(/\s+/g, ' ').trim();
+  }
+
+  return note.replace(/\[Vị trí Ô:.*$/s, '').trim();
+}
+
+

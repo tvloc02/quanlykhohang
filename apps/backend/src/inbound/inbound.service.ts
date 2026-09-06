@@ -88,6 +88,69 @@ function toDateString(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+export function parseAssignedBinsFromNote(note: string | null | undefined): string[] {
+  if (!note || typeof note !== 'string') return [];
+  const prefix = '[Vị trí Ô:';
+  const startIdx = note.indexOf(prefix);
+  if (startIdx === -1) return [];
+
+  let depth = 0;
+  const contentStart = startIdx + prefix.length;
+  let contentEnd = -1;
+
+  for (let i = startIdx; i < note.length; i++) {
+    if (note[i] === '[') {
+      depth++;
+    } else if (note[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        contentEnd = i;
+        break;
+      }
+    }
+  }
+
+  const rawContent = contentEnd !== -1
+    ? note.slice(contentStart, contentEnd)
+    : note.slice(contentStart);
+
+  return rawContent
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function stripAssignedBinsFromNote(note: string | null | undefined): string {
+  if (!note || typeof note !== 'string') return '';
+  const prefix = '[Vị trí Ô:';
+  const startIdx = note.indexOf(prefix);
+  if (startIdx === -1) return note.trim();
+
+  let depth = 0;
+  let contentEnd = -1;
+
+  for (let i = startIdx; i < note.length; i++) {
+    if (note[i] === '[') {
+      depth++;
+    } else if (note[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        contentEnd = i;
+        break;
+      }
+    }
+  }
+
+  if (contentEnd !== -1) {
+    const before = note.slice(0, startIdx);
+    const after = note.slice(contentEnd + 1);
+    return `${before} ${after}`.replace(/\s+/g, ' ').trim();
+  }
+
+  return note.replace(/\[Vị trí Ô:.*$/s, '').trim();
+}
+
+
 function normalizeStatus(status?: string) {
   return status ? status.toUpperCase() : '';
 }
@@ -729,13 +792,10 @@ export class InboundService {
       const assignedStr = (item as any).locationBin || (Array.isArray((item as any).assignedBins) ? (item as any).assignedBins.join(', ') : '');
       let noteContent = item.note ? String(item.note) : '';
       if (assignedStr) {
-        if (noteContent.includes('[Vị trí Ô:')) {
-          noteContent = noteContent.replace(/\[Vị trí Ô:\s*[^\]]+\]/g, `[Vị trí Ô: ${assignedStr}]`);
-        } else {
-          noteContent = noteContent
-            ? `${noteContent} [Vị trí Ô: ${assignedStr}]`
-            : `[Vị trí Ô: ${assignedStr}]`;
-        }
+        const cleanNote = stripAssignedBinsFromNote(noteContent);
+        noteContent = cleanNote
+          ? `${cleanNote} [Vị trí Ô: ${assignedStr}]`
+          : `[Vị trí Ô: ${assignedStr}]`;
       }
 
       const detail = this.detailRepo.create({
@@ -870,19 +930,17 @@ export class InboundService {
       const noteText = detail.note || '';
 
       const specificBins: Array<{ locCode: string; qty: number }> = [];
-      if (noteText.includes('[Vị trí Ô:')) {
-        const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-        if (match && match[1]) {
-          match[1].split(',').forEach((c) => {
-            const rawCode = c.trim();
-            if (rawCode) {
-              const cleanCode = rawCode.split('(')[0].trim();
-              const qMatch = rawCode.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
-              const customBinQty = qMatch ? Number(qMatch[1]) : 0;
-              if (cleanCode) specificBins.push({ locCode: cleanCode, qty: customBinQty });
-            }
-          });
-        }
+      const parsedAssigned = parseAssignedBinsFromNote(noteText);
+      if (parsedAssigned.length > 0) {
+        parsedAssigned.forEach((c) => {
+          const rawCode = c.trim();
+          if (rawCode) {
+            const cleanCode = rawCode.split('(')[0].trim();
+            const qMatch = rawCode.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+            const customBinQty = qMatch ? Number(qMatch[1]) : 0;
+            if (cleanCode) specificBins.push({ locCode: cleanCode, qty: customBinQty });
+          }
+        });
       }
 
       const qty = Number(detail.receivedQty || detail.expectedQty) || 0;
@@ -1081,13 +1139,7 @@ export class InboundService {
   }
 
   private serializeDetail(detail: InboundDetail, supplierProduct?: SupplierProduct) {
-    let parsedAssignedBins: string[] = [];
-    if (detail.note && detail.note.includes('[Vị trí Ô:')) {
-      const match = detail.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-      if (match && match[1]) {
-        parsedAssignedBins = match[1].split(',').map((c) => c.trim()).filter(Boolean);
-      }
-    }
+    const parsedAssignedBins = parseAssignedBinsFromNote(detail.note);
 
     const unitPrice = parseNumber(detail.unitPrice);
     const qty = parseNumber(detail.expectedQty);
