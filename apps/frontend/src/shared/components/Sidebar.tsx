@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   BarChart3,
@@ -62,15 +62,9 @@ import {
   Edit3,
   HelpCircle,
   BookMarked,
-<<<<<<< HEAD
   X,
 } from "lucide-react";
-import { readStoredPermissionGroups } from "../../features/personnel/PermissionGroupsPage";
 import { usePermissions } from "../hooks/usePermissions";
-=======
-} from 'lucide-react';
-import { usePermissions } from '../hooks/usePermissions';
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
 
 interface SidebarProps {
   isOpen: boolean;
@@ -112,84 +106,19 @@ const menuItems: MenuItem[] = [
     path: "/nhap-xuat",
     allowedRoles: ["admin", "manager", "staff"],
     children: [
-      {
-        id: "outbound-orders",
-        icon: TrendingUp,
-        label: "Xuất bán",
-        path: "/outbound/orders",
-      },
-      {
-        id: "outbound-retail",
-        icon: Receipt,
-        label: "Xuất bán lẻ",
-        path: "/outbound/retail",
-      },
-      {
-        id: "inbound-stock-in-orders",
-        icon: TrendingDown,
-        label: "Nhập hàng",
-        path: "/inbound/stock-in-orders",
-      },
-      {
-        id: "inbound-return-requests",
-        icon: CornerUpRight,
-        label: "Xuất trả Nhà cung cấp",
-        path: "/inbound/return-requests",
-      },
-      {
-        id: "inbound-return-customers",
-        icon: CornerDownLeft,
-        label: "Nhập hàng Khách trả lại",
-        path: "/inbound/return-customers",
-      },
-      {
-        id: "delivery-transfer-orders",
-        icon: Send,
-        label: "Xuất kho nội bộ",
-        path: "/delivery/transfer-orders",
-      },
-      {
-        id: "delivery-transfer-requests",
-        icon: Repeat,
-        label: "Nhập kho nội bộ",
-        path: "/delivery/transfer-requests",
-      },
-      {
-        id: "inventory-initial-stock",
-        icon: PlusCircle,
-        label: "Nhập hàng tồn đầu kỳ",
-        path: "/inventory/initial-stock",
-      },
-      {
-        id: "inventory-stocktake",
-        icon: FileCheck,
-        label: "Kiểm kho",
-        path: "/inventory/stocktake",
-      },
-      {
-        id: "outbound-sales-orders",
-        icon: ShoppingCart,
-        label: "Đơn đặt hàng",
-        path: "/outbound/sales-orders",
-      },
-      {
-        id: "inbound-purchase-orders",
-        icon: PackageCheck,
-        label: "Đơn đặt hàng NCC",
-        path: "/inbound/purchase-orders",
-      },
-      {
-        id: "outbound-disposal",
-        icon: FileX,
-        label: "Xuất hủy",
-        path: "/outbound/disposal",
-      },
-      {
-        id: "inbound-assembly",
-        icon: LinkIcon,
-        label: "Tạo bộ/Combo",
-        path: "/inbound/assembly",
-      },
+      { id: "outbound-orders", icon: TrendingUp, label: "Xuất bán", path: "/outbound/orders" },
+      { id: "outbound-retail", icon: Receipt, label: "Xuất bán lẻ", path: "/outbound/retail" },
+      { id: "inbound-stock-in-orders", icon: TrendingDown, label: "Nhập hàng", path: "/inbound/stock-in-orders" },
+      { id: "inbound-return-requests", icon: CornerUpRight, label: "Xuất trả Nhà cung cấp", path: "/inbound/return-requests" },
+      { id: "inbound-return-customers", icon: CornerDownLeft, label: "Nhập hàng Khách trả lại", path: "/inbound/return-customers" },
+      { id: "delivery-transfer-orders", icon: Send, label: "Xuất kho nội bộ", path: "/delivery/transfer-orders" },
+      { id: "delivery-transfer-requests", icon: Repeat, label: "Nhập kho nội bộ", path: "/delivery/transfer-requests" },
+      { id: "inventory-initial-stock", icon: PlusCircle, label: "Nhập hàng tồn đầu kỳ", path: "/inventory/initial-stock" },
+      { id: "inventory-stocktake", icon: FileCheck, label: "Kiểm kho", path: "/inventory/stocktake" },
+      { id: "outbound-sales-orders", icon: ShoppingCart, label: "Đơn đặt hàng", path: "/outbound/sales-orders" },
+      { id: "inbound-purchase-orders", icon: PackageCheck, label: "Đơn đặt hàng NCC", path: "/inbound/purchase-orders" },
+      { id: "outbound-disposal", icon: FileX, label: "Xuất hủy", path: "/outbound/disposal" },
+      { id: "inbound-assembly", icon: LinkIcon, label: "Tạo bộ/Combo", path: "/inbound/assembly" },
     ],
   },
   // 3. Thu chi
@@ -354,7 +283,7 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-  // 7. Danh mục
+  // 6. Danh mục
   {
     id: "danh-muc",
     icon: AlignLeft,
@@ -402,8 +331,7 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-<<<<<<< HEAD
-  // 8. Chăm sóc Khách hàng
+  // 7. Chăm sóc Khách hàng
   {
     id: "cham-soc-khach-hang",
     icon: PhoneCall,
@@ -425,24 +353,15 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-=======
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
-  // 9. Hệ thống
+  // 8. Hệ thống
   {
     id: "he-thong",
     icon: Settings,
-<<<<<<< HEAD
     label: "Hệ thống",
     path: "/system-menu",
     allowedRoles: ["admin", "manager", "staff"],
     children: [
-      { id: "logout", icon: LogOut, label: "Đăng xuất", path: "/login" },
-      {
-        id: "change-password",
-        icon: Lock,
-        label: "Đổi mật khẩu",
-        path: "/profile",
-      },
+      { id: "settings", icon: Settings, label: "Cấu hình hệ thống", path: "/settings" },
       {
         id: "personnel",
         icon: User,
@@ -458,6 +377,18 @@ const menuItems: MenuItem[] = [
         allowedRoles: ["admin"],
       },
       {
+        id: "print-templates",
+        icon: Printer,
+        label: "Mẫu in Chứng từ",
+        path: "/documents",
+      },
+      {
+        id: "evat-config",
+        icon: Receipt,
+        label: "Cấu hình e-VAT",
+        path: "/vat/config",
+      },
+      {
         id: "audit-log",
         icon: History,
         label: "Lịch sử thao tác",
@@ -471,14 +402,15 @@ const menuItems: MenuItem[] = [
         path: "/settings",
       },
       {
-        id: "evat-config",
-        icon: Receipt,
-        label: "Cấu hình e-VAT",
-        path: "/vat/config",
+        id: "change-password",
+        icon: Lock,
+        label: "Đổi mật khẩu",
+        path: "/profile",
       },
+      { id: "logout", icon: LogOut, label: "Đăng xuất", path: "/login" },
     ],
   },
-  // 10. Shipper
+  // 9. Shipper
   {
     id: "shipper",
     icon: Bike,
@@ -500,7 +432,7 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-  // 11. VAT Điện tử
+  // 10. VAT Điện tử
   {
     id: "vat-dien-tu",
     icon: Receipt,
@@ -522,7 +454,7 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-  // 12. Hướng dẫn sử dụng
+  // 11. Hướng dẫn sử dụng
   {
     id: "huong-dan-su-dung",
     icon: BookMarked,
@@ -534,6 +466,9 @@ const menuItems: MenuItem[] = [
 
 function isRouteActive(pathname: string, targetPath: string): boolean {
   if (!targetPath || targetPath === "#") return false;
+  if (targetPath === "/dashboard") {
+    return pathname === "/dashboard" || pathname === "/";
+  }
   if (pathname === targetPath) return true;
   if (targetPath === "/" || targetPath === "") return false;
   if (targetPath === "/products/main" && pathname.startsWith("/products"))
@@ -561,47 +496,10 @@ function isRouteActive(pathname: string, targetPath: string): boolean {
   return false;
 }
 
-function getStoredUser() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function getStoredRole(user: any) {
-  return (
-    user.role ||
-    (user.roles && user.roles[0]?.name) ||
-    "admin"
-  ).toLowerCase();
-=======
-    label: 'Hệ thống',
-    path: '/system-menu',
-    children: [
-      { id: 'settings', icon: Settings, label: 'Cấu hình hệ thống', path: '/settings' },
-      { id: 'personnel', icon: Users, label: 'Nhân viên & Phân quyền', path: '/personnel' },
-      { id: 'areas', icon: Warehouse, label: 'Cấu hình Chi nhánh', path: '/areas' },
-      { id: 'evat-config', icon: FileEdit, label: 'Hóa đơn & VAT', path: '/vat/management' },
-      { id: 'print-templates', icon: Printer, label: 'Mẫu in Chứng từ', path: '/documents' },
-      { id: 'audit-log', icon: History, label: 'Nhật ký Hoạt động', path: '/audit-log' },
-    ],
-  },
-];
-
-function isRouteActive(currentPath: string, targetPath: string) {
-  if (targetPath === '/dashboard') {
-    return currentPath === '/dashboard' || currentPath === '/';
-  }
-  return currentPath.startsWith(targetPath);
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
-}
-
 export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
   const location = useLocation();
-<<<<<<< HEAD
   const [searchQuery, setSearchQuery] = useState("");
-  const [permissionTick, setPermissionTick] = useState(0);
+  const [, setPermissionTick] = useState(0);
 
   useEffect(() => {
     const handlePermissionsChange = () => {
@@ -613,23 +511,8 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
 
     return () => {
       window.removeEventListener("storage", handlePermissionsChange);
-      window.removeEventListener(
-        "permissions-updated",
-        handlePermissionsChange,
-      );
+      window.removeEventListener("permissions-updated", handlePermissionsChange);
     };
-=======
-  const [searchQuery, setSearchQuery] = useState('');
-  const [userRole, setUserRole] = useState<string>('');
-
-  useEffect(() => {
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      setUserRole(user.role || (user.roles && user.roles[0]?.name) || 'staff');
-    } catch {
-      setUserRole('staff');
-    }
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
   }, []);
 
   const { isAdmin, canViewMenu } = usePermissions();
@@ -717,7 +600,6 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
       item.children?.some((c) => isRouteActive(location.pathname, c.path));
     const isExpanded = expandedItems.has(item.path);
 
-<<<<<<< HEAD
     // SPECIAL BUTTON FOR TRANG CHỦ
     if (item.isSpecialButton) {
       const isActive = isRouteActive(location.pathname, item.path);
@@ -746,8 +628,6 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
       );
     }
 
-=======
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
     if (hasChildren) {
       return (
         <div key={item.path} className="space-y-1">
@@ -755,34 +635,20 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
             onClick={() => toggleExpanded(item.path)}
             className={`w-full flex items-center ${isOpen ? "px-3.5" : "justify-center"} py-3 text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer group ${
               isParentActive || isChildActive || isExpanded
-<<<<<<< HEAD
-                ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
-                : "hover:bg-cyan-50 dark:hover:bg-slate-900 text-gray-800 dark:text-slate-200"
-=======
-                ? 'bg-cyan-500/10 dark:bg-[#131b2e] text-cyan-700 dark:text-blue-300 border border-transparent dark:border-blue-800/60'
-                : 'hover:bg-cyan-50 dark:hover:bg-[#0f172a] text-slate-800 dark:text-slate-200'
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
+                ? "bg-cyan-500/10 dark:bg-[#131b2e] text-cyan-700 dark:text-blue-300 border border-transparent dark:border-blue-800/60"
+                : "hover:bg-cyan-50 dark:hover:bg-[#0f172a] text-slate-800 dark:text-slate-200"
             }`}
             title={!isOpen ? item.label : ""}
           >
-<<<<<<< HEAD
             <Icon
-              className={`h-5 w-5 ${isOpen ? "mr-3" : ""} flex-shrink-0 text-cyan-600 dark:text-cyan-400`}
+              className={`h-5 w-5 ${isOpen ? "mr-3" : ""} flex-shrink-0 text-cyan-600 dark:text-blue-400`}
             />
-=======
-            <Icon className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 text-cyan-600 dark:text-blue-400`} />
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
             {isOpen && (
               <>
                 <span className="flex-1 text-left truncate">{item.label}</span>
                 <ChevronDown
-<<<<<<< HEAD
-                  className={`h-4 w-4 text-cyan-600 transition-transform duration-300 ${
-                    isExpanded ? "transform rotate-180" : ""
-=======
                   className={`h-4 w-4 text-cyan-600 dark:text-blue-400 transition-transform duration-300 ${
-                    isExpanded ? 'transform rotate-180' : ''
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
+                    isExpanded ? "transform rotate-180" : ""
                   }`}
                 />
               </>
@@ -826,24 +692,15 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
                       }}
                       className={`w-full flex items-center px-3 py-2 text-[13px] font-semibold rounded-lg transition-all duration-200 ${
                         isChildActiveState
-<<<<<<< HEAD
-                          ? "bg-cyan-600 text-white shadow-sm font-semibold"
-                          : "text-gray-700 dark:text-slate-200 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:bg-slate-900 dark:hover:text-cyan-300"
-=======
-                          ? 'bg-gradient-to-r from-cyan-600 to-cyan-500 dark:from-cyan-700 dark:to-cyan-800 text-white shadow-md font-extrabold'
-                          : 'text-slate-700 dark:text-slate-300 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:bg-[#131b2e] dark:hover:text-cyan-200'
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
+                          ? "bg-gradient-to-r from-cyan-600 to-cyan-500 dark:from-cyan-700 dark:to-cyan-800 text-white shadow-md font-extrabold"
+                          : "text-slate-700 dark:text-slate-300 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:bg-[#131b2e] dark:hover:text-cyan-200"
                       }`}
                     >
                       <ChildIcon
                         className={`h-4 w-4 mr-2.5 flex-shrink-0 ${
-<<<<<<< HEAD
                           isChildActiveState
                             ? "text-white"
-                            : "text-cyan-500/80 dark:text-cyan-400/70"
-=======
-                          isChildActiveState ? 'text-white' : 'text-cyan-500/80 dark:text-cyan-400'
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
+                            : "text-cyan-500/80 dark:text-cyan-400"
                         }`}
                       />
                       <span className="truncate">{child.label}</span>
@@ -870,24 +727,14 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
         }}
         className={`w-full flex items-center ${isOpen ? "px-3.5" : "justify-center"} py-3 text-sm font-bold rounded-xl transition-all duration-200 group ${
           isActive
-<<<<<<< HEAD
-            ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white shadow-md"
-            : "hover:bg-cyan-50 dark:hover:bg-slate-900 text-gray-800 dark:text-slate-200"
-=======
-            ? 'bg-gradient-to-r from-cyan-600 to-cyan-500 dark:from-cyan-700 dark:to-cyan-800 text-white shadow-md font-black'
-            : 'hover:bg-cyan-50 dark:hover:bg-[#0f172a] text-slate-800 dark:text-slate-200'
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
+            ? "bg-gradient-to-r from-cyan-600 to-cyan-500 dark:from-cyan-700 dark:to-cyan-800 text-white shadow-md font-black"
+            : "hover:bg-cyan-50 dark:hover:bg-[#0f172a] text-slate-800 dark:text-slate-200"
         }`}
         title={!isOpen ? item.label : ""}
       >
         <Icon
-<<<<<<< HEAD
           className={`h-5 w-5 ${isOpen ? "mr-3" : ""} flex-shrink-0 ${
-            isActive ? "text-white" : "text-cyan-600 dark:text-cyan-400"
-=======
-          className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${
-            isActive ? 'text-white' : 'text-cyan-600 dark:text-blue-400'
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
+            isActive ? "text-white" : "text-cyan-600 dark:text-blue-400"
           }`}
         />
         {isOpen && (
@@ -899,19 +746,15 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
 
   return (
     <aside
-<<<<<<< HEAD
-      className={`fixed inset-y-0 left-0 z-50 bg-white dark:bg-slate-950 transform transition-all duration-300 ease-in-out border-r-2 border-gray-200 dark:border-slate-800 flex flex-col h-screen lg:relative ${
+      className={`fixed inset-y-0 left-0 z-50 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen lg:relative ${
         isOpen
           ? "translate-x-0 w-80 shadow-2xl lg:shadow-none"
           : "-translate-x-full lg:translate-x-0 lg:w-20"
       }`}
-      style={{
-        background: "linear-gradient(180deg, #FFFFFF 0%, #F9FAFB 100%)",
-      }}
     >
-      <div className="h-20 p-4 border-b-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800 flex items-center justify-between box-border">
+      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex items-center justify-between box-border">
         <div
-          className={`flex items-center gap-3 w-full ${!isOpen ? "lg:justify-center" : ""}`}
+          className={`flex items-center gap-3 w-full ${!isOpen ? "justify-center" : ""}`}
         >
           <img
             src="/logo.png"
@@ -920,23 +763,10 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
           />
           {isOpen && (
             <div className="flex-1 overflow-hidden">
-              <h1 className="font-bold text-lg text-gray-800 dark:text-white truncate">
+              <h1 className="font-extrabold text-lg text-slate-900 dark:text-slate-100 truncate">
                 Smart WMS
               </h1>
-              <p className="text-gray-500 dark:text-slate-400 text-xs font-medium truncate">
-=======
-      className={`${
-        isOpen ? 'w-80' : 'w-20'
-      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen`}
-    >
-      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex justify-center lg:justify-start box-border">
-        <div className={`flex items-center gap-3 w-full ${!isOpen ? 'justify-center' : ''}`}>
-          <img src="/logo.png" alt="Smart WMS" className="h-11 w-11 object-cover rounded-xl shadow-sm flex-shrink-0" />
-          {isOpen && (
-            <div className="flex-1 overflow-hidden">
-              <h1 className="font-extrabold text-lg text-slate-900 dark:text-slate-100 truncate">Smart WMS</h1>
               <p className="text-slate-500 dark:text-blue-300 text-xs font-semibold truncate">
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
                 Hệ thống quản lý kho
               </p>
             </div>
@@ -945,7 +775,7 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
         <button
           type="button"
           onClick={onClose || onToggle}
-          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-slate-800 lg:hidden flex-shrink-0"
+          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-[#0f172a] lg:hidden flex-shrink-0 cursor-pointer"
           title="Đóng menu"
         >
           <X className="h-5 w-5" />
@@ -978,17 +808,7 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
         )}
       </div>
 
-<<<<<<< HEAD
-      <nav
-        className="flex-1 px-3 space-y-2 overflow-y-auto pb-4"
-        style={{
-          scrollbarWidth: "thin",
-          scrollbarColor: "#d5d8db #F1F5F9",
-        }}
-      >
-=======
       <nav className="flex-1 px-3 space-y-2 overflow-y-auto pb-4 custom-scrollbar">
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
         {filteredMenuItems.length === 0 && isOpen && (
           <div className="text-center py-4 text-xs font-semibold text-slate-500 dark:text-blue-300/70">
             Không tìm thấy kết quả.
@@ -1004,17 +824,10 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
           onClick={onToggle}
           className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 font-bold text-xs ${
             !isOpen
-<<<<<<< HEAD
-              ? "bg-cyan-50 dark:bg-slate-900"
-              : "bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900"
-          } hover:shadow-md text-cyan-600 dark:text-cyan-400`}
-          title={!isOpen ? "Mở rộng sidebar" : "Thu gọn sidebar"}
-=======
-              ? 'bg-cyan-50 dark:bg-[#0f172a]'
-              : 'bg-slate-100 dark:bg-[#060913]'
+              ? "bg-cyan-50 dark:bg-[#0f172a]"
+              : "bg-slate-100 dark:bg-[#060913]"
           } hover:shadow-md text-cyan-600 dark:text-blue-400 cursor-pointer`}
-          title={!isOpen ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
->>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
+          title={!isOpen ? "Mở rộng sidebar" : "Thu gọn sidebar"}
         >
           {!isOpen ? (
             <ChevronRight className="h-5 w-5" />

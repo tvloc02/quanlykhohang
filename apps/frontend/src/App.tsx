@@ -39,7 +39,7 @@ import ReceiptVouchersPage from './features/finance/pages/ReceiptVouchersPage';
 import PaymentVouchersPage from './features/finance/pages/PaymentVouchersPage';
 import ReceiptFromBillPage from './features/finance/pages/ReceiptFromBillPage';
 import AuditLog from './features/audit-log/AuditLog';
-import Settings, { MailSettings, AiSettings, StoreSettings } from './features/settings/Settings';
+import Settings from './features/settings/Settings';
 import ProfilePage from './features/user-management/pages/ProfilePage';
 import SupplierProfilePage from './features/supplier-portal/pages/SupplierProfilePage';
 import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
@@ -1183,7 +1183,7 @@ function App() {
           }
         />
         <Route
-          path="/settings/*"
+          path="/settings"
           element={
             <RoleRoute menuId="settings">
               <MainLayout>
@@ -1191,12 +1191,7 @@ function App() {
               </MainLayout>
             </RoleRoute>
           }
-        >
-          <Route index element={<Navigate to="mail" replace />} />
-          <Route path="mail" element={<MailSettings />} />
-          <Route path="ai" element={<AiSettings />} />
-          <Route path="store" element={<StoreSettings />} />
-        </Route>
+        />
         <Route path="/stocktake" element={<Navigate to="/inventory/stocktake" replace />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

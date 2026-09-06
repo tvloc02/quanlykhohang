@@ -2239,8 +2239,7 @@ export default function CreateStockInOrderPage({
   }, [tabs, activeTabId]);
 
   const isViewMode = actionParam === 'view';
-  const isTabDraft = !activeTab?.id || ['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT');
-  const isReadOnly = isViewMode || !isTabDraft;
+  const isReadOnly = isViewMode;
 
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;

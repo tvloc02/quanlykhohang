@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Printer, X } from 'lucide-react';
 import type { OutboundOrder } from '../Outbound';
+import { numberToWordsVietnamese } from '../../../shared/utils/numberToWords';
 
 interface WarehouseOption {
   id: string;
   code: string;
   name: string;
+  address?: string;
 }
 
 interface OutboundPrintModalProps {
@@ -19,31 +21,9 @@ interface OutboundPrintModalProps {
   title?: string;
 }
 
-function formatDateDisplay(dateVal?: string | Date | null): string {
-  if (!dateVal) return '-';
-  const str = String(dateVal).trim();
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s*,?\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
-  if (dmyMatch) {
-    const day = dmyMatch[1].padStart(2, '0');
-    const month = dmyMatch[2].padStart(2, '0');
-    const year = dmyMatch[3];
-    const hh = (dmyMatch[4] || '08').padStart(2, '0');
-    const mm = (dmyMatch[5] || '30').padStart(2, '0');
-    const ss = (dmyMatch[6] || '00').padStart(2, '0');
-    return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
-  }
-  const d = new Date(dateVal);
-  if (!Number.isNaN(d.getTime())) {
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    const ss = String(d.getSeconds()).padStart(2, '0');
-    return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
-  }
-  return String(dateVal);
-}
+const API_BASE_URL = 'http://localhost:3000/api';
+
+const nfc = (str: any) => (str ? String(str).normalize('NFC') : '');
 
 export default function OutboundPrintModal({
   isOpen,
@@ -53,6 +33,36 @@ export default function OutboundPrintModal({
   isDisposal = false,
   featureMode,
 }: OutboundPrintModalProps) {
+  const [settings, setSettings] = useState<any>({
+    companyName: 'Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng',
+    department: 'Bộ phận: Bán hàng',
+    taxCode: '0101234567',
+    address: 'Lô B11, số 9a, ngõ 181 Xuân Thủy, phường Cầu Giấy, Hà Nội',
+    phone: '024.3756.8888',
+    email: 'ketoanthienung@gmail.com',
+    website: 'ketoanthienung.vn',
+    debitAccount: '632',
+    creditAccount: '156',
+    creatorName: 'Vũ Hữu Dũng',
+    receiverName: 'Phạm Thị Duyên',
+    storekeeperName: 'Nguyễn Thị Thúy',
+    chiefAccountantName: 'Trần Thị Hồng Mơ',
+    directorName: 'Nguyễn Thị Thanh Xuyên',
+    templateStandard: 'Kèm theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ trưởng Bộ Tài chính',
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch(`${API_BASE_URL}/settings`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.companyName) {
+          setSettings((prev: any) => ({ ...prev, ...data }));
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -69,183 +79,374 @@ export default function OutboundPrintModal({
   if (!isOpen || !order) return null;
 
   const warehouseCode = order.branchCode || order.warehouseCode;
-  const foundWh = warehouses.find((w) => w.code === warehouseCode || w.name === warehouseCode || w.id === warehouseCode);
-  const warehouseName = foundWh ? foundWh.name : (warehouseCode || 'Kho Thanh Trì');
+  const foundWh = warehouses.find(
+    (w) => w.code === warehouseCode || w.name === warehouseCode || w.id === warehouseCode
+  );
+  const warehouseName = foundWh ? `[${foundWh.code}] ${foundWh.name}` : warehouseCode || 'Kho Thanh Trì';
+  const warehouseLocation = foundWh?.address || settings.address || 'Hà Nội, Việt Nam';
 
-  let titleText = isDisposal ? 'BIÊN BẢN XUẤT HỦY HÀNG HÓA' : 'PHIẾU XUẤT BÁN HÀNG';
+  let titleText = isDisposal ? 'PHIẾU XUẤT HỦY KHO' : 'PHIẾU XUẤT KHO';
   if (featureMode === 'retail') titleText = 'PHIẾU XUẤT BÁN LẺ';
-  if (featureMode === 'sales-order') titleText = 'ĐƠN ĐẶT HÀNG XUẤT KHO';
-  if (featureMode === 'quote') titleText = 'PHIẾU BÁO GIÁ HÀNG HÓA';
+  if (featureMode === 'sales-order') titleText = 'PHIẾU XUẤT ĐƠN ĐẶT HÀNG';
+  if (featureMode === 'quote') titleText = 'BẢNG BÁO GIÁ HÀNG HÓA';
 
-  const orderDateStr = formatDateDisplay(order.orderDate || (order as any).createdAt);
+  const orderDateObj = order.orderDate ? new Date(order.orderDate) : new Date();
+  const day = String(orderDateObj.getDate()).padStart(2, '0');
+  const month = String(orderDateObj.getMonth() + 1).padStart(2, '0');
+  const year = orderDateObj.getFullYear();
+  const dateFormattedText = `Ngày ${day} tháng ${month} năm ${year}`;
+
   const totalAmount = Number(order.totalAmount || 0);
+  const totalAmountWords = numberToWordsVietnamese(totalAmount);
+
+  const details = order.details || [];
+  const minRows = 5;
+  const emptyRowsCount = Math.max(0, minRows - details.length);
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 dark:bg-slate-950/80 p-4 backdrop-blur-sm overflow-y-auto">
-      {/* ─── STYLE CHO BẢN IN: ĐẶT NẰM TRÊN CÙNG, RỘNG TRÀN TRANG, CHỈ IN NỘI DUNG NÀY ─── */}
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 p-2 sm:p-4 backdrop-blur-xs overflow-y-auto">
+      {/* ─── CSS CHO BẢN IN CHUẨN KHỔ A4 PORTRAIT ─── */}
       <style>{`
+        @page {
+          size: A4 portrait;
+          margin: 6mm 8mm;
+        }
         @media print {
           body * {
             visibility: hidden !important;
           }
-          #printable-outbound-order,
-          #printable-outbound-order * {
+          #printable-form-02vt,
+          #printable-form-02vt * {
             visibility: visible !important;
           }
-          #printable-outbound-order {
+          #printable-form-02vt {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
             margin: 0 !important;
-            padding: 8mm 10mm !important;
+            padding: 8mm !important;
             background: #ffffff !important;
             color: #000000 !important;
-            border: 2px solid #000000 !important;
-            border-radius: 8px !important;
+            border: 3px double #0284c7 !important;
             box-shadow: none !important;
-            font-size: 13px !important;
-            line-height: 1.5 !important;
+            font-size: 10.5pt !important;
+            line-height: 1.35 !important;
+            font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
           .modal-no-print {
             display: none !important;
           }
-          @page {
-            size: A4 portrait;
-            margin: 10mm 12mm;
-          }
         }
       `}</style>
 
-      {/* ─── MODAL BOX ─── */}
-      <div className="w-full max-w-4xl rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border-2 border-cyan-500 dark:border-indigo-500 my-auto">
-        {/* Modal Topbar */}
+      {/* ─── MODAL DIALOG ─── */}
+      <div className="w-full max-w-4xl rounded-2xl bg-white dark:bg-slate-900 p-4 sm:p-6 shadow-2xl border-2 border-cyan-500 my-auto">
+        {/* Modal Top Controls */}
         <div className="modal-no-print mb-4 flex items-center justify-between border-b-2 border-cyan-100 dark:border-indigo-900/40 pb-3">
-          <h2 className="text-base font-black text-slate-900 dark:text-slate-100">
-            {isDisposal ? 'Xem trước Biên Bản Xuất Hủy Hàng Hóa' : 'Xem trước Phiếu Xuất Bán Hàng'}
-          </h2>
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-100 text-cyan-800 font-bold text-xs">
+              02
+            </span>
+            <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+              Xem trước Phiếu xuất kho - Mẫu số 02-VT
+            </h2>
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 dark:bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 dark:hover:bg-indigo-500 cursor-pointer shadow-md transition"
+              className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer shadow-md transition"
             >
               <Printer size={16} /> In Phiếu
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl p-1.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300 transition cursor-pointer"
+              className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
             >
               <X size={20} />
             </button>
           </div>
         </div>
 
-        {/* ─── NỘI DUNG IN CHÍNH (TO, RỘNG, ĐẦY ĐỦ THÔNG TIN) ─── */}
+        {/* ─── VÙNG IN PHIẾU XUẤT KHO MẪU SỐ 02-VT ─── */}
         <div
-          id="printable-outbound-order"
-          className="p-5 sm:p-6 border-2 border-slate-300 dark:border-indigo-900/60 rounded-xl space-y-4 text-xs sm:text-sm bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 w-full"
+          id="printable-form-02vt"
+          className="relative bg-white text-slate-900 p-6 sm:p-8 rounded-xl border-[3px] border-double border-cyan-600 shadow-sm font-sans leading-relaxed select-text"
+          style={{ fontFamily: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}
         >
-          {/* Header Title */}
-          <div className="text-center pb-2">
-            <h1 className="text-lg sm:text-xl font-black uppercase tracking-wide text-cyan-950 dark:text-slate-100 print:text-black">
-              {titleText}
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 print:text-slate-700 font-semibold mt-1 text-xs">
-              Mã phiếu: <strong>{order.orderNo}</strong> - Ngày: {orderDateStr}
-            </p>
-          </div>
-
-          {/* Info 2 columns */}
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-200 print:text-black">
-            <p>
-              {isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'}{' '}
-              <span className="font-extrabold text-slate-950 dark:text-white print:text-black">{order.customer}</span>
-            </p>
-            <p>
-              {isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'}{' '}
-              <span className="font-extrabold text-slate-950 dark:text-white print:text-black">{warehouseName}</span>
-            </p>
-            {!isDisposal && (
-              <p>
-                SĐT: <span className="font-bold">{order.customerPhone || '-'}</span>
+          {/* Header 2 bên: Công ty & Mẫu số 02-VT */}
+          <div className="flex justify-between items-start mb-2 text-xs sm:text-sm">
+            <div className="max-w-[55%]">
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-950 uppercase tracking-tight leading-snug">
+                {nfc(settings.companyName || 'Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng')}
+              </h3>
+              <p className="text-xs text-slate-700 italic mt-0.5">
+                {nfc(settings.department || 'Bộ phận: Bán hàng')}
               </p>
-            )}
-            <p>
-              {isDisposal ? 'Người lập / Giám sát:' : 'Người lập:'}{' '}
-              <span className="font-bold text-slate-950 dark:text-white print:text-black">{order.employeeName || 'System Administrator'}</span>
-            </p>
+              {settings.taxCode && (
+                <p className="text-xs text-slate-600">
+                  Mã số thuế: <strong>{nfc(settings.taxCode)}</strong>
+                </p>
+              )}
+            </div>
+
+            <div className="text-right text-xs sm:text-sm max-w-[45%]">
+              <p className="font-black text-sm sm:text-base text-slate-950">Mẫu số 02-VT</p>
+              <p className="text-[11px] sm:text-xs text-slate-600 italic leading-tight mt-0.5">
+                ({nfc(settings.templateStandard || 'Kèm theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ trưởng Bộ Tài chính')})
+              </p>
+            </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border-2 border-slate-400 dark:border-indigo-900/60 print:border-black text-xs sm:text-sm bg-white dark:bg-slate-950">
-              <thead className="bg-cyan-100/70 dark:bg-indigo-950 print:bg-slate-200 font-bold text-center text-cyan-950 dark:text-indigo-300 print:text-black">
-                <tr>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-12">STT</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-left">Tên hàng</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-16">ĐVT</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-36">Vị trí kệ lấy hàng</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-20">SL {isDisposal ? 'hủy' : ''}</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-28 text-right">{isDisposal ? 'Giá vốn (đ)' : 'Đơn giá'}</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-32 text-right">{isDisposal ? 'Giá trị hủy (đ)' : 'Thành tiền'}</th>
+          {/* Tiêu đề chính */}
+          <div className="text-center my-3">
+            <h1 className="text-xl sm:text-2xl font-black uppercase tracking-wider text-slate-950">
+              {nfc(titleText)}
+            </h1>
+            <p className="text-xs sm:text-sm italic text-slate-700 mt-1">
+              {nfc(dateFormattedText)}
+            </p>
+
+            {/* Số phiếu & Nợ/Có góc phải */}
+            <div className="flex justify-end items-center gap-6 text-xs sm:text-sm font-bold text-slate-900 mt-1 pr-2">
+              <span>
+                Số: <strong className="font-black">{nfc(order.orderNo)}</strong>
+              </span>
+              <span>
+                Nợ: <strong>{nfc(settings.debitAccount || '632')}</strong>
+              </span>
+              <span>
+                Có: <strong>{nfc(settings.creditAccount || '156')}</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Khối thông tin người nhận, lý do, kho */}
+          <div className="space-y-1.5 text-xs sm:text-sm text-slate-900 mb-3 border-t border-slate-300 pt-2">
+            <div className="grid grid-cols-12 gap-2">
+              <div className="col-span-6 flex">
+                <span className="shrink-0 text-slate-700">Họ và tên người nhận hàng:</span>
+                <span className="font-bold ml-2 text-slate-950 truncate">
+                  {nfc(order.customer || settings.receiverName || 'Nguyễn Thị Thúy')}
+                </span>
+              </div>
+              <div className="col-span-6 flex">
+                <span className="shrink-0 text-slate-700">Địa chỉ (bộ phận):</span>
+                <span className="font-semibold ml-2 text-slate-950 truncate" title={order.customerAddress}>
+                  {nfc(order.customerAddress || 'Công ty TNHH Thương mại Toàn Phát')}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex">
+              <span className="shrink-0 text-slate-700">Lý do xuất kho:</span>
+              <span className="font-semibold ml-2 text-slate-950">
+                {nfc(order.description || (isDisposal ? 'Xuất hủy hàng hỏng / hết hạn sử dụng' : 'Xuất bán hàng hóa theo đơn'))}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-12 gap-2">
+              <div className="col-span-5 flex">
+                <span className="shrink-0 text-slate-700">Xuất tại kho (ngăn lô):</span>
+                <span className="font-bold ml-2 text-slate-950">{nfc(warehouseName)}</span>
+              </div>
+              <div className="col-span-7 flex">
+                <span className="shrink-0 text-slate-700">Địa điểm:</span>
+                <span className="font-semibold ml-2 text-slate-950 truncate" title={warehouseLocation}>
+                  {nfc(warehouseLocation)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* ─── BẢNG HÀNG HÓA MẪU 02-VT (HEADER VÀNG KEM, ĐÁNH DẤU A B C D 1 2 3 4) ─── */}
+          <div className="overflow-x-auto w-full mb-3 relative">
+            <table className="w-full border-collapse border border-slate-900 text-xs sm:text-sm text-slate-900 text-left">
+              <thead>
+                {/* Dòng tiêu đề 1 */}
+                <tr className="bg-[#fef9c3] print:bg-[#fef9c3] font-bold text-center text-slate-950 border-b border-slate-900">
+                  <th className="border border-slate-900 p-2 text-center w-10">STT</th>
+                  <th className="border border-slate-900 p-2 text-center min-w-[180px]">
+                    Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ, sản phẩm, hàng hóa
+                  </th>
+                  <th className="border border-slate-900 p-2 text-center w-24">Mã số</th>
+                  <th className="border border-slate-900 p-2 text-center w-16">Đơn vị tính</th>
+                  <th className="border border-slate-900 p-1 text-center" colSpan={2}>
+                    <div>Số lượng</div>
+                    <div className="grid grid-cols-2 border-t border-slate-900 font-normal mt-1">
+                      <span className="border-r border-slate-900 p-1 font-bold">Yêu cầu</span>
+                      <span className="p-1 font-bold">Thực xuất</span>
+                    </div>
+                  </th>
+                  <th className="border border-slate-900 p-2 text-center w-28">Đơn giá</th>
+                  <th className="border border-slate-900 p-2 text-center w-32">Thành tiền</th>
+                </tr>
+                {/* Dòng đánh mã cột A B C D 1 2 3 4 */}
+                <tr className="bg-[#fef08a] print:bg-[#fef08a] text-center italic text-xs font-semibold text-slate-800 border-b border-slate-900">
+                  <th className="border border-slate-900 p-0.5 text-center">A</th>
+                  <th className="border border-slate-900 p-0.5 text-center">B</th>
+                  <th className="border border-slate-900 p-0.5 text-center">C</th>
+                  <th className="border border-slate-900 p-0.5 text-center">D</th>
+                  <th className="border border-slate-900 p-0.5 text-center w-14">1</th>
+                  <th className="border border-slate-900 p-0.5 text-center w-14">2</th>
+                  <th className="border border-slate-900 p-0.5 text-center">3</th>
+                  <th className="border border-slate-900 p-0.5 text-center">4</th>
                 </tr>
               </thead>
               <tbody>
-                {order.details && order.details.length > 0 ? (
-                  order.details.map((d, i) => {
-                    const shelf = (d as any).locationBin || (d as any).binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`;
-                    const lineTotal = d.totalLineAmount || (d.qty * d.price);
-                    return (
-                      <tr key={i} className="text-center print:text-black">
-                        <td className="border border-slate-400 dark:border-indigo-900/40 print:border-black p-2.5 dark:text-slate-300 print:text-black font-medium">{i + 1}</td>
-                        <td className="border border-slate-400 dark:border-indigo-900/40 print:border-black p-2.5 text-left font-bold text-slate-900 dark:text-slate-100 print:text-black">{d.productName}</td>
-                        <td className="border border-slate-400 dark:border-indigo-900/40 print:border-black p-2.5 dark:text-slate-300 print:text-black">{d.unit || 'Cái'}</td>
-                        <td className="border border-slate-400 dark:border-indigo-900/40 print:border-black p-2.5 font-bold text-cyan-800 dark:text-indigo-400 print:text-black">{shelf}</td>
-                        <td className="border border-slate-400 dark:border-indigo-900/40 print:border-black p-2.5 font-black text-slate-900 dark:text-slate-100 print:text-black">{d.qty}</td>
-                        <td className="border border-slate-400 dark:border-indigo-900/40 print:border-black p-2.5 text-right font-medium dark:text-slate-300 print:text-black">{Number(d.price || 0).toLocaleString('vi-VN')}</td>
-                        <td className="border border-slate-400 dark:border-indigo-900/40 print:border-black p-2.5 text-right font-bold text-slate-900 dark:text-slate-100 print:text-black">{lineTotal.toLocaleString('vi-VN')}</td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="border border-slate-400 print:border-black p-3 text-center italic text-slate-500">
-                      Không có chi tiết mặt hàng
-                    </td>
+                {details.map((d, i) => {
+                  const lineTotal = d.totalLineAmount || (d.qty * d.price);
+                  return (
+                    <tr key={i} className="hover:bg-slate-50 transition">
+                      <td className="border border-slate-900 p-2 text-center font-medium">{i + 1}</td>
+                      <td className="border border-slate-900 p-2 font-bold text-slate-950">{nfc(d.productName)}</td>
+                      <td className="border border-slate-900 p-2 text-center font-mono text-xs">{nfc(d.productSku || '-')}</td>
+                      <td className="border border-slate-900 p-2 text-center">{nfc(d.unit || 'Bộ')}</td>
+                      <td className="border border-slate-900 p-2 text-center font-bold">
+                        {String(d.qty).padStart(2, '0')}
+                      </td>
+                      <td className="border border-slate-900 p-2 text-center font-bold">
+                        {String(d.qty).padStart(2, '0')}
+                      </td>
+                      <td className="border border-slate-900 p-2 text-right font-medium">
+                        {Number(d.price || 0).toLocaleString('vi-VN')}
+                      </td>
+                      <td className="border border-slate-900 p-2 text-right font-bold text-slate-950">
+                        {lineTotal.toLocaleString('vi-VN')}
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* Các dòng trống mô phỏng sổ kế toán */}
+                {Array.from({ length: emptyRowsCount }).map((_, emptyIdx) => (
+                  <tr key={`empty-${emptyIdx}`} className="h-7 text-transparent">
+                    <td className="border border-slate-900 p-1 text-center">&nbsp;</td>
+                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                    <td className="border border-slate-900 p-1">&nbsp;</td>
+                    <td className="border border-slate-900 p-1">&nbsp;</td>
                   </tr>
-                )}
+                ))}
+
+                {/* Dòng Cộng tổng (Nền xanh lá cây nhạt chuẩn mẫu) */}
+                <tr className="bg-[#86efac]/80 print:bg-[#86efac]/80 font-black text-slate-950 border-t-2 border-slate-900">
+                  <td className="border border-slate-900 p-2 text-center uppercase tracking-wider font-extrabold">
+                    Cộng
+                  </td>
+                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
+                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
+                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
+                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
+                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
+                  <td className="border border-slate-900 p-2 text-center font-bold">x</td>
+                  <td className="border border-slate-900 p-2 text-right font-black text-base">
+                    {totalAmount.toLocaleString('vi-VN')}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
 
-          {/* Total */}
-          <div className="text-right font-black text-sm sm:text-base text-cyan-950 dark:text-slate-100 print:text-black pt-1">
-            {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng tiền: '}
-            <span className="text-cyan-700 dark:text-indigo-400 print:text-black font-extrabold ml-1">
-              {totalAmount.toLocaleString('vi-VN')} VNĐ
-            </span>
+          {/* Tổng tiền viết bằng chữ & Chứng từ gốc */}
+          <div className="space-y-1 text-xs sm:text-sm text-slate-900 mb-4">
+            <p>
+              Tổng số tiền <span className="italic">(Viết bằng chữ)</span>:{' '}
+              <strong className="italic font-bold text-slate-950">{nfc(totalAmountWords)}</strong>
+            </p>
+            <p>
+              Số chứng từ gốc kèm theo:{' '}
+              <span className="font-semibold">
+                01 Hóa đơn GTGT số {order.orderNo?.slice(-7) || '0000025'} {nfc(dateFormattedText)}
+              </span>
+            </p>
+          </div>
+
+          {/* ─── 5 KHỐI CHỮ KÝ CHUẨN MẪU 02-VT ─── */}
+          <div className="text-right text-xs sm:text-sm italic text-slate-800 mb-2">
+            {nfc(dateFormattedText)}
+          </div>
+
+          <div className="grid grid-cols-5 gap-2 text-center text-xs sm:text-sm text-slate-950 page-break-inside-avoid">
+            {/* 1. Người lập phiếu */}
+            <div className="flex flex-col justify-between min-h-[120px]">
+              <div>
+                <p className="font-black uppercase text-[12px] sm:text-xs">Người lập phiếu</p>
+                <p className="text-[11px] text-slate-600 italic mt-0.5">(Ký, họ tên)</p>
+              </div>
+              <div className="pt-8">
+                <p className="font-bold text-slate-950">{nfc(order.employeeName || settings.creatorName || 'Vũ Hữu Dũng')}</p>
+              </div>
+            </div>
+
+            {/* 2. Người nhận hàng */}
+            <div className="flex flex-col justify-between min-h-[120px]">
+              <div>
+                <p className="font-black uppercase text-[12px] sm:text-xs">Người nhận hàng</p>
+                <p className="text-[11px] text-slate-600 italic mt-0.5">(Ký, họ tên)</p>
+              </div>
+              <div className="pt-8">
+                <p className="font-bold text-slate-950">{nfc(order.customer || settings.receiverName || 'Phạm Thị Duyên')}</p>
+              </div>
+            </div>
+
+            {/* 3. Thủ kho */}
+            <div className="flex flex-col justify-between min-h-[120px]">
+              <div>
+                <p className="font-black uppercase text-[12px] sm:text-xs">Thủ kho</p>
+                <p className="text-[11px] text-slate-600 italic mt-0.5">(Ký, họ tên)</p>
+              </div>
+              <div className="pt-8">
+                <p className="font-bold text-slate-950">{nfc(settings.storekeeperName || 'Nguyễn Thị Thúy')}</p>
+              </div>
+            </div>
+
+            {/* 4. Kế toán trưởng */}
+            <div className="flex flex-col justify-between min-h-[120px]">
+              <div>
+                <p className="font-black uppercase text-[12px] sm:text-xs">Kế toán trưởng</p>
+                <p className="text-[11px] text-slate-600 italic mt-0.5">(Ký, họ tên)</p>
+              </div>
+              <div className="pt-8">
+                <p className="font-bold text-slate-950">{nfc(settings.chiefAccountantName || 'Trần Thị Hồng Mơ')}</p>
+              </div>
+            </div>
+
+            {/* 5. Giám đốc */}
+            <div className="flex flex-col justify-between min-h-[120px]">
+              <div>
+                <p className="font-black uppercase text-[12px] sm:text-xs">Giám đốc</p>
+                <p className="text-[11px] text-slate-600 italic mt-0.5">(Ký, họ tên, đóng dấu)</p>
+              </div>
+              <div className="pt-8">
+                <p className="font-bold text-slate-950">{nfc(settings.directorName || 'Nguyễn Thị Thanh Xuyên')}</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Modal Bottom action */}
-        <div className="modal-no-print mt-4 flex justify-end gap-2">
+        {/* Modal Bottom action buttons */}
+        <div className="modal-no-print mt-4 flex justify-end gap-2.5">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            className="rounded-xl border-2 border-slate-300 px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
           >
             Đóng
           </button>
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 dark:bg-indigo-600 px-5 py-2 text-xs font-bold text-white hover:bg-cyan-700 dark:hover:bg-indigo-500 cursor-pointer shadow-md transition"
+            className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-5 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer shadow-md transition"
           >
-            <Printer size={16} /> In Phiếu
+            <Printer size={16} /> In Phiếu Xuất Kho
           </button>
         </div>
       </div>

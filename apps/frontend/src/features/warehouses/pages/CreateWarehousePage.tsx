@@ -1854,10 +1854,15 @@ export default function CreateWarehousePage() {
         const occupiedInfo = activeBinGoodsDetails?.occupiedInfo;
         const goodsList = activeBinGoodsDetails?.goodsList || [];
         const validGoodsList = goodsList.filter((item: any) => item.sku !== 'SKU-DRAFT');
-        const hasGoods = Boolean(
-          (occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0 || (occupiedInfo.occupancyPct && occupiedInfo.occupancyPct > 0))) ||
-          (validGoodsList && validGoodsList.length > 0)
-        );
+        const totalIn = validGoodsList
+          .filter((t: any) => !t.isOutbound && Number(t.quantity || 0) > 0)
+          .reduce((s: number, t: any) => s + Number(t.quantity || 0), 0);
+        const totalOut = validGoodsList
+          .filter((t: any) => t.isOutbound || Number(t.quantity || 0) < 0)
+          .reduce((s: number, t: any) => s + Math.abs(Number(t.quantity || 0)), 0);
+        const netQty = Math.max(0, totalIn - totalOut);
+        const netOccupancy = occupiedInfo?.occupancyPct !== undefined ? Number(occupiedInfo.occupancyPct) : (netQty > 0 ? 100 : 0);
+        const hasGoods = (occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0)) || netQty > 0 || netOccupancy > 0;
         const customConfig = activeBinGoodsDetails?.customConfig || (activeZone?.racks || [])
           .flatMap((rk: any) => Object.values(rk.customBins || {}))
           .find((cb: any) => cb.binCode === binShort || cb.binCode === editingBinCode);
