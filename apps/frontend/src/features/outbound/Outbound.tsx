@@ -85,24 +85,29 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   );
 }
 
-// ─── STATUS BADGE (Xuất Kho) ───────────────────────────────────
-
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  'Đã giao hàng': { label: 'Đã giao hàng', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-  'shipped': { label: 'Đã giao hàng', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-  'pending': { label: 'Chờ xử lý', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-  'Chờ xử lý': { label: 'Chờ xử lý', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-  'picking': { label: 'Đang lấy hàng', color: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-200' },
-  'Đang lấy hàng': { label: 'Đang lấy hàng', color: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-200' },
-  'READY_TO_SHIP': { label: 'Sẵn sàng xuất', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  'Sẵn sàng xuất': { label: 'Sẵn sàng xuất', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  'Đã hủy': { label: 'Đã hủy', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+  'Đã hoàn thành': { label: 'Đã hoàn thành', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/60', border: 'border-emerald-200 dark:border-emerald-800' },
+  'completed': { label: 'Đã hoàn thành', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/60', border: 'border-emerald-200 dark:border-emerald-800' },
+  'Đã xuất hủy': { label: 'Đã hoàn thành', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/60', border: 'border-emerald-200 dark:border-emerald-800' },
+  'Đã giao hàng': { label: 'Đã giao hàng', color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-50 dark:bg-blue-950/60', border: 'border-blue-200 dark:border-blue-800' },
+  'shipped': { label: 'Đã giao hàng', color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-50 dark:bg-blue-950/60', border: 'border-blue-200 dark:border-blue-800' },
+  'pending': { label: 'Chờ xử lý', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'Chờ xử lý': { label: 'Chờ xử lý', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'picking': { label: 'Đang lấy hàng', color: 'text-violet-700 dark:text-violet-300', bg: 'bg-violet-50 dark:bg-violet-950/60', border: 'border-violet-200 dark:border-violet-800' },
+  'Đang lấy hàng': { label: 'Đang lấy hàng', color: 'text-violet-700 dark:text-violet-300', bg: 'bg-violet-50 dark:bg-violet-950/60', border: 'border-violet-200 dark:border-violet-800' },
+  'READY_TO_SHIP': { label: 'Sẵn sàng xuất', color: 'text-cyan-700 dark:text-cyan-300', bg: 'bg-cyan-50 dark:bg-cyan-950/60', border: 'border-cyan-200 dark:border-cyan-800' },
+  'Sẵn sàng xuất': { label: 'Sẵn sàng xuất', color: 'text-cyan-700 dark:text-cyan-300', bg: 'bg-cyan-50 dark:bg-cyan-950/60', border: 'border-cyan-200 dark:border-cyan-800' },
+  'Đã hủy': { label: 'Đã hủy', color: 'text-red-700 dark:text-red-300', bg: 'bg-red-50 dark:bg-red-950/60', border: 'border-red-200 dark:border-red-800' },
 };
 
-function StatusBadge({ status }: { status?: string }) {
-  const config = STATUS_MAP[status || ''] || STATUS_MAP['Đã giao hàng'];
+function StatusBadge({ status, isDisposal }: { status?: string; isDisposal?: boolean }) {
+  let normalizedStatus = status || (isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng');
+  if (isDisposal && ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed', 'đã hoàn thành'].includes(normalizedStatus.toLowerCase())) {
+    normalizedStatus = 'Đã hoàn thành';
+  }
+  const config = STATUS_MAP[normalizedStatus] || (isDisposal ? STATUS_MAP['Đã hoàn thành'] : STATUS_MAP['Đã giao hàng']);
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold border ${config.color} ${config.bg} ${config.border}`}>
+    <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-xs font-bold border whitespace-nowrap ${config.color} ${config.bg} ${config.border}`}>
       {config.label}
     </span>
   );
@@ -282,11 +287,37 @@ function formatDateDisplay(dateVal?: string | Date | null): string {
 const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return warehouseList[0]?.name || '-';
-  const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
-  if (found) return found.name;
-  if ((codeOrName === 'SPX001' || codeOrName === '4445' || !codeOrName) && warehouseList.length > 0) {
-    return warehouseList[0].name;
+  if (!codeOrName) {
+    if (warehouseList.length > 0) {
+      const first = warehouseList[0];
+      const code = first.code || (first as any).warehouseCode || '';
+      return code && !first.name.startsWith(`[${code}]`) ? `[${code}] ${first.name}` : first.name;
+    }
+    return '-';
+  }
+  if (codeOrName.startsWith('[')) return codeOrName;
+
+  const target = codeOrName.trim().toLowerCase();
+  const found = warehouseList.find(
+    (w) =>
+      (w.code && w.code.toLowerCase() === target) ||
+      (w.name && w.name.toLowerCase() === target) ||
+      (w.id && String(w.id).toLowerCase() === target) ||
+      ((w as any).warehouseCode && (w as any).warehouseCode.toLowerCase() === target)
+  );
+
+  if (found) {
+    const code = found.code || (found as any).warehouseCode || '';
+    if (code && !found.name.startsWith(`[${code}]`)) {
+      return `[${code}] ${found.name}`;
+    }
+    return found.name;
+  }
+
+  if ((codeOrName === 'SPX001' || codeOrName === '4445') && warehouseList.length > 0) {
+    const first = warehouseList[0];
+    const code = first.code || (first as any).warehouseCode || '';
+    return code && !first.name.startsWith(`[${code}]`) ? `[${code}] ${first.name}` : first.name;
   }
   return codeOrName;
 }
@@ -1195,9 +1226,16 @@ export default function Outbound({
         (o.employeeName || '').toLowerCase().includes(search.toLowerCase()) ||
         (o.customerPhone || '').toLowerCase().includes(search.toLowerCase());
 
-      const matchStatus =
-        statusFilter === 'all' ||
-        (o.status || '').toLowerCase() === statusFilter.toLowerCase();
+      let matchStatus = statusFilter === 'all';
+      if (!matchStatus) {
+        const lowerFilter = statusFilter.toLowerCase();
+        const lowerStatus = (o.status || '').toLowerCase();
+        if (isDisposal && (lowerFilter === 'đã hoàn thành' || lowerFilter === 'đã xuất hủy' || lowerFilter === 'đã giao hàng')) {
+          matchStatus = ['đã hoàn thành', 'đã xuất hủy', 'đã giao hàng', 'shipped', 'completed', ''].includes(lowerStatus) || !o.status;
+        } else {
+          matchStatus = lowerStatus === lowerFilter;
+        }
+      }
 
       if (dateFrom || dateTo) {
         const itemDateStr = o.orderDate || o.expectedDate || (o as any).createdAt;
@@ -1210,7 +1248,7 @@ export default function Outbound({
 
       return matchSearch && matchStatus;
     });
-  }, [orders, search, statusFilter, dateFrom, dateTo]);
+  }, [orders, search, statusFilter, dateFrom, dateTo, isDisposal]);
 
   const totalPages = Math.ceil(filteredOrders.length / pageSize) || 1;
   const paginatedOrders = useMemo(() => {
@@ -1652,7 +1690,7 @@ export default function Outbound({
                     className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                   >
                     <option value="all">Tất cả</option>
-                    <option value="Đã xuất hủy">{isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'}</option>
+                    <option value={isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng'}>{isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng'}</option>
                     <option value="Chờ xử lý">Chờ xử lý</option>
                     <option value="Đã hủy">Đã hủy</option>
                   </select>
@@ -1664,10 +1702,10 @@ export default function Outbound({
           {/* Main Order List Table */}
           <div className="overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] shadow-sm print:overflow-visible print:border-none print:shadow-none print:rounded-none print:bg-white print:p-0">
             <div className="overflow-x-auto custom-scrollbar print:overflow-visible print:p-0">
-              <table className={`w-full border-collapse text-left print:min-w-0 print:w-full print:table-auto ${isDisposal ? 'min-w-[1350px]' : 'min-w-[1850px]'}`}>
+              <table className={`w-full border-collapse text-left print:min-w-0 print:w-full print:table-auto ${isDisposal ? 'min-w-[1500px]' : 'min-w-[1900px]'}`}>
                 <thead className="bg-cyan-50 dark:bg-indigo-950/80 sticky top-0 z-20 shadow-sm">
                   <tr className="border-b-2 border-slate-200 dark:border-indigo-900/60 text-slate-800 dark:text-slate-100 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
-                    <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center print:hidden">
+                    <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center print:hidden whitespace-nowrap">
                       <input
                         type="checkbox"
                         checked={paginatedOrders.length > 0 && selectedIds.size === paginatedOrders.length}
@@ -1675,35 +1713,35 @@ export default function Outbound({
                         className="h-4.5 w-4.5 rounded border-slate-300 dark:border-indigo-900/60 accent-cyan-600 dark:accent-indigo-600 focus:ring-cyan-500 cursor-pointer"
                       />
                     </th>
-                    <th className="w-14 min-w-[60px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">STT</th>
-                    {columnVis.code && <th className="min-w-[160px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Mã phiếu hủy' : 'Mã phiếu'}</th>}
-                    {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất'}</th>}
-                    {columnVis.customerName && <th className="min-w-[220px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">{isDisposal ? 'Lý do xuất hủy' : 'Khách hàng'}</th>}
+                    <th className="w-14 min-w-[60px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">STT</th>
+                    {columnVis.code && <th className="min-w-[170px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Mã phiếu hủy' : 'Mã phiếu'}</th>}
+                    {columnVis.date && <th className="min-w-[160px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất'}</th>}
+                    {columnVis.customerName && <th className="min-w-[220px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Lý do xuất hủy' : 'Khách hàng'}</th>}
                     {!isDisposal && (
                       <>
-                        {columnVis.customerPhone && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">SĐT</th>}
-                        {columnVis.customerAddress && <th className="min-w-[240px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">Địa chỉ</th>}
+                        {columnVis.customerPhone && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">SĐT</th>}
+                        {columnVis.customerAddress && <th className="min-w-[240px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">Địa chỉ</th>}
                       </>
                     )}
-                    {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Kho xuất hủy' : 'Kho'}</th>}
-                    {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Nhân viên thực hiện' : 'Nhân viên'}</th>}
+                    {columnVis.branch && <th className="min-w-[180px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">{isDisposal ? 'Kho xuất hủy' : 'Kho'}</th>}
+                    {columnVis.nv && <th className="min-w-[190px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">{isDisposal ? 'Nhân viên thực hiện' : 'Nhân viên'}</th>}
                     {isDisposal ? (
                       <>
-                        <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Tổng SL hủy</th>
-                        <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Giá trị hủy (đ)</th>
+                        <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Tổng SL hủy</th>
+                        <th className="min-w-[170px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Giá trị hủy (đ)</th>
                       </>
                     ) : (
                       <>
-                        {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Thành tiền</th>}
-                        {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Chiết khấu</th>}
-                        {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">VAT</th>}
-                        {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Tổng tiền</th>}
-                        {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Thanh toán</th>}
+                        {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Thành tiền</th>}
+                        {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Chiết khấu</th>}
+                        {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">VAT</th>}
+                        {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Tổng tiền</th>}
+                        {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Thanh toán</th>}
                       </>
                     )}
-                    {columnVis.note && <th className="min-w-[200px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">{isDisposal ? 'Phương án / Ghi chú' : 'Ghi chú'}</th>}
-                    {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Trạng thái</th>}
-                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 dark:bg-indigo-900/90 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 text-cyan-950 dark:text-indigo-100 font-black print:hidden">Thao tác</th>
+                    {columnVis.note && <th className="min-w-[220px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Phương án / Ghi chú' : 'Ghi chú'}</th>}
+                    {columnVis.status && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Trạng thái</th>}
+                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 dark:bg-indigo-900/90 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 text-cyan-950 dark:text-indigo-100 font-black print:hidden whitespace-nowrap">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40 bg-white dark:bg-slate-950">
@@ -1752,38 +1790,38 @@ export default function Outbound({
                                 </button>
                               </td>
                             )}
-                            {columnVis.date && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{formatDateDisplay(ord.orderDate || (ord as any).createdAt)}</td>}
+                            {columnVis.date && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatDateDisplay(ord.orderDate || (ord as any).createdAt)}</td>}
                             {columnVis.customerName && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-center text-sm font-extrabold text-slate-800 dark:text-slate-100">{ord.customer}</td>}
                             {!isDisposal && (
                               <>
-                                {columnVis.customerPhone && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.customerPhone || '-'}</td>}
+                                {columnVis.customerPhone && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{ord.customerPhone || '-'}</td>}
                                 {columnVis.customerAddress && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-sm font-medium text-slate-700 dark:text-slate-300 max-w-[240px] truncate" title={ord.customerAddress}>{ord.customerAddress || '-'}</td>}
                               </>
                             )}
                             {columnVis.branch && (
-                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-bold text-slate-800 dark:text-slate-200">
+                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
                                 {formatWarehouseDisplay(ord.branchCode || ord.warehouseCode, warehouses)}
                               </td>
                             )}
-                            {columnVis.nv && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.employeeName || currentUserName}</td>}
+                            {columnVis.nv && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{ord.employeeName || currentUserName}</td>}
                             {isDisposal ? (
                               <>
-                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-black text-cyan-800 dark:text-indigo-300">{ord.totalQty || ord.itemsCount || 1}</td>
-                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-black text-rose-600 dark:text-rose-400">{(ord.totalAmount || 0).toLocaleString('vi-VN')} đ</td>
+                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-black text-cyan-800 dark:text-indigo-300 whitespace-nowrap">{ord.totalQty || ord.itemsCount || 1}</td>
+                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-black text-rose-600 dark:text-rose-400 whitespace-nowrap">{(ord.totalAmount || 0).toLocaleString('vi-VN')} đ</td>
                               </>
                             ) : (
                               <>
-                                {columnVis.subtotal && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-bold text-slate-800 dark:text-slate-200">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
-                                {columnVis.discount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
-                                {columnVis.vat && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
-                                {columnVis.totalAmount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-right text-sm font-black text-slate-900 dark:text-slate-100">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
-                                {columnVis.amountPaid && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700 dark:text-emerald-400">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.subtotal && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.discount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
+                                {columnVis.vat && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
+                                {columnVis.totalAmount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-right text-sm font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.amountPaid && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
                               </>
                             )}
                             {columnVis.note && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-sm font-medium text-slate-600 dark:text-slate-400 max-w-[200px] truncate" title={ord.description}>{ord.description || '-'}</td>}
                             {columnVis.status && (
-                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center">
-                                <StatusBadge status={ord.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng')} />
+                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center whitespace-nowrap">
+                                <StatusBadge status={ord.status || (isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng')} isDisposal={isDisposal} />
                               </td>
                             )}
                             <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
