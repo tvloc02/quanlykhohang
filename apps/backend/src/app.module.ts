@@ -1,55 +1,55 @@
-import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
-import { AuditLogInterceptor } from './audit-log/audit-log.interceptor';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthModule } from './auth/auth.module';
-import { UsersModule } from './users/users.module';
-import { HealthModule } from './health/health.module';
-import { ProductsModule } from './products/products.module';
-import { CategoriesModule } from './categories/categories.module';
-import { SuppliersModule } from './suppliers/suppliers.module';
-import { CustomersModule } from './customers/customers.module';
-import { InboundModule } from './inbound/inbound.module';
-import { OutboundModule } from './outbound/outbound.module';
-import { InventoryModule } from './inventory/inventory.module';
-import { ReportsModule } from './reports/reports.module';
-import { ErpIntegrationModule } from './erp-integration/erp-integration.module';
-import { NotificationsModule } from './notifications/notifications.module';
-import { AuditLogModule } from './audit-log/audit-log.module';
-import { RolesModule } from './roles/roles.module';
-import { WarehousesModule } from './warehouses/warehouses.module';
-import { CustomerPortalModule } from './customer-portal/customer-portal.module';
-import { ScanModule } from './scan/scan.module';
-import { DeliveryModule } from './delivery/delivery.module';
-import { DocumentsModule } from './documents/documents.module';
-import { SmartInventoryModule } from './inventory/smart-inventory/smart-inventory.module';
-import { ProjectTeamsModule } from './project-teams/project-teams.module';
-import { UploadModule } from './upload/upload.module';
-import { SettingsModule } from './settings/settings.module';
+import { Module } from "@nestjs/common";
+import { APP_INTERCEPTOR } from "@nestjs/core";
+import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
+import { AuditLogInterceptor } from "./audit-log/audit-log.interceptor";
+import { TypeOrmModule } from "@nestjs/typeorm";
+import { AuthModule } from "./auth/auth.module";
+import { UsersModule } from "./users/users.module";
+import { HealthModule } from "./health/health.module";
+import { ProductsModule } from "./products/products.module";
+import { CategoriesModule } from "./categories/categories.module";
+import { SuppliersModule } from "./suppliers/suppliers.module";
+import { CustomersModule } from "./customers/customers.module";
+import { InboundModule } from "./inbound/inbound.module";
+import { OutboundModule } from "./outbound/outbound.module";
+import { InventoryModule } from "./inventory/inventory.module";
+import { ReportsModule } from "./reports/reports.module";
+import { ErpIntegrationModule } from "./erp-integration/erp-integration.module";
+import { NotificationsModule } from "./notifications/notifications.module";
+import { AuditLogModule } from "./audit-log/audit-log.module";
+import { RolesModule } from "./roles/roles.module";
+import { WarehousesModule } from "./warehouses/warehouses.module";
+import { CustomerPortalModule } from "./customer-portal/customer-portal.module";
+import { ScanModule } from "./scan/scan.module";
+import { DeliveryModule } from "./delivery/delivery.module";
+import { DocumentsModule } from "./documents/documents.module";
+import { SmartInventoryModule } from "./inventory/smart-inventory/smart-inventory.module";
+import { ProjectTeamsModule } from "./project-teams/project-teams.module";
+import { UploadModule } from "./upload/upload.module";
+import { SettingsModule } from "./settings/settings.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRoot({
-      type: 'mysql',
+      type: "mysql",
       url: process.env.DATABASE_URL,
       autoLoadEntities: true,
       synchronize: true,
       logging: false,
       ssl:
-        process.env.DB_SSL === 'true' ||
-        process.env.DATABASE_URL?.includes('tidbcloud') ||
-        process.env.DATABASE_URL?.includes('ssl=')
+        process.env.DB_SSL === "true" ||
+        process.env.DATABASE_URL?.includes("tidbcloud") ||
+        process.env.DATABASE_URL?.includes("ssl=")
           ? { rejectUnauthorized: true }
           : false,
       extra: {
         ssl:
-          process.env.DB_SSL === 'true' ||
-          process.env.DATABASE_URL?.includes('tidbcloud') ||
-          process.env.DATABASE_URL?.includes('ssl=')
+          process.env.DB_SSL === "true" ||
+          process.env.DATABASE_URL?.includes("tidbcloud") ||
+          process.env.DATABASE_URL?.includes("ssl=")
             ? { rejectUnauthorized: true }
             : false,
       },

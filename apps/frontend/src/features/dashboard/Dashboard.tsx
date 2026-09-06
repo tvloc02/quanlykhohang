@@ -136,14 +136,11 @@ export default function Dashboard() {
     setError("");
 
     try {
-      const response = await fetch(
-        "http://localhost:3000/api/reports/dashboard",
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
+      const response = await fetch("/api/reports/dashboard", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
         },
-      );
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
