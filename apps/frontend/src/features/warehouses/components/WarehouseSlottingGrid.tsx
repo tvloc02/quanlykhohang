@@ -408,12 +408,19 @@ export async function fetchWarehouseOccupiedBins(
           bins.forEach((bCode) => {
             if (!bCode) return;
             if (!isWhMatch(oWhCode, oWhId, bCode)) return;
-            const pctMatch = bCode.match(/^([^(]+)\s*\((?:Dư\s*)?(\d+)%\)/i);
-            let itemPct: number | undefined = item.occupancyPct !== undefined ? Number(item.occupancyPct) : (item.occupancy !== undefined ? Number(item.occupancy) : undefined);
-            if (pctMatch) {
-              itemPct = Number(pctMatch[2]);
+            const pctMatch = bCode.match(/\((\d+(?:\.\d+)?)%\)/);
+            let itemPct: number = pctMatch ? Number(pctMatch[1]) : (item.occupancyPct !== undefined ? Number(item.occupancyPct) : 100);
+
+            let calcQty = 0;
+            const qtyMatch = bCode.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+            if (qtyMatch) {
+              calcQty = Number(qtyMatch[1]);
+            } else if (bins.length > 0) {
+              calcQty = Math.max(1, Math.round(pQty / bins.length));
+            } else {
+              calcQty = pQtyPerBin;
             }
-            const calcQty = itemPct !== undefined && itemPct > 0 ? Math.round((pQty * itemPct) / 100) : pQtyPerBin;
+
             const info: BinOccupiedInfo = {
               totalPhysical: calcQty,
               allocated: 0,
@@ -424,7 +431,7 @@ export async function fetchWarehouseOccupiedBins(
               inboundDate,
               orderCode,
               unit: pUnit,
-              occupancyPct: itemPct || 100,
+              occupancyPct: itemPct,
             };
             addBinOccupied(bCode, info);
           });
@@ -680,6 +687,21 @@ export async function fetchWarehouseOccupiedBins(
                         };
                         map.set(cleanCode, updatedInfo);
                         if (normKey) map.set(normKey, updatedInfo);
+                      } else if ((cfg.totalPhysical && Number(cfg.totalPhysical) > 0) || (cfg.occupancyPct && Number(cfg.occupancyPct) > 0)) {
+                        const newInfo: BinOccupiedInfo = {
+                          totalPhysical: Number(cfg.totalPhysical || 1),
+                          allocated: 0,
+                          productsCount: 1,
+                          productName: cfg.productName || 'Hàng trong kho',
+                          sku: cfg.sku || 'SKU-001',
+                          supplierName: 'Nhà cung cấp',
+                          inboundDate: 'Đã lưu',
+                          orderCode: 'KHO-LUU',
+                          unit: cfg.unit || 'cái',
+                          occupancyPct: Number(cfg.occupancyPct || 100),
+                        };
+                        map.set(cleanCode, newInfo);
+                        if (normKey) map.set(normKey, newInfo);
                       }
                     }
                   });
@@ -1296,10 +1318,18 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           const fullBinCode = `${whCode}-${zoneCodeStr}-${rackCode}-${binCodeShort}`;
                           const normFull = normalizeBinKey(fullBinCode);
 
+                          const rawCustomConfig =
+                            (activeRack.customBins as any)?.[fullBinCode] ||
+                            (activeRack.customBins as any)?.[binCodeShort] ||
+                            (normFull ? (activeRack.customBins as any)?.[normFull] : null);
+                          const customConfig = rawCustomConfig && rawCustomConfig.occupancyPct !== undefined && rawCustomConfig.occupancyPct !== null ? rawCustomConfig : null;
+
                           const occupiedInfo = getOccupiedInfo(fullBinCode, binCodeShort, rackCode);
                           const hasGoods = Boolean(
-                            occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0)
+                            (occupiedInfo && ((occupiedInfo.totalPhysical || 0) > 0 || (occupiedInfo.allocated || 0) > 0 || (occupiedInfo.occupancyPct || 0) > 0)) ||
+                            (customConfig && ((customConfig.totalPhysical || 0) > 0 || (customConfig.occupancyPct || 0) > 0))
                           );
+
                           const normShort = normalizeBinKey(binCodeShort);
                           const normRackShort = normalizeBinKey(`${rackCode}-${binCodeShort}`);
                           const isSelected = selectedSet.has(normFull) || (Boolean(normShort) && selectedSet.has(normShort)) || (Boolean(normRackShort) && selectedSet.has(normRackShort));
@@ -1321,12 +1351,6 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             otherItemName = rawOtherEntry.label;
                             otherItemPctFromLock = rawOtherEntry.occupancyPct;
                           }
-
-                          const rawCustomConfig =
-                            (activeRack.customBins as any)?.[fullBinCode] ||
-                            (activeRack.customBins as any)?.[binCodeShort] ||
-                            (normFull ? (activeRack.customBins as any)?.[normFull] : null);
-                          const customConfig = rawCustomConfig && rawCustomConfig.occupancyPct !== undefined && rawCustomConfig.occupancyPct !== null ? rawCustomConfig : null;
 
                           const matchingSelectedCode = selectedBinCodes.find((s) => normalizeBinKey(s) === normFull);
                           let embeddedPct: number | undefined;

@@ -881,7 +881,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
       if (validBins.length > 0) {
         if (mode !== 'OUTBOUND_TRANSFER') {
-          const itemQty = Number(item.qty || 1);
+          let itemQty = Number(item.qty || 0);
+          if (itemQty <= 0) {
+            let sumFromBins = 0;
+            validBins.forEach((b) => {
+              const mQty = b.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+              if (mQty) sumFromBins += Number(mQty[1]);
+            });
+            itemQty = sumFromBins > 0 ? sumFromBins : 1;
+          }
+
           initialManualMap[item.rowId] = {};
           const existingAlloc = (item as any).binAllocations || {};
           const existingQtyMap = (item as any).allocatedQtyMap || {};
@@ -916,6 +925,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
             const strippedB = cleanB.toUpperCase().replace(/[^A-Z0-9]/g, '');
             const isCustom = Boolean(
+              Boolean(mQty && Number(mQty[1]) > 0) ||
               existingAlloc[k]?.isCustomQty ||
               existingAlloc[cleanB]?.isCustomQty ||
               existingAlloc[shortB]?.isCustomQty ||
@@ -970,7 +980,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       if (prev.length > 0) return prev; // Keep existing chat history!
 
       const activeItem = items.find((i) => i.rowId === initialTargetId) || items[0];
-      const itemQty = activeItem?.qty || 0;
+      let itemQty = activeItem?.qty || 0;
+      if (itemQty <= 0) {
+        const itemBins = initialMap[activeItem?.rowId || ''] || activeItem?.assignedBins || [];
+        let binSum = 0;
+        itemBins.forEach((b: string) => {
+          const m = b.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+          if (m) binSum += Number(m[1]);
+        });
+        if (binSum > 0) itemQty = binSum;
+      }
       const totalBinsNeeded = Math.max(1, Math.ceil(itemQty / 100));
       const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
       const isOutbound = mode === 'OUTBOUND_TRANSFER';
