@@ -13,6 +13,7 @@ import {
   Settings,
   X,
   Sliders,
+  Eye,
 } from 'lucide-react';
 import {
   SubWarehouse,
@@ -1430,6 +1431,12 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             <div
                               key={fullBinCode}
                               onClick={() => {
+                                if (mode === 'view') {
+                                  if (onBinClick) {
+                                    onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
+                                  }
+                                  return;
+                                }
                                 if (readOnly) {
                                   const curr = occupancyPct || customConfig?.occupancyPct || 100;
                                   setEditingBinConfig({
@@ -1459,23 +1466,29 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
                                 }
                               }}
-                              className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] cursor-pointer ${readOnly
+                              className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] cursor-pointer ${mode === 'view'
                                   ? isSelected
                                     ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] z-20 hover:ring-emerald-300'
                                     : isFull || hasGoods
                                       ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs font-black hover:border-cyan-600'
                                       : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-400'
-                                  : isBinDisabled
-                                    ? 'border-2 border-slate-300 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-900/90 text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed select-none'
-                                    : isSelected
-                                      ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] cursor-pointer z-20'
-                                      : isSuggested
-                                        ? 'border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-300/60 font-black cursor-pointer'
-                                        : isFull || hasGoods
-                                          ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs cursor-pointer font-black'
-                                          : isPartiallyOccupied
-                                            ? 'border-2 border-cyan-500 bg-cyan-50/90 text-cyan-950 font-black cursor-pointer hover:border-cyan-600'
-                                            : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-500 cursor-pointer'
+                                  : readOnly
+                                    ? isSelected
+                                      ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-sm font-black hover:border-cyan-600'
+                                      : isFull || hasGoods
+                                        ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs font-black hover:border-cyan-600'
+                                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-400'
+                                    : isBinDisabled
+                                      ? 'border-2 border-slate-300 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-900/90 text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed select-none'
+                                      : isSelected
+                                        ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] cursor-pointer z-20'
+                                        : isSuggested
+                                          ? 'border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-300/60 font-black cursor-pointer'
+                                          : isFull || hasGoods
+                                            ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs cursor-pointer font-black'
+                                            : isPartiallyOccupied
+                                              ? 'border-2 border-cyan-500 bg-cyan-50/90 text-cyan-950 font-black cursor-pointer hover:border-cyan-600'
+                                              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-500 cursor-pointer'
                                 }`}
                             >
                               {/* Visual Occupancy Fill Overlay (Height = occupancyPct %) */}
@@ -1506,13 +1519,34 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                                 {/* Unified Top-Right Icon Buttons */}
                                 <div className="flex items-center gap-1">
-                                  {onUpdateBinCapacity && !readOnly && !isBinDisabled && (
+                                  {mode === 'view' ? (
                                     <button
                                       type="button"
-                                      title="Cài đặt % độ chứa hoặc Số lượng ô"
+                                      title={isSelected ? 'Đã chọn ô' : 'Bấm để chọn / xem chi tiết'}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        const curr = occupancyPct || 0;
+                                        if (onBinClick) {
+                                          onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
+                                        }
+                                      }}
+                                      className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs cursor-pointer ${isSelected
+                                          ? 'bg-emerald-600 text-white border-emerald-600'
+                                          : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
+                                        }`}
+                                    >
+                                      {isSelected ? (
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                                      ) : (
+                                        <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                                      )}
+                                    </button>
+                                  ) : readOnly ? (
+                                    <button
+                                      type="button"
+                                      title="Bấm để xem chi tiết hàng hóa ở ô"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const curr = occupancyPct || customConfig?.occupancyPct || 100;
                                         setEditingBinConfig({
                                           binCode: fullBinCode,
                                           shortCode: binCodeShort,
@@ -1522,69 +1556,77 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                         setInputPctVal(curr);
                                         setIsAddMode(false);
                                       }}
-                                      className={`p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs ${isSelected
-                                          ? 'bg-white hover:bg-cyan-50 text-[#197e96] border-cyan-200'
-                                          : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
-                                        }`}
+                                      className="p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700"
                                     >
-                                      <Settings className="h-3.5 w-3.5" />
+                                      <Eye className="h-3.5 w-3.5" />
                                     </button>
-                                  )}
-
-                                  <button
-                                      type="button"
-                                      disabled={!readOnly && isBinDisabled}
-                                      title={readOnly ? 'Bấm để xem chi tiết hàng hóa ở ô' : isBinDisabled ? (isOtherItemFull ? `Đã đầy 100% (${otherItemName || 'Hàng khác'})` : 'Kệ đã đầy 100%') : isSelected ? 'Đã chọn ô' : 'Bấm để chọn ô'}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (readOnly) {
-                                          const curr = occupancyPct || customConfig?.occupancyPct || 100;
-                                          setEditingBinConfig({
-                                            binCode: fullBinCode,
-                                            shortCode: binCodeShort,
-                                            rackCode: rackCode || (activeRack as any)?.rackCode || '',
-                                            currentPct: curr,
-                                          });
-                                          setInputPctVal(curr);
-                                          setIsAddMode(false);
-                                          return;
-                                        }
-                                        if (isBinDisabled) return;
-                                        if (mode === 'select') {
-                                          if (onSelectBin) {
-                                            onSelectBin(fullBinCode, {
+                                  ) : (
+                                    <>
+                                      {onUpdateBinCapacity && !isBinDisabled && (
+                                        <button
+                                          type="button"
+                                          title="Cài đặt % độ chứa hoặc Số lượng ô"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const curr = occupancyPct || 0;
+                                            setEditingBinConfig({
                                               binCode: fullBinCode,
                                               shortCode: binCodeShort,
-                                              zoneCode: zoneCodeStr,
-                                              rackCode,
-                                              occupancyPct: occupancyPct,
-                                              maxWeight: customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500,
-                                              notes: customConfig?.notes || '',
+                                              rackCode: rackCode || (activeRack as any)?.rackCode || '',
+                                              currentPct: curr,
                                             });
+                                            setInputPctVal(curr);
+                                            setIsAddMode(false);
+                                          }}
+                                          className={`p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs ${isSelected
+                                              ? 'bg-white hover:bg-cyan-50 text-[#197e96] border-cyan-200'
+                                              : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
+                                            }`}
+                                        >
+                                          <Settings className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        disabled={isBinDisabled}
+                                        title={isBinDisabled ? (isOtherItemFull ? `Đã đầy 100% (${otherItemName || 'Hàng khác'})` : 'Kệ đã đầy 100%') : isSelected ? 'Đã chọn ô' : 'Bấm để chọn ô'}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isBinDisabled) return;
+                                          if (mode === 'select') {
+                                            if (onSelectBin) {
+                                              onSelectBin(fullBinCode, {
+                                                binCode: fullBinCode,
+                                                shortCode: binCodeShort,
+                                                zoneCode: zoneCodeStr,
+                                                rackCode,
+                                                occupancyPct: occupancyPct,
+                                                maxWeight: customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500,
+                                                notes: customConfig?.notes || '',
+                                              });
+                                            }
+                                          } else if (onBinClick) {
+                                            onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
                                           }
-                                        } else if (onBinClick) {
-                                          onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
-                                        }
-                                      }}
-                                      className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs cursor-pointer ${readOnly
-                                          ? isSelected
-                                            ? 'bg-[#197e96] text-white border-[#197e96] hover:bg-[#15677b]'
-                                            : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
-                                          : isOtherItemFull
+                                        }}
+                                        className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs cursor-pointer ${isOtherItemFull
                                             ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
                                             : isSelected
                                               ? 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
                                               : isFull
                                                 ? 'bg-cyan-700 text-white border-cyan-700 opacity-90 cursor-pointer'
                                                 : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700 cursor-pointer'
-                                        }`}
-                                    >
-                                    {isSelected ? (
-                                      <CheckCircle2 className="h-3.5 w-3.5 text-white" />
-                                    ) : (
-                                      <Check className="h-3.5 w-3.5 stroke-[2.5]" />
-                                    )}
-                                  </button>
+                                          }`}
+                                      >
+                                        {isSelected ? (
+                                          <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                                        ) : (
+                                          <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                                        )}
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </div>
 
@@ -1655,13 +1697,11 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                 </div>
                 <div>
                   <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-                    {readOnly
+                    {readOnly || !isOutbound
                       ? `Chi Tiết Vị Trí & Hàng Hóa Ô Kệ ${editingBinConfig.shortCode}`
-                      : isOutbound
-                      ? `Cài Đặt Độ Chứa & Khấu Trừ Xuất Kệ Ô ${editingBinConfig.shortCode}`
-                      : `Cài Đặt Độ Chứa / Số Lượng Ô ${editingBinConfig.shortCode}`}
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${readOnly ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200' : isOutbound ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200' : 'bg-emerald-100 text-emerald-800'}`}>
-                      {readOnly ? 'Chế độ xem' : isOutbound ? 'Xuất kho / Xuất hủy' : 'Nhập kho'}
+                      : `Cài Đặt Độ Chứa & Khấu Trừ Xuất Kệ Ô ${editingBinConfig.shortCode}`}
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${readOnly ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200' : isOutbound ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200' : 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/60 dark:text-cyan-200'}`}>
+                      {readOnly ? 'Chế độ xem' : isOutbound ? 'Xuất kho / Xuất hủy' : 'Chi tiết ô'}
                     </span>
                   </h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
@@ -1696,7 +1736,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                 allStoredGoods = [{
                   binCode: binFull,
                   productName: storedInfo.productName || 'Hàng tồn kho',
-                  sku: storedInfo.sku || 'SKU-001',
+                  sku: storedInfo.sku || '',
                   quantity: storedInfo.totalPhysical || 0,
                   allocated: storedInfo.allocated || 0,
                   supplierName: storedInfo.supplierName || '',
@@ -1705,20 +1745,6 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                   unit: storedInfo.unit || 'Cái',
                   occupancyPct: storedInfo.occupancyPct !== undefined ? Number(storedInfo.occupancyPct) : 0,
                 }];
-              }
-              if (allStoredGoods.length === 0 && editableBinItems && editableBinItems.length > 0) {
-                allStoredGoods = editableBinItems.map((it) => ({
-                  binCode: binFull,
-                  productName: (it.productName || 'Hàng hóa').replace(/\s*\(Tồn tại kệ\)|\s*\(Lô nhập mới\)/g, ''),
-                  sku: it.sku || 'SKU-001',
-                  quantity: it.qty || 0,
-                  allocated: 0,
-                  supplierName: '',
-                  inboundDate: 'Đã lưu kho',
-                  orderCode: '',
-                  unit: it.unit || 'Cái',
-                  occupancyPct: it.occupancyPct !== undefined ? Number(it.occupancyPct) : 100,
-                }));
               }
 
               const totalStoredQty = allStoredGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0);
@@ -1840,8 +1866,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                     </div>
                   </div>
 
-                  {/* 4. BOTTOM SECTION: ONLY SHOWN WHEN EDITING (NOT IN READONLY VIEW MODE) */}
-                  {!readOnly && (isOutbound ? (
+                  {/* 4. BOTTOM SECTION: ONLY SHOWN FOR OUTBOUND DEDUCTION */}
+                  {!readOnly && isOutbound && (
                     <div className="rounded-2xl border-2 border-rose-300 dark:border-rose-900/70 bg-rose-50/60 dark:bg-rose-950/20 p-4 space-y-3 shadow-xs">
                       <div className="flex items-center justify-between border-b border-rose-200 dark:border-rose-900/60 pb-2">
                         <div className="flex items-center gap-2 text-xs font-black uppercase text-rose-800 dark:text-rose-300">
@@ -2091,154 +2117,13 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                         );
                       })()}
                     </div>
-                  ) : (
-                    /* Inbound Mode Layout */
-                    <div className="space-y-2">
-                      <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs custom-scrollbar">
-                        <table className="w-full text-xs text-left border-collapse">
-                          <thead className="sticky top-0 z-10 bg-cyan-50 dark:bg-cyan-950 text-cyan-950 dark:text-cyan-200 font-bold border-b border-cyan-200 dark:border-slate-700 shadow-2xs">
-                            <tr>
-                              <th className="p-3">Tên hàng hóa</th>
-                              <th className="p-3 text-right w-28">Số lượng</th>
-                              <th className="p-3 text-right w-28">Lưu trữ</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900 font-medium">
-                            {editableBinItems.map((item, idx) => {
-                              const isExisting = Boolean(item.isExistingStock);
-                              return (
-                                <tr key={idx} className={isExisting ? "bg-cyan-50/40 dark:bg-slate-800/40 hover:bg-cyan-50/70 border-l-4 border-cyan-500" : "hover:bg-emerald-50/40 dark:hover:bg-slate-800/50 transition border-l-4 border-emerald-500"}>
-                                  <td className="p-3">
-                                    <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 flex-wrap">
-                                      <span>{item.productName}</span>
-                                      {isExisting ? (
-                                        <span className="text-[10px] font-black bg-cyan-200 text-cyan-900 dark:bg-cyan-900 dark:text-cyan-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
-                                          TỒN TẠI KỆ
-                                        </span>
-                                      ) : (
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
-                                            LÔ NHẬP MỚI
-                                          </span>
-                                          {item.isCustomQty ? (
-                                            <span className="text-[9.5px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
-                                              Cố định {item.qty} cái
-                                            </span>
-                                          ) : (
-                                            <span className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
-                                              Tự chia đều
-                                            </span>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="p-2 text-right">
-                                    {isExisting ? (
-                                      <span className="text-xs font-black text-cyan-900 dark:text-cyan-200 px-2 py-1 inline-block">
-                                        {item.qty} cái
-                                      </span>
-                                    ) : (
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={item.qty > 0 ? item.qty : ''}
-                                        placeholder="—"
-                                        onChange={(e) => {
-                                          const val = Number(e.target.value) || 0;
-                                          setEditableBinItems((prev) =>
-                                            prev.map((it, i) => (i === idx ? { ...it, qty: val, isCustomQty: val > 0 } : it))
-                                          );
-                                        }}
-                                        className="w-20 px-2 py-1 text-right text-xs font-bold border border-emerald-300 focus:border-emerald-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg outline-none"
-                                      />
-                                    )}
-                                  </td>
-                                  <td className="p-2 text-right">
-                                    {isExisting ? (
-                                      <span className="text-xs font-black text-cyan-900 dark:text-cyan-200 px-2 py-1 inline-block">
-                                        {item.occupancyPct}%
-                                      </span>
-                                    ) : (
-                                      <div className="relative inline-flex items-center justify-end w-20">
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          max={100}
-                                          value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
-                                          onChange={(e) => {
-                                            const raw = e.target.value;
-                                            if (raw === '') {
-                                              setEditableBinItems((prev) =>
-                                                prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
-                                              );
-                                              return;
-                                            }
-                                            const parsed = parseInt(raw, 10);
-                                            const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
-                                            // The occupancyPct represents how much of the shelf capacity is occupied, NOT a percentage of total goods
-                                            setEditableBinItems((prev) =>
-                                              prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val } : it))
-                                            );
-                                          }}
-                                          className="w-full px-2 py-1 pr-5 text-right text-xs font-bold border border-emerald-300 focus:border-emerald-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg outline-none"
-                                        />
-                                        <span className="absolute right-1.5 top-1 text-xs font-black text-slate-400">%</span>
-                                      </div>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Add New Line in Inbound */}
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold text-slate-500">Thêm sản phẩm mới vào ô {editingBinConfig.shortCode}:</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-                            const remainingPct = Math.max(0, 100 - sumPct);
-                            setEditableBinItems((prev) => [
-                              ...prev,
-                              {
-                                rowId: `custom-line-${Date.now()}`,
-                                productName: `Mặt hàng bổ sung #${prev.length + 1} (Lô nhập mới)`,
-                                qty: 100,
-                                occupancyPct: remainingPct > 0 ? remainingPct : 10,
-                                isExistingStock: false,
-                              },
-                            ]);
-                          }}
-                          className="text-[11px] font-black text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                        >
-                          + Thêm dòng sản phẩm (Dòng #{editableBinItems.length + 1})
-                        </button>
-                      </div>
-
-                      {/* Inbound Summary */}
-                      {(() => {
-                        const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-                        const remainingPct = Math.max(0, 100 - sumPct);
-                        const isOverCap = sumPct > 100;
-                        return (
-                          <div className={`p-2.5 rounded-xl border text-[11px] font-bold ${isOverCap ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 text-rose-900 dark:text-rose-200' : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 text-amber-900 dark:text-amber-200'}`}>
-                            Tổng độ chứa ô = <strong className={`underline font-black ${isOverCap ? 'text-rose-700 dark:text-rose-300' : 'text-cyan-700 dark:text-cyan-300'}`}>{sumPct}%</strong>{' '}
-                            {isOverCap ? `(CẢNH BÁO: VƯỢT QUÁ SỨC CHỨA Ô ${sumPct - 100}%!)` : `(Còn trống ${remainingPct}%)`}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ))}
+                  )}
                 </>
               );
             })()}
 
             {/* 5. Footer Buttons */}
-            {readOnly ? (
+            {readOnly || !isOutbound ? (
               <div className="flex items-center justify-end w-full pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
@@ -2253,15 +2138,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (isOutbound) {
-                      setEditableBinItems((prev) => prev.map((it) => ({ ...it, qty: 0, occupancyPct: 0 })));
-                    } else {
-                      setEditableBinItems((prev) => prev.map((it) => ({ ...it, occupancyPct: 0, qty: 0 })));
-                      if (onUpdateBinCapacity) {
-                        onUpdateBinCapacity(editingBinConfig.binCode, 0, undefined, undefined, 0);
-                      }
-                      setEditingBinConfig(null);
-                    }
+                    setEditableBinItems((prev) => prev.map((it) => ({ ...it, qty: 0, occupancyPct: 0 })));
                   }}
                   className="h-9 px-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-bold rounded-xl transition cursor-pointer border border-rose-200 dark:border-rose-900/60"
                 >
@@ -2279,40 +2156,19 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (isOutbound) {
-                        const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
-                        const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
-                        const initialBinPct = editingBinConfig.currentPct || 100;
-                        const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
+                      const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
+                      const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
+                      const initialBinPct = editingBinConfig.currentPct || 100;
+                      const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
 
-                        editableBinItems.forEach((item) => {
-                          if (onUpdateBinCapacity) {
-                            onUpdateBinCapacity(
-                              editingBinConfig.binCode,
-                              Number(item.occupancyPct) || 0,
-                              `REMAINING:${remainingAfterExport}`,
-                              item.rowId,
-                              item.qty !== undefined ? Number(item.qty) : undefined
-                            );
-                          }
-                        });
-                        setEditingBinConfig(null);
-                        return;
-                      }
-
-                      const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-                      if (!isOutbound && sumPct > 100) {
-                        alert(`Tổng % độ chứa (${sumPct}%) vượt quá 100%! Vui lòng điều chỉnh lại cho tổng các sản phẩm <= 100%.`);
-                        return;
-                      }
                       editableBinItems.forEach((item) => {
                         if (onUpdateBinCapacity) {
                           onUpdateBinCapacity(
                             editingBinConfig.binCode,
                             Number(item.occupancyPct) || 0,
-                            undefined,
+                            `REMAINING:${remainingAfterExport}`,
                             item.rowId,
-                            item.isCustomQty && Number(item.qty) > 0 ? Number(item.qty) : undefined
+                            item.qty !== undefined ? Number(item.qty) : undefined
                           );
                         }
                       });

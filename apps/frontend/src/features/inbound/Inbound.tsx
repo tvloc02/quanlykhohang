@@ -49,6 +49,7 @@ import {
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 import { parseAssignedBinsFromNote } from '../../shared/utils/warehouseAssignments';
+import { numberToVietnameseWords } from '../../utils/numberToVietnamese';
 
 const getInboundMenuId = (mode?: string) => {
   if (mode === 'purchase-order') return 'inbound-purchase-orders';
@@ -980,15 +981,6 @@ export default function Inbound({
   };
 
   const handleEditOrder = (ord: InboundReceiptOrder) => {
-    const isDraft = ['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '');
-    if (!isDraft) {
-      setToast({
-        message: 'Chỉ có thể chỉnh sửa phiếu nhập kho ở trạng thái Đơn nháp (DRAFT). Phiếu đã lưu chính thức không thể chỉnh sửa!',
-        type: 'error',
-      });
-      return;
-    }
-
     const existingDetails: FormDetailRow[] = ord.details && ord.details.length > 0
       ? ord.details.map((d, idx) => ({
         rowId: `row-edit-${idx}-${Date.now()}`,
@@ -1029,6 +1021,75 @@ export default function Inbound({
       details: paddedDetails,
     }));
     handleOpenFormModal('edit', ord.id);
+  };
+
+  const handlePrintOrder = async (ord: InboundReceiptOrder) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${ord.id}`, {
+        headers: authHeaders(),
+      });
+      if (res.ok) {
+        const fullPO = await res.json();
+        const rawDetails = fullPO.details || fullPO.items || [];
+        const formattedDetails = rawDetails.map((d: any) => {
+          const productSku = d.product?.internalSku || d.productSku || d.sku || 'SKU';
+          const productName = d.product?.name || d.productName || 'Sản phẩm';
+          const unit = d.product?.unit || d.unit || 'Cái';
+          const qty = Number(d.receivedQty || d.expectedQty || d.qty || 1);
+          const price = Number(d.unitPrice || d.price || 0);
+
+          let parsedLocationBin = d.locationBin || '';
+          if (!parsedLocationBin && d.note && d.note.includes('[Vị trí Ô:')) {
+            parsedLocationBin = parseAssignedBinsFromNote(d.note).join(', ');
+          }
+          if (!parsedLocationBin && Array.isArray(d.assignedBins) && d.assignedBins.length > 0) {
+            parsedLocationBin = d.assignedBins.join(', ');
+          }
+          if (!parsedLocationBin) {
+            parsedLocationBin = d.warehouseCode || fullPO.warehouseCode || ord.warehouseCode || 'KHO-NVL';
+          }
+
+          return {
+            id: d.id,
+            productId: d.productId || d.product?.id,
+            productSku,
+            productName,
+            unit,
+            qty,
+            price,
+            discountPercent: Number(d.discountPercent || 0),
+            vatPercent: Number(d.vatPercent || 0),
+            totalLineAmount: Number(d.totalLineAmount || (qty * price) || 0),
+            warehouseCode: d.warehouseCode || fullPO.warehouseCode || ord.warehouseCode || 'KHO-NVL',
+            locationBin: parsedLocationBin,
+            assignedBins: Array.isArray(d.assignedBins) ? d.assignedBins : (parsedLocationBin ? parsedLocationBin.split(',').map((s: string) => s.trim()) : []),
+            weight: d.weight,
+            dimensions: d.length && d.width && d.height ? `${d.length}x${d.width}x${d.height} cm` : '',
+            volume: d.volume,
+            note: d.note || '',
+          };
+        });
+
+        const updatedOrd: InboundReceiptOrder = {
+          ...ord,
+          supplier: fullPO.supplierName || fullPO.supplier?.name || ord.supplier,
+          supplierPhone: fullPO.supplierPhone || fullPO.supplier?.phone || ord.supplierPhone,
+          supplierAddress: fullPO.supplierAddress || fullPO.supplier?.address || ord.supplierAddress,
+          warehouseCode: fullPO.warehouseCode || ord.warehouseCode,
+          totalAmount: Number(fullPO.totalAmount || ord.totalAmount),
+          details: formattedDetails,
+        };
+
+        setSelectedOrder(updatedOrd);
+        setShowPrintModal(true);
+        return;
+      }
+    } catch (err) {
+      console.error('Lỗi tải chi tiết đơn nhập để in:', err);
+    }
+
+    setSelectedOrder(ord);
+    setShowPrintModal(true);
   };
 
   const handleViewDetail = async (ord: InboundReceiptOrder, openLocationOnly = false) => {
@@ -1081,6 +1142,8 @@ export default function Inbound({
         const updatedOrd: InboundReceiptOrder = {
           ...ord,
           supplier: fullPO.supplierName || fullPO.supplier?.name || ord.supplier,
+          supplierPhone: fullPO.supplierPhone || fullPO.supplier?.phone || ord.supplierPhone,
+          supplierAddress: fullPO.supplierAddress || fullPO.supplier?.address || ord.supplierAddress,
           warehouseCode: fullPO.warehouseCode || ord.warehouseCode,
           totalAmount: Number(fullPO.totalAmount || ord.totalAmount),
           details: formattedDetails,
@@ -1090,7 +1153,7 @@ export default function Inbound({
         if (openLocationOnly) {
           setShowLocationModal(true);
         } else {
-          setSearchParams({ action: 'view', id: ord.id });
+          setShowDetailModal(true);
         }
         return;
       }
@@ -1102,7 +1165,7 @@ export default function Inbound({
     if (openLocationOnly) {
       setShowLocationModal(true);
     } else {
-      setSearchParams({ action: 'view', id: ord.id });
+      setShowDetailModal(true);
     }
   };
 
@@ -1814,7 +1877,10 @@ export default function Inbound({
                     const isSelected = selectedIds.has(ord.id);
                     return (
                       <React.Fragment key={ord.id}>
-                        <tr className={`group transition cursor-pointer border-b border-slate-200 dark:border-indigo-900/40 ${isSelected ? 'bg-cyan-100/60 dark:bg-indigo-950/70' : 'hover:bg-cyan-50/60 dark:hover:bg-indigo-950/40'}`}>
+                        <tr
+                          onClick={() => handleEditOrder(ord)}
+                          className={`group transition cursor-pointer border-b border-slate-200 dark:border-indigo-900/40 ${isSelected ? 'bg-cyan-100/60 dark:bg-indigo-950/70' : 'hover:bg-cyan-50/60 dark:hover:bg-indigo-950/40'}`}
+                        >
                           <td className="border-r border-slate-200 dark:border-indigo-900/40 px-2 py-3.5 text-center print:hidden" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
@@ -1832,10 +1898,10 @@ export default function Inbound({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSearchParams({ action: 'view', id: ord.id });
+                                  handleEditOrder(ord);
                                 }}
                                 className="text-cyan-700 dark:text-indigo-300 hover:text-cyan-900 dark:hover:text-indigo-100 hover:underline font-extrabold text-center cursor-pointer whitespace-nowrap"
-                                title="Bấm để xem thông tin chi tiết đơn nhập"
+                                title="Bấm để mở và chỉnh sửa phiếu nhập kho"
                               >
                                 {ord.receiptNo}
                               </button>
@@ -1866,20 +1932,12 @@ export default function Inbound({
                               {canEdit && (
                                 <button
                                   type="button"
-                                  disabled={!['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '')}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleEditOrder(ord);
                                   }}
-                                  title={
-                                    ['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '')
-                                      ? 'Sửa phiếu nhập (Nháp)'
-                                      : 'Phiếu đã lưu chính thức / đã nhập kho, không thể chỉnh sửa'
-                                  }
-                                  className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 transition shadow-sm ${['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '')
-                                      ? 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
-                                      : 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
-                                    }`}
+                                  title="Chỉnh sửa phiếu nhập kho"
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 shadow-sm transition cursor-pointer"
                                 >
                                   <Pencil size={16} strokeWidth={2.5} />
                                 </button>
@@ -1888,9 +1946,9 @@ export default function Inbound({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSearchParams({ action: 'view', id: ord.id });
+                                  handleEditOrder(ord);
                                 }}
-                                title="Xem chi tiết đơn hàng"
+                                title="Xem & chỉnh sửa phiếu nhập kho"
                                 className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
                                 <Eye size={16} strokeWidth={2.5} />
@@ -1911,7 +1969,7 @@ export default function Inbound({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleViewDetail(ord, false).then(() => setShowPrintModal(true));
+                                    handlePrintOrder(ord);
                                   }}
                                   title="In phiếu nhập"
                                   className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
@@ -2451,61 +2509,259 @@ export default function Inbound({
         document.body
       )}
 
-      {/* ─── MODAL PRINT ────────────────────────────────────────────── */}
+      {/* ─── MODAL PRINT (CHUẨN BẢN DỌC A4 PORTRAIT) ────────────────────────────── */}
       {showPrintModal && selectedOrder && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black text-slate-900">
-                {featureMode === 'return-supplier' ? 'Xem trước Phiếu Xuất Trả Nhà Cung Cấp' : 'Xem trước Phiếu Nhập Kho'}
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-3 sm:p-5 backdrop-blur-sm overflow-y-auto">
+          <style>{`
+            @media print {
+              body * {
+                visibility: hidden !important;
+              }
+              #printable-inbound-receipt,
+              #printable-inbound-receipt * {
+                visibility: visible !important;
+              }
+              #printable-inbound-receipt {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 10mm 12mm !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                border: none !important;
+                box-shadow: none !important;
+                font-size: 11pt !important;
+                line-height: 1.4 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .modal-no-print {
+                display: none !important;
+              }
+              @page {
+                size: A4 portrait !important;
+                margin: 8mm 10mm !important;
+              }
+            }
+          `}</style>
+
+          <div className="w-full max-w-3xl rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border-2 border-cyan-500 my-auto">
+            {/* Modal Topbar */}
+            <div className="modal-no-print mb-4 flex items-center justify-between border-b-2 border-slate-200 dark:border-slate-800 pb-3">
+              <h2 className="text-base font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Printer className="h-5 w-5 text-cyan-600" />
+                <span>{featureMode === 'return-supplier' ? 'Xem trước Phiếu Xuất Trả Nhà Cung Cấp (Bản dọc A4)' : 'Xem trước Phiếu Nhập Kho (Bản dọc A4)'}</span>
               </h2>
-              <button onClick={() => setShowPrintModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer shadow-md transition"
+                >
+                  <Printer size={16} /> In Phiếu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPrintModal(false)}
+                  className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
-            <div className="p-4 border border-slate-300 rounded-xl space-y-3 text-xs">
-              <div className="text-center">
-                <h2 className="text-base font-black uppercase text-slate-900">
+
+            {/* Printable Voucher Paper */}
+            <div
+              id="printable-inbound-receipt"
+              className="bg-white text-black p-6 sm:p-8 rounded-xl border border-slate-200 shadow-inner font-sans space-y-4"
+              style={{
+                WebkitPrintColorAdjust: 'exact',
+                colorAdjust: 'exact',
+                fontFamily: '"Times New Roman", Times, serif',
+              }}
+            >
+              {/* Top Header */}
+              <div className="flex justify-between items-start border-b border-black pb-3">
+                <div className="space-y-0.5 text-xs text-left">
+                  <p className="font-extrabold uppercase text-sm tracking-wide">CÔNG TY TNHH QUẢN LÝ KHO SMART WMS</p>
+                  <p>Địa chỉ: Lô 12, KCN Công Nghệ Cao, TP. Hà Nội</p>
+                  <p>Hotline: 1900 6868 &bull; Email: contact@smartwms.vn</p>
+                </div>
+                <div className="text-right text-xs space-y-0.5">
+                  <p className="font-bold text-xs">Mẫu số: 01 - VT</p>
+                  <p className="italic text-[11px]">(Ban hành theo TT số 200/2014/TT-BTC</p>
+                  <p className="italic text-[11px]">ngày 22/12/2014 của Bộ Tài chính)</p>
+                </div>
+              </div>
+
+              {/* Title Header */}
+              <div className="text-center py-2 space-y-1">
+                <h1 className="text-xl font-bold uppercase tracking-wider text-black">
                   {featureMode === 'return-supplier' ? 'PHIẾU XUẤT TRẢ NHÀ CUNG CẤP' : 'PHIẾU NHẬP KHO HÀNG HÓA'}
-                </h2>
-                <p className="text-slate-500">Mã phiếu: {selectedOrder.receiptNo} - Ngày: {selectedOrder.orderDate}</p>
+                </h1>
+                <p className="text-xs italic text-slate-700">
+                  Ngày {new Date().getDate().toString().padStart(2, '0')} tháng {(new Date().getMonth() + 1).toString().padStart(2, '0')} năm {new Date().getFullYear()}
+                </p>
+                <p className="text-xs font-bold">
+                  Số phiếu: <span className="font-black text-black">{selectedOrder.receiptNo}</span>
+                </p>
               </div>
-              <div className="grid grid-cols-2 gap-2 font-semibold">
-                <p>Nhà cung cấp: {selectedOrder.supplier}</p>
-                <p>{featureMode === 'return-supplier' ? 'Kho xuất:' : 'Kho nhập:'} {formatWarehouseDisplay(selectedOrder.warehouseCode, warehouses)}</p>
-                <p>SĐT: {selectedOrder.supplierPhone || '-'}</p>
-                <p>Người lập: {selectedOrder.employeeName}</p>
+
+              {/* Order Info Details */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs border-y border-dashed border-slate-400 py-3">
+                <p>
+                  <span className="font-bold">Đơn vị cung cấp:</span> {selectedOrder.supplier}
+                </p>
+                <p>
+                  <span className="font-bold">{featureMode === 'return-supplier' ? 'Kho xuất trả:' : 'Kho nhập hàng:'}</span>{' '}
+                  {formatWarehouseDisplay(selectedOrder.warehouseCode, warehouses)}
+                </p>
+                <p>
+                  <span className="font-bold">Số điện thoại:</span> {selectedOrder.supplierPhone || '—'}
+                </p>
+                <p>
+                  <span className="font-bold">Người lập phiếu:</span> {selectedOrder.employeeName || currentUserName}
+                </p>
+                <p className="col-span-2">
+                  <span className="font-bold">Địa chỉ:</span> {selectedOrder.supplierAddress || '—'}
+                </p>
+                {selectedOrder.description && (
+                  <p className="col-span-2">
+                    <span className="font-bold">Ghi chú:</span> {selectedOrder.description}
+                  </p>
+                )}
               </div>
-              <table className="w-full border-collapse border border-slate-300 text-xs">
-                <thead className="bg-slate-100 font-bold text-center">
-                  <tr>
-                    <th className="border p-1">STT</th>
-                    <th className="border p-1">Tên hàng</th>
-                    <th className="border p-1">ĐVT</th>
-                    <th className="border p-1">SL</th>
-                    <th className="border p-1">Đơn giá</th>
-                    <th className="border p-1">Thành tiền</th>
+
+              {/* Products Table */}
+              <table className="w-full border-collapse border border-black text-xs">
+                <thead>
+                  <tr className="bg-slate-100 text-center font-bold">
+                    <th className="border border-black p-1.5 w-10">STT</th>
+                    <th className="border border-black p-1.5 w-24">Mã SKU</th>
+                    <th className="border border-black p-1.5 text-left">Tên sản phẩm & Quy cách</th>
+                    <th className="border border-black p-1.5 w-14">ĐVT</th>
+                    <th className="border border-black p-1.5 w-28 text-center">Vị trí Ô Kệ</th>
+                    <th className="border border-black p-1.5 w-16 text-right">Số lượng</th>
+                    <th className="border border-black p-1.5 w-24 text-right">Đơn giá</th>
+                    <th className="border border-black p-1.5 w-28 text-right">Thành tiền</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedOrder.details?.map((d, i) => (
-                    <tr key={i} className="text-center">
-                      <td className="border p-1">{i + 1}</td>
-                      <td className="border p-1 text-left font-semibold">{d.productName}</td>
-                      <td className="border p-1">{d.unit}</td>
-                      <td className="border p-1 font-bold">{d.qty}</td>
-                      <td className="border p-1 text-right">{d.price.toLocaleString('vi-VN')}</td>
-                      <td className="border p-1 text-right font-bold">{(d.qty * d.price).toLocaleString('vi-VN')}</td>
+                  {selectedOrder.details && selectedOrder.details.length > 0 ? (
+                    selectedOrder.details.map((d, i) => {
+                      const bins = d.assignedBins && d.assignedBins.length > 0
+                        ? d.assignedBins
+                        : (d.locationBin ? d.locationBin.split(',').map((s: string) => s.trim()) : []);
+                      const binText = bins.length > 0 ? bins.join(', ') : '—';
+                      const linePrice = Number(d.price) || 0;
+                      const lineQty = Number(d.qty) || 0;
+                      const lineTotal = lineQty * linePrice;
+
+                      return (
+                        <tr key={i} className="text-center">
+                          <td className="border border-black p-1.5">{i + 1}</td>
+                          <td className="border border-black p-1.5 font-mono text-[11px]">{d.productSku || 'SKU'}</td>
+                          <td className="border border-black p-1.5 text-left font-bold">{d.productName}</td>
+                          <td className="border border-black p-1.5">{d.unit || 'Cái'}</td>
+                          <td className="border border-black p-1.5 text-center font-bold text-[11px]">{binText}</td>
+                          <td className="border border-black p-1.5 text-right font-black">{lineQty.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{linePrice.toLocaleString('vi-VN')} đ</td>
+                          <td className="border border-black p-1.5 text-right font-bold">{lineTotal.toLocaleString('vi-VN')} đ</td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="border border-black p-4 text-center text-slate-500 italic">
+                        Không có chi tiết hàng hóa
+                      </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
+                <tfoot>
+                  <tr className="font-bold bg-slate-50">
+                    <td colSpan={5} className="border border-black p-1.5 text-right uppercase">
+                      Tổng cộng tiền hàng:
+                    </td>
+                    <td className="border border-black p-1.5 text-right font-black">
+                      {(selectedOrder.details?.reduce((sum, d) => sum + (Number(d.qty) || 0), 0) || selectedOrder.totalQty || 0).toLocaleString('vi-VN')}
+                    </td>
+                    <td className="border border-black p-1.5"></td>
+                    <td className="border border-black p-1.5 text-right font-black">
+                      {(selectedOrder.subtotal || selectedOrder.totalAmount || 0).toLocaleString('vi-VN')} đ
+                    </td>
+                  </tr>
+                  {Number(selectedOrder.discount || 0) > 0 && (
+                    <tr className="text-xs">
+                      <td colSpan={7} className="border border-black p-1.5 text-right font-bold">
+                        Chiết khấu:
+                      </td>
+                      <td className="border border-black p-1.5 text-right font-bold">
+                        -{(selectedOrder.discount || 0).toLocaleString('vi-VN')} đ
+                      </td>
+                    </tr>
+                  )}
+                  {Number(selectedOrder.vatAmount || 0) > 0 && (
+                    <tr className="text-xs">
+                      <td colSpan={7} className="border border-black p-1.5 text-right font-bold">
+                        Thuế GTGT (VAT):
+                      </td>
+                      <td className="border border-black p-1.5 text-right font-bold">
+                        +{(selectedOrder.vatAmount || 0).toLocaleString('vi-VN')} đ
+                      </td>
+                    </tr>
+                  )}
+                  <tr className="font-extrabold bg-slate-100 text-sm">
+                    <td colSpan={7} className="border border-black p-2 text-right uppercase">
+                      Tổng tiền thanh toán:
+                    </td>
+                    <td className="border border-black p-2 text-right font-black">
+                      {selectedOrder.totalAmount.toLocaleString('vi-VN')} đ
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
-              <div className="text-right font-black text-sm">Tong tiền: {selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ</div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer">
-                <Printer size={16} /> In Phiếu
-              </button>
+
+              {/* In Words */}
+              <div className="text-xs italic space-y-1">
+                <p>
+                  - Tổng số tiền (viết bằng chữ):{' '}
+                  <strong className="not-italic uppercase font-bold">
+                    {numberToVietnameseWords(selectedOrder.totalAmount)} đồng.
+                  </strong>
+                </p>
+                <p>- Chứng từ gốc kèm theo: ............................................................................................................</p>
+              </div>
+
+              {/* Signatures */}
+              <div className="grid grid-cols-4 gap-2 pt-6 text-center text-xs">
+                <div className="space-y-1">
+                  <p className="font-bold uppercase">Người lập phiếu</p>
+                  <p className="text-[10px] italic text-slate-500">(Ký, ghi rõ họ tên)</p>
+                  <div className="h-16" />
+                  <p className="font-bold text-xs">{selectedOrder.employeeName || currentUserName}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-bold uppercase">Người giao hàng</p>
+                  <p className="text-[10px] italic text-slate-500">(Ký, ghi rõ họ tên)</p>
+                  <div className="h-16" />
+                  <p className="font-bold text-xs">{selectedOrder.supplier}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-bold uppercase">Thủ kho</p>
+                  <p className="text-[10px] italic text-slate-500">(Ký, ghi rõ họ tên)</p>
+                  <div className="h-16" />
+                  <p className="font-bold text-xs">....................................</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-bold uppercase">Kế toán trưởng / Giám đốc</p>
+                  <p className="text-[10px] italic text-slate-500">(Ký, họ tên & đóng dấu)</p>
+                  <div className="h-16" />
+                  <p className="font-bold text-xs">....................................</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>,
