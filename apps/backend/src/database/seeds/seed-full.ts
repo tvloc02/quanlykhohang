@@ -13,9 +13,18 @@ export async function runSeed() {
     `🔌 Using database URL: ${databaseUrl.replace(/:[^:@]+@/, ":****@")}`,
   );
 
+  const isSsl =
+    process.env.DB_SSL === "true" ||
+    databaseUrl.includes("tidbcloud") ||
+    databaseUrl.includes("ssl=");
+
   const ds = new DataSource({
     type: "mysql",
     url: databaseUrl,
+    ssl: isSsl ? { rejectUnauthorized: true } : false,
+    extra: {
+      ssl: isSsl ? { rejectUnauthorized: true } : false,
+    },
   });
 
   await ds.initialize();

@@ -39,6 +39,20 @@ import { SettingsModule } from './settings/settings.module';
       autoLoadEntities: true,
       synchronize: true,
       logging: false,
+      ssl:
+        process.env.DB_SSL === 'true' ||
+        process.env.DATABASE_URL?.includes('tidbcloud') ||
+        process.env.DATABASE_URL?.includes('ssl=')
+          ? { rejectUnauthorized: true }
+          : false,
+      extra: {
+        ssl:
+          process.env.DB_SSL === 'true' ||
+          process.env.DATABASE_URL?.includes('tidbcloud') ||
+          process.env.DATABASE_URL?.includes('ssl=')
+            ? { rejectUnauthorized: true }
+            : false,
+      },
     }),
     AuthModule,
     UsersModule,

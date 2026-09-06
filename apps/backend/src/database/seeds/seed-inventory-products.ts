@@ -8,9 +8,18 @@ dotenv.config();
 export async function runInventorySeed() {
   const databaseUrl =
     process.env.DATABASE_URL || "mysql://root:root@localhost:3306/smart_wms";
+  const isSsl =
+    process.env.DB_SSL === "true" ||
+    databaseUrl.includes("tidbcloud") ||
+    databaseUrl.includes("ssl=");
+
   const ds = new DataSource({
     type: "mysql",
     url: databaseUrl,
+    ssl: isSsl ? { rejectUnauthorized: true } : false,
+    extra: {
+      ssl: isSsl ? { rejectUnauthorized: true } : false,
+    },
   });
 
   await ds.initialize();
