@@ -160,7 +160,7 @@ export default function InternalShippingNoteModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/80 p-3 sm:p-6 backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white">
+    <div className="internal-shipping-modal fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/80 p-3 sm:p-6 backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white">
       {/* Container Card */}
       <div className="flex w-full max-w-5xl max-h-[96vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl print:max-h-none print:shadow-none print:w-full print:rounded-none">
         
@@ -197,9 +197,10 @@ export default function InternalShippingNoteModal({
           
           <style>{`
             @media print {
-              body * { visibility: hidden; }
-              .print-area, .print-area * { visibility: visible; }
-              .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+              body:has(.internal-shipping-modal) * { visibility: hidden; }
+              body:has(.internal-shipping-modal) .print-area,
+              body:has(.internal-shipping-modal) .print-area * { visibility: visible; }
+              body:has(.internal-shipping-modal) .print-area { position: absolute; left: 0; top: 0; width: 100%; }
               .no-print { display: none !important; }
             }
           `}</style>

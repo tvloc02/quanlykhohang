@@ -48,6 +48,7 @@ import {
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import { usePermissions } from '../../shared/hooks/usePermissions';
+import { parseAssignedBinsFromNote } from '../../shared/utils/warehouseAssignments';
 
 const getInboundMenuId = (mode?: string) => {
   if (mode === 'purchase-order') return 'inbound-purchase-orders';
@@ -1047,10 +1048,7 @@ export default function Inbound({
 
           let parsedLocationBin = d.locationBin || '';
           if (!parsedLocationBin && d.note && d.note.includes('[Vị trí Ô:')) {
-            const match = d.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-            if (match && match[1]) {
-              parsedLocationBin = match[1];
-            }
+            parsedLocationBin = parseAssignedBinsFromNote(d.note).join(', ');
           }
           if (!parsedLocationBin && Array.isArray(d.assignedBins) && d.assignedBins.length > 0) {
             parsedLocationBin = d.assignedBins.join(', ');
@@ -1344,6 +1342,20 @@ export default function Inbound({
     return filteredOrders.slice(start, start + pageSize);
   }, [filteredOrders, currentPage, pageSize]);
 
+  const reportTotals = useMemo(() => {
+    return paginatedOrders.reduce(
+      (acc, ord) => {
+        acc.subtotal += Number(ord.subtotal || ord.totalAmount || 0);
+        acc.discount += Number(ord.discount || 0);
+        acc.vatAmount += Number(ord.vatAmount || 0);
+        acc.totalAmount += Number(ord.totalAmount || 0);
+        acc.amountPaid += Number(ord.amountPaid || ord.totalAmount || 0);
+        return acc;
+      },
+      { subtotal: 0, discount: 0, vatAmount: 0, totalAmount: 0, amountPaid: 0 }
+    );
+  }, [paginatedOrders]);
+
   if (showFormModal) {
     if (featureMode === 'return-supplier') {
       return (
@@ -1362,14 +1374,199 @@ export default function Inbound({
   }
 
   return (
-    <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+    <div className={isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
+
+      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
+      <style>{`
+        @page {
+          size: landscape;
+          margin: 5mm 6mm;
+        }
+        @media print {
+          @page {
+            size: landscape;
+            margin: 5mm 6mm;
+          }
+
+          /* 1. Ẩn toàn bộ thanh điều hướng, nút bấm, chatbot góc phải */
+          #dify-chatbot-bubble-button,
+          #dify-chatbot-bubble-window,
+          .dify-custom-controls,
+          iframe,
+          aside,
+          nav,
+          header,
+          footer,
+          .print\\:hidden {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+          }
+
+          /* 2. Đưa toàn bộ trang về nền trắng giấy in thuần túy, chữ đen, không màu mè */
+          html, body, #root, main, div, section {
+            background: #ffffff !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+          }
+
+          .overflow-hidden,
+          .overflow-x-auto,
+          .custom-scrollbar,
+          .rounded-2xl {
+            overflow: visible !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+
+          /* 3. Bảng in tự động co giãn vừa khít 100% chiều rộng khổ giấy A4 ngang, đường kẻ đen rõ nét */
+          table,
+          table[class*="min-w-"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: auto !important;
+            border-collapse: collapse !important;
+            border: 1px solid #000000 !important;
+            margin-top: 4px !important;
+            background: #ffffff !important;
+          }
+
+          /* 4. Kẻ dọc đầy đủ cho TẤT CẢ các ô (cả tiêu đề thead, nội dung tbody và dòng tổng tfoot) */
+          table, thead, tbody, tfoot, tr, th, td,
+          table thead th,
+          table tbody td,
+          table tfoot td,
+          th, td,
+          th[class*="border-"],
+          td[class*="border-"],
+          th[class*="min-w-"],
+          td[class*="min-w-"],
+          th[class*="whitespace-nowrap"],
+          td[class*="whitespace-nowrap"] {
+            min-width: 0 !important;
+            width: auto !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            font-size: 6.8pt !important;
+            line-height: 1.2 !important;
+            padding: 2px 1.5px !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            color: #000000 !important;
+            background: #ffffff !important;
+          }
+
+          thead {
+            display: table-header-group !important;
+          }
+
+          thead tr {
+            background: #f1f5f9 !important;
+          }
+
+          /* Tiêu đề bảng có kẻ dọc đậm rõ nét */
+          thead th,
+          table thead th {
+            background: #f1f5f9 !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            font-size: 7.2pt !important;
+            text-align: center !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            padding: 3px 1.5px !important;
+          }
+
+          tfoot {
+            display: table-footer-group !important;
+          }
+
+          tfoot tr {
+            background: #f8fafc !important;
+          }
+
+          /* Dòng tổng cộng căn lề phải, kẻ viền đầy đủ ra sát lề phải bảng */
+          tfoot td,
+          table tfoot td {
+            background: #f8fafc !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            font-size: 6.8pt !important;
+            text-align: right !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            padding: 2.5px 1.5px !important;
+            white-space: nowrap !important;
+          }
+
+          td button, td a {
+            color: #000000 !important;
+            text-decoration: none !important;
+            font-weight: 700 !important;
+            cursor: default !important;
+          }
+
+          td span[class*="rounded"] {
+            background: transparent !important;
+            color: #000000 !important;
+            border: none !important;
+            padding: 0 !important;
+            font-weight: 600 !important;
+            font-size: 6.8pt !important;
+          }
+        }
+      `}</style>
+
+      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
+      <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
+        <div className="flex justify-between items-start mb-2 text-xs">
+          <div>
+            <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
+            <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+          </div>
+          <div className="text-right text-[11px] text-slate-600">
+            <p>Mẫu biểu báo cáo hệ thống</p>
+            <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+          </div>
+        </div>
+        <div className="text-center my-2">
+          <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+            {featureMode === 'return-supplier' ? 'LẬP BÁO CÁO PHIẾU XUẤT TRẢ NHÀ CUNG CẤP' : 'LẬP BÁO CÁO PHIẾU NHẬP KHO'}
+          </h1>
+          <p className="text-xs text-slate-600 italic mt-0.5">
+            {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
+          </p>
+        </div>
+        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
+          <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
+          <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
+        </div>
+      </div>
 
       <div className="space-y-6 animate-in fade-in duration-200">
         {/* Top Header Section matching Outbound */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
           <div className="flex items-center gap-3">
-            <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
+            <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 dark:bg-indigo-600 px-5 py-2.5 text-white shadow-md">
               {featureMode === 'return-supplier' ? (
                 <CornerUpRight className="h-5 w-5" />
               ) : featureMode === 'return-customer' ? (
@@ -1389,8 +1586,8 @@ export default function Inbound({
             </div>
           </div>
 
-          {/* Action Buttons Top Right aligned in Cyan style */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Action Buttons Top Right aligned in Cyan/Indigo style */}
+          <div className="flex flex-wrap items-center gap-3 print:hidden">
             {/* 1. Thêm mới */}
             {canCreate && (
               <button
@@ -1402,9 +1599,9 @@ export default function Inbound({
                   }
                   handleOpenFormModal('create');
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
               >
-                <Plus className="h-4.5 w-4.5 text-cyan-700" />
+                <Plus className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
                 Thêm mới
               </button>
             )}
@@ -1414,9 +1611,9 @@ export default function Inbound({
               <button
                 type="button"
                 onClick={handleCopySelected}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
               >
-                <Copy className="h-4.5 w-4.5 text-cyan-700" />
+                <Copy className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
                 Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
               </button>
             )}
@@ -1426,9 +1623,9 @@ export default function Inbound({
               <button
                 type="button"
                 onClick={handleDeleteSelected}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
               >
-                <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+                <Trash2 className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
                 Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
               </button>
             )}
@@ -1438,9 +1635,9 @@ export default function Inbound({
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
               >
-                <Printer className="h-4.5 w-4.5 text-cyan-700" />
+                <Printer className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
                 In báo cáo
               </button>
             )}
@@ -1475,9 +1672,9 @@ export default function Inbound({
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 px-5 py-2.5 text-sm font-extrabold text-cyan-700 dark:text-indigo-300 shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
               >
-                <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+                <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
                 Export Excel
               </button>
             )}
@@ -1486,10 +1683,10 @@ export default function Inbound({
             <button
               type="button"
               onClick={() => setShowColumnSettings(true)}
-              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 font-extrabold text-sm shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border-2 border-cyan-700 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-700 dark:text-indigo-300 font-extrabold text-sm shadow-xs transition hover:bg-cyan-50 dark:hover:bg-indigo-950/60 active:scale-95 cursor-pointer"
               title="Cấu hình hiển thị cột"
             >
-              <Settings className="h-4.5 w-4.5 text-cyan-700" />
+              <Settings className="h-4.5 w-4.5 text-cyan-700 dark:text-indigo-300" />
               <span>Hiển thị</span>
             </button>
 
@@ -1497,7 +1694,7 @@ export default function Inbound({
             <button
               type="button"
               onClick={toggleBrowserFullscreen}
-              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-slate-300 bg-white text-slate-700 shadow-xs transition hover:bg-slate-100 active:scale-95 cursor-pointer"
+              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 shadow-xs transition hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 cursor-pointer"
               title="Toàn màn hình"
             >
               {isFullScreen ? <Minimize2 className="h-4.5 w-4.5" /> : <Maximize2 className="h-4.5 w-4.5" />}
@@ -1506,16 +1703,16 @@ export default function Inbound({
         </div>
 
         {/* Filter & Search Panel */}
-        <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] p-4 shadow-sm print:hidden">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             {/* Search input */}
             <div className="relative flex-1 min-w-[320px]">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600" />
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600 dark:text-indigo-400" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-12 w-full rounded-xl border-2 border-cyan-600/40 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
+                className="h-12 w-full rounded-xl border-2 border-cyan-600/40 dark:border-indigo-900/60 bg-white dark:bg-slate-950 pl-11 pr-4 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
                 placeholder={featureMode === 'return-supplier' ? "Tìm theo mã phiếu xuất trả, nhà cung cấp, SĐT, nhân viên..." : "Tìm theo mã phiếu nhập, nhà cung cấp, SĐT, nhân viên..."}
               />
             </div>
@@ -1523,39 +1720,39 @@ export default function Inbound({
             {/* Date & Status Filters Container */}
             <div className="flex flex-wrap items-center gap-3">
               {/* Date Filter Box (h-12) */}
-              <div className="inline-flex h-12 items-center gap-3 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
+              <div className="inline-flex h-12 items-center gap-3 rounded-xl border-2 border-cyan-600/30 dark:border-indigo-900/60 bg-slate-50/80 dark:bg-slate-900/80 px-3.5 shadow-2xs">
                 <div className="flex items-center gap-2">
-                  <Calendar className="h-4.5 w-4.5 text-cyan-600 shrink-0" />
-                  <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Thời gian:</span>
+                  <Calendar className="h-4.5 w-4.5 text-cyan-600 dark:text-indigo-400 shrink-0" />
+                  <span className="text-xs font-extrabold uppercase text-cyan-950 dark:text-indigo-200 tracking-wide">Thời gian:</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-slate-600">Từ</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Từ</span>
                   <input
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                    className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                   />
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-slate-600">Đến</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Đến</span>
                   <input
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
-                    className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                    className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                   />
                 </div>
               </div>
 
               {/* Status Filter Box (h-12) */}
-              <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
-                <Filter className="h-4 w-4 text-cyan-600 shrink-0" />
-                <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Trạng thái:</span>
+              <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 dark:border-indigo-900/60 bg-slate-50/80 dark:bg-slate-900/80 px-3.5 shadow-2xs">
+                <Filter className="h-4 w-4 text-cyan-600 dark:text-indigo-400 shrink-0" />
+                <span className="text-xs font-extrabold uppercase text-cyan-950 dark:text-indigo-200 tracking-wide">Trạng thái:</span>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                  className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                 >
                   <option value="all">Tất cả</option>
                   <option value="completed">{featureMode === 'return-supplier' ? 'Đã xuất trả' : 'Đã nhập kho'}</option>
@@ -1569,37 +1766,37 @@ export default function Inbound({
         </div>
 
         {/* Main Order List Table */}
-        <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full min-w-[1850px] border-collapse text-left">
-              <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
-                <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
-                  <th className="w-12 min-w-[50px] border-r border-slate-200 px-2 py-4 text-center">
+        <div className="overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] shadow-sm print:overflow-visible print:border-none print:shadow-none print:rounded-none print:bg-white print:p-0">
+          <div className="overflow-x-auto custom-scrollbar print:overflow-visible print:p-0">
+            <table className="w-full min-w-[1850px] print:min-w-0 print:w-full print:table-auto border-collapse text-left">
+              <thead className="bg-cyan-50 dark:bg-indigo-950/80 sticky top-0 z-20 shadow-sm">
+                <tr className="border-b-2 border-slate-200 dark:border-indigo-900/60 text-slate-800 dark:text-slate-100 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
+                  <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center print:hidden">
                     <input
                       type="checkbox"
                       checked={paginatedOrders.length > 0 && selectedIds.size === paginatedOrders.length}
                       onChange={toggleSelectAll}
-                      className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                      className="h-4.5 w-4.5 rounded border-slate-300 dark:border-indigo-900/60 accent-cyan-600 dark:accent-indigo-600 focus:ring-cyan-500 cursor-pointer"
                     />
                   </th>
-                  <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
-                  {columnVis.code && <th className="min-w-[210px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">{featureMode === 'return-supplier' ? 'Mã phiếu xuất' : 'Mã phiếu'}</th>}
-                  {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Ngày xuất' : 'Ngày nhập'}</th>}
-                  {columnVis.supplierName && <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">Nhà cung cấp</th>}
-                  {columnVis.supplierPhone && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">SĐT</th>}
-                  {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Kho xuất' : 'Kho'}</th>}
-                  {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'NV xuất' : 'Nhân viên'}</th>}
-                  {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Thành tiền</th>}
-                  {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 px-3 py-4 text-center">Chiết khấu</th>}
-                  {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">VAT</th>}
-                  {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Tổng tiền trả' : 'Tổng tiền'}</th>}
-                  {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'NCC hoàn tiền' : 'Thanh toán'}</th>}
-                  {columnVis.note && <th className="min-w-[180px] border-r border-slate-200 px-4 py-4 text-center">Ghi chú</th>}
-                  {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>}
-                  <th className="sticky right-0 top-0 z-30 w-56 min-w-[210px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
+                  <th className="w-14 min-w-[60px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">STT</th>
+                  {columnVis.code && <th className="min-w-[210px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{featureMode === 'return-supplier' ? 'Mã phiếu xuất' : 'Mã phiếu'}</th>}
+                  {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Ngày xuất' : 'Ngày nhập'}</th>}
+                  {columnVis.supplierName && <th className="min-w-[220px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">Nhà cung cấp</th>}
+                  {columnVis.supplierPhone && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">SĐT</th>}
+                  {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Kho xuất' : 'Kho'}</th>}
+                  {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'NV xuất' : 'Nhân viên'}</th>}
+                  {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Thành tiền</th>}
+                  {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Chiết khấu</th>}
+                  {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">VAT</th>}
+                  {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'Tổng tiền trả' : 'Tổng tiền'}</th>}
+                  {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{featureMode === 'return-supplier' ? 'NCC hoàn tiền' : 'Thanh toán'}</th>}
+                  {columnVis.note && <th className="min-w-[180px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">Ghi chú</th>}
+                  {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Trạng thái</th>}
+                  <th className="sticky right-0 top-0 z-30 w-56 min-w-[210px] bg-cyan-100 dark:bg-indigo-900/90 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 text-cyan-950 dark:text-indigo-100 font-black print:hidden">Thao tác</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 bg-white">
+              <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40 bg-white dark:bg-slate-950">
                 {loading ? (
                   <tr>
                     <td colSpan={16} className="py-12 text-center text-slate-500 font-semibold text-sm">
@@ -1617,54 +1814,54 @@ export default function Inbound({
                     const isSelected = selectedIds.has(ord.id);
                     return (
                       <React.Fragment key={ord.id}>
-                        <tr className={`group transition cursor-pointer border-b border-slate-200 ${isSelected ? 'bg-cyan-100/60' : 'hover:bg-cyan-50/60'}`}>
-                          <td className="border-r border-slate-200 px-2 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        <tr className={`group transition cursor-pointer border-b border-slate-200 dark:border-indigo-900/40 ${isSelected ? 'bg-cyan-100/60 dark:bg-indigo-950/70' : 'hover:bg-cyan-50/60 dark:hover:bg-indigo-950/40'}`}>
+                          <td className="border-r border-slate-200 dark:border-indigo-900/40 px-2 py-3.5 text-center print:hidden" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => toggleSelectOne(ord.id)}
-                              className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                              className="h-4 w-4 rounded border-slate-300 dark:border-indigo-900/60 text-cyan-600 dark:text-indigo-400 focus:ring-cyan-500 cursor-pointer"
                             />
                           </td>
-                          <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">
+                          <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">
                             {(currentPage - 1) * pageSize + index + 1}
                           </td>
                           {columnVis.code && (
-                            <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-extrabold text-cyan-700 whitespace-nowrap">
+                            <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-center text-sm font-extrabold text-cyan-700 dark:text-indigo-400 whitespace-nowrap">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSearchParams({ action: 'view', id: ord.id });
                                 }}
-                                className="text-cyan-700 hover:text-cyan-900 hover:underline font-extrabold text-center cursor-pointer whitespace-nowrap"
+                                className="text-cyan-700 dark:text-indigo-300 hover:text-cyan-900 dark:hover:text-indigo-100 hover:underline font-extrabold text-center cursor-pointer whitespace-nowrap"
                                 title="Bấm để xem thông tin chi tiết đơn nhập"
                               >
                                 {ord.receiptNo}
                               </button>
                             </td>
                           )}
-                          {columnVis.date && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.orderDate}</td>}
-                          {columnVis.supplierName && <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-extrabold text-slate-800">{ord.supplier}</td>}
-                          {columnVis.supplierPhone && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.supplierPhone || '-'}</td>}
+                          {columnVis.date && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.orderDate}</td>}
+                          {columnVis.supplierName && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-center text-sm font-extrabold text-slate-800 dark:text-slate-100">{ord.supplier}</td>}
+                          {columnVis.supplierPhone && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.supplierPhone || '-'}</td>}
                           {columnVis.branch && (
-                            <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
+                            <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-bold text-slate-800 dark:text-slate-200">
                               {formatWarehouseDisplay(ord.warehouseCode, warehouses)}
                             </td>
                           )}
-                          {columnVis.nv && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.employeeName || currentUserName}</td>}
-                          {columnVis.subtotal && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-bold text-slate-800">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
-                          {columnVis.discount && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-medium text-slate-600">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
-                          {columnVis.vat && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-medium text-slate-600">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
-                          {columnVis.totalAmount && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-black text-slate-900">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
-                          {columnVis.amountPaid && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
-                          {columnVis.note && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[180px] truncate" title={ord.description}>{ord.description || '-'}</td>}
+                          {columnVis.nv && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.employeeName || currentUserName}</td>}
+                          {columnVis.subtotal && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-bold text-slate-800 dark:text-slate-200">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                          {columnVis.discount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
+                          {columnVis.vat && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
+                          {columnVis.totalAmount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-black text-slate-900 dark:text-slate-100">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
+                          {columnVis.amountPaid && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700 dark:text-emerald-400">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                          {columnVis.note && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-sm font-medium text-slate-600 dark:text-slate-400 max-w-[180px] truncate" title={ord.description}>{ord.description || '-'}</td>}
                           {columnVis.status && (
-                            <td className="border-r border-slate-200 px-3 py-3.5 text-center">
+                            <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center">
                               <StatusBadge status={ord.status} />
                             </td>
                           )}
-                          <td className="sticky right-0 z-10 w-56 min-w-[210px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200">
+                          <td className="sticky right-0 z-10 w-56 min-w-[210px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                             <div className="flex items-center justify-center gap-1.5">
                               {canEdit && (
                                 <button
@@ -1680,8 +1877,8 @@ export default function Inbound({
                                       : 'Phiếu đã lưu chính thức / đã nhập kho, không thể chỉnh sửa'
                                   }
                                   className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 transition shadow-sm ${['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '')
-                                      ? 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
-                                      : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed opacity-50'
+                                      ? 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
+                                      : 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
                                     }`}
                                 >
                                   <Pencil size={16} strokeWidth={2.5} />
@@ -1694,7 +1891,7 @@ export default function Inbound({
                                   setSearchParams({ action: 'view', id: ord.id });
                                 }}
                                 title="Xem chi tiết đơn hàng"
-                                className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                                className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
                                 <Eye size={16} strokeWidth={2.5} />
                               </button>
@@ -1705,7 +1902,7 @@ export default function Inbound({
                                   handleViewDetail(ord, true);
                                 }}
                                 title="Xem vị trí xếp kho & ô kệ"
-                                className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                                className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
                                 <MapPin size={16} strokeWidth={2.5} />
                               </button>
@@ -1717,7 +1914,7 @@ export default function Inbound({
                                     handleViewDetail(ord, false).then(() => setShowPrintModal(true));
                                   }}
                                   title="In phiếu nhập"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                                 >
                                   <Printer size={16} strokeWidth={2.5} />
                                 </button>
@@ -1730,7 +1927,7 @@ export default function Inbound({
                                     handleDeleteSingleOrder(ord);
                                   }}
                                   title="Xóa phiếu nhập"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 bg-white text-rose-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-700 cursor-pointer"
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm transition hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer"
                                 >
                                   <Trash2 size={16} strokeWidth={2.5} />
                                 </button>
@@ -1741,12 +1938,12 @@ export default function Inbound({
 
                         {/* Itemized Sub-table Expansion when showDetail is checked */}
                         {showDetail && ord.details && ord.details.length > 0 && (
-                          <tr className="bg-slate-50/80">
-                            <td colSpan={17} className="p-3 border border-slate-200">
-                              <div className="rounded-lg border border-slate-300 bg-white p-2">
-                                <p className="text-[11px] font-bold text-cyan-800 uppercase mb-2">Chi tiết mặt hàng phiếu {ord.receiptNo}:</p>
+                          <tr className="bg-slate-50/80 dark:bg-slate-900/80">
+                            <td colSpan={17} className="p-3 border border-slate-200 dark:border-indigo-900/40">
+                              <div className="rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 p-2">
+                                <p className="text-[11px] font-bold text-cyan-800 dark:text-indigo-300 uppercase mb-2">Chi tiết mặt hàng phiếu {ord.receiptNo}:</p>
                                 <table className="w-full text-xs text-left">
-                                  <thead className="bg-slate-100 font-bold text-slate-600 border-b">
+                                  <thead className="bg-slate-100 dark:bg-slate-900 font-bold text-slate-600 dark:text-slate-300 border-b dark:border-indigo-900/40">
                                     <tr>
                                       <th className="p-1.5 text-center">SKU</th>
                                       <th className="p-1.5 text-center">Tên sản phẩm</th>
@@ -1756,15 +1953,15 @@ export default function Inbound({
                                       <th className="p-1.5 text-center">Thành tiền</th>
                                     </tr>
                                   </thead>
-                                  <tbody className="divide-y divide-slate-100">
+                                  <tbody className="divide-y divide-slate-100 dark:divide-indigo-900/30">
                                     {ord.details.map((d, dIdx) => (
                                       <tr key={dIdx}>
-                                        <td className="p-1.5 font-bold text-cyan-700 text-center">{d.productSku}</td>
-                                        <td className="p-1.5 font-medium">{d.productName}</td>
-                                        <td className="p-1.5 text-center">{d.unit}</td>
-                                        <td className="p-1.5 text-center font-bold">{d.qty}</td>
-                                        <td className="p-1.5 text-right">{d.price.toLocaleString('vi-VN')} đ</td>
-                                        <td className="p-1.5 text-right font-bold text-slate-900">{(d.totalLineAmount || (d.qty * d.price)).toLocaleString('vi-VN')} đ</td>
+                                        <td className="p-1.5 font-bold text-cyan-700 dark:text-indigo-400 text-center">{d.productSku}</td>
+                                        <td className="p-1.5 font-medium dark:text-slate-200">{d.productName}</td>
+                                        <td className="p-1.5 text-center dark:text-slate-300">{d.unit}</td>
+                                        <td className="p-1.5 text-center font-bold dark:text-slate-100">{d.qty}</td>
+                                        <td className="p-1.5 text-right dark:text-slate-300">{d.price.toLocaleString('vi-VN')} đ</td>
+                                        <td className="p-1.5 text-right font-bold text-slate-900 dark:text-slate-100">{(d.totalLineAmount || (d.qty * d.price)).toLocaleString('vi-VN')} đ</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -1778,21 +1975,68 @@ export default function Inbound({
                   })
                 )}
               </tbody>
+              <tfoot className="bg-slate-100 dark:bg-slate-900 font-extrabold border-t-2 border-slate-300 dark:border-indigo-900/80">
+                <tr className="text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
+                  <td className="print:hidden p-2 text-center" />
+                  <td
+                    colSpan={
+                      1 +
+                      (columnVis.code ? 1 : 0) +
+                      (columnVis.date ? 1 : 0) +
+                      (columnVis.supplierName ? 1 : 0) +
+                      (columnVis.supplierPhone ? 1 : 0) +
+                      (columnVis.branch ? 1 : 0) +
+                      (columnVis.nv ? 1 : 0)
+                    }
+                    className="p-3 text-left pl-4 font-black uppercase tracking-wider text-cyan-900 dark:text-indigo-300 border-r border-slate-200 dark:border-indigo-900/40"
+                  >
+                    TỔNG CỘNG ({paginatedOrders.length} PHIẾU):
+                  </td>
+                  {columnVis.subtotal && (
+                    <td className="p-3 text-right font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                      {reportTotals.subtotal.toLocaleString('vi-VN')} đ
+                    </td>
+                  )}
+                  {columnVis.discount && (
+                    <td className="p-3 text-right font-black text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                      {reportTotals.discount.toLocaleString('vi-VN')} đ
+                    </td>
+                  )}
+                  {columnVis.vat && (
+                    <td className="p-3 text-right font-black text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                      {reportTotals.vatAmount.toLocaleString('vi-VN')} đ
+                    </td>
+                  )}
+                  {columnVis.totalAmount && (
+                    <td className="p-3 text-right font-black text-cyan-950 dark:text-indigo-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                      {reportTotals.totalAmount.toLocaleString('vi-VN')} đ
+                    </td>
+                  )}
+                  {columnVis.amountPaid && (
+                    <td className="p-3 text-right font-black text-emerald-800 dark:text-emerald-400 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                      {reportTotals.amountPaid.toLocaleString('vi-VN')} đ
+                    </td>
+                  )}
+                  {columnVis.note && <td className="border-r border-slate-200 dark:border-indigo-900/40 p-2">&nbsp;</td>}
+                  {columnVis.status && <td className="border-r border-slate-200 dark:border-indigo-900/40 p-2">&nbsp;</td>}
+                  <td className="print:hidden border-l border-slate-200 dark:border-indigo-900/60" />
+                </tr>
+              </tfoot>
             </table>
           </div>
 
           {/* Pagination Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-4 border-t-2 border-slate-200 bg-slate-50/90 px-4 py-3.5 text-sm font-bold text-slate-700">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-t-2 border-slate-200 dark:border-indigo-900/60 bg-slate-50/90 dark:bg-slate-900/90 px-4 py-3.5 text-sm font-bold text-slate-700 dark:text-slate-300 print:hidden">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-extrabold text-slate-700">Hiển thị:</span>
+                <span className="text-sm font-extrabold text-slate-700 dark:text-slate-200">Hiển thị:</span>
                 <select
                   value={pageSize}
                   onChange={(e) => {
                     setPageSize(Number(e.target.value));
                     setCurrentPage(1);
                   }}
-                  className="h-9 rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer shadow-xs"
+                  className="h-9 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-sm font-black text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer shadow-xs"
                 >
                   <option value={20}>20</option>
                   <option value={50}>50</option>
@@ -1844,6 +2088,28 @@ export default function Inbound({
                 <ChevronsRight size={18} strokeWidth={2.5} />
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+        <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
+          <div>
+            <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
+            <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+            <div className="h-20" />
+            <p className="font-bold text-slate-900">{currentUserName}</p>
+          </div>
+          <div>
+            <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
+            <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+            <div className="h-20" />
+            <p className="text-slate-400 italic font-medium">................................................</p>
+          </div>
+          <div>
+            <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
+            <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
+            <div className="h-20" />
+            <p className="text-slate-400 italic font-medium">................................................</p>
           </div>
         </div>
       </div>

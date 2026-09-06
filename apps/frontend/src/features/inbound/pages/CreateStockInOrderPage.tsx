@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, buildWarehouseRackTopology, upsertWarehouseToApi, type WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, buildWarehouseRackTopology, upsertWarehouseToApi, type WarehouseRecord, getRackLetterPrefix, calculateGlobalShelfIndex, type RackConfig, clearAllDraftSlotLocks, releaseActiveDraftSlotLocks, parseAssignedBinsFromNote, stripAssignedBinsFromNote } from '../../../shared/utils/warehouseAssignments';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
@@ -120,10 +120,7 @@ export function formatLocationDisplay(row: { note?: string; assignedBins?: strin
   } else if (row.locationBin && row.locationBin.trim()) {
     binsArr = row.locationBin.split(',').map((s) => s.trim()).filter(Boolean);
   } else if (row.note && row.note.includes('Vị trí Ô:')) {
-    const match = row.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-    if (match && match[1]) {
-      binsArr = match[1].split(',').map((s) => s.trim()).filter(Boolean);
-    }
+    binsArr = parseAssignedBinsFromNote(row.note);
   }
 
   if (binsArr.length > 0) {
@@ -1069,12 +1066,9 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
         );
       }
       if (validBins.length === 0 && item.note) {
-        const match = item.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-        if (match) {
-          validBins = match[1].split(',').map((s) => s.trim()).filter(
-            (b) => b && b.trim() !== '' && b !== item.warehouseCode
-          );
-        }
+        validBins = parseAssignedBinsFromNote(item.note).filter(
+          (b) => b && b.trim() !== '' && b !== item.warehouseCode
+        );
       }
       return validBins;
     };
@@ -1519,7 +1513,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
     const updatedRows = items.map((r) => {
       const chosenBins = selectedBinsMap[r.rowId] || [];
       if (chosenBins.length > 0) {
-        const cleanNote = (r.note || '').replace(/\[Vị trí Ô:\s*[^\]]+\]/g, '').trim();
+        const cleanNote = stripAssignedBinsFromNote(r.note);
         return {
           ...r,
           assignedBins: chosenBins,
@@ -1527,7 +1521,7 @@ const AiSlottingChatModal: React.FC<AiSlottingChatModalProps> = ({
           note: cleanNote ? `${cleanNote} [Vị trí Ô: ${chosenBins.join(', ')}]` : `[Vị trí Ô: ${chosenBins.join(', ')}]`,
         };
       } else {
-        const cleanNote = (r.note || '').replace(/\[Vị trí Ô:\s*[^\]]+\]/g, '').trim();
+        const cleanNote = stripAssignedBinsFromNote(r.note);
         return {
           ...r,
           assignedBins: [],
@@ -2262,6 +2256,7 @@ export default function CreateStockInOrderPage({
       setToast({ message: 'Không thể đóng tab duy nhất', type: 'error' });
       return;
     }
+    releaseActiveDraftSlotLocks(tabIdToClose);
     const nextTabs = tabs.filter((t) => t.tabId !== tabIdToClose);
     setTabs(nextTabs);
     if (activeTabId === tabIdToClose) {
@@ -2283,6 +2278,18 @@ export default function CreateStockInOrderPage({
     const timer = setTimeout(() => setToast(null), 3500);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // Clean stale uncommitted draft locks on mount/create
+  useEffect(() => {
+    const isCreate = (
+      actionParam === 'create' ||
+      window.location.search.includes('action=create') ||
+      window.location.search.includes('mode=create')
+    );
+    if (isCreate) {
+      clearAllDraftSlotLocks();
+    }
+  }, [actionParam]);
 
   // Click outside listener for dropdowns
   useEffect(() => {
@@ -2437,7 +2444,7 @@ export default function CreateStockInOrderPage({
 
         const detailsList: FormDetailRow[] = (orderData.details || []).map((d: any, idx: number) => {
           const p = d.product || {};
-          const reqQty = Number(d.requestedQty || d.actualQty || d.expectedQty || d.receivedQty || 0);
+          let reqQty = Number(d.requestedQty || d.actualQty || d.expectedQty || d.receivedQty || 0);
           const uPrice = Number(d.unitPrice || p.importPrice || p.purchasePrice || p.price || 0);
           const discP = Number(d.discountPercent || 0);
           const vatP = Number(d.vatPercent || 0);
@@ -2450,6 +2457,18 @@ export default function CreateStockInOrderPage({
           if (tot >= 99999999.90 || (calculatedTotalLine > 0 && Math.abs(tot - calculatedTotalLine) > 1000)) {
             tot = calculatedTotalLine;
           }
+
+          // Fallback: recover quantity if 0 from note bin sum or line total / unit price
+          const binQtyMatches = [...(d.note || '').matchAll(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/g)];
+          const binSumQty = binQtyMatches.reduce((sum: number, m: any) => sum + Number(m[1]), 0);
+          if (reqQty <= 0) {
+            if (binSumQty > 0) {
+              reqQty = binSumQty;
+            } else if (tot > 0 && uPrice > 0) {
+              reqQty = Math.round(tot / uPrice);
+            }
+          }
+
           const rowWhCode = d.warehouseCode || orderWhCode;
           const rawAssignedBins = Array.isArray(d.assignedBins) ? d.assignedBins : [];
           let parsedBins: string[] = rawAssignedBins.filter((b: string) => b && b.length > 2 && b !== rowWhCode);
@@ -2459,11 +2478,38 @@ export default function CreateStockInOrderPage({
           }
 
           if (parsedBins.length === 0 && d.note && typeof d.note === 'string' && d.note.includes('[Vị trí Ô:')) {
-            const match = d.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-            if (match && match[1]) {
-              parsedBins = match[1].split(',').map((b: string) => b.trim()).filter((b: string) => b && b.length > 2 && b !== rowWhCode);
-            }
+            parsedBins = parseAssignedBinsFromNote(d.note).filter((b: string) => b && b.length > 2 && b !== rowWhCode);
           }
+
+          const rowAllocations: Record<string, { qty: number; pct: number; isManual: boolean; isCustomQty: boolean }> = {};
+          const rowQtyMap: Record<string, number> = {};
+
+          parsedBins.forEach((bStr: string) => {
+            const cleanB = bStr.split('(')[0].trim();
+            const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+            const keyB = cleanB.trim().toUpperCase().replace(/_/g, '-');
+            const strippedB = cleanB.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+            const pctM = bStr.match(/\((\d+(?:\.\d+)?)%\)/);
+            const pctVal = pctM ? Number(pctM[1]) : 100;
+
+            const qtyM = bStr.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+            const qtyVal = qtyM ? Number(qtyM[1]) : 0;
+            const isCustom = Boolean(qtyM && qtyVal > 0);
+
+            const allocEntry = { qty: qtyVal, pct: pctVal, isManual: isCustom, isCustomQty: isCustom };
+            rowAllocations[keyB] = allocEntry;
+            rowAllocations[cleanB] = allocEntry;
+            rowAllocations[shortB] = allocEntry;
+            rowAllocations[strippedB] = allocEntry;
+
+            if (qtyVal > 0) {
+              rowQtyMap[keyB] = qtyVal;
+              rowQtyMap[cleanB] = qtyVal;
+              rowQtyMap[shortB] = qtyVal;
+              rowQtyMap[strippedB] = qtyVal;
+            }
+          });
 
           let parsedExpiry = d.expiryDate ? String(d.expiryDate).split('T')[0] : '';
           if (!parsedExpiry && d.note && typeof d.note === 'string' && d.note.includes('[HSD:')) {
@@ -2495,6 +2541,8 @@ export default function CreateStockInOrderPage({
             warehouseCode: rowWhCode,
             locationBin: parsedBins.join(', ') || rowWhCode,
             assignedBins: parsedBins.length > 0 ? parsedBins : [rowWhCode],
+            binAllocations: rowAllocations,
+            allocatedQtyMap: rowQtyMap,
           };
         });
 
@@ -2574,6 +2622,10 @@ export default function CreateStockInOrderPage({
   const handleBackNavigation = () => {
     sessionStorage.removeItem('inbound_tabs_draft');
     sessionStorage.removeItem('inbound_active_tab_id');
+    if (activeTab?.tabId) {
+      releaseActiveDraftSlotLocks(activeTab.tabId);
+    }
+    clearAllDraftSlotLocks();
     if (onBack) {
       onBack();
     } else {
@@ -3110,6 +3162,11 @@ export default function CreateStockInOrderPage({
         if (r.expiryDate && !noteText.includes('[HSD:')) {
           noteText = noteText ? `${noteText} [HSD: ${r.expiryDate}]` : `[HSD: ${r.expiryDate}]`;
         }
+        const binStr = r.locationBin || (Array.isArray(r.assignedBins) ? r.assignedBins.join(', ') : '');
+        if (binStr) {
+          const clean = stripAssignedBinsFromNote(noteText);
+          noteText = clean ? `${clean} [Vị trí Ô: ${binStr}]` : `[Vị trí Ô: ${binStr}]`;
+        }
         return {
           productId: r.productId,
           productSku: r.productSku,
@@ -3169,6 +3226,9 @@ export default function CreateStockInOrderPage({
           const updatedSubs = currentSubWarehouses.map((sub: any) => {
             const racks = (sub.racks || []).map((rk: any) => {
               const custom = { ...(rk.customBins || {}) };
+              const rackCodeUpper = String(rk.rackCode || '').trim().toUpperCase();
+              const rackIdUpper = String(rk.id || '').trim().toUpperCase();
+
               activeValidItems.forEach((r) => {
                 let assignedList: string[] = Array.isArray(r.assignedBins) ? r.assignedBins : [];
                 if (assignedList.length === 0 && r.locationBin) {
@@ -3177,27 +3237,44 @@ export default function CreateStockInOrderPage({
                 assignedList.forEach((bCode) => {
                   if (!bCode) return;
                   const cleanCode = bCode.split('(')[0].trim();
-                  const normTarget = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                  const cleanCodeUpper = cleanCode.toUpperCase();
+                  const codeParts = cleanCodeUpper.split('-');
+                  const normTarget = cleanCodeUpper.replace(/[^A-Z0-9]/g, '');
                   const shortBin = (cleanCode.split('-').pop() || cleanCode).toUpperCase();
 
-                  if (cleanCode.includes(rk.id || rk.rackCode) || rk.rackCode === (cleanCode.split('-')[1] || '') || cleanCode.startsWith(rk.rackCode)) {
-                    const pctMatch = bCode.match(/\((\d+)%\)/);
-                    const addedPct = pctMatch ? Number(pctMatch[1]) : 100;
-                    const addedQty = Number(r.qty || 0);
+                  const isRackMatch = (rackCodeUpper && (codeParts.includes(rackCodeUpper) || cleanCodeUpper.includes('-' + rackCodeUpper + '-') || cleanCodeUpper.includes(rackCodeUpper))) ||
+                                      (rackIdUpper && (codeParts.includes(rackIdUpper) || cleanCodeUpper.includes(rackIdUpper)));
 
-                    const existing = custom[cleanCode] || custom[normTarget] || { occupancyPct: 0, totalPhysical: 0 };
-                    const oldPct = Number(existing.occupancyPct || 0);
-                    const oldQty = Number(existing.totalPhysical || 0);
-                    const newPct = Math.min(100, oldPct + addedPct);
-                    const newQty = oldQty + addedQty;
+                  if (isRackMatch) {
+                    const pctMatch = bCode.match(/\((\d+(?:\.\d+)?)%\)/);
+                    const binPct = pctMatch ? Number(pctMatch[1]) : 100;
+
+                    let binQty = 0;
+                    const qtyMatch = bCode.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+                    if (qtyMatch) {
+                      binQty = Number(qtyMatch[1]);
+                    } else if ((r as any).allocatedQtyMap && (r as any).allocatedQtyMap[cleanCode] !== undefined) {
+                      binQty = Number((r as any).allocatedQtyMap[cleanCode]);
+                    } else if ((r as any).allocatedQtyMap && (r as any).allocatedQtyMap[shortBin] !== undefined) {
+                      binQty = Number((r as any).allocatedQtyMap[shortBin]);
+                    } else if (assignedList.length > 0) {
+                      binQty = Math.round(Number(r.qty || 0) / assignedList.length);
+                    } else {
+                      binQty = Number(r.qty || 0);
+                    }
 
                     const updatedEntry = {
-                      ...existing,
-                      occupancyPct: newPct,
-                      totalPhysical: newQty,
-                      notes: `Đã chứa: ${newPct}% (${newQty} cái)`,
+                      binCode: shortBin,
+                      length: 120,
+                      width: 80,
+                      height: 100,
+                      maxWeight: 500,
+                      occupancyPct: binPct,
+                      totalPhysical: binQty,
+                      notes: `Đã chứa: ${binPct}% (${binQty} cái)`,
                       productName: r.productName,
-                      unit: r.unit,
+                      sku: r.productSku,
+                      unit: r.unit || 'cái',
                     };
 
                     custom[cleanCode] = updatedEntry;
@@ -3244,6 +3321,10 @@ export default function CreateStockInOrderPage({
       if (whCodeToClean) {
         localStorage.removeItem(`cleared_warehouse_goods_${whCodeToClean}`);
       }
+      if (activeTab?.tabId) {
+        releaseActiveDraftSlotLocks(activeTab.tabId);
+      }
+      clearAllDraftSlotLocks();
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
       window.dispatchEvent(new Event('storage'));
 
@@ -4365,7 +4446,9 @@ export default function CreateStockInOrderPage({
         subWarehouses={activeTab?.stagedSubWarehouses}
         orderNo={activeTab?.orderNo}
         tabId={activeTab?.tabId}
+        readOnly={isReadOnly}
         onConfirmAll={(updatedRows, updatedSubWarehouses) => {
+          if (isReadOnly) return;
           updateActiveTab((t) => ({
             ...t,
             details: updatedRows,

@@ -88,6 +88,69 @@ function toDateString(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+export function parseAssignedBinsFromNote(note: string | null | undefined): string[] {
+  if (!note || typeof note !== 'string') return [];
+  const prefix = '[Vị trí Ô:';
+  const startIdx = note.indexOf(prefix);
+  if (startIdx === -1) return [];
+
+  let depth = 0;
+  const contentStart = startIdx + prefix.length;
+  let contentEnd = -1;
+
+  for (let i = startIdx; i < note.length; i++) {
+    if (note[i] === '[') {
+      depth++;
+    } else if (note[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        contentEnd = i;
+        break;
+      }
+    }
+  }
+
+  const rawContent = contentEnd !== -1
+    ? note.slice(contentStart, contentEnd)
+    : note.slice(contentStart);
+
+  return rawContent
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function stripAssignedBinsFromNote(note: string | null | undefined): string {
+  if (!note || typeof note !== 'string') return '';
+  const prefix = '[Vị trí Ô:';
+  const startIdx = note.indexOf(prefix);
+  if (startIdx === -1) return note.trim();
+
+  let depth = 0;
+  let contentEnd = -1;
+
+  for (let i = startIdx; i < note.length; i++) {
+    if (note[i] === '[') {
+      depth++;
+    } else if (note[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        contentEnd = i;
+        break;
+      }
+    }
+  }
+
+  if (contentEnd !== -1) {
+    const before = note.slice(0, startIdx);
+    const after = note.slice(contentEnd + 1);
+    return `${before} ${after}`.replace(/\s+/g, ' ').trim();
+  }
+
+  return note.replace(/\[Vị trí Ô:.*$/s, '').trim();
+}
+
+
 function normalizeStatus(status?: string) {
   return status ? status.toUpperCase() : '';
 }
@@ -698,7 +761,17 @@ export class InboundService {
         product = await this.resolveProductFromSupplierProduct(item.supplierProductId);
       }
 
-      const qty = parseNumber(item.receivedQty ?? item.expectedQty ?? item.qty);
+      const expQty = parseNumber(
+        (item.expectedQty !== undefined && Number(item.expectedQty) > 0)
+          ? item.expectedQty
+          : ((item.qty !== undefined && Number(item.qty) > 0)
+              ? item.qty
+              : item.receivedQty)
+      );
+      const recQty = parseNumber(
+        item.receivedQty !== undefined ? item.receivedQty : (receipt.status === 'RECEIVED' || receipt.status === 'COMPLETED' ? expQty : 0)
+      );
+      const qty = expQty > 0 ? expQty : recQty;
       if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
 
       const unitPrice = parseNumber(item.unitPrice ?? item.price ?? (product?.price || 0));
@@ -719,21 +792,18 @@ export class InboundService {
       const assignedStr = (item as any).locationBin || (Array.isArray((item as any).assignedBins) ? (item as any).assignedBins.join(', ') : '');
       let noteContent = item.note ? String(item.note) : '';
       if (assignedStr) {
-        if (noteContent.includes('[Vị trí Ô:')) {
-          noteContent = noteContent.replace(/\[Vị trí Ô:\s*[^\]]+\]/g, `[Vị trí Ô: ${assignedStr}]`);
-        } else {
-          noteContent = noteContent
-            ? `${noteContent} [Vị trí Ô: ${assignedStr}]`
-            : `[Vị trí Ô: ${assignedStr}]`;
-        }
+        const cleanNote = stripAssignedBinsFromNote(noteContent);
+        noteContent = cleanNote
+          ? `${cleanNote} [Vị trí Ô: ${assignedStr}]`
+          : `[Vị trí Ô: ${assignedStr}]`;
       }
 
       const detail = this.detailRepo.create({
         inboundReceipt: receipt,
         product: product || undefined,
         warehouseCode: targetWhCode,
-        expectedQty: qty,
-        receivedQty: qty,
+        expectedQty: expQty > 0 ? expQty : qty,
+        receivedQty: receipt.status === 'RECEIVED' || receipt.status === 'COMPLETED' ? (recQty > 0 ? recQty : expQty) : recQty,
         unitPrice: unitPrice.toFixed(2),
         requestedPrice: unitPrice.toFixed(2),
         discountPercent: discPercent,
@@ -859,18 +929,18 @@ export class InboundService {
       const mainWhCode = detail.warehouseCode || 'KHO-NVL';
       const noteText = detail.note || '';
 
-      const specificBins: string[] = [];
-      if (noteText.includes('[Vị trí Ô:')) {
-        const match = noteText.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-        if (match && match[1]) {
-          match[1].split(',').forEach((c) => {
-            const rawCode = c.trim();
-            if (rawCode) {
-              const cleanCode = rawCode.split('(')[0].trim();
-              if (cleanCode) specificBins.push(cleanCode);
-            }
-          });
-        }
+      const specificBins: Array<{ locCode: string; qty: number }> = [];
+      const parsedAssigned = parseAssignedBinsFromNote(noteText);
+      if (parsedAssigned.length > 0) {
+        parsedAssigned.forEach((c) => {
+          const rawCode = c.trim();
+          if (rawCode) {
+            const cleanCode = rawCode.split('(')[0].trim();
+            const qMatch = rawCode.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+            const customBinQty = qMatch ? Number(qMatch[1]) : 0;
+            if (cleanCode) specificBins.push({ locCode: cleanCode, qty: customBinQty });
+          }
+        });
       }
 
       const qty = Number(detail.receivedQty || detail.expectedQty) || 0;
@@ -898,8 +968,10 @@ export class InboundService {
 
       // 2. Also record specific bin locations if specified
       if (specificBins.length > 0) {
-        const qtyPerBin = Math.max(1, Math.floor(qty / specificBins.length));
-        for (const locCode of specificBins) {
+        const fallbackQtyPerBin = Math.max(1, Math.floor(qty / specificBins.length));
+        for (const item of specificBins) {
+          const locCode = item.locCode;
+          const qtyPerBin = item.qty > 0 ? item.qty : fallbackQtyPerBin;
           let [binBal] = await this.dataSource.query(
             `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
             [productId, locCode],
@@ -1067,13 +1139,7 @@ export class InboundService {
   }
 
   private serializeDetail(detail: InboundDetail, supplierProduct?: SupplierProduct) {
-    let parsedAssignedBins: string[] = [];
-    if (detail.note && detail.note.includes('[Vị trí Ô:')) {
-      const match = detail.note.match(/\[Vị trí Ô:\s*([^\]]+)\]/);
-      if (match && match[1]) {
-        parsedAssignedBins = match[1].split(',').map((c) => c.trim()).filter(Boolean);
-      }
-    }
+    const parsedAssignedBins = parseAssignedBinsFromNote(detail.note);
 
     const unitPrice = parseNumber(detail.unitPrice);
     const qty = parseNumber(detail.expectedQty);

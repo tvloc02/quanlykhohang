@@ -634,6 +634,21 @@ export function buildWarehouseRackTopology(
 
 const DRAFT_LOCKS_STORAGE_KEY = 'smart-wms-active-draft-locks';
 
+// Auto-purge any stale or unsubmitted inbound locks from localStorage on script initialization
+try {
+  const rawInitial = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
+  if (rawInitial) {
+    const parsedInitial: DraftSlotLock[] = JSON.parse(rawInitial);
+    if (Array.isArray(parsedInitial)) {
+      const now = Date.now();
+      const cleaned = parsedInitial.filter((l) => l.isOutbound === true && now - l.updatedAt < 15 * 60 * 1000);
+      if (cleaned.length !== parsedInitial.length) {
+        localStorage.setItem(DRAFT_LOCKS_STORAGE_KEY, JSON.stringify(cleaned));
+      }
+    }
+  }
+} catch { }
+
 export interface DraftSlotLock {
   tabId: string;
   orderNo?: string;
@@ -656,6 +671,15 @@ export function saveActiveDraftSlotLocks(
     // Remove previous locks for this tabId
     allLocks = allLocks.filter((l) => l.tabId !== tabId);
 
+    // Inbound orders are uncommitted until user officially saves the stock-in receipt.
+    // Therefore, do not lock slots across sessions for inbound drafts.
+    const isOut = Boolean(isOutbound || (orderNo && (orderNo.startsWith('PX') || orderNo.startsWith('XK') || orderNo.startsWith('XH') || orderNo.startsWith('XBL') || orderNo.startsWith('XBH'))));
+    if (!isOut) {
+      localStorage.setItem(DRAFT_LOCKS_STORAGE_KEY, JSON.stringify(allLocks));
+      window.dispatchEvent(new Event('storage'));
+      return;
+    }
+
     const now = Date.now();
     locks.forEach((lk) => {
       allLocks.push({
@@ -664,7 +688,7 @@ export function saveActiveDraftSlotLocks(
         binCode: lk.binCode,
         productName: lk.productName,
         occupancyPct: lk.occupancyPct || 100,
-        isOutbound: isOutbound || Boolean(orderNo && (orderNo.startsWith('PX') || orderNo.startsWith('XK') || orderNo.startsWith('XH') || orderNo.startsWith('XBL') || orderNo.startsWith('XBH'))),
+        isOutbound: true,
         updatedAt: now,
       });
     });
@@ -689,7 +713,10 @@ export function releaseActiveDraftSlotLocks(tabId: string) {
   }
 }
 
-export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, { label: string; occupancyPct: number; isOutbound?: boolean }> {
+export function getActiveDraftSlotLocks(
+  excludeTabId?: string,
+  onlyOutbound = true
+): Record<string, { label: string; occupancyPct: number; isOutbound?: boolean }> {
   try {
     const raw = localStorage.getItem(DRAFT_LOCKS_STORAGE_KEY);
     if (!raw) return {};
@@ -697,7 +724,10 @@ export function getActiveDraftSlotLocks(excludeTabId?: string): Record<string, {
     const result: Record<string, { label: string; occupancyPct: number; isOutbound?: boolean }> = {};
     const now = Date.now();
     // Exclude locks older than 15 minutes to avoid stale locks
-    const validLocks = allLocks.filter((l) => now - l.updatedAt < 15 * 60 * 1000);
+    const validLocks = allLocks.filter((l) => {
+      if (onlyOutbound && !l.isOutbound) return false;
+      return now - l.updatedAt < 15 * 60 * 1000;
+    });
 
     validLocks.forEach((l) => {
       if (!excludeTabId || l.tabId !== excludeTabId) {
@@ -728,3 +758,74 @@ export function clearAllDraftSlotLocks(warehouseCode?: string) {
     console.error('Error clearing draft slot locks:', err);
   }
 }
+
+/**
+ * Robust extractor for assigned bins inside note string: "[Vị trí Ô: ...]"
+ * Safely handles nested brackets like "[400 cái]" without truncating.
+ */
+export function parseAssignedBinsFromNote(note: string | null | undefined): string[] {
+  if (!note || typeof note !== 'string') return [];
+  const prefix = '[Vị trí Ô:';
+  const startIdx = note.indexOf(prefix);
+  if (startIdx === -1) return [];
+
+  let depth = 0;
+  const contentStart = startIdx + prefix.length;
+  let contentEnd = -1;
+
+  for (let i = startIdx; i < note.length; i++) {
+    if (note[i] === '[') {
+      depth++;
+    } else if (note[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        contentEnd = i;
+        break;
+      }
+    }
+  }
+
+  const rawContent = contentEnd !== -1
+    ? note.slice(contentStart, contentEnd)
+    : note.slice(contentStart);
+
+  return rawContent
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Safely strips "[Vị trí Ô: ...]" from note, accounting for nested brackets.
+ */
+export function stripAssignedBinsFromNote(note: string | null | undefined): string {
+  if (!note || typeof note !== 'string') return '';
+  const prefix = '[Vị trí Ô:';
+  const startIdx = note.indexOf(prefix);
+  if (startIdx === -1) return note.trim();
+
+  let depth = 0;
+  let contentEnd = -1;
+
+  for (let i = startIdx; i < note.length; i++) {
+    if (note[i] === '[') {
+      depth++;
+    } else if (note[i] === ']') {
+      depth--;
+      if (depth === 0) {
+        contentEnd = i;
+        break;
+      }
+    }
+  }
+
+  if (contentEnd !== -1) {
+    const before = note.slice(0, startIdx);
+    const after = note.slice(contentEnd + 1);
+    return `${before} ${after}`.replace(/\s+/g, ' ').trim();
+  }
+
+  return note.replace(/\[Vị trí Ô:.*$/s, '').trim();
+}
+
+

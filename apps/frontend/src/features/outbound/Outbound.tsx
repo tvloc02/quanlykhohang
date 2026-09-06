@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import CreateOutboundOrderPage from './pages/CreateOutboundOrderPage';
+import OutboundPrintModal from './components/OutboundPrintModal';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 
 const getOutboundMenuId = (mode?: string) => {
@@ -1217,6 +1218,21 @@ export default function Outbound({
     return filteredOrders.slice(start, start + pageSize);
   }, [filteredOrders, currentPage, pageSize]);
 
+  const reportTotals = useMemo(() => {
+    return paginatedOrders.reduce(
+      (acc, ord) => {
+        acc.subtotal += Number(ord.subtotal || ord.totalAmount || 0);
+        acc.discount += Number(ord.discount || 0);
+        acc.vatAmount += Number(ord.vatAmount || 0);
+        acc.totalAmount += Number(ord.totalAmount || 0);
+        acc.amountPaid += Number(ord.amountPaid || ord.totalAmount || 0);
+        acc.totalQty += Number(ord.totalQty || 0);
+        return acc;
+      },
+      { subtotal: 0, discount: 0, vatAmount: 0, totalAmount: 0, amountPaid: 0, totalQty: 0 }
+    );
+  }, [paginatedOrders]);
+
   // Outbound KPI Metrics
   const outboundTotals = useMemo(() => {
     return orders.reduce(
@@ -1284,35 +1300,220 @@ export default function Outbound({
   };
 
   return (
-    <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+    <div className={isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
+
+      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
+      <style>{`
+        @page {
+          size: landscape;
+          margin: 5mm 6mm;
+        }
+        @media print {
+          @page {
+            size: landscape;
+            margin: 5mm 6mm;
+          }
+
+          /* 1. Ẩn toàn bộ thanh điều hướng, nút bấm, chatbot góc phải */
+          #dify-chatbot-bubble-button,
+          #dify-chatbot-bubble-window,
+          .dify-custom-controls,
+          iframe,
+          aside,
+          nav,
+          header,
+          footer,
+          .print\\:hidden {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+          }
+
+          /* 2. Đưa toàn bộ trang về nền trắng giấy in thuần túy, chữ đen, không màu mè */
+          html, body, #root, main, div, section {
+            background: #ffffff !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+          }
+
+          .overflow-hidden,
+          .overflow-x-auto,
+          .custom-scrollbar,
+          .rounded-2xl {
+            overflow: visible !important;
+            border: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 100% !important;
+            width: 100% !important;
+          }
+
+          /* 3. Bảng in tự động co giãn vừa khít 100% chiều rộng khổ giấy A4 ngang, đường kẻ đen rõ nét */
+          table,
+          table[class*="min-w-"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            table-layout: auto !important;
+            border-collapse: collapse !important;
+            border: 1px solid #000000 !important;
+            margin-top: 4px !important;
+            background: #ffffff !important;
+          }
+
+          /* 4. Kẻ dọc đầy đủ cho TẤT CẢ các ô (cả tiêu đề thead, nội dung tbody và dòng tổng tfoot) */
+          table, thead, tbody, tfoot, tr, th, td,
+          table thead th,
+          table tbody td,
+          table tfoot td,
+          th, td,
+          th[class*="border-"],
+          td[class*="border-"],
+          th[class*="min-w-"],
+          td[class*="min-w-"],
+          th[class*="whitespace-nowrap"],
+          td[class*="whitespace-nowrap"] {
+            min-width: 0 !important;
+            width: auto !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            font-size: 6.8pt !important;
+            line-height: 1.2 !important;
+            padding: 2px 1.5px !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            color: #000000 !important;
+            background: #ffffff !important;
+          }
+
+          thead {
+            display: table-header-group !important;
+          }
+
+          thead tr {
+            background: #f1f5f9 !important;
+          }
+
+          /* Tiêu đề bảng có kẻ dọc đậm rõ nét */
+          thead th,
+          table thead th {
+            background: #f1f5f9 !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            font-size: 7.2pt !important;
+            text-align: center !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            padding: 3px 1.5px !important;
+          }
+
+          tfoot {
+            display: table-footer-group !important;
+          }
+
+          tfoot tr {
+            background: #f8fafc !important;
+          }
+
+          /* Dòng tổng cộng căn lề phải, kẻ viền đầy đủ ra sát lề phải bảng */
+          tfoot td,
+          table tfoot td {
+            background: #f8fafc !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            font-size: 6.8pt !important;
+            text-align: right !important;
+            border: 1px solid #000000 !important;
+            border-left: 1px solid #000000 !important;
+            border-right: 1px solid #000000 !important;
+            border-top: 1px solid #000000 !important;
+            border-bottom: 1px solid #000000 !important;
+            padding: 2.5px 1.5px !important;
+            white-space: nowrap !important;
+          }
+
+          td button, td a {
+            color: #000000 !important;
+            text-decoration: none !important;
+            font-weight: 700 !important;
+            cursor: default !important;
+          }
+
+          td span[class*="rounded"] {
+            background: transparent !important;
+            color: #000000 !important;
+            border: none !important;
+            padding: 0 !important;
+            font-weight: 600 !important;
+            font-size: 6.8pt !important;
+          }
+        }
+      `}</style>
+
+      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
+      <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
+        <div className="flex justify-between items-start mb-2 text-xs">
+          <div>
+            <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
+            <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+          </div>
+          <div className="text-right text-[11px] text-slate-600">
+            <p>Mẫu biểu báo cáo hệ thống</p>
+            <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+          </div>
+        </div>
+        <div className="text-center my-2">
+          <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+            {isDisposal ? 'LẬP BÁO CÁO PHIẾU XUẤT HỦY HÀNG HÓA' : 'LẬP BÁO CÁO PHIẾU XUẤT KHO'}
+          </h1>
+          <p className="text-xs text-slate-600 italic mt-0.5">
+            {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
+          </p>
+        </div>
+        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
+          <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
+          <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
+        </div>
+      </div>
 
       {/* ═══ WHEN FORM IS CLOSED: SHOW TITLE, ACTION BUTTONS, KPI CARDS & ORDER LIST TABLE ═══ */}
       {!showFormModal ? (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Top Header Section matching Permission Groups & Sales Report */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
+          {/* Top Header Section matching PurchaseOrdersPage */}
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between print:hidden">
+            <div>
+              <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
                 {isDisposal ? (
-                  <FileX className="h-5 w-5" />
+                  <FileX className="h-5 w-5 text-cyan-100" />
                 ) : (featureMode as string) === 'return-supplier' ? (
-                  <CornerUpRight className="h-5 w-5" />
+                  <CornerUpRight className="h-5 w-5 text-cyan-100" />
                 ) : featureMode === 'retail' ? (
-                  <Receipt className="h-5 w-5" />
+                  <Receipt className="h-5 w-5 text-cyan-100" />
                 ) : featureMode === 'sales-order' ? (
-                  <ShoppingCart className="h-5 w-5" />
+                  <ShoppingCart className="h-5 w-5 text-cyan-100" />
                 ) : featureMode === 'transfer-out' ? (
-                  <Send className="h-5 w-5" />
+                  <Send className="h-5 w-5 text-cyan-100" />
                 ) : (
-                  <TrendingUp className="h-5 w-5" />
+                  <TrendingUp className="h-5 w-5 text-cyan-100" />
                 )}
-                <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
+                <h1 className="text-lg font-bold tracking-tight text-white">{title}</h1>
               </div>
             </div>
 
-            {/* Action Buttons Top Right aligned in Cyan style */}
-            <div className="flex flex-wrap items-center gap-3">
+            {/* Action Buttons Top Right aligned matching PurchaseOrdersPage */}
+            <div className="flex flex-wrap items-center justify-end gap-2 print:hidden">
               {/* 1. Thêm mới */}
               {canCreate && (
                 <button
@@ -1327,10 +1528,9 @@ export default function Outbound({
                     setActiveTabId(newTab.tabId);
                     handleOpenFormModal('create');
                   }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <Plus className="h-4.5 w-4.5 text-cyan-700" />
-                  Thêm mới
+                  <Plus className="h-4 w-4" /> Thêm mới
                 </button>
               )}
 
@@ -1339,10 +1539,9 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={handleCopySelected}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <Copy className="h-4.5 w-4.5 text-cyan-700" />
-                  Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+                  <Copy className="h-4 w-4" /> Copy {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
                 </button>
               )}
 
@@ -1351,10 +1550,9 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={handleDeleteSelected}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
-                  Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
+                  <Trash2 className="h-4 w-4" /> Xóa {selectedIds.size > 0 ? `(${selectedIds.size})` : ''}
                 </button>
               )}
 
@@ -1363,10 +1561,9 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <Printer className="h-4.5 w-4.5 text-cyan-700" />
-                  In báo cáo
+                  <Printer className="h-4 w-4" /> In báo cáo
                 </button>
               )}
 
@@ -1375,10 +1572,9 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={handleExportCSV}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
                 >
-                  <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
-                  Export Excel
+                  <FileSpreadsheet className="h-4 w-4" /> Export Excel
                 </button>
               )}
 
@@ -1386,36 +1582,34 @@ export default function Outbound({
               <button
                 type="button"
                 onClick={() => setShowColumnSettings(true)}
-                className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 font-extrabold text-sm shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-                title="Cấu hình hiển thị cột"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-sm font-extrabold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
               >
-                <Settings className="h-4.5 w-4.5 text-cyan-700" />
-                <span>Hiển thị</span>
+                <Settings className="h-4 w-4" /> Hiển thị
               </button>
 
               {/* 7. Toàn màn hình */}
               <button
                 type="button"
                 onClick={toggleBrowserFullscreen}
-                className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-slate-300 bg-white text-slate-700 shadow-xs transition hover:bg-slate-100 active:scale-95 cursor-pointer"
-                title="Toàn màn hình"
+                aria-label="Toàn màn hình"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-cyan-700 transition hover:bg-cyan-50 cursor-pointer"
               >
-                {isFullScreen ? <Minimize2 className="h-4.5 w-4.5" /> : <Maximize2 className="h-4.5 w-4.5" />}
+                {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </button>
             </div>
           </div>
 
           {/* Filter & Search Panel */}
-          <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] p-4 shadow-sm print:hidden">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               {/* Search input */}
               <div className="relative flex-1 min-w-[320px]">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600 dark:text-indigo-400" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-12 w-full rounded-xl border-2 border-cyan-600/40 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
+                  className="h-12 w-full rounded-xl border-2 border-cyan-600/40 dark:border-indigo-900/60 bg-white dark:bg-slate-950 pl-11 pr-4 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
                   placeholder={isDisposal ? "Tìm theo mã phiếu hủy, lý do xuất hủy, kho, nhân viên..." : "Tìm theo mã phiếu xuất, khách hàng, SĐT, nhân viên..."}
                 />
               </div>
@@ -1423,39 +1617,39 @@ export default function Outbound({
               {/* Date & Status Filters Container */}
               <div className="flex flex-wrap items-center gap-3">
                 {/* Date Filter Box (h-12) */}
-                <div className="inline-flex h-12 items-center gap-3 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
+                <div className="inline-flex h-12 items-center gap-3 rounded-xl border-2 border-cyan-600/30 dark:border-indigo-900/60 bg-slate-50/80 dark:bg-slate-900/80 px-3.5 shadow-2xs">
                   <div className="flex items-center gap-2">
-                    <Calendar className="h-4.5 w-4.5 text-cyan-600 shrink-0" />
-                    <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Thời gian:</span>
+                    <Calendar className="h-4.5 w-4.5 text-cyan-600 dark:text-indigo-400 shrink-0" />
+                    <span className="text-xs font-extrabold uppercase text-cyan-950 dark:text-indigo-200 tracking-wide">Thời gian:</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-slate-600">Từ</span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Từ</span>
                     <input
                       type="date"
                       value={dateFrom}
                       onChange={(e) => setDateFrom(e.target.value)}
-                      className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                      className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                     />
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-slate-600">Đến</span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Đến</span>
                     <input
                       type="date"
                       value={dateTo}
                       onChange={(e) => setDateTo(e.target.value)}
-                      className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                      className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                     />
                   </div>
                 </div>
 
                 {/* Status Filter Box (h-12) */}
-                <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
-                  <Filter className="h-4 w-4 text-cyan-600 shrink-0" />
-                  <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Trạng thái:</span>
+                <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 dark:border-indigo-900/60 bg-slate-50/80 dark:bg-slate-900/80 px-3.5 shadow-2xs">
+                  <Filter className="h-4 w-4 text-cyan-600 dark:text-indigo-400 shrink-0" />
+                  <span className="text-xs font-extrabold uppercase text-cyan-950 dark:text-indigo-200 tracking-wide">Trạng thái:</span>
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                    className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                   >
                     <option value="all">Tất cả</option>
                     <option value="Đã xuất hủy">{isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'}</option>
@@ -1468,51 +1662,51 @@ export default function Outbound({
           </div>
 
           {/* Main Order List Table */}
-          <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className={`w-full border-collapse text-left ${isDisposal ? 'min-w-[1350px]' : 'min-w-[1850px]'}`}>
-                <thead className="bg-cyan-50 sticky top-0 z-20 shadow-sm">
-                  <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
-                    <th className="w-12 min-w-[50px] border-r border-slate-200 px-2 py-4 text-center">
+          <div className="overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] shadow-sm print:overflow-visible print:border-none print:shadow-none print:rounded-none print:bg-white print:p-0">
+            <div className="overflow-x-auto custom-scrollbar print:overflow-visible print:p-0">
+              <table className={`w-full border-collapse text-left print:min-w-0 print:w-full print:table-auto ${isDisposal ? 'min-w-[1350px]' : 'min-w-[1850px]'}`}>
+                <thead className="bg-cyan-50 dark:bg-indigo-950/80 sticky top-0 z-20 shadow-sm">
+                  <tr className="border-b-2 border-slate-200 dark:border-indigo-900/60 text-slate-800 dark:text-slate-100 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
+                    <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center print:hidden">
                       <input
                         type="checkbox"
                         checked={paginatedOrders.length > 0 && selectedIds.size === paginatedOrders.length}
                         onChange={toggleSelectAll}
-                        className="h-4.5 w-4.5 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                        className="h-4.5 w-4.5 rounded border-slate-300 dark:border-indigo-900/60 accent-cyan-600 dark:accent-indigo-600 focus:ring-cyan-500 cursor-pointer"
                       />
                     </th>
-                    <th className="w-14 min-w-[60px] border-r border-slate-200 px-3 py-4 text-center">STT</th>
-                    {columnVis.code && <th className="min-w-[160px] border-r border-slate-200 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Mã phiếu hủy' : 'Mã phiếu'}</th>}
-                    {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất'}</th>}
-                    {columnVis.customerName && <th className="min-w-[220px] border-r border-slate-200 px-4 py-4 text-center">{isDisposal ? 'Lý do xuất hủy' : 'Khách hàng'}</th>}
+                    <th className="w-14 min-w-[60px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">STT</th>
+                    {columnVis.code && <th className="min-w-[160px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Mã phiếu hủy' : 'Mã phiếu'}</th>}
+                    {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất'}</th>}
+                    {columnVis.customerName && <th className="min-w-[220px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">{isDisposal ? 'Lý do xuất hủy' : 'Khách hàng'}</th>}
                     {!isDisposal && (
                       <>
-                        {columnVis.customerPhone && <th className="min-w-[130px] border-r border-slate-200 px-3 py-4 text-center">SĐT</th>}
-                        {columnVis.customerAddress && <th className="min-w-[240px] border-r border-slate-200 px-4 py-4 text-center">Địa chỉ</th>}
+                        {columnVis.customerPhone && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">SĐT</th>}
+                        {columnVis.customerAddress && <th className="min-w-[240px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">Địa chỉ</th>}
                       </>
                     )}
-                    {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{isDisposal ? 'Kho xuất hủy' : 'Kho'}</th>}
-                    {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">{isDisposal ? 'Nhân viên thực hiện' : 'Nhân viên'}</th>}
+                    {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Kho xuất hủy' : 'Kho'}</th>}
+                    {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Nhân viên thực hiện' : 'Nhân viên'}</th>}
                     {isDisposal ? (
                       <>
-                        <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">Tổng SL hủy</th>
-                        <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Giá trị hủy (đ)</th>
+                        <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Tổng SL hủy</th>
+                        <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Giá trị hủy (đ)</th>
                       </>
                     ) : (
                       <>
-                        {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Thành tiền</th>}
-                        {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 px-3 py-4 text-center">Chiết khấu</th>}
-                        {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 px-3 py-4 text-center">VAT</th>}
-                        {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Tổng tiền</th>}
-                        {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 px-3 py-4 text-center">Thanh toán</th>}
+                        {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Thành tiền</th>}
+                        {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Chiết khấu</th>}
+                        {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">VAT</th>}
+                        {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Tổng tiền</th>}
+                        {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Thanh toán</th>}
                       </>
                     )}
-                    {columnVis.note && <th className="min-w-[200px] border-r border-slate-200 px-4 py-4 text-center">{isDisposal ? 'Phương án / Ghi chú' : 'Ghi chú'}</th>}
-                    {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 px-3 py-4 text-center">Trạng thái</th>}
-                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 text-cyan-950 font-black">Thao tác</th>
+                    {columnVis.note && <th className="min-w-[200px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">{isDisposal ? 'Phương án / Ghi chú' : 'Ghi chú'}</th>}
+                    {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Trạng thái</th>}
+                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 dark:bg-indigo-900/90 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 text-cyan-950 dark:text-indigo-100 font-black print:hidden">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 bg-white">
+                <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40 bg-white dark:bg-slate-950">
                   {loading ? (
                     <tr>
                       <td colSpan={17} className="py-12 text-center text-slate-500 font-semibold text-sm">
@@ -1530,20 +1724,20 @@ export default function Outbound({
                       const isSelected = selectedIds.has(ord.id);
                       return (
                         <React.Fragment key={ord.id}>
-                          <tr className={`group transition cursor-pointer border-b border-slate-200 ${isSelected ? 'bg-cyan-100/60' : 'hover:bg-cyan-50/60'}`}>
-                            <td className="border-r border-slate-200 px-2 py-3.5 text-center">
+                          <tr className={`group transition cursor-pointer border-b border-slate-200 dark:border-indigo-900/40 ${isSelected ? 'bg-cyan-100/60 dark:bg-indigo-950/70' : 'hover:bg-cyan-50/60 dark:hover:bg-indigo-950/40'}`}>
+                            <td className="border-r border-slate-200 dark:border-indigo-900/40 px-2 py-3.5 text-center print:hidden">
                               <input
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => toggleSelectOne(ord.id)}
-                                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                className="h-4 w-4 rounded border-slate-300 dark:border-indigo-900/60 text-cyan-600 dark:text-indigo-400 focus:ring-cyan-500 cursor-pointer"
                               />
                             </td>
-                            <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">
+                            <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">
                               {(currentPage - 1) * pageSize + index + 1}
                             </td>
                             {columnVis.code && (
-                              <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-extrabold text-cyan-700 whitespace-nowrap">
+                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-center text-sm font-extrabold text-cyan-700 dark:text-indigo-400 whitespace-nowrap">
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1551,48 +1745,48 @@ export default function Outbound({
                                     setSelectedOrder(ord);
                                     setShowDetailModal(true);
                                   }}
-                                  className="text-cyan-700 hover:text-cyan-900 hover:underline font-extrabold text-center cursor-pointer whitespace-nowrap"
+                                  className="text-cyan-700 dark:text-indigo-300 hover:text-cyan-900 dark:hover:text-indigo-100 hover:underline font-extrabold text-center cursor-pointer whitespace-nowrap"
                                   title="Bấm để xem thông tin chi tiết"
                                 >
                                   {ord.orderNo}
                                 </button>
                               </td>
                             )}
-                            {columnVis.date && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{formatDateDisplay(ord.orderDate || (ord as any).createdAt)}</td>}
-                            {columnVis.customerName && <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-extrabold text-slate-800">{ord.customer}</td>}
+                            {columnVis.date && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{formatDateDisplay(ord.orderDate || (ord as any).createdAt)}</td>}
+                            {columnVis.customerName && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-center text-sm font-extrabold text-slate-800 dark:text-slate-100">{ord.customer}</td>}
                             {!isDisposal && (
                               <>
-                                {columnVis.customerPhone && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.customerPhone || '-'}</td>}
-                                {columnVis.customerAddress && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-700 max-w-[240px] truncate" title={ord.customerAddress}>{ord.customerAddress || '-'}</td>}
+                                {columnVis.customerPhone && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.customerPhone || '-'}</td>}
+                                {columnVis.customerAddress && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-sm font-medium text-slate-700 dark:text-slate-300 max-w-[240px] truncate" title={ord.customerAddress}>{ord.customerAddress || '-'}</td>}
                               </>
                             )}
                             {columnVis.branch && (
-                              <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
+                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-bold text-slate-800 dark:text-slate-200">
                                 {formatWarehouseDisplay(ord.branchCode || ord.warehouseCode, warehouses)}
                               </td>
                             )}
-                            {columnVis.nv && <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-medium text-slate-700">{ord.employeeName || currentUserName}</td>}
+                            {columnVis.nv && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.employeeName || currentUserName}</td>}
                             {isDisposal ? (
                               <>
-                                <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-black text-cyan-800">{ord.totalQty || ord.itemsCount || 1}</td>
-                                <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-black text-rose-600">{(ord.totalAmount || 0).toLocaleString('vi-VN')} đ</td>
+                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-black text-cyan-800 dark:text-indigo-300">{ord.totalQty || ord.itemsCount || 1}</td>
+                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-black text-rose-600 dark:text-rose-400">{(ord.totalAmount || 0).toLocaleString('vi-VN')} đ</td>
                               </>
                             ) : (
                               <>
-                                {columnVis.subtotal && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-bold text-slate-800">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
-                                {columnVis.discount && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-medium text-slate-600">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
-                                {columnVis.vat && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-medium text-slate-600">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
-                                {columnVis.totalAmount && <td className="border-r border-slate-200 px-3 py-4 text-right text-sm font-black text-slate-900">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
-                                {columnVis.amountPaid && <td className="border-r border-slate-200 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.subtotal && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-bold text-slate-800 dark:text-slate-200">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.discount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
+                                {columnVis.vat && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
+                                {columnVis.totalAmount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-right text-sm font-black text-slate-900 dark:text-slate-100">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.amountPaid && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700 dark:text-emerald-400">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
                               </>
                             )}
-                            {columnVis.note && <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-medium text-slate-600 max-w-[200px] truncate" title={ord.description}>{ord.description || '-'}</td>}
+                            {columnVis.note && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-sm font-medium text-slate-600 dark:text-slate-400 max-w-[200px] truncate" title={ord.description}>{ord.description || '-'}</td>}
                             {columnVis.status && (
-                              <td className="border-r border-slate-200 px-3 py-3.5 text-center">
+                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center">
                                 <StatusBadge status={ord.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng')} />
                               </td>
                             )}
-                            <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200">
+                            <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                               <div className="flex items-center justify-center gap-1.5">
                                 {canEdit && (() => {
                                   const isFinalized = ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed'].includes((ord.status || '').toLowerCase());
@@ -1604,8 +1798,8 @@ export default function Outbound({
                                       title={isFinalized ? 'Phiếu đã giao hàng - Không được phép sửa' : isDisposal ? 'Sửa phiếu xuất hủy' : 'Sửa phiếu xuất'}
                                       className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
                                         isFinalized
-                                          ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed opacity-40'
-                                          : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                                          ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-40'
+                                          : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
                                       }`}
                                     >
                                       <Pencil size={16} strokeWidth={2.5} />
@@ -1619,7 +1813,7 @@ export default function Outbound({
                                     setShowDetailModal(true);
                                   }}
                                   title="Xem chi tiết"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                                 >
                                   <Eye size={16} strokeWidth={2.5} />
                                 </button>
@@ -1631,7 +1825,7 @@ export default function Outbound({
                                       setShowPrintModal(true);
                                     }}
                                     title={isDisposal ? "In biên bản xuất hủy" : "In phiếu xuất"}
-                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                                   >
                                     <Printer size={16} strokeWidth={2.5} />
                                   </button>
@@ -1644,7 +1838,7 @@ export default function Outbound({
                                       handleDeleteSingleOutboundOrder(ord);
                                     }}
                                     title="Xóa phiếu xuất"
-                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 bg-white text-rose-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-700 cursor-pointer"
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm transition hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer"
                                   >
                                     <Trash2 size={16} strokeWidth={2.5} />
                                   </button>
@@ -1655,12 +1849,12 @@ export default function Outbound({
 
                           {/* Itemized Sub-table Expansion when showDetail is checked */}
                           {showDetail && ord.details && ord.details.length > 0 && (
-                            <tr className="bg-slate-50/80">
-                              <td colSpan={17} className="p-3 border border-slate-200">
-                                <div className="rounded-lg border border-slate-300 bg-white p-2">
-                                  <p className="text-[11px] font-bold text-cyan-800 uppercase mb-2">Chi tiết mặt hàng phiếu {ord.orderNo}:</p>
+                            <tr className="bg-slate-50/80 dark:bg-slate-900/80">
+                              <td colSpan={17} className="p-3 border border-slate-200 dark:border-indigo-900/40">
+                                <div className="rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 p-2">
+                                  <p className="text-[11px] font-bold text-cyan-800 dark:text-indigo-300 uppercase mb-2">Chi tiết mặt hàng phiếu {ord.orderNo}:</p>
                                   <table className="w-full text-xs text-left">
-                                    <thead className="bg-slate-100 font-bold text-slate-600 border-b">
+                                    <thead className="bg-slate-100 dark:bg-slate-900 font-bold text-slate-600 dark:text-slate-300 border-b dark:border-indigo-900/40">
                                       <tr>
                                         <th className="p-1.5 text-center">SKU</th>
                                         <th className="p-1.5 text-center">Tên sản phẩm</th>
@@ -1670,15 +1864,15 @@ export default function Outbound({
                                         <th className="p-1.5 text-center">Thành tiền</th>
                                       </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
+                                    <tbody className="divide-y divide-slate-100 dark:divide-indigo-900/30">
                                       {ord.details.map((d, dIdx) => (
                                         <tr key={dIdx}>
-                                          <td className="p-1.5 font-bold text-cyan-700">{d.productSku}</td>
-                                          <td className="p-1.5 font-medium">{d.productName}</td>
-                                          <td className="p-1.5 text-center">{d.unit}</td>
-                                          <td className="p-1.5 text-center font-bold">{d.qty}</td>
-                                          <td className="p-1.5 text-right">{d.price.toLocaleString('vi-VN')} đ</td>
-                                          <td className="p-1.5 text-right font-bold text-slate-900">{(d.totalLineAmount || (d.qty * d.price)).toLocaleString('vi-VN')} đ</td>
+                                          <td className="p-1.5 font-bold text-cyan-700 dark:text-indigo-400">{d.productSku}</td>
+                                          <td className="p-1.5 font-medium dark:text-slate-200">{d.productName}</td>
+                                          <td className="p-1.5 text-center dark:text-slate-300">{d.unit}</td>
+                                          <td className="p-1.5 text-center font-bold dark:text-slate-100">{d.qty}</td>
+                                          <td className="p-1.5 text-right dark:text-slate-300">{d.price.toLocaleString('vi-VN')} đ</td>
+                                          <td className="p-1.5 text-right font-bold text-slate-900 dark:text-slate-100">{(d.totalLineAmount || (d.qty * d.price)).toLocaleString('vi-VN')} đ</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -1692,32 +1886,100 @@ export default function Outbound({
                     })
                   )}
                 </tbody>
+                <tfoot className="bg-slate-100 dark:bg-slate-900 font-extrabold border-t-2 border-slate-300 dark:border-indigo-900/80">
+                  <tr className="text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
+                    <td className="print:hidden p-2 text-center" />
+                    <td
+                      colSpan={
+                        isDisposal
+                          ? 1 +
+                            (columnVis.code ? 1 : 0) +
+                            (columnVis.date ? 1 : 0) +
+                            (columnVis.customerName ? 1 : 0) +
+                            (columnVis.branch ? 1 : 0) +
+                            (columnVis.nv ? 1 : 0)
+                          : 1 +
+                            (columnVis.code ? 1 : 0) +
+                            (columnVis.date ? 1 : 0) +
+                            (columnVis.customerName ? 1 : 0) +
+                            (columnVis.customerPhone ? 1 : 0) +
+                            (columnVis.customerAddress ? 1 : 0) +
+                            (columnVis.branch ? 1 : 0) +
+                            (columnVis.nv ? 1 : 0)
+                      }
+                      className="p-3 text-left pl-4 font-black uppercase tracking-wider text-cyan-900 dark:text-indigo-300 border-r border-slate-200 dark:border-indigo-900/40"
+                    >
+                      TỔNG CỘNG ({paginatedOrders.length} PHIẾU):
+                    </td>
+                    {isDisposal ? (
+                      <>
+                        <td className="p-3 text-center font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                          {reportTotals.totalQty.toLocaleString('vi-VN')}
+                        </td>
+                        <td className="p-3 text-right font-black text-cyan-950 dark:text-indigo-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                          {reportTotals.totalAmount.toLocaleString('vi-VN')} đ
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        {columnVis.subtotal && (
+                          <td className="p-3 text-right font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.subtotal.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.discount && (
+                          <td className="p-3 text-right font-black text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.discount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.vat && (
+                          <td className="p-3 text-right font-black text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.vatAmount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.totalAmount && (
+                          <td className="p-3 text-right font-black text-cyan-950 dark:text-indigo-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.totalAmount.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                        {columnVis.amountPaid && (
+                          <td className="p-3 text-right font-black text-emerald-800 dark:text-emerald-400 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                            {reportTotals.amountPaid.toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
+                      </>
+                    )}
+                    {columnVis.note && <td className="border-r border-slate-200 dark:border-indigo-900/40 p-2">&nbsp;</td>}
+                    {columnVis.status && <td className="border-r border-slate-200 dark:border-indigo-900/40 p-2">&nbsp;</td>}
+                    <td className="print:hidden border-l border-slate-200 dark:border-indigo-900/60" />
+                  </tr>
+                </tfoot>
               </table>
             </div>
 
             {/* Pagination Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-t-2 border-slate-200 bg-slate-50/90 px-4 py-3.5 text-sm font-bold text-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t-2 border-slate-200 dark:border-indigo-900/60 bg-slate-50/90 dark:bg-slate-900/90 px-4 py-3.5 text-sm font-bold text-slate-700 dark:text-slate-300 print:hidden">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-extrabold text-slate-700">Hiển thị:</span>
+                  <span className="text-sm font-extrabold text-slate-700 dark:text-slate-200">Hiển thị:</span>
                   <select
                     value={pageSize}
                     onChange={(e) => {
                       setPageSize(Number(e.target.value));
                       setCurrentPage(1);
                     }}
-                    className="h-9 rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer shadow-xs"
+                    className="h-9 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-sm font-black text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer shadow-xs"
                   >
                     <option value={20}>20</option>
                     <option value={50}>50</option>
                     <option value={100}>100</option>
                     <option value={500}>500</option>
                   </select>
-                  <span className="text-sm font-bold text-slate-600">dòng/trang</span>
+                  <span className="text-sm font-bold text-slate-600 dark:text-slate-400">dòng/trang</span>
                 </div>
-                <div className="border-l-2 border-slate-300 pl-3 text-sm font-semibold text-slate-600">
-                  Hiển thị <span className="font-extrabold text-slate-900">{filteredOrders.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}</span> -{' '}
-                  <span className="font-extrabold text-slate-900">{Math.min(currentPage * pageSize, filteredOrders.length)}</span> trên tổng <span className="font-black text-cyan-800">{filteredOrders.length}</span> phiếu xuất
+                <div className="border-l-2 border-slate-300 dark:border-indigo-900/60 pl-3 text-sm font-semibold text-slate-600 dark:text-slate-400">
+                  Hiển thị <span className="font-extrabold text-slate-900 dark:text-slate-100">{filteredOrders.length > 0 ? (currentPage - 1) * pageSize + 1 : 0}</span> -{' '}
+                  <span className="font-extrabold text-slate-900 dark:text-slate-100">{Math.min(currentPage * pageSize, filteredOrders.length)}</span> trên tổng <span className="font-black text-cyan-800 dark:text-indigo-300">{filteredOrders.length}</span> phiếu xuất
                 </div>
               </div>
 
@@ -1725,7 +1987,7 @@ export default function Outbound({
                 <button
                   disabled={currentPage === 1}
                   onClick={() => setCurrentPage(1)}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:hover:text-slate-700 transition cursor-pointer shadow-2xs"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:border-cyan-600 dark:hover:border-indigo-500 hover:text-cyan-700 dark:hover:text-indigo-300 disabled:opacity-40 disabled:hover:bg-white dark:disabled:hover:bg-slate-950 disabled:hover:border-slate-300 dark:disabled:hover:border-indigo-900/60 disabled:hover:text-slate-700 dark:disabled:hover:text-slate-200 transition cursor-pointer shadow-2xs"
                   title="Trang đầu"
                 >
                   <ChevronsLeft size={18} strokeWidth={2.5} />
@@ -1733,18 +1995,18 @@ export default function Outbound({
                 <button
                   disabled={currentPage === 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:hover:text-slate-700 transition cursor-pointer shadow-2xs"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:border-cyan-600 dark:hover:border-indigo-500 hover:text-cyan-700 dark:hover:text-indigo-300 disabled:opacity-40 disabled:hover:bg-white dark:disabled:hover:bg-slate-950 disabled:hover:border-slate-300 dark:disabled:hover:border-indigo-900/60 disabled:hover:text-slate-700 dark:disabled:hover:text-slate-200 transition cursor-pointer shadow-2xs"
                   title="Trang trước"
                 >
                   <ChevronLeft size={18} strokeWidth={2.5} />
                 </button>
-                <span className="px-2 text-sm font-extrabold text-slate-800">
-                  Trang <span className="text-cyan-700 font-black">{currentPage}</span> / {totalPages}
+                <span className="px-2 text-sm font-extrabold text-slate-800 dark:text-slate-200">
+                  Trang <span className="text-cyan-700 dark:text-indigo-300 font-black">{currentPage}</span> / {totalPages}
                 </span>
                 <button
                   disabled={currentPage === totalPages}
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:hover:text-slate-700 transition cursor-pointer shadow-2xs"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:border-cyan-600 dark:hover:border-indigo-500 hover:text-cyan-700 dark:hover:text-indigo-300 disabled:opacity-40 disabled:hover:bg-white dark:disabled:hover:bg-slate-950 disabled:hover:border-slate-300 dark:disabled:hover:border-indigo-900/60 disabled:hover:text-slate-700 dark:disabled:hover:text-slate-200 transition cursor-pointer shadow-2xs"
                   title="Trang tiếp"
                 >
                   <ChevronRight size={18} strokeWidth={2.5} />
@@ -1752,12 +2014,34 @@ export default function Outbound({
                 <button
                   disabled={currentPage === totalPages}
                   onClick={() => setCurrentPage(totalPages)}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-slate-300 disabled:hover:text-slate-700 transition cursor-pointer shadow-2xs"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:border-cyan-600 dark:hover:border-indigo-500 hover:text-cyan-700 dark:hover:text-indigo-300 disabled:opacity-40 disabled:hover:bg-white dark:disabled:hover:bg-slate-950 disabled:hover:border-slate-300 dark:disabled:hover:border-indigo-900/60 disabled:hover:text-slate-700 dark:disabled:hover:text-slate-200 transition cursor-pointer shadow-2xs"
                   title="Trang cuối"
                 >
                   <ChevronsRight size={18} strokeWidth={2.5} />
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+          <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+              <div className="h-20" />
+              <p className="font-bold text-slate-900">{currentUserName}</p>
+            </div>
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+              <div className="h-20" />
+              <p className="text-slate-400 italic font-medium">................................................</p>
+            </div>
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
+              <div className="h-20" />
+              <p className="text-slate-400 italic font-medium">................................................</p>
             </div>
           </div>
         </div>
@@ -1773,19 +2057,19 @@ export default function Outbound({
       )}
         {/* ─── MODAL ADD CUSTOMER ─────────────────────────────────────── */}
       {showAddCustomerModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100 animate-[fadeIn_0.2s_ease-out]">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/50 dark:bg-slate-950/80 backdrop-blur-xs p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-100 dark:border-indigo-900/50 animate-[fadeIn_0.2s_ease-out]">
+            <div className="flex items-start justify-between border-b border-slate-100 dark:border-indigo-900/40 pb-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 dark:bg-indigo-950 text-cyan-600 dark:text-indigo-400">
                   <UserPlus className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Thêm khách hàng mới</h3>
-                  <p className="text-xs text-slate-500 font-normal">Nhập thông tin khách hàng đầy đủ</p>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Thêm khách hàng mới</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">Nhập thông tin khách hàng đầy đủ</p>
                 </div>
               </div>
-              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1793,76 +2077,76 @@ export default function Outbound({
             <form onSubmit={handleCreateCustomer} className="mt-5 space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Họ và tên</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Họ và tên</label>
                   <input
                     type="text"
                     placeholder="Nguyễn Văn A"
                     value={newCustomerForm.fullName}
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, fullName: e.target.value })}
-                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                    className="w-full h-10 rounded-xl border border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3.5 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-500 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/10 transition"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Email</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Email</label>
                   <input
                     type="email"
                     placeholder="admin@example.com"
                     value={newCustomerForm.email}
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
-                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40"
+                    className="w-full h-10 rounded-xl border border-slate-200 dark:border-indigo-900/60 px-3.5 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-500 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40 dark:bg-slate-950"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Số điện thoại</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Số điện thoại</label>
                   <input
                     type="text"
                     placeholder="0901234567"
                     value={newCustomerForm.phone}
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
-                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                    className="w-full h-10 rounded-xl border border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3.5 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-500 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/10 transition"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Địa chỉ</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Địa chỉ</label>
                   <input
                     type="text"
                     placeholder="Số nhà, tên đường, phường/xã, quận/huyện..."
                     value={newCustomerForm.address}
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, address: e.target.value })}
-                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
+                    className="w-full h-10 rounded-xl border border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3.5 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-500 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/10 transition"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Trạng thái</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Trạng thái</label>
                   <select
                     value={newCustomerForm.status}
                     onChange={(e) => setNewCustomerForm({ ...newCustomerForm, status: e.target.value as 'active' | 'inactive' })}
-                    className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-white"
+                    className="w-full h-10 rounded-xl border border-slate-200 dark:border-indigo-900/60 px-3.5 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-500 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-white dark:bg-slate-950"
                   >
                     <option value="active">Đang hoạt động</option>
                     <option value="inactive">Không hoạt động</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Mật khẩu</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Mật khẩu</label>
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
                       value={newCustomerForm.password}
                       onChange={(e) => setNewCustomerForm({ ...newCustomerForm, password: e.target.value })}
-                      className="w-full h-10 rounded-xl border border-slate-200 pl-3.5 pr-10 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40"
+                      className="w-full h-10 rounded-xl border border-slate-200 dark:border-indigo-900/60 pl-3.5 pr-10 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-500 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40 dark:bg-slate-950"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -1874,13 +2158,13 @@ export default function Outbound({
                 <button
                   type="button"
                   onClick={() => setShowAddCustomerModal(false)}
-                  className="rounded-xl border border-slate-200 px-5 py-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 dark:border-indigo-900/60 px-5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-300 transition hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-cyan-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-700"
+                  className="rounded-xl bg-cyan-600 dark:bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-700 dark:hover:bg-indigo-500"
                 >
                   Thêm khách hàng
                 </button>
@@ -1892,35 +2176,35 @@ export default function Outbound({
 
       {/* ─── MODAL COLUMN SETTINGS ───────────────────────────────────── */}
       {showColumnSettings && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border-2 border-cyan-500">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Settings size={18} className="text-cyan-600" />
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 dark:bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border-2 border-cyan-500 dark:border-indigo-500">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-200 dark:border-indigo-900/40 pb-3">
+              <h2 className="text-base font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Settings size={18} className="text-cyan-600 dark:text-indigo-400" />
                 <span>Cài Đặt Tùy Chọn Ẩn/Hiện Cột Bảng</span>
               </h2>
-              <button onClick={() => setShowColumnSettings(false)} className="rounded-lg p-1 hover:bg-slate-100">
+              <button onClick={() => setShowColumnSettings(false)} className="rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400">
                 <X size={20} />
               </button>
             </div>
             <div className="grid grid-cols-2 gap-3 max-h-72 overflow-y-auto text-xs font-semibold">
               {COLUMN_LIST.map((col) => (
-                <label key={col.key} className="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-50 cursor-pointer">
+                <label key={col.key} className="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer text-slate-700 dark:text-slate-300">
                   <input
                     type="checkbox"
                     checked={columnVis[col.key] ?? true}
                     onChange={(e) => setColumnVis({ ...columnVis, [col.key]: e.target.checked })}
-                    className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                    className="h-4 w-4 rounded border-slate-300 dark:border-indigo-900/60 text-cyan-600 dark:text-indigo-600 focus:ring-cyan-500 focus:dark:ring-indigo-500"
                   />
                   <span>{col.label}</span>
                 </label>
               ))}
             </div>
-            <div className="mt-4 flex justify-end gap-2 pt-2 border-t border-slate-200">
-              <button onClick={() => setColumnVis(DEFAULT_COLUMN_VIS)} className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100">
+            <div className="mt-4 flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-indigo-900/40">
+              <button onClick={() => setColumnVis(DEFAULT_COLUMN_VIS)} className="rounded-xl border border-slate-300 dark:border-indigo-900/60 px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
                 Khôi phục mặc định
               </button>
-              <button onClick={() => setShowColumnSettings(false)} className="rounded-xl bg-cyan-600 px-4 py-2 text-xs font-black text-white hover:bg-cyan-700 shadow-md">
+              <button onClick={() => setShowColumnSettings(false)} className="rounded-xl bg-cyan-600 dark:bg-indigo-600 px-4 py-2 text-xs font-black text-white hover:bg-cyan-700 dark:hover:bg-indigo-500 shadow-md">
                 Đóng
               </button>
             </div>
@@ -1931,65 +2215,81 @@ export default function Outbound({
 
       {/* ─── MODAL DETAIL ───────────────────────────────────────────── */}
       {showDetailModal && selectedOrder && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl border-2 border-cyan-500">
-            <div className="mb-4 flex items-center justify-between border-b-2 border-cyan-100 pb-3">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 dark:bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-4xl rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border-2 border-cyan-500 dark:border-indigo-500">
+            <div className="mb-4 flex items-center justify-between border-b-2 border-cyan-100 dark:border-indigo-900/40 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 dark:bg-indigo-950 text-cyan-700 dark:text-indigo-400">
                   <Eye className="h-5 w-5" />
                 </div>
-                <h2 className="text-base font-black uppercase text-cyan-950">
+                <h2 className="text-base font-black uppercase text-cyan-950 dark:text-slate-100">
                   {isDisposal ? `Chi tiết Phiếu Xuất Hủy Hàng Hóa #${selectedOrder.orderNo}` : `Chi tiết Phiếu Xuất Kho #${selectedOrder.orderNo}`}
                 </h2>
               </div>
-              <button onClick={() => setShowDetailModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {canPrint && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDetailModal(false);
+                      setShowPrintModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-cyan-50 dark:bg-indigo-950/60 px-3 py-1.5 text-xs font-bold text-cyan-700 dark:text-indigo-300 hover:bg-cyan-100 dark:hover:bg-indigo-900 transition cursor-pointer shadow-xs"
+                    title="In phiếu xuất"
+                  >
+                    <Printer size={15} />
+                    <span>In phiếu</span>
+                  </button>
+                )}
+                <button onClick={() => setShowDetailModal(false)} className="rounded-xl p-1.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300 transition">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 rounded-xl border border-cyan-200 bg-cyan-50/50 p-3.5 text-xs font-semibold text-slate-700">
-                <div><span className="text-slate-500">{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'}</span> <span className="font-extrabold text-slate-900 ml-1">{selectedOrder.customer}</span></div>
-                <div><span className="text-slate-500">{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'}</span> <span className="font-extrabold text-slate-900 ml-1">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></div>
-                <div><span className="text-slate-500">Ngày lập:</span> <span className="font-bold text-slate-800 ml-1">{formatDateDisplay(selectedOrder.orderDate || (selectedOrder as any).createdAt)}</span></div>
-                <div><span className="text-slate-500">Trạng thái:</span> <span className="ml-1"><StatusBadge status={selectedOrder.status} /></span></div>
+              <div className="grid grid-cols-2 gap-4 rounded-xl border border-cyan-200 dark:border-indigo-900/50 bg-cyan-50/50 dark:bg-indigo-950/40 p-3.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <div><span className="text-slate-500 dark:text-slate-400">{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'}</span> <span className="font-extrabold text-slate-900 dark:text-slate-100 ml-1">{selectedOrder.customer}</span></div>
+                <div><span className="text-slate-500 dark:text-slate-400">{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'}</span> <span className="font-extrabold text-slate-900 dark:text-slate-100 ml-1">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></div>
+                <div><span className="text-slate-500 dark:text-slate-400">Ngày lập:</span> <span className="font-bold text-slate-800 dark:text-slate-200 ml-1">{formatDateDisplay(selectedOrder.orderDate || (selectedOrder as any).createdAt)}</span></div>
+                <div><span className="text-slate-500 dark:text-slate-400">Trạng thái:</span> <span className="ml-1"><StatusBadge status={selectedOrder.status} /></span></div>
               </div>
-              <div className="overflow-x-auto custom-scrollbar rounded-xl border-2 border-slate-200 shadow-xs">
+              <div className="overflow-x-auto custom-scrollbar rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 shadow-xs">
                 <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-cyan-600 font-extrabold text-white uppercase text-[11px] tracking-wider">
+                  <thead className="bg-cyan-600 dark:bg-indigo-900 font-extrabold text-white uppercase text-[11px] tracking-wider">
                     <tr>
-                      <th className="p-3 text-center w-12 border-r border-cyan-500 whitespace-nowrap">STT</th>
-                      <th className="p-3 text-center w-28 border-r border-cyan-500 whitespace-nowrap">Mã SKU</th>
-                      <th className="p-3 text-center min-w-[180px] border-r border-cyan-500 whitespace-nowrap">Tên sản phẩm</th>
-                      <th className="p-3 text-center w-16 border-r border-cyan-500 whitespace-nowrap">ĐVT</th>
-                      <th className="p-3 text-center w-36 border-r border-cyan-500 whitespace-nowrap">Vị trí kệ lấy hàng</th>
-                      <th className="p-3 text-center w-20 border-r border-cyan-500 whitespace-nowrap">SL {isDisposal ? 'hủy' : 'xuất'}</th>
-                      <th className="p-3 text-center w-28 border-r border-cyan-500 whitespace-nowrap">{isDisposal ? 'Giá vốn ước tính' : 'Đơn giá'}</th>
+                      <th className="p-3 text-center w-12 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">STT</th>
+                      <th className="p-3 text-center w-28 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">Mã SKU</th>
+                      <th className="p-3 text-center min-w-[180px] border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">Tên sản phẩm</th>
+                      <th className="p-3 text-center w-16 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">ĐVT</th>
+                      <th className="p-3 text-center w-36 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">Vị trí kệ lấy hàng</th>
+                      <th className="p-3 text-center w-20 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">SL {isDisposal ? 'hủy' : 'xuất'}</th>
+                      <th className="p-3 text-center w-28 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">{isDisposal ? 'Giá vốn ước tính' : 'Đơn giá'}</th>
                       <th className="p-3 text-center w-32 whitespace-nowrap">{isDisposal ? 'Giá trị thiệt hại' : 'Thành tiền'}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white">
+                  <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40 bg-white dark:bg-slate-950">
                     {selectedOrder.details?.map((d, i) => (
-                      <tr key={i} className="hover:bg-cyan-50/40 transition">
-                        <td className="p-2.5 text-center font-semibold text-slate-600 border-r border-slate-200">{i + 1}</td>
-                        <td className="p-2.5 text-center font-extrabold text-cyan-800 border-r border-slate-200 whitespace-nowrap">{d.productSku}</td>
-                        <td className="p-2.5 font-bold text-slate-800 border-r border-slate-200">{d.productName}</td>
-                        <td className="p-2.5 text-center font-medium text-slate-700 border-r border-slate-200">{d.unit}</td>
-                        <td className="p-2.5 text-center border-r border-slate-200">
-                          <span className="inline-flex items-center gap-1 rounded-lg border border-cyan-300 bg-cyan-50 px-2.5 py-1 text-xs font-black text-cyan-800 shadow-2xs whitespace-nowrap">
+                      <tr key={i} className="hover:bg-cyan-50/40 dark:hover:bg-indigo-950/60 transition">
+                        <td className="p-2.5 text-center font-semibold text-slate-600 dark:text-slate-400 border-r border-slate-200 dark:border-indigo-900/40">{i + 1}</td>
+                        <td className="p-2.5 text-center font-extrabold text-cyan-800 dark:text-indigo-400 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">{d.productSku}</td>
+                        <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200 border-r border-slate-200 dark:border-indigo-900/40">{d.productName}</td>
+                        <td className="p-2.5 text-center font-medium text-slate-700 dark:text-slate-300 border-r border-slate-200 dark:border-indigo-900/40">{d.unit}</td>
+                        <td className="p-2.5 text-center border-r border-slate-200 dark:border-indigo-900/40">
+                          <span className="inline-flex items-center gap-1 rounded-lg border border-cyan-300 dark:border-indigo-800 bg-cyan-50 dark:bg-indigo-950/80 px-2.5 py-1 text-xs font-black text-cyan-800 dark:text-indigo-300 shadow-2xs whitespace-nowrap">
                             {(d as any).locationBin || (d as any).binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}
                           </span>
                         </td>
-                        <td className="p-2.5 text-center font-black text-slate-900 border-r border-slate-200">{d.qty}</td>
-                        <td className="p-2.5 text-right font-semibold text-slate-800 border-r border-slate-200 whitespace-nowrap">{d.price.toLocaleString('vi-VN')} đ</td>
-                        <td className="p-2.5 text-right font-black text-cyan-900 whitespace-nowrap">{(d.qty * d.price).toLocaleString('vi-VN')} đ</td>
+                        <td className="p-2.5 text-center font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40">{d.qty}</td>
+                        <td className="p-2.5 text-right font-semibold text-slate-800 dark:text-slate-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">{d.price.toLocaleString('vi-VN')} đ</td>
+                        <td className="p-2.5 text-right font-black text-cyan-900 dark:text-indigo-300 whitespace-nowrap">{(d.qty * d.price).toLocaleString('vi-VN')} đ</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <div className="flex justify-end text-sm font-black text-slate-900 border-t-2 border-slate-200 pt-3">
+              <div className="flex justify-end text-sm font-black text-slate-900 dark:text-slate-100 border-t-2 border-slate-200 dark:border-indigo-900/60 pt-3">
                 {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng giá trị: '}
-                <span className={isDisposal ? 'text-rose-600 ml-2 font-black text-base' : 'text-cyan-700 ml-2 font-black text-base'}>
+                <span className={isDisposal ? 'text-rose-600 dark:text-rose-400 ml-2 font-black text-base' : 'text-cyan-700 dark:text-indigo-400 ml-2 font-black text-base'}>
                   {selectedOrder.totalAmount.toLocaleString('vi-VN')} đ
                 </span>
               </div>
@@ -1999,71 +2299,16 @@ export default function Outbound({
         document.body
       )}
 
-      {/* ─── MODAL PRINT ────────────────────────────────────────────── */}
-      {showPrintModal && selectedOrder && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-2xl bg-white p-6 shadow-2xl border-2 border-cyan-500">
-            <div className="mb-4 flex items-center justify-between border-b-2 border-cyan-100 pb-3">
-              <h2 className="text-base font-black text-slate-900">
-                {isDisposal ? 'Xem trước Biên Bản Xuất Hủy Hàng Hóa' : 'Xem trước Phiếu Xuất Bán Hàng'}
-              </h2>
-              <button onClick={() => setShowPrintModal(false)} className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4 border-2 border-slate-200 rounded-xl space-y-3 text-xs bg-slate-50/50">
-              <div className="text-center">
-                <h2 className="text-base font-black uppercase text-cyan-950">
-                  {isDisposal ? 'BIÊN BẢN XUẤT HỦY HÀNG HÓA' : 'PHIẾU XUẤT BÁN HÀNG'}
-                </h2>
-                <p className="text-slate-500 font-semibold mt-1">Mã phiếu: {selectedOrder.orderNo} - Ngày: {formatDateDisplay(selectedOrder.orderDate || (selectedOrder as any).createdAt)}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 font-semibold text-slate-800">
-                <p>{isDisposal ? 'Lý do xuất hủy:' : 'Khách hàng:'} <span className="font-extrabold">{selectedOrder.customer}</span></p>
-                <p>{isDisposal ? 'Kho xuất hủy:' : 'Kho xuất:'} <span className="font-extrabold">{formatWarehouseDisplay(selectedOrder.branchCode || selectedOrder.warehouseCode, warehouses)}</span></p>
-                {!isDisposal && <p>SĐT: <span className="font-bold">{selectedOrder.customerPhone || '-'}</span></p>}
-                <p>{isDisposal ? 'Người lập / Giám sát:' : 'Người lập:'} <span className="font-bold">{selectedOrder.employeeName}</span></p>
-              </div>
-              <table className="w-full border-collapse border-2 border-slate-300 text-xs bg-white">
-                <thead className="bg-cyan-100 font-bold text-center text-cyan-950">
-                  <tr>
-                    <th className="border border-slate-300 p-2">STT</th>
-                    <th className="border border-slate-300 p-2">Tên hàng</th>
-                    <th className="border border-slate-300 p-2">ĐVT</th>
-                    <th className="border border-slate-300 p-2">Vị trí kệ lấy hàng</th>
-                    <th className="border border-slate-300 p-2">SL {isDisposal ? 'hủy' : ''}</th>
-                    <th className="border border-slate-300 p-2">{isDisposal ? 'Giá vốn (đ)' : 'Đơn giá'}</th>
-                    <th className="border border-slate-300 p-2">{isDisposal ? 'Giá trị hủy (đ)' : 'Thành tiền'}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedOrder.details?.map((d, i) => (
-                    <tr key={i} className="text-center">
-                      <td className="border border-slate-300 p-2">{i + 1}</td>
-                      <td className="border border-slate-300 p-2 text-left font-semibold">{d.productName}</td>
-                      <td className="border border-slate-300 p-2">{d.unit}</td>
-                      <td className="border border-slate-300 p-2 font-bold text-cyan-800">{(d as any).locationBin || (d as any).binCode || (d as any).shelf || `Kệ A${(i % 4) + 1}-0${(i % 3) + 1}`}</td>
-                      <td className="border border-slate-300 p-2 font-bold">{d.qty}</td>
-                      <td className="border border-slate-300 p-2 text-right">{d.price.toLocaleString('vi-VN')}</td>
-                      <td className="border border-slate-300 p-2 text-right font-bold">{(d.qty * d.price).toLocaleString('vi-VN')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="text-right font-black text-sm text-cyan-950">
-                {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng tiền: '}
-                <span className="text-cyan-700 font-extrabold">{selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ</span>
-              </div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer shadow-md transition">
-                <Printer size={16} /> In Phiếu
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* ─── MODAL PRINT PHIẾU XUẤT KHO ────────────────────────────── */}
+      <OutboundPrintModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        order={selectedOrder}
+        warehouses={warehouses}
+        isDisposal={isDisposal}
+        featureMode={featureMode}
+        title={title}
+      />
 
       {/* ─── MODAL BARCODE SCANNER ───────────────────────────────────── */}
       {showScannerModal && (

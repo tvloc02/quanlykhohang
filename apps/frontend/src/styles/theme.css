@@ -1,10 +1,241 @@
 :root {
   --color-primary: #06B6D4;
-  --color-primary-light: #7EE7F5;
+  --color-primary-light: #67E8F9;
   --color-primary-dark: #0891B2;
-  --color-secondary: #CFF9FB;
-  --color-accent: #E6FBFF;
+  --color-secondary: #CFFAFE;
+  --color-accent: #ECFEFF;
   --color-primary-bg: #F0FDFF;
+}
+
+html.dark {
+  --color-primary: #0891B2; /* Cyan 600 - Deep Cyan */
+  --color-primary-light: #22D3EE; /* Cyan 400 */
+  --color-primary-dark: #0E7490; /* Cyan 700 - Deepest Cyan */
+  --color-secondary: #155E75; /* Cyan 800 */
+  --color-accent: #164E63; /* Cyan 900 */
+  --color-primary-bg: #060913;
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #060913 !important;
+  color: #FFFFFF !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/* PURE BLACK TABLE BACKGROUND & HIGH-CONTRAST ROW HOVER HIGHLIGHT   */
+/* ══════════════════════════════════════════════════════════════════ */
+
+/* Background overrides: Force containers and cards to Deep Pure Black */
+html.dark .bg-white,
+html.dark [class*="bg-white"] {
+  background-color: #060913 !important;
+}
+
+html.dark .bg-slate-50,
+html.dark .bg-slate-50\/60,
+html.dark .bg-slate-50\/80,
+html.dark .bg-slate-50\/90,
+html.dark .bg-gray-50,
+html.dark .bg-cyan-50,
+html.dark .bg-cyan-50\/30,
+html.dark .bg-cyan-50\/50,
+html.dark .bg-cyan-50\/60,
+html.dark .bg-cyan-50\/80,
+html.dark .bg-cyan-100,
+html.dark .bg-sky-50,
+html.dark .bg-sky-100,
+html.dark .bg-blue-50,
+html.dark .bg-blue-100,
+html.dark .bg-indigo-50,
+html.dark .bg-indigo-100 {
+  background-color: #060913 !important;
+}
+
+html.dark .bg-slate-100,
+html.dark .bg-gray-100,
+html.dark .bg-cyan-100\/50,
+html.dark .bg-blue-100\/50 {
+  background-color: #0d1424 !important;
+}
+
+/* 1. TABLE & CONTAINERS: PURE BLACK BACKGROUND (#060913) & LIGHT WHITE BORDER */
+html.dark table,
+html.dark table tbody,
+html.dark div[class*="overflow-x-auto"],
+html.dark .table-container {
+  background-color: #060913 !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+html.dark thead,
+html.dark thead tr,
+html.dark th {
+  background-color: #0d1424 !important;
+  color: #FFFFFF !important; /* Crisp Bold White Header Text */
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  font-weight: 800 !important;
+}
+
+html.dark table tbody tr {
+  background-color: #060913 !important;
+  color: #FFFFFF !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+/* 2. BRIGHT GLOWING ROW HOVER HIGHLIGHT (Di chuột vào sáng bừng nổi bật) */
+html.dark table tbody tr:hover,
+html.dark table tbody tr:hover td,
+html.dark table tbody tr.bg-cyan-50\/30,
+html.dark table tbody tr.bg-blue-50\/30,
+html.dark table tbody tr.bg-slate-50,
+html.dark table tbody tr[class*="hover:bg-"]:hover {
+  background-color: #1b3d63 !important; /* Luminous Lighter Blue-Cyan Highlight */
+  color: #FFFFFF !important;
+  box-shadow: inset 4px 0 0 0 #0891b2, inset 0 0 0 1px rgba(8, 145, 178, 0.5) !important;
+}
+
+html.dark table tbody tr:hover td span,
+html.dark table tbody tr:hover td div,
+html.dark table tbody tr:hover td p,
+html.dark table tbody tr:hover td a,
+html.dark table tbody tr:hover td button {
+  color: #FFFFFF !important;
+  font-weight: 800 !important;
+}
+
+/* 3. TABLE CONTENT: CRISP BOLD WHITE TEXT */
+html.dark table td,
+html.dark table td span,
+html.dark table td div,
+html.dark table td p {
+  color: #FFFFFF !important; /* Bold Crisp White Text */
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  font-weight: 600 !important;
+}
+
+html.dark table td a,
+html.dark table td button,
+html.dark table td .font-mono,
+html.dark table td .font-bold {
+  color: #38bdf8 !important; /* Vivid Light Cyan for clickable code IDs */
+  font-weight: 700 !important;
+}
+
+/* 4. PRIMARY ACCENT: DEEPEST CYAN */
+html.dark .bg-cyan-600,
+html.dark .bg-cyan-700,
+html.dark .bg-cyan-800,
+html.dark .bg-cyan-900,
+html.dark .bg-indigo-600,
+html.dark .bg-indigo-700,
+html.dark .bg-blue-600,
+html.dark .bg-blue-700,
+html.dark .bg-blue-800 {
+  background-color: #0891b2 !important; /* Deep Cyan 600 / 700 */
+  color: #FFFFFF !important;
+}
+
+html.dark .bg-cyan-500,
+html.dark .bg-indigo-500,
+html.dark .bg-blue-500 {
+  background-color: #0e7490 !important; /* Deepest Cyan 700 */
+  color: #FFFFFF !important;
+}
+
+/* STATUS BADGES & TRANSPARENT CYAN HIGHLIGHTS */
+html.dark .bg-cyan-500\/10,
+html.dark .bg-cyan-500\/20,
+html.dark .bg-cyan-600\/10,
+html.dark .bg-cyan-600\/20,
+html.dark .bg-blue-500\/10,
+html.dark .bg-blue-500\/20,
+html.dark .bg-blue-600\/10,
+html.dark .bg-blue-600\/20,
+html.dark .bg-blue-50,
+html.dark .bg-blue-100,
+html.dark .bg-indigo-500\/10 {
+  background-color: #164e63 !important; /* Deep Cyan 900 container */
+}
+
+/* GENERAL BORDER OVERRIDES FOR HIGH CONTRAST (Medium Light White Border) */
+html.dark .border-cyan-500,
+html.dark .border-cyan-600,
+html.dark .border-cyan-700,
+html.dark .border-cyan-200,
+html.dark .border-cyan-300,
+html.dark .border-blue-500,
+html.dark .border-blue-600,
+html.dark .border-blue-700,
+html.dark .border-blue-200,
+html.dark .border-blue-300,
+html.dark .border-slate-200,
+html.dark .border-slate-300,
+html.dark .border-gray-200,
+html.dark .border-gray-300,
+html.dark .border-indigo-500,
+html.dark .border-indigo-600 {
+  border-color: rgba(255, 255, 255, 0.22) !important; /* Medium Light White Border */
+}
+
+/* TEXT COLOR OVERRIDES */
+html.dark h1, html.dark h2, html.dark h3, html.dark h4, html.dark h5, html.dark h6,
+html.dark p, html.dark span, html.dark div, html.dark label {
+  color: #FFFFFF;
+}
+
+html.dark .text-slate-900,
+html.dark .text-slate-800,
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-gray-900,
+html.dark .text-gray-800,
+html.dark .text-gray-700,
+html.dark .text-gray-600 {
+  color: #FFFFFF !important;
+}
+
+html.dark .text-cyan-900,
+html.dark .text-cyan-800,
+html.dark .text-cyan-700,
+html.dark .text-cyan-600,
+html.dark .text-blue-900,
+html.dark .text-blue-800,
+html.dark .text-blue-700,
+html.dark .text-blue-600 {
+  color: #38bdf8 !important; /* Bright Cyan Accent Text */
+}
+
+html.dark .text-cyan-500,
+html.dark .text-cyan-400,
+html.dark .text-cyan-300,
+html.dark .text-blue-500,
+html.dark .text-blue-400,
+html.dark .text-blue-300 {
+  color: #38bdf8 !important; /* Light Vivid Cyan */
+}
+
+html.dark .text-slate-500,
+html.dark .text-slate-400,
+html.dark .text-gray-500 {
+  color: #94a3b8 !important;
+}
+
+/* INPUTS, SELECTS, DATES & SEARCH BARS */
+html.dark input[type="text"],
+html.dark input[type="number"],
+html.dark input[type="date"],
+html.dark input[type="password"],
+html.dark select,
+html.dark textarea {
+  background-color: #060913 !important;
+  color: #FFFFFF !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+}
+
+html.dark input::placeholder {
+  color: #94a3b8 !important;
 }
 
 /* Utility helpers for non-tailwind usage */
@@ -26,11 +257,14 @@ html,
   backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
 }
 
-
 /* Custom Modern Scrollbar */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #06b6d4 #f1f5f9;
+  scrollbar-color: #0891b2 #f1f5f9;
+}
+
+html.dark .custom-scrollbar {
+  scrollbar-color: #0891b2 #0b0f19;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -43,14 +277,26 @@ html,
   border-radius: 9999px;
 }
 
+html.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: #0b0f19;
+}
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #06b6d4;
+  background: #0891b2;
   border-radius: 9999px;
   cursor: pointer;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #0891b2;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #0e7490;
+}
+
+html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #0e7490;
 }
 
 /* Remove Number Input Spinner Arrows globally */
@@ -65,14 +311,12 @@ input[type=number] {
 }
 
 /* Globally disable slashed-zero on digit 0 across all fonts */
-*, ::before, ::after, .font-mono, code, kbd, samp, pre {
+* {
   font-variant-numeric: normal !important;
-  font-feature-settings: "zero" 0 !important;
 }
 
-
-/* Header Marquee Ticker (Chạy chữ siêu siêu siêu chậm từ phải sang trái, 600s) */
-@keyframes headerMarquee {
+/* Header Operational Notifications Marquee Animation */
+@keyframes header-marquee {
   0% {
     transform: translateX(100%);
   }
@@ -82,13 +326,200 @@ input[type=number] {
 }
 
 .animate-header-marquee {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
   white-space: nowrap;
-  animation: headerMarquee 600s linear infinite;
+  animation: header-marquee 300s linear infinite;
   will-change: transform;
 }
 
 .animate-header-marquee:hover {
   animation-play-state: paused;
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════ */
+/* GLOBAL PRINT OPTIMIZATIONS: HIDE CHATBOT, STRIP ALL BACKGROUNDS   */
+/* REPORT PRINT RULES: FORCE LANDSCAPE, FULL BORDERS, TABLE-ONLY     */
+/* ══════════════════════════════════════════════════════════════════ */
+@page {
+  size: landscape;
+  margin: 5mm 6mm;
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 5mm 6mm;
+  }
+
+  /* 1. Hide floating chatbot, controls, sidebars, headers, and UI controls */
+  #dify-chatbot-bubble-button,
+  #dify-chatbot-bubble-window,
+  .dify-custom-controls,
+  iframe[src*="dify"],
+  div[id*="dify"],
+  button[id*="dify"],
+  aside,
+  nav,
+  header,
+  footer,
+  .print\:hidden {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+
+  /* 2. Hide all interactive buttons, inputs, dropdowns on printed reports */
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* Show printable report headers and footers */
+  .print-report-header,
+  .print-report-footer {
+    display: block !important;
+  }
+
+  /* 3. Strip dark/colored theme backgrounds so printout is clean black & white */
+  html,
+  html.dark,
+  body,
+  html.dark body,
+  #root,
+  main,
+  div,
+  section {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* 4. Reset table containers so table expands full width */
+  .overflow-hidden,
+  .overflow-x-auto,
+  .custom-scrollbar,
+  .rounded-2xl {
+    overflow: visible !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* 5. Clean report table styling: 100% width, black borders, compact font */
+  table,
+  table[class*="min-w-"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    border: 1px solid #000000 !important;
+    margin-top: 4px !important;
+    background: #ffffff !important;
+  }
+
+  /* 6. Vertical & horizontal black borders for ALL cells (th, td, tfoot) */
+  table th,
+  table td,
+  table thead th,
+  table tbody td,
+  table tfoot td,
+  th, td,
+  th[class*="border-"],
+  td[class*="border-"],
+  th[class*="min-w-"],
+  td[class*="min-w-"],
+  th[class*="whitespace-nowrap"],
+  td[class*="whitespace-nowrap"] {
+    min-width: 0 !important;
+    width: auto !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    font-size: 7.2pt !important;
+    line-height: 1.25 !important;
+    padding: 3px 2px !important;
+    border: 1px solid #000000 !important;
+    border-left: 1px solid #000000 !important;
+    border-right: 1px solid #000000 !important;
+    border-top: 1px solid #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  thead tr,
+  table thead tr {
+    background: #f1f5f9 !important;
+  }
+
+  thead th,
+  table thead th {
+    background: #f1f5f9 !important;
+    color: #000000 !important;
+    font-weight: 800 !important;
+    font-size: 7.6pt !important;
+    text-align: center !important;
+    border: 1px solid #000000 !important;
+    border-left: 1px solid #000000 !important;
+    border-right: 1px solid #000000 !important;
+    border-top: 1px solid #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+    padding: 4px 2px !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  tfoot tr,
+  tr.bg-slate-100 {
+    background: #f8fafc !important;
+  }
+
+  tfoot td,
+  table tfoot td,
+  tr.bg-slate-100 td {
+    background: #f8fafc !important;
+    color: #000000 !important;
+    font-weight: 800 !important;
+    font-size: 7.2pt !important;
+    border: 1px solid #000000 !important;
+    border-left: 1px solid #000000 !important;
+    border-right: 1px solid #000000 !important;
+    border-top: 1px solid #000000 !important;
+    border-bottom: 1px solid #000000 !important;
+    padding: 3px 2px !important;
+  }
+
+  /* 7. Strip table dark mode overrides */
+  html.dark table,
+  html.dark table tbody,
+  html.dark table thead,
+  html.dark table tfoot,
+  html.dark thead tr,
+  html.dark tbody tr,
+  html.dark tfoot tr,
+  html.dark th,
+  html.dark td,
+  html.dark div[class*="overflow-x-auto"],
+  html.dark .table-container {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border-color: #000000 !important;
+  }
 }

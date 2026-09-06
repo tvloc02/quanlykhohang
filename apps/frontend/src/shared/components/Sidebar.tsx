@@ -62,10 +62,15 @@ import {
   Edit3,
   HelpCircle,
   BookMarked,
+<<<<<<< HEAD
   X,
 } from "lucide-react";
 import { readStoredPermissionGroups } from "../../features/personnel/PermissionGroupsPage";
 import { usePermissions } from "../hooks/usePermissions";
+=======
+} from 'lucide-react';
+import { usePermissions } from '../hooks/usePermissions';
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
 
 interface SidebarProps {
   isOpen: boolean;
@@ -90,10 +95,8 @@ type MenuItem = {
   }>;
 };
 
-// Cấu trúc danh mục menu xếp chuẩn theo Ảnh Mẫu:
-// POS - Bán lẻ (Trang chủ), Nhập - Xuất, Thu chi, Báo cáo Tổng hợp, Báo cáo Phân tích, Sổ sách kế toán, Danh mục, CSKH, Hệ thống, Shipper, VAT Điện tử, Ghi đơn Thị trường, Trợ giúp, Hướng dẫn sử dụng
 const menuItems: MenuItem[] = [
-  // 1. Trang chủ (Nút Vàng Nổi Bật)
+  // 1. Trang chủ
   {
     id: "pos",
     icon: Home,
@@ -189,7 +192,7 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-  // 3. Thu chi (Viết phiếu thu, Thu tiền từ Phiếu xuất, Viết phiếu chi)
+  // 3. Thu chi
   {
     id: "thu-chi",
     icon: ArrowLeftRight,
@@ -399,6 +402,7 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
+<<<<<<< HEAD
   // 8. Chăm sóc Khách hàng
   {
     id: "cham-soc-khach-hang",
@@ -421,10 +425,13 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
+=======
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
   // 9. Hệ thống
   {
     id: "he-thong",
     icon: Settings,
+<<<<<<< HEAD
     label: "Hệ thống",
     path: "/system-menu",
     allowedRoles: ["admin", "manager", "staff"],
@@ -568,10 +575,31 @@ function getStoredRole(user: any) {
     (user.roles && user.roles[0]?.name) ||
     "admin"
   ).toLowerCase();
+=======
+    label: 'Hệ thống',
+    path: '/system-menu',
+    children: [
+      { id: 'settings', icon: Settings, label: 'Cấu hình hệ thống', path: '/settings' },
+      { id: 'personnel', icon: Users, label: 'Nhân viên & Phân quyền', path: '/personnel' },
+      { id: 'areas', icon: Warehouse, label: 'Cấu hình Chi nhánh', path: '/areas' },
+      { id: 'evat-config', icon: FileEdit, label: 'Hóa đơn & VAT', path: '/vat/management' },
+      { id: 'print-templates', icon: Printer, label: 'Mẫu in Chứng từ', path: '/documents' },
+      { id: 'audit-log', icon: History, label: 'Nhật ký Hoạt động', path: '/audit-log' },
+    ],
+  },
+];
+
+function isRouteActive(currentPath: string, targetPath: string) {
+  if (targetPath === '/dashboard') {
+    return currentPath === '/dashboard' || currentPath === '/';
+  }
+  return currentPath.startsWith(targetPath);
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
 }
 
 export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
   const location = useLocation();
+<<<<<<< HEAD
   const [searchQuery, setSearchQuery] = useState("");
   const [permissionTick, setPermissionTick] = useState(0);
 
@@ -590,9 +618,21 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
         handlePermissionsChange,
       );
     };
+=======
+  const [searchQuery, setSearchQuery] = useState('');
+  const [userRole, setUserRole] = useState<string>('');
+
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      setUserRole(user.role || (user.roles && user.roles[0]?.name) || 'staff');
+    } catch {
+      setUserRole('staff');
+    }
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
   }, []);
 
-  const { isAdmin, userActiveGroups, canViewMenu } = usePermissions();
+  const { isAdmin, canViewMenu } = usePermissions();
 
   const isMenuAllowed = useCallback(
     (item: { id: string; allowedRoles?: string[] }) => {
@@ -677,6 +717,7 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
       item.children?.some((c) => isRouteActive(location.pathname, c.path));
     const isExpanded = expandedItems.has(item.path);
 
+<<<<<<< HEAD
     // SPECIAL BUTTON FOR TRANG CHỦ
     if (item.isSpecialButton) {
       const isActive = isRouteActive(location.pathname, item.path);
@@ -705,6 +746,8 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
       );
     }
 
+=======
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
     if (hasChildren) {
       return (
         <div key={item.path} className="space-y-1">
@@ -712,20 +755,34 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
             onClick={() => toggleExpanded(item.path)}
             className={`w-full flex items-center ${isOpen ? "px-3.5" : "justify-center"} py-3 text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer group ${
               isParentActive || isChildActive || isExpanded
+<<<<<<< HEAD
                 ? "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
                 : "hover:bg-cyan-50 dark:hover:bg-slate-900 text-gray-800 dark:text-slate-200"
+=======
+                ? 'bg-cyan-500/10 dark:bg-[#131b2e] text-cyan-700 dark:text-blue-300 border border-transparent dark:border-blue-800/60'
+                : 'hover:bg-cyan-50 dark:hover:bg-[#0f172a] text-slate-800 dark:text-slate-200'
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
             }`}
             title={!isOpen ? item.label : ""}
           >
+<<<<<<< HEAD
             <Icon
               className={`h-5 w-5 ${isOpen ? "mr-3" : ""} flex-shrink-0 text-cyan-600 dark:text-cyan-400`}
             />
+=======
+            <Icon className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 text-cyan-600 dark:text-blue-400`} />
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
             {isOpen && (
               <>
                 <span className="flex-1 text-left truncate">{item.label}</span>
                 <ChevronDown
+<<<<<<< HEAD
                   className={`h-4 w-4 text-cyan-600 transition-transform duration-300 ${
                     isExpanded ? "transform rotate-180" : ""
+=======
+                  className={`h-4 w-4 text-cyan-600 dark:text-blue-400 transition-transform duration-300 ${
+                    isExpanded ? 'transform rotate-180' : ''
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
                   }`}
                 />
               </>
@@ -741,7 +798,7 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
                   : "max-h-0 opacity-0 my-0 pointer-events-none"
               }`}
             >
-              <div className="pl-2.5 ml-4 space-y-1 py-0.5">
+              <div className="pl-2.5 ml-4 space-y-1 py-0.5 border-l-2 border-slate-100 dark:border-slate-800">
                 {item.children!.map((child) => {
                   const ChildIcon = child.icon;
                   const isChildActiveState = isRouteActive(
@@ -769,15 +826,24 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
                       }}
                       className={`w-full flex items-center px-3 py-2 text-[13px] font-semibold rounded-lg transition-all duration-200 ${
                         isChildActiveState
+<<<<<<< HEAD
                           ? "bg-cyan-600 text-white shadow-sm font-semibold"
                           : "text-gray-700 dark:text-slate-200 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:bg-slate-900 dark:hover:text-cyan-300"
+=======
+                          ? 'bg-gradient-to-r from-cyan-600 to-cyan-500 dark:from-cyan-700 dark:to-cyan-800 text-white shadow-md font-extrabold'
+                          : 'text-slate-700 dark:text-slate-300 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:bg-[#131b2e] dark:hover:text-cyan-200'
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
                       }`}
                     >
                       <ChildIcon
                         className={`h-4 w-4 mr-2.5 flex-shrink-0 ${
+<<<<<<< HEAD
                           isChildActiveState
                             ? "text-white"
                             : "text-cyan-500/80 dark:text-cyan-400/70"
+=======
+                          isChildActiveState ? 'text-white' : 'text-cyan-500/80 dark:text-cyan-400'
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
                         }`}
                       />
                       <span className="truncate">{child.label}</span>
@@ -804,14 +870,24 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
         }}
         className={`w-full flex items-center ${isOpen ? "px-3.5" : "justify-center"} py-3 text-sm font-bold rounded-xl transition-all duration-200 group ${
           isActive
+<<<<<<< HEAD
             ? "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white shadow-md"
             : "hover:bg-cyan-50 dark:hover:bg-slate-900 text-gray-800 dark:text-slate-200"
+=======
+            ? 'bg-gradient-to-r from-cyan-600 to-cyan-500 dark:from-cyan-700 dark:to-cyan-800 text-white shadow-md font-black'
+            : 'hover:bg-cyan-50 dark:hover:bg-[#0f172a] text-slate-800 dark:text-slate-200'
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
         }`}
         title={!isOpen ? item.label : ""}
       >
         <Icon
+<<<<<<< HEAD
           className={`h-5 w-5 ${isOpen ? "mr-3" : ""} flex-shrink-0 ${
             isActive ? "text-white" : "text-cyan-600 dark:text-cyan-400"
+=======
+          className={`h-5 w-5 ${isOpen ? 'mr-3' : ''} flex-shrink-0 ${
+            isActive ? 'text-white' : 'text-cyan-600 dark:text-blue-400'
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
           }`}
         />
         {isOpen && (
@@ -823,6 +899,7 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
 
   return (
     <aside
+<<<<<<< HEAD
       className={`fixed inset-y-0 left-0 z-50 bg-white dark:bg-slate-950 transform transition-all duration-300 ease-in-out border-r-2 border-gray-200 dark:border-slate-800 flex flex-col h-screen lg:relative ${
         isOpen
           ? "translate-x-0 w-80 shadow-2xl lg:shadow-none"
@@ -847,6 +924,19 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
                 Smart WMS
               </h1>
               <p className="text-gray-500 dark:text-slate-400 text-xs font-medium truncate">
+=======
+      className={`${
+        isOpen ? 'w-80' : 'w-20'
+      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen`}
+    >
+      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex justify-center lg:justify-start box-border">
+        <div className={`flex items-center gap-3 w-full ${!isOpen ? 'justify-center' : ''}`}>
+          <img src="/logo.png" alt="Smart WMS" className="h-11 w-11 object-cover rounded-xl shadow-sm flex-shrink-0" />
+          {isOpen && (
+            <div className="flex-1 overflow-hidden">
+              <h1 className="font-extrabold text-lg text-slate-900 dark:text-slate-100 truncate">Smart WMS</h1>
+              <p className="text-slate-500 dark:text-blue-300 text-xs font-semibold truncate">
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
                 Hệ thống quản lý kho
               </p>
             </div>
@@ -865,29 +955,30 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
       <div className="px-4 py-4 flex-shrink-0">
         {isOpen ? (
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-cyan-500" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-cyan-500 dark:text-blue-400" />
             <input
               type="text"
               placeholder="Tìm kiếm menu..."
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 text-sm border-2 border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 dark:bg-slate-900 dark:text-white transition-all bg-gray-50"
+              className="w-full pl-9 pr-3 py-2.5 text-xs font-semibold border-2 border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:border-cyan-500 dark:focus:border-blue-500 focus:ring-4 focus:ring-cyan-500/10 dark:bg-[#060913] dark:text-slate-100 transition-all bg-slate-50"
             />
           </div>
         ) : (
           <div className="flex justify-center">
             <button
               type="button"
-              className="p-2 rounded-xl bg-cyan-50 dark:bg-slate-900 cursor-pointer"
+              className="p-2 rounded-xl bg-cyan-50 dark:bg-[#0f172a] cursor-pointer"
               onClick={onToggle}
               title="Mở rộng để tìm kiếm"
             >
-              <Search className="h-5 w-5 text-cyan-600" />
+              <Search className="h-5 w-5 text-cyan-600 dark:text-blue-400" />
             </button>
           </div>
         )}
       </div>
 
+<<<<<<< HEAD
       <nav
         className="flex-1 px-3 space-y-2 overflow-y-auto pb-4"
         style={{
@@ -895,8 +986,11 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
           scrollbarColor: "#d5d8db #F1F5F9",
         }}
       >
+=======
+      <nav className="flex-1 px-3 space-y-2 overflow-y-auto pb-4 custom-scrollbar">
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
         {filteredMenuItems.length === 0 && isOpen && (
-          <div className="text-center py-4 text-sm text-gray-500 dark:text-slate-400">
+          <div className="text-center py-4 text-xs font-semibold text-slate-500 dark:text-blue-300/70">
             Không tìm thấy kết quả.
           </div>
         )}
@@ -904,16 +998,23 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
         {filteredMenuItems.map(renderItem)}
       </nav>
 
-      <div className="p-4 border-t-2 bg-white dark:bg-slate-950 flex-shrink-0 border-gray-200 dark:border-slate-800">
+      <div className="p-4 border-t-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80">
         <button
           type="button"
           onClick={onToggle}
-          className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 font-bold text-sm ${
+          className={`w-full flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 font-bold text-xs ${
             !isOpen
+<<<<<<< HEAD
               ? "bg-cyan-50 dark:bg-slate-900"
               : "bg-gradient-to-r from-cyan-50 to-cyan-100/50 dark:from-slate-900 dark:to-slate-900"
           } hover:shadow-md text-cyan-600 dark:text-cyan-400`}
           title={!isOpen ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+=======
+              ? 'bg-cyan-50 dark:bg-[#0f172a]'
+              : 'bg-slate-100 dark:bg-[#060913]'
+          } hover:shadow-md text-cyan-600 dark:text-blue-400 cursor-pointer`}
+          title={!isOpen ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+>>>>>>> b02766de169a9e78aa5863c1ef47a3bc2c6fadc0
         >
           {!isOpen ? (
             <ChevronRight className="h-5 w-5" />

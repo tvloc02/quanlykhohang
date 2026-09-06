@@ -23,6 +23,8 @@ import {
   Building2,
 } from 'lucide-react';
 import { reportsApi } from '../api/reportsApi';
+import { ReportPrintHeader } from '../components/ReportPrintHeader';
+import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
 const API_BASE_URL = '/api';
 
@@ -482,9 +484,33 @@ export default function SalesReportPage() {
   };
 
   return (
-    <div className="space-y-4 pb-12 animate-in fade-in duration-200">
-      {/* ═══ TOP HEADER SECTION matching Outbound Orders Header ═══ */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <>
+      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
+      <ReportPrintHeader
+        title="BÁO CÁO BÁN HÀNG TỔNG HỢP"
+        subtitle={
+          startDate && endDate
+            ? `Kỳ báo cáo: Từ ngày ${startDate} đến ngày ${endDate}`
+            : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`
+        }
+        subInfo={`Phân loại: ${
+          groupBy === 'staff'
+            ? 'Theo Nhân viên'
+            : groupBy === 'customer'
+            ? 'Theo Khách hàng'
+            : groupBy === 'branch'
+            ? 'Theo Kho xuất hàng'
+            : groupBy === 'month'
+            ? 'Theo Tháng'
+            : groupBy === 'year'
+            ? 'Theo Năm'
+            : 'Theo Ngày'
+        } | Tổng số nhóm: ${filteredData.length} nhóm`}
+      />
+
+      <div className="space-y-4 pb-12 animate-in fade-in duration-200">
+        {/* ═══ TOP HEADER SECTION matching Outbound Orders Header ═══ */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
         {/* Left Badge Title */}
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
@@ -550,7 +576,7 @@ export default function SalesReportPage() {
       </div>
 
       {/* ═══ FILTER & SEARCH PANEL ═══ */}
-      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3 print:hidden">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           {/* Live Search input */}
           <div className="relative flex-1 min-w-[300px]">
@@ -650,7 +676,7 @@ export default function SalesReportPage() {
       {groupBy === 'chart' ? (
         <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm space-y-6">
           {/* Header Controls */}
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200 pb-4 print:hidden">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200">
                 <BarChart3 size={22} />
@@ -1026,7 +1052,7 @@ export default function SalesReportPage() {
           </div>
 
           {/* Pagination Footer matching Outbound Orders */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
             <div className="flex items-center gap-2">
               <span>Hiển thị:</span>
               <select
@@ -1098,7 +1124,7 @@ export default function SalesReportPage() {
 
       {/* ═══ COLUMN VISIBILITY MODAL ═══ */}
       {showColumnSettings && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in print:hidden">
           <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="font-extrabold text-cyan-900 text-sm flex items-center gap-2 uppercase">
@@ -1210,5 +1236,9 @@ export default function SalesReportPage() {
         </div>
       )}
     </div>
-  );
+
+    {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
+    <ReportPrintFooter />
+  </>
+);
 }

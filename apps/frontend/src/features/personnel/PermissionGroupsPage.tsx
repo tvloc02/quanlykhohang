@@ -174,20 +174,17 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'customer-groups', label: 'Nhóm KH/NCC', parentId: 'danh-muc' },
   { id: 'price-lists', label: 'Bảng giá', parentId: 'danh-muc' },
 
-  // 8. Chăm sóc Khách hàng
-  { id: 'cham-soc-khach-hang', label: 'Chăm sóc Khách hàng', isHeader: true },
-  { id: 'cskh-customers', label: 'Danh sách Khách hàng', parentId: 'cham-soc-khach-hang' },
-  { id: 'cskh-suppliers', label: 'Nhà cung cấp', parentId: 'cham-soc-khach-hang' },
-
   // 9. Hệ thống
   { id: 'he-thong', label: 'Hệ thống', isHeader: true },
+  { id: 'settings', label: 'Cấu hình hệ thống', parentId: 'he-thong' },
+  { id: 'personnel', label: 'Nhân viên & Phân quyền', parentId: 'he-thong' },
+  { id: 'areas', label: 'Cấu hình Chi nhánh', parentId: 'he-thong' },
+  { id: 'evat-config', label: 'Hóa đơn & VAT', parentId: 'he-thong' },
+  { id: 'print-templates', label: 'Mẫu in Chứng từ', parentId: 'he-thong' },
+  { id: 'audit-log', label: 'Nhật ký Hoạt động', parentId: 'he-thong' },
+  { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
   { id: 'logout', label: 'Đăng xuất', parentId: 'he-thong' },
   { id: 'change-password', label: 'Đổi mật khẩu', parentId: 'he-thong' },
-  { id: 'personnel', label: 'Người dùng / Nhân viên', parentId: 'he-thong' },
-  { id: 'permission-groups', label: 'Nhóm quyền', parentId: 'he-thong' },
-  { id: 'audit-log', label: 'Lịch sử thao tác', parentId: 'he-thong' },
-  { id: 'zalo-config', label: 'Cấu hình Zalo OA', parentId: 'he-thong' },
-  { id: 'evat-config', label: 'Cấu hình e-VAT', parentId: 'he-thong' },
 
   // 10. Shipper
   { id: 'shipper', label: 'Shipper', isHeader: true },
@@ -201,6 +198,32 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   // 12. Hướng dẫn sử dụng
   { id: 'huong-dan-su-dung', label: 'Hướng dẫn sử dụng' },
 ];
+
+export function isActionSupported(menuId: string, actionKey: keyof ActionPermission): boolean {
+  if (actionKey === 'view') return true;
+  if (actionKey === 'status') return false;
+
+  if (
+    menuId === 'pos' ||
+    menuId === 'trang-chu' ||
+    menuId === 'logout' ||
+    menuId === 'change-password' ||
+    menuId === 'huong-dan-su-dung' ||
+    menuId === 'print-barcode'
+  ) {
+    return false;
+  }
+
+  if (menuId.startsWith('report-') || menuId.startsWith('bao-cao-')) {
+    return actionKey === 'print' || actionKey === 'export';
+  }
+
+  if (menuId === 'zalo-config' || menuId === 'evat-config') {
+    return actionKey === 'edit';
+  }
+
+  return true;
+}
 
 export function getDefaultGeneralPermissions(): GeneralPermissions {
   return {
@@ -923,22 +946,68 @@ export default function PermissionGroupsPage() {
     });
   };
 
+  // Toggle Vertical Column Permissions (Select All / Deselect All Vertically for a specific column)
+  const toggleColumnPermissions = (actionKey: keyof ActionPermission) => {
+    const supportedItems = SYSTEM_MENU_TREE.filter(
+      (item) => !item.isHeader && isActionSupported(item.id, actionKey)
+    );
+
+    const allChecked = supportedItems.every(
+      (item) => tempMenuPermissions[item.id]?.[actionKey] === true
+    );
+
+    setTempMenuPermissions((prev) => {
+      const next = { ...prev };
+      supportedItems.forEach((item) => {
+        const current = next[item.id] || {
+          view: false,
+          create: false,
+          edit: false,
+          delete: false,
+          print: false,
+          status: false,
+          import: false,
+          export: false,
+        };
+        next[item.id] = {
+          ...current,
+          [actionKey]: !allChecked,
+        };
+      });
+      return next;
+    });
+  };
+
+  const isColumnAllChecked = (actionKey: keyof ActionPermission) => {
+    const supportedItems = SYSTEM_MENU_TREE.filter(
+      (item) => !item.isHeader && isActionSupported(item.id, actionKey)
+    );
+    if (supportedItems.length === 0) return false;
+    return supportedItems.every((item) => tempMenuPermissions[item.id]?.[actionKey] === true);
+  };
+
   // Toggle Header Row (Select All / Deselect All for Header Children)
   const toggleHeaderRowPermissions = (headerId: string, enable: boolean) => {
     const children = SYSTEM_MENU_TREE.filter((m) => m.parentId === headerId);
+    const actionKeys: Array<keyof ActionPermission> = ['view', 'create', 'edit', 'delete', 'print', 'import', 'export'];
+
     setTempMenuPermissions((prev) => {
       const next = { ...prev };
       children.forEach((c) => {
-        next[c.id] = {
-          view: enable,
-          create: enable,
-          edit: enable,
-          delete: enable,
-          print: enable,
-          status: enable,
-          import: enable,
-          export: enable,
+        const itemPerm: ActionPermission = {
+          view: false,
+          create: false,
+          edit: false,
+          delete: false,
+          print: false,
+          status: false,
+          import: false,
+          export: false,
         };
+        actionKeys.forEach((k) => {
+          itemPerm[k] = enable && isActionSupported(c.id, k);
+        });
+        next[c.id] = itemPerm;
       });
       return next;
     });
@@ -1855,14 +1924,28 @@ export default function PermissionGroupsPage() {
                           <th className="px-4 py-3 border-r border-slate-200 min-w-[220px]">
                             DANH MỤC MENU / CHỨC NĂNG
                           </th>
-                          <th className="px-3 py-3 text-center border-r border-slate-200 w-24">Xem</th>
-                          <th className="px-3 py-3 text-center border-r border-slate-200 w-24">Thêm mới</th>
-                          <th className="px-3 py-3 text-center border-r border-slate-200 w-24">Sửa</th>
-                          <th className="px-3 py-3 text-center border-r border-slate-200 w-24">Xóa</th>
-                          <th className="px-3 py-3 text-center border-r border-slate-200 w-24">In chứng từ</th>
-                          <th className="px-3 py-3 text-center border-r border-slate-200 w-24">Duyệt status</th>
-                          <th className="px-3 py-3 text-center border-r border-slate-200 w-24">Nhập file</th>
-                          <th className="px-3 py-3 text-center w-24">Xuất file</th>
+                          {[
+                            { key: 'view', label: 'XEM' },
+                            { key: 'create', label: 'THÊM MỚI' },
+                            { key: 'edit', label: 'SỬA' },
+                            { key: 'delete', label: 'XÓA' },
+                            { key: 'print', label: 'IN CHỨNG TỪ' },
+                            { key: 'import', label: 'NHẬP FILE' },
+                            { key: 'export', label: 'XUẤT FILE' },
+                          ].map((col) => (
+                            <th key={col.key} className="px-2 py-2 text-center border-r border-slate-200 w-24">
+                              <div className="flex flex-col items-center justify-center gap-1.5">
+                                <span className="text-[11px] font-black">{col.label}</span>
+                                <input
+                                  type="checkbox"
+                                  checked={isColumnAllChecked(col.key as keyof ActionPermission)}
+                                  onChange={() => toggleColumnPermissions(col.key as keyof ActionPermission)}
+                                  title={`Chọn / Bỏ chọn toàn bộ cột ${col.label}`}
+                                  className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                                />
+                              </div>
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
@@ -1899,7 +1982,7 @@ export default function PermissionGroupsPage() {
                                     </button>
                                   </div>
                                 </td>
-                                <td colSpan={8} className="bg-cyan-100/40"></td>
+                                <td colSpan={7} className="bg-cyan-100/40"></td>
                               </tr>
                             );
                           }
@@ -1919,24 +2002,54 @@ export default function PermissionGroupsPage() {
                             export: false,
                           };
 
+                          const columns: Array<{ key: keyof ActionPermission; label: string }> = [
+                            { key: 'view', label: 'Xem' },
+                            { key: 'create', label: 'Thêm mới' },
+                            { key: 'edit', label: 'Sửa' },
+                            { key: 'delete', label: 'Xóa' },
+                            { key: 'print', label: 'In chứng từ' },
+                            { key: 'import', label: 'Nhập file' },
+                            { key: 'export', label: 'Xuất file' },
+                          ];
+
                           return (
                             <tr key={item.id} className="hover:bg-cyan-50/50 transition">
                               <td className="px-4 py-2.5 border-r border-slate-200 font-semibold text-slate-800 pl-8">
                                 {item.label}
                               </td>
 
-                              {(['view', 'create', 'edit', 'delete', 'print', 'status', 'import', 'export'] as Array<keyof ActionPermission>).map(
-                                (actionKey) => (
-                                  <td key={actionKey} className="px-3 py-2.5 text-center border-r border-slate-200">
+                              {columns.map((col) => {
+                                const supported = isActionSupported(item.id, col.key);
+                                const isChecked = supported && Boolean(perm[col.key]);
+
+                                if (!supported) {
+                                  return (
+                                    <td
+                                      key={col.key}
+                                      className="px-3 py-2.5 text-center border-r border-slate-200 bg-slate-100/40"
+                                      title="Chức năng này không hỗ trợ / không có ở trang này"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        disabled
+                                        checked={false}
+                                        className="h-4 w-4 rounded border-slate-200 bg-slate-200 opacity-20 cursor-not-allowed pointer-events-none"
+                                      />
+                                    </td>
+                                  );
+                                }
+
+                                return (
+                                  <td key={col.key} className="px-3 py-2.5 text-center border-r border-slate-200">
                                     <input
                                       type="checkbox"
-                                      checked={Boolean(perm[actionKey])}
-                                      onChange={() => toggleActionPermission(item.id, actionKey)}
+                                      checked={isChecked}
+                                      onChange={() => toggleActionPermission(item.id, col.key)}
                                       className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                                     />
                                   </td>
-                                )
-                              )}
+                                );
+                              })}
                             </tr>
                           );
                         })}
