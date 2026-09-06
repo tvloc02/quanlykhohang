@@ -89,6 +89,146 @@ export function normalizeBinKey(code: string): string {
 }
 
 /**
+ * Reconcile inbound and outbound records to get actual active stored goods and remaining occupancy %
+ */
+export function computeActiveStoredGoods(
+  rawGoods: BinGoodsDetail[],
+  storedInfo: BinOccupiedInfo | null,
+  binFull: string
+): {
+  activeGoods: BinGoodsDetail[];
+  totalQty: number;
+  totalOccupancyPct: number;
+} {
+  const valid = (rawGoods || []).filter(
+    (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
+  );
+
+  if (valid.length === 0) {
+    if (storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0 || (storedInfo.occupancyPct || 0) > 0)) {
+      const netPhysical = storedInfo.totalPhysical || 0;
+      const netPct = storedInfo.occupancyPct || 0;
+      if (netPhysical > 0 && netPct > 0) {
+        return {
+          activeGoods: [{
+            binCode: binFull,
+            productName: storedInfo.productName || 'Hàng tồn kho',
+            sku: storedInfo.sku || '',
+            quantity: netPhysical,
+            allocated: storedInfo.allocated || 0,
+            supplierName: storedInfo.supplierName || '',
+            inboundDate: storedInfo.inboundDate || '',
+            orderCode: storedInfo.orderCode || '',
+            unit: storedInfo.unit || 'Cái',
+            occupancyPct: netPct,
+          }],
+          totalQty: netPhysical,
+          totalOccupancyPct: netPct,
+        };
+      }
+    }
+    return { activeGoods: [], totalQty: 0, totalOccupancyPct: 0 };
+  }
+
+  const productMap = new Map<string, {
+    sku: string;
+    productName: string;
+    unit: string;
+    supplierName: string;
+    inboundDate: string;
+    orderCode: string;
+    inboundQty: number;
+    outboundQty: number;
+    baseOccupancyPct: number;
+  }>();
+
+  valid.forEach((item) => {
+    const pSku = item.sku || 'SKU-001';
+    const pName = item.productName || 'Sản phẩm';
+    const key = `${pSku}___${pName}`;
+    const qty = Number(item.quantity || 0);
+    const isOut = item.isOutbound === true || qty < 0;
+
+    if (!productMap.has(key)) {
+      productMap.set(key, {
+        sku: pSku,
+        productName: pName,
+        unit: item.unit || 'Cái',
+        supplierName: item.supplierName || '',
+        inboundDate: item.inboundDate || '',
+        orderCode: item.orderCode || '',
+        inboundQty: 0,
+        outboundQty: 0,
+        baseOccupancyPct: item.occupancyPct !== undefined && Number(item.occupancyPct) > 0 ? Number(item.occupancyPct) : 100,
+      });
+    }
+
+    const rec = productMap.get(key)!;
+    if (isOut) {
+      rec.outboundQty += Math.abs(qty);
+    } else {
+      rec.inboundQty += Math.abs(qty);
+      if (item.orderCode && (!rec.orderCode || rec.orderCode === 'TỒN-KHO')) rec.orderCode = item.orderCode;
+      if (item.inboundDate) rec.inboundDate = item.inboundDate;
+      if (item.occupancyPct !== undefined && Number(item.occupancyPct) > 0) rec.baseOccupancyPct = Number(item.occupancyPct);
+    }
+  });
+
+  const activeGoods: BinGoodsDetail[] = [];
+  let totalQty = 0;
+  let totalOccupancyPct = 0;
+
+  productMap.forEach((rec) => {
+    const totalIn = rec.inboundQty > 0 ? rec.inboundQty : (rec.outboundQty > 0 ? rec.outboundQty : 0);
+    const netQty = Math.max(0, totalIn - rec.outboundQty);
+
+    let remainingPct = 0;
+    if (netQty > 0) {
+      if (totalIn > 0) {
+        remainingPct = Math.round((netQty / totalIn) * rec.baseOccupancyPct);
+      } else {
+        remainingPct = rec.baseOccupancyPct;
+      }
+      remainingPct = Math.max(1, Math.min(100, remainingPct));
+    }
+
+    if (netQty > 0) {
+      activeGoods.push({
+        binCode: binFull,
+        productName: rec.productName,
+        sku: rec.sku,
+        quantity: netQty,
+        allocated: 0,
+        supplierName: rec.supplierName,
+        inboundDate: rec.inboundDate,
+        orderCode: rec.orderCode,
+        unit: rec.unit,
+        occupancyPct: remainingPct,
+        isOutbound: false,
+      });
+      totalQty += netQty;
+      totalOccupancyPct += remainingPct;
+    }
+  });
+
+  if (storedInfo && storedInfo.occupancyPct !== undefined && storedInfo.occupancyPct >= 0) {
+    if (totalQty === 0) {
+      totalOccupancyPct = 0;
+    } else {
+      totalOccupancyPct = Math.min(totalOccupancyPct, storedInfo.occupancyPct || totalOccupancyPct);
+    }
+  }
+
+  totalOccupancyPct = totalQty === 0 ? 0 : Math.min(100, totalOccupancyPct);
+
+  return {
+    activeGoods,
+    totalQty,
+    totalOccupancyPct,
+  };
+}
+
+/**
  * Single Source of Truth to load occupied bins for a specific warehouse
  */
 export async function fetchWarehouseOccupiedBins(
@@ -714,6 +854,40 @@ export async function fetchWarehouseOccupiedBins(
     } catch (eCustom) {
       console.error('Error loading customBins in fetchWarehouseOccupiedBins:', eCustom);
     }
+
+    // Reconcile all bins: if all items have been exported / disposed of (net stock = 0), mark bin as empty
+    map.forEach((info, binKey) => {
+      const rawGoods = gMap.get(binKey) || [];
+      if (rawGoods.length > 0) {
+        const { activeGoods, totalQty, totalOccupancyPct } = computeActiveStoredGoods(rawGoods, info, binKey);
+        if (totalQty === 0 || totalOccupancyPct === 0) {
+          map.set(binKey, {
+            ...info,
+            totalPhysical: 0,
+            occupancyPct: 0,
+          });
+          dMap.delete(binKey);
+          gMap.set(binKey, []);
+        } else {
+          map.set(binKey, {
+            ...info,
+            totalPhysical: totalQty,
+            occupancyPct: totalOccupancyPct,
+          });
+          if (activeGoods.length > 0) {
+            dMap.set(binKey, activeGoods[0]);
+            gMap.set(binKey, activeGoods);
+          }
+        }
+      } else if (info.isOutbound && (info.totalPhysical === 0 || info.occupancyPct === 0)) {
+        map.set(binKey, {
+          ...info,
+          totalPhysical: 0,
+          occupancyPct: 0,
+        });
+        dMap.delete(binKey);
+      }
+    });
   } catch (err) {
     console.error('Error in fetchWarehouseOccupiedBins:', err);
   }
@@ -776,24 +950,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     const rackCode = editingBinConfig.rackCode || '';
 
     const rawStoredGoods = getGoodsList(fullBinCode, binShortCode, rackCode);
-    const storedGoods = rawStoredGoods.filter(
-      (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
-    );
     const rawStoredInfo = getOccupiedInfo(fullBinCode, binShortCode, rackCode);
     const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
-    const storedInfo = isDraftInfo ? null : rawStoredInfo;
+    const storedInfo = isDraftInfo ? null : (rawStoredInfo || null);
 
-    const hasPhysicalStoredStock = (storedGoods && storedGoods.length > 0) || Boolean(storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0));
-    const realStockQty = Number(
-      storedInfo?.totalPhysical ||
-      (storedGoods && storedGoods.length > 0 ? storedGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0) : 0) ||
-      0
+    const { activeGoods: storedGoods, totalQty: realStockQty, totalOccupancyPct: realStockPct } = computeActiveStoredGoods(
+      rawStoredGoods,
+      storedInfo,
+      fullBinCode
     );
-    const realStockPct = hasPhysicalStoredStock && storedInfo?.occupancyPct !== undefined
-      ? Number(storedInfo.occupancyPct)
-      : (hasPhysicalStoredStock && storedGoods && storedGoods.length > 0
-          ? storedGoods.reduce((a, b) => a + (Number(b.occupancyPct) || 0), 0)
-          : 0);
+    const hasPhysicalStoredStock = storedGoods.length > 0 && (realStockQty > 0 || realStockPct > 0);
 
     const assigned: Array<{
       rowId?: string;
@@ -1648,23 +1814,23 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   </span>
                                 ) : isOtherItemFull ? (
                                   <span className="text-[8.5px] font-black bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    FULL (100% - {otherItemName})
+                                    FULL (100%)
                                   </span>
                                 ) : otherItemName ? (
                                   <span className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    {otherItemName} (Dư {100 - occupancyPct}%)
+                                    Đã chứa {occupancyPct}% (Dư {100 - occupancyPct}%)
                                   </span>
                                 ) : isSuggested ? (
                                   <span className="text-[9px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs">
                                     GỢI Ý AI
                                   </span>
                                 ) : (hasGoods || isFull) && occupancyPct >= 100 ? (
-                                  <span title={occupiedInfo?.productName ? `${occupiedInfo.productName} (Đã đầy 100%)` : 'Đã xếp đầy'} className="text-[8.5px] font-black bg-[#197e96] text-white px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    {occupiedInfo?.productName ? `📦 ${occupiedInfo.productName}` : `${occupiedInfo?.totalPhysical ? `${occupiedInfo.totalPhysical} ${occupiedInfo.unit || 'cái'}` : 'ĐÃ XẾP'} (FULL)`}
+                                  <span title="Đã chứa 100% dung tích ô (Đầy)" className="text-[8.5px] font-black bg-[#197e96] text-white px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    Đã chứa 100% (FULL)
                                   </span>
-                                ) : isPartiallyOccupied || (hasGoods && occupancyPct < 100) ? (
-                                  <span title={occupiedInfo?.productName ? `${occupiedInfo.productName} (Đã xếp ${occupancyPct}%, còn trống ${100 - occupancyPct}%)` : `Đã xếp ${occupancyPct}%`} className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    {occupiedInfo?.productName ? `📦 ${occupiedInfo.productName} (Trống ${100 - occupancyPct}%)` : `ĐÃ XẾP (${occupancyPct}%, Trống ${100 - occupancyPct}%)`}
+                                ) : isPartiallyOccupied || (hasGoods && occupancyPct > 0) ? (
+                                  <span title={`Đã chứa ${occupancyPct}% dung tích ô (Trống ${100 - occupancyPct}%)`} className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    Đã chứa {occupancyPct}%
                                   </span>
                                 ) : (
                                   <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100/90 dark:bg-slate-800/80 px-1.5 py-0.5 rounded-md w-full block truncate border border-slate-200/60">
@@ -1724,34 +1890,15 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               const binFull = editingBinConfig.binCode;
               const rackCode = editingBinConfig.rackCode || '';
               const rawStoredGoods = getGoodsList(binFull, binShort, rackCode);
-              const storedGoods = rawStoredGoods.filter(
-                (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
-              );
               const rawStoredInfo = getOccupiedInfo(binFull, binShort, rackCode);
               const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
-              const storedInfo = isDraftInfo ? null : rawStoredInfo;
+              const storedInfo = isDraftInfo ? null : (rawStoredInfo || null);
 
-              let allStoredGoods: BinGoodsDetail[] = storedGoods && storedGoods.length > 0 ? [...storedGoods] : [];
-              if (allStoredGoods.length === 0 && storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0)) {
-                allStoredGoods = [{
-                  binCode: binFull,
-                  productName: storedInfo.productName || 'Hàng tồn kho',
-                  sku: storedInfo.sku || '',
-                  quantity: storedInfo.totalPhysical || 0,
-                  allocated: storedInfo.allocated || 0,
-                  supplierName: storedInfo.supplierName || '',
-                  inboundDate: storedInfo.inboundDate || '',
-                  orderCode: storedInfo.orderCode || '',
-                  unit: storedInfo.unit || 'Cái',
-                  occupancyPct: storedInfo.occupancyPct !== undefined ? Number(storedInfo.occupancyPct) : 0,
-                }];
-              }
-
-              const totalStoredQty = allStoredGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0);
-              const totalStoredPct = allStoredGoods.reduce((a, b) => a + (Number(b.occupancyPct) || 0), 0);
-              const binOccupancyPct = isOutbound
-                ? (totalStoredPct > 0 ? totalStoredPct : (editingBinConfig.currentPct || 0))
-                : totalStoredPct;
+              const { activeGoods: allStoredGoods, totalQty: totalStoredQty, totalOccupancyPct: binOccupancyPct } = computeActiveStoredGoods(
+                rawStoredGoods,
+                storedInfo,
+                binFull
+              );
 
               return (
                 <>
@@ -1856,7 +2003,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             })
                           ) : (
                             <tr>
-                              <td colSpan={6} className="p-4 text-center text-slate-500 italic">
+                              <td colSpan={6} className="p-6 text-center text-slate-500 italic">
                                 Ô kệ hiện đang trống (0% dung tích), không có hàng hóa lưu trữ.
                               </td>
                             </tr>
@@ -2073,7 +2220,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                       {(() => {
                         const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
                         const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
-                        const initialBinPct = totalStoredPct > 0 ? totalStoredPct : (editingBinConfig.currentPct || 100);
+                        const initialBinPct = binOccupancyPct > 0 ? binOccupancyPct : (editingBinConfig.currentPct || 100);
                         const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
                         const remainingEmptyPct = Math.max(0, Number((100 - remainingAfterExport).toFixed(1)));
 

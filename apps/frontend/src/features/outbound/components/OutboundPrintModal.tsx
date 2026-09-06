@@ -181,17 +181,29 @@ export default function OutboundPrintModal({
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse border-2 border-slate-400 dark:border-indigo-900/60 print:border-black text-xs sm:text-sm bg-white dark:bg-slate-950">
+          <div className="overflow-x-auto w-full">
+            <table
+              className="w-full border-collapse border-2 border-slate-400 dark:border-indigo-900/60 print:border-black text-xs sm:text-sm bg-white dark:bg-slate-950"
+              style={{ width: '100%', minWidth: '100%', tableLayout: 'fixed' }}
+            >
+              <colgroup>
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '16%' }} />
+              </colgroup>
               <thead className="bg-cyan-100/70 dark:bg-indigo-950 print:bg-slate-200 font-bold text-center text-cyan-950 dark:text-indigo-300 print:text-black">
                 <tr>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-12">STT</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-left">Tên hàng</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-16">ĐVT</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-36">Vị trí kệ lấy hàng</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-20">SL {isDisposal ? 'hủy' : ''}</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-28 text-right">{isDisposal ? 'Giá vốn (đ)' : 'Đơn giá'}</th>
-                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 w-32 text-right">{isDisposal ? 'Giá trị hủy (đ)' : 'Thành tiền'}</th>
+                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-center" style={{ width: '6%' }}>STT</th>
+                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-left" style={{ width: '28%' }}>Tên hàng</th>
+                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-center" style={{ width: '8%' }}>ĐVT</th>
+                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-center" style={{ width: '18%' }}>Vị trí kệ lấy hàng</th>
+                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-right" style={{ width: '10%' }}>SL {isDisposal ? 'hủy' : ''}</th>
+                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-right" style={{ width: '14%' }}>{isDisposal ? 'Giá vốn (đ)' : 'Đơn giá'}</th>
+                  <th className="border border-slate-400 dark:border-indigo-900/60 print:border-black p-2.5 text-right" style={{ width: '16%' }}>{isDisposal ? 'Giá trị hủy (đ)' : 'Thành tiền'}</th>
                 </tr>
               </thead>
               <tbody>

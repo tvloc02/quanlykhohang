@@ -262,11 +262,37 @@ function authHeaders() {
 const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return warehouseList[0]?.name || '-';
-  const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
-  if (found) return found.name;
-  if ((codeOrName === 'SPX001' || !codeOrName) && warehouseList.length > 0) {
-    return warehouseList[0].name;
+  if (!codeOrName) {
+    if (warehouseList.length > 0) {
+      const first = warehouseList[0];
+      const code = first.code || (first as any).warehouseCode || '';
+      return code && !first.name.startsWith(`[${code}]`) ? `[${code}] ${first.name}` : first.name;
+    }
+    return '-';
+  }
+  if (codeOrName.startsWith('[')) return codeOrName;
+
+  const target = codeOrName.trim().toLowerCase();
+  const found = warehouseList.find(
+    (w) =>
+      (w.code && w.code.toLowerCase() === target) ||
+      (w.name && w.name.toLowerCase() === target) ||
+      (w.id && String(w.id).toLowerCase() === target) ||
+      ((w as any).warehouseCode && (w as any).warehouseCode.toLowerCase() === target)
+  );
+
+  if (found) {
+    const code = found.code || (found as any).warehouseCode || '';
+    if (code && !found.name.startsWith(`[${code}]`)) {
+      return `[${code}] ${found.name}`;
+    }
+    return found.name;
+  }
+
+  if ((codeOrName === 'SPX001' || codeOrName === '4445') && warehouseList.length > 0) {
+    const first = warehouseList[0];
+    const code = first.code || (first as any).warehouseCode || '';
+    return code && !first.name.startsWith(`[${code}]`) ? `[${code}] ${first.name}` : first.name;
   }
   return codeOrName;
 }
@@ -2526,6 +2552,7 @@ export default function Inbound({
                 left: 0 !important;
                 top: 0 !important;
                 width: 100% !important;
+                min-width: 100% !important;
                 margin: 0 !important;
                 padding: 10mm 12mm !important;
                 background: #ffffff !important;
@@ -2537,6 +2564,31 @@ export default function Inbound({
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
+              #printable-inbound-receipt table {
+                width: 100% !important;
+                min-width: 100% !important;
+                max-width: 100% !important;
+                table-layout: fixed !important;
+                border-collapse: collapse !important;
+                margin: 12px 0 !important;
+              }
+              #printable-inbound-receipt th,
+              #printable-inbound-receipt td {
+                font-size: 10pt !important;
+                line-height: 1.35 !important;
+                padding: 6px 6px !important;
+                border: 1px solid #000000 !important;
+                vertical-align: middle !important;
+              }
+              #printable-inbound-receipt thead th {
+                background-color: #f1f5f9 !important;
+                font-weight: bold !important;
+                font-size: 10pt !important;
+                text-align: center !important;
+              }
+              #printable-inbound-receipt tfoot td {
+                font-size: 10pt !important;
+              }
               .modal-no-print {
                 display: none !important;
               }
@@ -2547,7 +2599,7 @@ export default function Inbound({
             }
           `}</style>
 
-          <div className="w-full max-w-3xl rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border-2 border-cyan-500 my-auto">
+          <div className="w-full max-w-4xl rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border-2 border-cyan-500 my-auto">
             {/* Modal Topbar */}
             <div className="modal-no-print mb-4 flex items-center justify-between border-b-2 border-slate-200 dark:border-slate-800 pb-3">
               <h2 className="text-base font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -2575,11 +2627,12 @@ export default function Inbound({
             {/* Printable Voucher Paper */}
             <div
               id="printable-inbound-receipt"
-              className="bg-white text-black p-6 sm:p-8 rounded-xl border border-slate-200 shadow-inner font-sans space-y-4"
+              className="bg-white text-black p-6 sm:p-8 rounded-xl border border-slate-200 shadow-inner font-sans space-y-4 w-full"
               style={{
                 WebkitPrintColorAdjust: 'exact',
                 colorAdjust: 'exact',
                 fontFamily: '"Times New Roman", Times, serif',
+                width: '100%',
               }}
             >
               {/* Top Header */}
@@ -2635,37 +2688,43 @@ export default function Inbound({
               </div>
 
               {/* Products Table */}
-              <table className="w-full border-collapse border border-black text-xs">
+              <table
+                className="w-full border-collapse border border-black text-xs"
+                style={{ width: '100%', minWidth: '100%', tableLayout: 'fixed' }}
+              >
+                <colgroup>
+                  <col style={{ width: '6%' }} />
+                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '36%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '13%' }} />
+                </colgroup>
                 <thead>
                   <tr className="bg-slate-100 text-center font-bold">
-                    <th className="border border-black p-1.5 w-10">STT</th>
-                    <th className="border border-black p-1.5 w-24">Mã SKU</th>
-                    <th className="border border-black p-1.5 text-left">Tên sản phẩm & Quy cách</th>
-                    <th className="border border-black p-1.5 w-14">ĐVT</th>
-                    <th className="border border-black p-1.5 w-28 text-center">Vị trí Ô Kệ</th>
-                    <th className="border border-black p-1.5 w-16 text-right">Số lượng</th>
-                    <th className="border border-black p-1.5 w-24 text-right">Đơn giá</th>
-                    <th className="border border-black p-1.5 w-28 text-right">Thành tiền</th>
+                    <th className="border border-black p-1.5 text-center" style={{ width: '6%' }}>STT</th>
+                    <th className="border border-black p-1.5 text-center" style={{ width: '16%' }}>Mã SKU</th>
+                    <th className="border border-black p-1.5 text-left" style={{ width: '36%' }}>Tên sản phẩm & Quy cách</th>
+                    <th className="border border-black p-1.5 text-center" style={{ width: '8%' }}>ĐVT</th>
+                    <th className="border border-black p-1.5 text-right" style={{ width: '10%' }}>Số lượng</th>
+                    <th className="border border-black p-1.5 text-right" style={{ width: '11%' }}>Đơn giá</th>
+                    <th className="border border-black p-1.5 text-right" style={{ width: '13%' }}>Thành tiền</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selectedOrder.details && selectedOrder.details.length > 0 ? (
                     selectedOrder.details.map((d, i) => {
-                      const bins = d.assignedBins && d.assignedBins.length > 0
-                        ? d.assignedBins
-                        : (d.locationBin ? d.locationBin.split(',').map((s: string) => s.trim()) : []);
-                      const binText = bins.length > 0 ? bins.join(', ') : '—';
                       const linePrice = Number(d.price) || 0;
                       const lineQty = Number(d.qty) || 0;
                       const lineTotal = lineQty * linePrice;
 
                       return (
                         <tr key={i} className="text-center">
-                          <td className="border border-black p-1.5">{i + 1}</td>
-                          <td className="border border-black p-1.5 font-mono text-[11px]">{d.productSku || 'SKU'}</td>
+                          <td className="border border-black p-1.5 text-center">{i + 1}</td>
+                          <td className="border border-black p-1.5 font-mono text-[11px] text-center">{d.productSku || 'SKU'}</td>
                           <td className="border border-black p-1.5 text-left font-bold">{d.productName}</td>
-                          <td className="border border-black p-1.5">{d.unit || 'Cái'}</td>
-                          <td className="border border-black p-1.5 text-center font-bold text-[11px]">{binText}</td>
+                          <td className="border border-black p-1.5 text-center">{d.unit || 'Cái'}</td>
                           <td className="border border-black p-1.5 text-right font-black">{lineQty.toLocaleString('vi-VN')}</td>
                           <td className="border border-black p-1.5 text-right">{linePrice.toLocaleString('vi-VN')} đ</td>
                           <td className="border border-black p-1.5 text-right font-bold">{lineTotal.toLocaleString('vi-VN')} đ</td>
@@ -2674,7 +2733,7 @@ export default function Inbound({
                     })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="border border-black p-4 text-center text-slate-500 italic">
+                      <td colSpan={7} className="border border-black p-4 text-center text-slate-500 italic">
                         Không có chi tiết hàng hóa
                       </td>
                     </tr>
@@ -2682,7 +2741,7 @@ export default function Inbound({
                 </tbody>
                 <tfoot>
                   <tr className="font-bold bg-slate-50">
-                    <td colSpan={5} className="border border-black p-1.5 text-right uppercase">
+                    <td colSpan={4} className="border border-black p-1.5 text-right uppercase">
                       Tổng cộng tiền hàng:
                     </td>
                     <td className="border border-black p-1.5 text-right font-black">
@@ -2695,7 +2754,7 @@ export default function Inbound({
                   </tr>
                   {Number(selectedOrder.discount || 0) > 0 && (
                     <tr className="text-xs">
-                      <td colSpan={7} className="border border-black p-1.5 text-right font-bold">
+                      <td colSpan={6} className="border border-black p-1.5 text-right font-bold">
                         Chiết khấu:
                       </td>
                       <td className="border border-black p-1.5 text-right font-bold">
@@ -2705,7 +2764,7 @@ export default function Inbound({
                   )}
                   {Number(selectedOrder.vatAmount || 0) > 0 && (
                     <tr className="text-xs">
-                      <td colSpan={7} className="border border-black p-1.5 text-right font-bold">
+                      <td colSpan={6} className="border border-black p-1.5 text-right font-bold">
                         Thuế GTGT (VAT):
                       </td>
                       <td className="border border-black p-1.5 text-right font-bold">
@@ -2714,7 +2773,7 @@ export default function Inbound({
                     </tr>
                   )}
                   <tr className="font-extrabold bg-slate-100 text-sm">
-                    <td colSpan={7} className="border border-black p-2 text-right uppercase">
+                    <td colSpan={6} className="border border-black p-2 text-right uppercase">
                       Tổng tiền thanh toán:
                     </td>
                     <td className="border border-black p-2 text-right font-black">
