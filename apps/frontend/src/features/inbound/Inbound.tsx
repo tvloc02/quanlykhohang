@@ -1990,7 +1990,7 @@ export default function Inbound({
                       (columnVis.branch ? 1 : 0) +
                       (columnVis.nv ? 1 : 0)
                     }
-                    className="p-3 text-right font-black uppercase tracking-wider text-cyan-900 dark:text-indigo-300 border-r border-slate-200 dark:border-indigo-900/40"
+                    className="p-3 text-left pl-4 font-black uppercase tracking-wider text-cyan-900 dark:text-indigo-300 border-r border-slate-200 dark:border-indigo-900/40"
                   >
                     TỔNG CỘNG ({paginatedOrders.length} PHIẾU):
                   </td>
