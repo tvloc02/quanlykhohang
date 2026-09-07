@@ -38,7 +38,7 @@ import MainLayout from '../../../shared/components/MainLayout';
 import { getStoredShippers, type Shipper } from '../services/shipperService';
 import QuickAddShipperModal from '../components/QuickAddShipperModal';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
-import { getStoredWarehouses, mergeStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, stripAssignedBinsFromNote } from '../../../shared/utils/warehouseAssignments';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -324,6 +324,18 @@ export default function CreateTransferOrderPage({
           it.product?.purchasePrice ||
           0
         );
+
+        const isFromCompletedReceive = isReadOnly && (targetStatus === 'DELIVERED' || targetStatus === 'COMPLETED' || targetStatus === 'RECEIVED');
+        const initialLocationBin = isReceiveMode && !isFromCompletedReceive
+          ? ''
+          : (it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''));
+        const initialAssignedBins = isReceiveMode && !isFromCompletedReceive
+          ? []
+          : (Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []));
+        const initialNote = isReceiveMode && !isFromCompletedReceive
+          ? (it.note ? stripAssignedBinsFromNote(it.note) : '')
+          : (it.note || '');
+
         return {
           rowId: `edit-row-${it.id || idx}`,
           productId: it.id || it.productId || '',
@@ -334,9 +346,9 @@ export default function CreateTransferOrderPage({
           qty: q,
           price: p,
           totalAmount: q * p,
-          locationBin: it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''),
-          assignedBins: Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []),
-          note: it.note || '',
+          locationBin: initialLocationBin,
+          assignedBins: initialAssignedBins,
+          note: initialNote,
         };
       });
 
@@ -359,9 +371,11 @@ export default function CreateTransferOrderPage({
           dispatchDate: targetEditData.dispatchDate
             ? (new Date(targetEditData.dispatchDate).toISOString().slice(0, 19))
             : (targetEditData.scheduledDate ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19) : formatISOWithSeconds()),
-          receiveDate: targetEditData.receiveDate
-            ? (new Date(targetEditData.receiveDate).toISOString().slice(0, 19))
-            : formatISOWithSeconds(new Date(Date.now() + 86400000)),
+          receiveDate: isReceiveMode
+            ? formatISOWithSeconds(new Date())
+            : (targetEditData.receiveDate
+              ? (new Date(targetEditData.receiveDate).toISOString().slice(0, 19))
+              : formatISOWithSeconds(new Date(Date.now() + 86400000))),
           driverName: targetEditData.driverName || '',
           driverPhone: targetEditData.driverPhone || '',
           vehiclePlate: targetEditData.vehiclePlate || '',
@@ -435,6 +449,18 @@ export default function CreateTransferOrderPage({
         it.product?.purchasePrice ||
         0
       );
+
+      const isFromCompletedReceive = isReadOnly && (targetStatus === 'DELIVERED' || targetStatus === 'COMPLETED' || targetStatus === 'RECEIVED');
+      const initialLocationBin = isReceiveMode && !isFromCompletedReceive
+        ? ''
+        : (it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''));
+      const initialAssignedBins = isReceiveMode && !isFromCompletedReceive
+        ? []
+        : (Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []));
+      const initialNote = isReceiveMode && !isFromCompletedReceive
+        ? (it.note ? stripAssignedBinsFromNote(it.note) : '')
+        : (it.note || '');
+
       return {
         rowId: `edit-row-${it.id || idx}`,
         productId: it.id || it.productId || '',
@@ -445,9 +471,9 @@ export default function CreateTransferOrderPage({
         qty: q,
         price: p,
         totalAmount: q * p,
-        locationBin: it.locationBin || (Array.isArray(it.assignedBins) ? it.assignedBins.join(', ') : ''),
-        assignedBins: Array.isArray(it.assignedBins) ? it.assignedBins : (it.locationBin ? String(it.locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []),
-        note: it.note || '',
+        locationBin: initialLocationBin,
+        assignedBins: initialAssignedBins,
+        note: initialNote,
       };
     });
 
@@ -470,9 +496,11 @@ export default function CreateTransferOrderPage({
         : targetEditData.scheduledDate
         ? new Date(targetEditData.scheduledDate).toISOString().slice(0, 19)
         : formatISOWithSeconds(),
-      receiveDate: targetEditData.receiveDate
-        ? new Date(targetEditData.receiveDate).toISOString().slice(0, 19)
-        : formatISOWithSeconds(new Date(Date.now() + 86400000)),
+      receiveDate: isReceiveMode
+        ? formatISOWithSeconds(new Date())
+        : (targetEditData.receiveDate
+          ? new Date(targetEditData.receiveDate).toISOString().slice(0, 19)
+          : formatISOWithSeconds(new Date(Date.now() + 86400000))),
       driverName: targetEditData.driverName || '',
       driverPhone: targetEditData.driverPhone || '',
       vehiclePlate: targetEditData.vehiclePlate || '',
@@ -1075,12 +1103,25 @@ export default function CreateTransferOrderPage({
             />
           </div>
 
-          {/* Ngày & Giờ Dự Kiến Nhận */}
+          {/* Ngày & Giờ Nhận Hàng */}
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-              <Calendar className="h-3.5 w-3.5 text-cyan-600" />
-              <span>NGÀY & GIỜ NHẬN (DỰ KIẾN)</span>
-            </label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5 text-cyan-600" />
+                <span>{isReceiveMode ? 'NGÀY & GIỜ NHẬN HÀNG' : 'NGÀY & GIỜ NHẬN (DỰ KIẾN)'}</span>
+              </label>
+              {isReceiveMode && !isReadOnly && (
+                <button
+                  type="button"
+                  onClick={() => updateActiveTab((t) => ({ ...t, receiveDate: formatISOWithSeconds(new Date()) }))}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300 transition cursor-pointer"
+                  title="Đặt ngày & giờ nhận là thời điểm hiện tại"
+                >
+                  <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                  <span>Hôm nay</span>
+                </button>
+              )}
+            </div>
             <input
               type="datetime-local"
               step="1"
