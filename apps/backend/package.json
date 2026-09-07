@@ -8,7 +8,8 @@
     "build": "nest build",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
-    "seed:run": "echo 'Seed script disabled'"
+    "seed:run": "ts-node src/database/seeds/seed-full.ts",
+    "seed:inventory": "ts-node src/database/seeds/seed-inventory-products.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

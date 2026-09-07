@@ -14,7 +14,7 @@ import BarcodeScanner from '../../../shared/components/BarcodeScanner';
 import { OfflineQueueService } from '../../offline-sync/services/offlineQueue.service';
 import { SyncManagerService } from '../../offline-sync/services/syncManager.service';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function authHeaders() {
   return {

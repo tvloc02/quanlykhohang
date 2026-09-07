@@ -2,7 +2,7 @@ import React from 'react';
 import { Search, Package, Truck, CheckCircle2, SlidersHorizontal, Eye, History } from 'lucide-react';
 import type { SupplierProductLink, InboundReceipt } from '../supplier-portal/types';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function authHeaders() {
   return {

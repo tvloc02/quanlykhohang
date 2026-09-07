@@ -23,7 +23,7 @@ import {
   FileText,
   Printer,
   Pencil,
-  TrendingDown,
+  ArrowDownToLine,
 } from 'lucide-react';
 
 import { PrintableStockInReceipt } from '../components/PrintableStockInReceipt';
@@ -207,7 +207,7 @@ type DraftState = {
   rows: Record<string, DraftRow>;
 };
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function authHeaders() {
   return {
@@ -803,7 +803,7 @@ export default function GoodsReceiptsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
-            <TrendingDown className="h-5 w-5 text-cyan-100" />
+            <ArrowDownToLine className="h-5 w-5 text-cyan-100" />
             <h1 className="text-lg font-bold tracking-tight text-white">Phiếu nhập kho</h1>
           </div>
         </div>

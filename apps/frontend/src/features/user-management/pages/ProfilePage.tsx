@@ -36,7 +36,7 @@ interface UserProfile {
 
 type ModalMode = 'edit' | 'password' | null;
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 const DEPARTMENTS = ['Vận hành kho', 'Quản lý chất lượng', 'Kế toán - Tài chính', 'Nhân sự - Hành chính'];
 const LOCATIONS = ['Kho trung tâm (Hà Nội)', 'Kho miền Bắc (Bắc Ninh)', 'Kho miền Trung (Đà Nẵng)', 'Kho miền Nam (TP.HCM)'];

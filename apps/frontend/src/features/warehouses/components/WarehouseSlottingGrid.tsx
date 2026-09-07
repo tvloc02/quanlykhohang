@@ -13,6 +13,7 @@ import {
   Settings,
   X,
   Sliders,
+  Eye,
 } from 'lucide-react';
 import {
   SubWarehouse,
@@ -23,7 +24,7 @@ import {
   parseAssignedBinsFromNote,
 } from '../../../shared/utils/warehouseAssignments';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 export type BinOccupiedInfo = {
   totalPhysical: number;
@@ -88,6 +89,229 @@ export function normalizeBinKey(code: string): string {
 }
 
 /**
+ * Reconcile inbound and outbound records to get actual active stored goods and remaining occupancy %
+ */
+export function computeActiveStoredGoods(
+  rawGoods: BinGoodsDetail[],
+  storedInfo: BinOccupiedInfo | null,
+  binFull: string
+): {
+  activeGoods: BinGoodsDetail[];
+  totalQty: number;
+  totalOccupancyPct: number;
+} {
+  const valid = (rawGoods || []).filter(
+    (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
+  );
+
+  if (valid.length === 0) {
+    if (storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0 || (storedInfo.occupancyPct || 0) > 0)) {
+      const netPhysical = storedInfo.totalPhysical || 0;
+      const netPct = storedInfo.occupancyPct || 0;
+      if (netPhysical > 0 && netPct > 0) {
+        return {
+          activeGoods: [{
+            binCode: binFull,
+            productName: storedInfo.productName || 'Hàng tồn kho',
+            sku: storedInfo.sku || '',
+            quantity: netPhysical,
+            allocated: storedInfo.allocated || 0,
+            supplierName: storedInfo.supplierName || '',
+            inboundDate: storedInfo.inboundDate || '',
+            orderCode: storedInfo.orderCode || '',
+            unit: storedInfo.unit || 'Cái',
+            occupancyPct: netPct,
+          }],
+          totalQty: netPhysical,
+          totalOccupancyPct: netPct,
+        };
+      }
+    }
+    return { activeGoods: [], totalQty: 0, totalOccupancyPct: 0 };
+  }
+
+  const productMap = new Map<string, {
+    sku: string;
+    productName: string;
+    unit: string;
+    supplierName: string;
+    inboundDate: string;
+    orderCode: string;
+    inboundQty: number;
+    outboundQty: number;
+    baseOccupancyPct: number;
+  }>();
+
+  valid.forEach((item) => {
+    const pSku = item.sku || 'SKU-001';
+    const pName = item.productName || 'Sản phẩm';
+    const key = `${pSku}___${pName}`;
+    const qty = Number(item.quantity || 0);
+    const isOut = item.isOutbound === true || qty < 0;
+
+    if (!productMap.has(key)) {
+      productMap.set(key, {
+        sku: pSku,
+        productName: pName,
+        unit: item.unit || 'Cái',
+        supplierName: item.supplierName || '',
+        inboundDate: item.inboundDate || '',
+        orderCode: item.orderCode || '',
+        inboundQty: 0,
+        outboundQty: 0,
+        baseOccupancyPct: item.occupancyPct !== undefined && Number(item.occupancyPct) > 0 ? Number(item.occupancyPct) : 100,
+      });
+    }
+
+    const rec = productMap.get(key)!;
+    if (isOut) {
+      rec.outboundQty += Math.abs(qty);
+    } else {
+      rec.inboundQty += Math.abs(qty);
+      if (item.orderCode && (!rec.orderCode || rec.orderCode === 'TỒN-KHO')) rec.orderCode = item.orderCode;
+      if (item.inboundDate) rec.inboundDate = item.inboundDate;
+      if (item.occupancyPct !== undefined && Number(item.occupancyPct) > 0) rec.baseOccupancyPct = Number(item.occupancyPct);
+    }
+  });
+
+  const activeGoods: BinGoodsDetail[] = [];
+  let totalQty = 0;
+  let totalOccupancyPct = 0;
+
+  productMap.forEach((rec) => {
+    const totalIn = rec.inboundQty > 0 ? rec.inboundQty : (rec.outboundQty > 0 ? rec.outboundQty : 0);
+    const netQty = Math.max(0, totalIn - rec.outboundQty);
+
+    let remainingPct = 0;
+    if (netQty > 0) {
+      if (totalIn > 0) {
+        remainingPct = Math.round((netQty / totalIn) * rec.baseOccupancyPct);
+      } else {
+        remainingPct = rec.baseOccupancyPct;
+      }
+      remainingPct = Math.max(1, Math.min(100, remainingPct));
+    }
+
+    if (netQty > 0) {
+      activeGoods.push({
+        binCode: binFull,
+        productName: rec.productName,
+        sku: rec.sku,
+        quantity: netQty,
+        allocated: 0,
+        supplierName: rec.supplierName,
+        inboundDate: rec.inboundDate,
+        orderCode: rec.orderCode,
+        unit: rec.unit,
+        occupancyPct: remainingPct,
+        isOutbound: false,
+      });
+      totalQty += netQty;
+      totalOccupancyPct += remainingPct;
+    }
+  });
+
+  if (storedInfo && storedInfo.occupancyPct !== undefined && storedInfo.occupancyPct >= 0) {
+    if (totalQty === 0) {
+      totalOccupancyPct = 0;
+    } else {
+      totalOccupancyPct = Math.min(totalOccupancyPct, storedInfo.occupancyPct || totalOccupancyPct);
+    }
+  }
+
+  totalOccupancyPct = totalQty === 0 ? 0 : Math.min(100, totalOccupancyPct);
+
+  return {
+    activeGoods,
+    totalQty,
+    totalOccupancyPct,
+  };
+}
+
+interface CachedBinsEntry {
+  timestamp: number;
+  data: {
+    occupiedMap: Map<string, BinOccupiedInfo>;
+    detailsMap: Map<string, BinGoodsDetail>;
+    goodsListMap: Map<string, BinGoodsDetail[]>;
+  };
+}
+
+const warehouseBinsCache = new Map<string, CachedBinsEntry>();
+
+export function getCachedWarehouseBins(warehouseCode?: string, warehouseId?: string) {
+  const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
+  const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
+  const cacheKey = `${currentWhCode}_${currentWhId}`;
+  const entry = warehouseBinsCache.get(cacheKey);
+  if (entry && Date.now() - entry.timestamp < 30000) {
+    return {
+      occupiedMap: new Map(entry.data.occupiedMap),
+      detailsMap: new Map(entry.data.detailsMap),
+      goodsListMap: new Map(entry.data.goodsListMap),
+    };
+  }
+  return null;
+}
+
+export function findCachedBinInfo(cleanBinCode: string, warehouseCode?: string, warehouseId?: string): BinOccupiedInfo | null {
+  const normKey = normalizeBinKey(cleanBinCode);
+  const shortCode = (cleanBinCode.split('-').pop() || cleanBinCode).toUpperCase();
+
+  // Try targeted warehouse cache
+  const targeted = getCachedWarehouseBins(warehouseCode, warehouseId);
+  if (targeted) {
+    const info = targeted.occupiedMap.get(cleanBinCode)
+      || (normKey ? targeted.occupiedMap.get(normKey) : null)
+      || (shortCode ? targeted.occupiedMap.get(shortCode) : null);
+    if (info) return info;
+  }
+
+  // Check all available cache entries across warehouses
+  for (const entry of warehouseBinsCache.values()) {
+    if (Date.now() - entry.timestamp < 60000) {
+      const info = entry.data.occupiedMap.get(cleanBinCode)
+        || (normKey ? entry.data.occupiedMap.get(normKey) : null)
+        || (shortCode ? entry.data.occupiedMap.get(shortCode) : null);
+      if (info) return info;
+    }
+  }
+
+  // Fallback check in stored warehouses customBins
+  try {
+    const storedWhs = JSON.parse(localStorage.getItem('smart-wms-warehouses') || '[]');
+    if (Array.isArray(storedWhs)) {
+      for (const wh of storedWhs) {
+        for (const sub of (wh.subWarehouses || [])) {
+          for (const rk of (sub.racks || [])) {
+            if (rk.customBins) {
+              const cfg = rk.customBins[cleanBinCode] || rk.customBins[shortCode] || (normKey ? rk.customBins[normKey] : null);
+              if (cfg && (Number(cfg.occupancyPct || 0) > 0 || Number(cfg.totalPhysical || 0) > 0)) {
+                return {
+                  totalPhysical: Number(cfg.totalPhysical || 1),
+                  allocated: 0,
+                  productsCount: 1,
+                  productName: cfg.productName || 'Hàng trong kho',
+                  sku: cfg.sku || 'SKU-001',
+                  supplierName: 'Nhà cung cấp',
+                  inboundDate: 'Đã lưu',
+                  orderCode: 'KHO-LUU',
+                  unit: cfg.unit || 'cái',
+                  occupancyPct: Number(cfg.occupancyPct || 100),
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+
+/**
  * Single Source of Truth to load occupied bins for a specific warehouse
  */
 export async function fetchWarehouseOccupiedBins(
@@ -104,10 +328,22 @@ export async function fetchWarehouseOccupiedBins(
   let allStockInOrders: any[] = [];
   let allOutboundOrders: any[] = [];
 
+  const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
+  const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
+
   try {
     const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
-    const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
-    const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
+
+    // Check in-memory cache first for instant 0ms rendering
+    const cacheKey = `${currentWhCode}_${currentWhId}`;
+    const cached = warehouseBinsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 30000) {
+      return {
+        occupiedMap: new Map(cached.data.occupiedMap),
+        detailsMap: new Map(cached.data.detailsMap),
+        goodsListMap: new Map(cached.data.goodsListMap),
+      };
+    }
 
     // If creating a new warehouse, it has 0 inventory balances
     if (!currentWhCode && !currentWhId || currentWhId === 'temp-id' || currentWhId === 'new' || currentWhId.startsWith('wh_new')) {
@@ -298,67 +534,86 @@ export async function fetchWarehouseOccupiedBins(
       }
     };
 
-    // 1. Fetch real physical inventory balances from CSDL
-    const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
-    if (res && res.ok) {
-      const balances: any[] = await res.json();
-      balances.forEach((b) => {
-        const bWhId = String(b.warehouseId || b.warehouse?.id || '').toLowerCase();
-        const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
+    // Parallel Fetch across all CSDL endpoints for instant loading speed
+    const [
+      res,
+      apiOrdersRes,
+      poOrdersRes,
+      transferRes,
+      apiOutboundRes,
+      apiOutboundsRes,
+    ] = await Promise.all([
+      fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/delivery/transfer-orders`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/outbound/orders`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/outbounds`, { headers }).catch(() => null),
+    ]);
 
-        if (!isWhMatch(bWhCode, bWhId, b.locationCode)) return;
+    const [
+      balancesData,
+      apiOrdersData,
+      poOrdersData,
+      transferData,
+      apiOutboundData,
+      apiOutboundsData,
+    ] = await Promise.all([
+      res && res.ok ? res.json().catch(() => []) : Promise.resolve([]),
+      apiOrdersRes && apiOrdersRes.ok ? apiOrdersRes.json().catch(() => []) : Promise.resolve([]),
+      poOrdersRes && poOrdersRes.ok ? poOrdersRes.json().catch(() => []) : Promise.resolve([]),
+      transferRes && transferRes.ok ? transferRes.json().catch(() => []) : Promise.resolve([]),
+      apiOutboundRes && apiOutboundRes.ok ? apiOutboundRes.json().catch(() => []) : Promise.resolve([]),
+      apiOutboundsRes && apiOutboundsRes.ok ? apiOutboundsRes.json().catch(() => []) : Promise.resolve([]),
+    ]);
 
-        const lc = String(b.locationCode || '').trim();
-        const physical = Number(b.totalPhysical || b.available || 0);
-        const allocated = Number(b.allocated || 0);
+    // 1. Process real physical inventory balances from CSDL
+    const balances = Array.isArray(balancesData) ? balancesData : balancesData?.data || [];
+    balances.forEach((b: any) => {
+      const bWhId = String(b.warehouseId || b.warehouse?.id || '').toLowerCase();
+      const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
 
-        if (lc && (physical > 0 || allocated > 0)) {
-          const info: BinOccupiedInfo = {
-            totalPhysical: physical || 1,
-            allocated,
-            productsCount: 1,
-            productName: b.product?.name || b.productName || 'Sản phẩm tồn kho',
-            sku: b.product?.internalSku || b.product?.sku || b.sku || 'SKU-001',
-            supplierName: b.product?.supplier || b.supplierName || 'Nhà cung cấp',
-            inboundDate: b.updatedAt
-              ? new Date(b.updatedAt).toLocaleDateString('vi-VN') +
+      if (!isWhMatch(bWhCode, bWhId, b.locationCode)) return;
+
+      const lc = String(b.locationCode || '').trim();
+      const physical = Number(b.totalPhysical || b.available || 0);
+      const allocated = Number(b.allocated || 0);
+
+      if (lc && (physical > 0 || allocated > 0)) {
+        const info: BinOccupiedInfo = {
+          totalPhysical: physical || 1,
+          allocated,
+          productsCount: 1,
+          productName: b.product?.name || b.productName || 'Sản phẩm tồn kho',
+          sku: b.product?.internalSku || b.product?.sku || b.sku || 'SKU-001',
+          supplierName: b.product?.supplier || b.supplierName || 'Nhà cung cấp',
+          inboundDate: b.updatedAt
+            ? new Date(b.updatedAt).toLocaleDateString('vi-VN') +
               ' ' +
               new Date(b.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-              : 'Hôm nay',
-            orderCode: b.orderCode || b.stockInOrderCode || 'TỒN-KHO',
-            unit: b.product?.unit || 'Cái',
-            occupancyPct: b.occupancyPct !== undefined ? Number(b.occupancyPct) : (b.occupancy !== undefined ? Number(b.occupancy) : 100),
-          };
-          addBinOccupied(lc, info);
-        }
-      });
-    }
+            : 'Hôm nay',
+          orderCode: b.orderCode || b.stockInOrderCode || 'TỒN-KHO',
+          unit: b.product?.unit || 'Cái',
+          occupancyPct: b.occupancyPct !== undefined ? Number(b.occupancyPct) : (b.occupancy !== undefined ? Number(b.occupancy) : 100),
+        };
+        addBinOccupied(lc, info);
+      }
+    });
 
-    // 2. Fetch stock-in and purchase orders history (from API and localStorage)
+    // 2. Process stock-in and purchase orders history
     try {
       const storedStockInStr = localStorage.getItem('stored_stock_in_orders');
       const localStockInOrders: any[] = storedStockInStr ? JSON.parse(storedStockInStr) : [];
-      
-      const [apiOrdersRes, poOrdersRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null),
-        fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null),
-      ]);
 
-      allStockInOrders = [];
-      if (apiOrdersRes && apiOrdersRes.ok) {
-        const apiData = await apiOrdersRes.json();
-        const list = Array.isArray(apiData) ? apiData : apiData.data || [];
-        allStockInOrders = [...allStockInOrders, ...list];
-      }
-      if (poOrdersRes && poOrdersRes.ok) {
-        const poData = await poOrdersRes.json();
-        const poList = Array.isArray(poData) ? poData : poData.data || [];
-        poList.forEach((po: any) => {
-          if (!allStockInOrders.some((ao: any) => String(ao.id) === String(po.id) || (ao.poNumber && po.poNumber && ao.poNumber === po.poNumber) || (ao.receiptNo && po.receiptNo && ao.receiptNo === po.receiptNo))) {
-            allStockInOrders.push(po);
-          }
-        });
-      }
+      const list = Array.isArray(apiOrdersData) ? apiOrdersData : apiOrdersData?.data || [];
+      allStockInOrders = [...list];
+
+      const poList = Array.isArray(poOrdersData) ? poOrdersData : poOrdersData?.data || [];
+      poList.forEach((po: any) => {
+        if (!allStockInOrders.some((ao: any) => String(ao.id) === String(po.id) || (ao.poNumber && po.poNumber && ao.poNumber === po.poNumber) || (ao.receiptNo && po.receiptNo && ao.receiptNo === po.receiptNo))) {
+          allStockInOrders.push(po);
+        }
+      });
       if (Array.isArray(localStockInOrders) && (!apiOrdersRes?.ok && !poOrdersRes?.ok)) {
         localStockInOrders.forEach((lo: any) => {
           if (!allStockInOrders.some((ao: any) => ao.id === lo.id || (ao.code && lo.code && ao.code === lo.code) || (ao.orderNumber && lo.orderNumber && ao.orderNumber === lo.orderNumber) || (ao.poNumber && lo.poNumber && ao.poNumber === lo.poNumber))) {
@@ -375,8 +630,8 @@ export async function fetchWarehouseOccupiedBins(
         const supplierName = ord.supplierName || ord.supplier?.name || ord.supplier || 'Nhà cung cấp';
         const inboundDate = ord.createdAt || ord.orderDate
           ? new Date(ord.createdAt || ord.orderDate).toLocaleDateString('vi-VN') +
-          ' ' +
-          new Date(ord.createdAt || ord.orderDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+            ' ' +
+            new Date(ord.createdAt || ord.orderDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
           : 'Hôm nay';
 
         (ord.details || ord.items || []).forEach((item: any) => {
@@ -392,7 +647,6 @@ export async function fetchWarehouseOccupiedBins(
             rawBins = parseAssignedBinsFromNote(item.note);
           }
 
-          // Deduplicate bin list so duplicate formatting does not divide target qty
           const uniqueBinsMap = new Map<string, string>();
           rawBins.forEach((b) => {
             if (!b) return;
@@ -441,13 +695,8 @@ export async function fetchWarehouseOccupiedBins(
       console.error('Error loading stock-in orders for bins:', e);
     }
 
-    // 3. Fetch transfer orders (from API & localStorage)
-    const transferRes = await fetch(`${API_BASE_URL}/delivery/transfer-orders`, { headers }).catch(() => null);
-    let transferOrders: any[] = [];
-    if (transferRes && transferRes.ok) {
-      const data = await transferRes.json();
-      transferOrders = Array.isArray(data) ? data : data.data || [];
-    }
+    // 3. Process transfer orders
+    let transferOrders: any[] = Array.isArray(transferData) ? transferData : transferData?.data || [];
     try {
       const localTransfers = JSON.parse(localStorage.getItem('smart-wms-transfer-orders') || '[]');
       if (Array.isArray(localTransfers)) {
@@ -546,30 +795,21 @@ export async function fetchWarehouseOccupiedBins(
       }
     } catch { }
 
-    // 2.8. Fetch outbound orders history (from API & localStorage)
+    // 2.8. Process outbound orders history
     try {
       const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
       const localOutboundOrders: any[] = storedOutboundStr ? JSON.parse(storedOutboundStr) : [];
-      const [apiOutboundRes, apiOutboundsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/outbound/orders`, { headers }).catch(() => null),
-        fetch(`${API_BASE_URL}/outbounds`, { headers }).catch(() => null),
-      ]);
 
       allOutboundOrders = [];
-      if (apiOutboundRes && apiOutboundRes.ok) {
-        const apiData = await apiOutboundRes.json();
-        const list = Array.isArray(apiData) ? apiData : apiData.data || [];
-        allOutboundOrders = [...allOutboundOrders, ...list];
-      }
-      if (apiOutboundsRes && apiOutboundsRes.ok) {
-        const obsData = await apiOutboundsRes.json();
-        const obsList = Array.isArray(obsData) ? obsData : obsData.data || [];
-        obsList.forEach((ob: any) => {
-          if (!allOutboundOrders.some((ao: any) => String(ao.id) === String(ob.id) || (ao.orderNo && ob.orderNo && ao.orderNo === ob.orderNo))) {
-            allOutboundOrders.push(ob);
-          }
-        });
-      }
+      const list = Array.isArray(apiOutboundData) ? apiOutboundData : apiOutboundData?.data || [];
+      allOutboundOrders = [...list];
+
+      const obsList = Array.isArray(apiOutboundsData) ? apiOutboundsData : apiOutboundsData?.data || [];
+      obsList.forEach((ob: any) => {
+        if (!allOutboundOrders.some((ao: any) => String(ao.id) === String(ob.id) || (ao.orderNo && ob.orderNo && ao.orderNo === ob.orderNo))) {
+          allOutboundOrders.push(ob);
+        }
+      });
       if (Array.isArray(localOutboundOrders)) {
         localOutboundOrders.forEach((lo: any) => {
           if (!allOutboundOrders.some((ao: any) => String(ao.id) === String(lo.id) || (ao.orderNo && lo.orderNo && ao.orderNo === lo.orderNo))) {
@@ -713,11 +953,48 @@ export async function fetchWarehouseOccupiedBins(
     } catch (eCustom) {
       console.error('Error loading customBins in fetchWarehouseOccupiedBins:', eCustom);
     }
+
+    // Reconcile all bins: if all items have been exported / disposed of (net stock = 0), mark bin as empty
+    map.forEach((info, binKey) => {
+      const rawGoods = gMap.get(binKey) || [];
+      if (rawGoods.length > 0) {
+        const { activeGoods, totalQty, totalOccupancyPct } = computeActiveStoredGoods(rawGoods, info, binKey);
+        if (totalQty === 0 || totalOccupancyPct === 0) {
+          map.set(binKey, {
+            ...info,
+            totalPhysical: 0,
+            occupancyPct: 0,
+          });
+          dMap.delete(binKey);
+          gMap.set(binKey, []);
+        } else {
+          map.set(binKey, {
+            ...info,
+            totalPhysical: totalQty,
+            occupancyPct: totalOccupancyPct,
+          });
+          if (activeGoods.length > 0) {
+            dMap.set(binKey, activeGoods[0]);
+            gMap.set(binKey, activeGoods);
+          }
+        }
+      } else if (info.isOutbound && (info.totalPhysical === 0 || info.occupancyPct === 0)) {
+        map.set(binKey, {
+          ...info,
+          totalPhysical: 0,
+          occupancyPct: 0,
+        });
+        dMap.delete(binKey);
+      }
+    });
   } catch (err) {
     console.error('Error in fetchWarehouseOccupiedBins:', err);
   }
 
-  return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
+  const result = { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
+  const cacheKey = `${currentWhCode}_${currentWhId}`;
+  warehouseBinsCache.set(cacheKey, { timestamp: Date.now(), data: result });
+  return result;
 }
 
 export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
@@ -740,9 +1017,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   maxBinsAllowed,
   readOnly = false,
 }) => {
-  const [occupiedMap, setOccupiedMap] = useState<Map<string, BinOccupiedInfo>>(new Map());
-  const [detailsMap, setDetailsMap] = useState<Map<string, BinGoodsDetail>>(new Map());
-  const [occupiedGoodsListMap, setOccupiedGoodsListMap] = useState<Map<string, BinGoodsDetail[]>>(new Map());
+  const initialCached = getCachedWarehouseBins(warehouse?.code, warehouse?.id);
+  const [occupiedMap, setOccupiedMap] = useState<Map<string, BinOccupiedInfo>>(() => initialCached ? new Map(initialCached.occupiedMap) : new Map());
+  const [detailsMap, setDetailsMap] = useState<Map<string, BinGoodsDetail>>(() => initialCached ? new Map(initialCached.detailsMap) : new Map());
+  const [occupiedGoodsListMap, setOccupiedGoodsListMap] = useState<Map<string, BinGoodsDetail[]>>(() => initialCached ? new Map(initialCached.goodsListMap) : new Map());
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
   const [selectedRackId, setSelectedRackId] = useState<string>('');
   const [editingBinConfig, setEditingBinConfig] = useState<{
@@ -775,24 +1053,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     const rackCode = editingBinConfig.rackCode || '';
 
     const rawStoredGoods = getGoodsList(fullBinCode, binShortCode, rackCode);
-    const storedGoods = rawStoredGoods.filter(
-      (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
-    );
     const rawStoredInfo = getOccupiedInfo(fullBinCode, binShortCode, rackCode);
     const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
-    const storedInfo = isDraftInfo ? null : rawStoredInfo;
+    const storedInfo = isDraftInfo ? null : (rawStoredInfo || null);
 
-    const hasPhysicalStoredStock = (storedGoods && storedGoods.length > 0) || Boolean(storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0));
-    const realStockQty = Number(
-      storedInfo?.totalPhysical ||
-      (storedGoods && storedGoods.length > 0 ? storedGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0) : 0) ||
-      0
+    const { activeGoods: storedGoods, totalQty: realStockQty, totalOccupancyPct: realStockPct } = computeActiveStoredGoods(
+      rawStoredGoods,
+      storedInfo,
+      fullBinCode
     );
-    const realStockPct = hasPhysicalStoredStock && storedInfo?.occupancyPct !== undefined
-      ? Number(storedInfo.occupancyPct)
-      : (hasPhysicalStoredStock && storedGoods && storedGoods.length > 0
-          ? storedGoods.reduce((a, b) => a + (Number(b.occupancyPct) || 0), 0)
-          : 0);
+    const hasPhysicalStoredStock = storedGoods.length > 0 && (realStockQty > 0 || realStockPct > 0);
 
     const assigned: Array<{
       rowId?: string;
@@ -1233,8 +1503,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                 type="button"
                 onClick={() => setSelectedZoneId(z.id)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${isActive
-                    ? 'bg-cyan-600 text-white shadow-md'
-                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-cyan-50 dark:hover:bg-slate-700'
+                  ? 'bg-cyan-600 text-white shadow-md'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-cyan-50 dark:hover:bg-slate-700'
                   }`}
               >
                 {z.name || z.code}
@@ -1255,8 +1525,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                   type="button"
                   onClick={() => setSelectedRackId(rk.id)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer ${isActive
-                      ? 'bg-slate-800 text-cyan-300 dark:bg-cyan-950 dark:text-cyan-200 border border-cyan-500/50'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                    ? 'bg-slate-800 text-cyan-300 dark:bg-cyan-950 dark:text-cyan-200 border border-cyan-500/50'
+                    : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
                     }`}
                 >
                   {rk.rackCode}
@@ -1325,16 +1595,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             (normFull ? (activeRack.customBins as any)?.[normFull] : null);
                           const customConfig = rawCustomConfig && rawCustomConfig.occupancyPct !== undefined && rawCustomConfig.occupancyPct !== null ? rawCustomConfig : null;
 
-                          const occupiedInfo = getOccupiedInfo(fullBinCode, binCodeShort, rackCode);
-                          const hasGoods = Boolean(
-                            (occupiedInfo && ((occupiedInfo.totalPhysical || 0) > 0 || (occupiedInfo.allocated || 0) > 0 || (occupiedInfo.occupancyPct || 0) > 0)) ||
-                            (customConfig && ((customConfig.totalPhysical || 0) > 0 || (customConfig.occupancyPct || 0) > 0))
-                          );
-
                           const normShort = normalizeBinKey(binCodeShort);
                           const normRackShort = normalizeBinKey(`${rackCode}-${binCodeShort}`);
                           const isSelected = selectedSet.has(normFull) || (Boolean(normShort) && selectedSet.has(normShort)) || (Boolean(normRackShort) && selectedSet.has(normRackShort));
-                          const isSuggested = suggestedSet.has(normFull) || (Boolean(normShort) && suggestedSet.has(normShort)) || (Boolean(normRackShort) && suggestedSet.has(normRackShort));
+                          let isSuggested = suggestedSet.has(normFull) || (Boolean(normShort) && suggestedSet.has(normShort)) || (Boolean(normRackShort) && suggestedSet.has(normRackShort));
                           const rawOtherEntry = otherItemsBinsMap
                             ? (otherItemsBinsMap[fullBinCode] ||
                               otherItemsBinsMap[binCodeShort] ||
@@ -1353,6 +1617,31 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             otherItemPctFromLock = rawOtherEntry.occupancyPct;
                           }
 
+                          const customNotes = String(customConfig?.notes || '').trim();
+                          const isDraftStagingNote = customNotes.includes('Đã chọn nhập') ||
+                            customNotes.includes('Đang xếp') ||
+                            customNotes.includes('Đang chọn');
+                          const isEmptyNote = customNotes.includes('Ô Trống') ||
+                            customNotes.includes('0%') ||
+                            customNotes.includes('Trống') ||
+                            Number(customConfig?.occupancyPct || 0) <= 0;
+
+                          // Staging entry that is NOT selected by active item AND NOT selected by any other item:
+                          const isStagingUnselected = isDraftStagingNote && !isSelected && !otherItemName;
+
+                          const hasCustomGoods = Boolean(
+                            customConfig &&
+                            !isEmptyNote &&
+                            !isStagingUnselected &&
+                            ((customConfig.totalPhysical || 0) > 0 || (customConfig.occupancyPct || 0) > 0)
+                          );
+
+                          const occupiedInfo = getOccupiedInfo(fullBinCode, binCodeShort, rackCode);
+                          let hasGoods = Boolean(
+                            (occupiedInfo && ((occupiedInfo.totalPhysical || 0) > 0 || (occupiedInfo.allocated || 0) > 0 || (occupiedInfo.occupancyPct || 0) > 0)) ||
+                            hasCustomGoods
+                          );
+
                           const matchingSelectedCode = selectedBinCodes.find((s) => normalizeBinKey(s) === normFull);
                           let embeddedPct: number | undefined;
                           if (matchingSelectedCode) {
@@ -1360,7 +1649,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             if (match) embeddedPct = Number(match[1]);
                           }
 
-                          const customPct = customConfig?.occupancyPct !== undefined && customConfig?.occupancyPct !== null ? Number(customConfig.occupancyPct) : undefined;
+                          const customPct = (customConfig?.occupancyPct !== undefined && customConfig?.occupancyPct !== null && !isStagingUnselected && !isEmptyNote)
+                            ? Number(customConfig.occupancyPct)
+                            : undefined;
 
                           let occupancyPct = 0;
                           let isOtherItemFull = false;
@@ -1382,24 +1673,76 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             const occName = (occupiedInfo.productName || '').trim().toLowerCase();
                             const isDifferentProduct = curName && occName && !occName.includes(curName) && !curName.includes(occName);
 
-                            const qty = occupiedInfo.totalPhysical || occupiedInfo.allocated || 1;
+                            const qty = occupiedInfo.totalPhysical || occupiedInfo.allocated || 0;
                             const maxCap = customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500;
-                            const calculatedFromQty = Math.min(100, Math.max(10, Math.round((qty / maxCap) * 100)));
+                            const calculatedFromQty = qty > 0 ? Math.min(100, Math.max(10, Math.round((qty / maxCap) * 100))) : 0;
                             occupancyPct = knownPct !== undefined ? knownPct : (customPct !== undefined ? customPct : calculatedFromQty);
 
                             if (mode === 'select' && !isOutbound && isDifferentProduct && occupancyPct >= 100) {
                               isOtherItemFull = true;
                             }
-                          } else if (customPct !== undefined && customPct > 0) {
+                          } else if (hasCustomGoods && customPct !== undefined && customPct > 0) {
                             occupancyPct = customPct;
-                          } else if (knownPct !== undefined && knownPct > 0) {
+                          } else if (hasGoods && knownPct !== undefined && knownPct > 0) {
                             occupancyPct = knownPct;
                           } else {
                             occupancyPct = 0;
                           }
 
+                          // If occupancyPct <= 0, the bin has no goods
+                          if (occupancyPct <= 0) {
+                            hasGoods = false;
+                          }
+
+                          // In Outbound or Transfer, evaluate matching product directly from bin storage & order items:
+                          const curItem = (orderItems && activeRowId) ? orderItems.find((i: any) => i.rowId === activeRowId) : null;
+                          const curName = (curItem?.productName || '').trim().toLowerCase();
+                          const curSku = (curItem?.productSku || curItem?.sku || '').trim().toLowerCase();
+                          const occName = (occupiedInfo?.productName || '').trim().toLowerCase();
+                          const occSku = (occupiedInfo?.sku || '').trim().toLowerCase();
+
+                          const goodsInBin = getGoodsList(fullBinCode, binCodeShort, rackCode);
+                          const matchesGoodsInBin = goodsInBin.some((g) => {
+                            const gName = (g.productName || '').trim().toLowerCase();
+                            const gSku = (g.sku || '').trim().toLowerCase();
+                            return (curSku && gSku && curSku === gSku) ||
+                                   (curName && gName && (curName.includes(gName) || gName.includes(curName)));
+                          });
+
+                          // Check if bin stored goods are generic placeholder records (e.g. "Hàng trong kho", "Sản phẩm tồn kho", "Hàng hóa", "KHO-LUU")
+                          const isGenericGoods = !occName ||
+                            occName === 'sản phẩm tồn kho' ||
+                            occName === 'hàng trong kho' ||
+                            occName === 'hàng hóa' ||
+                            occName === 'kho-luu' ||
+                            occName === 'nhà cung cấp' ||
+                            occName.includes('đã chứa') ||
+                            occName.includes('tồn kho');
+
+                          const isMatchingProduct = Boolean(
+                            suggestedSet.has(normFull) ||
+                            (Boolean(normShort) && suggestedSet.has(normShort)) ||
+                            (Boolean(normRackShort) && suggestedSet.has(normRackShort)) ||
+                            matchesGoodsInBin ||
+                            (curSku && occSku && curSku === occSku) ||
+                            (curName && occName && (curName.includes(occName) || occName.includes(curName))) ||
+                            (curItem && (
+                              (Array.isArray(curItem.assignedBins) && curItem.assignedBins.some((b: string) => normalizeBinKey(b) === normFull || b.includes(binCodeShort))) ||
+                              (curItem.locationBin && String(curItem.locationBin).includes(binCodeShort))
+                            )) ||
+                            (hasGoods && occupancyPct > 0 && isGenericGoods)
+                          );
+
+                          if (isOutbound) {
+                            if (hasGoods && occupancyPct > 0 && (isMatchingProduct || isGenericGoods)) {
+                              isSuggested = true;
+                            } else {
+                              isSuggested = false;
+                            }
+                          }
+
                           const isFull = (hasGoods && occupancyPct >= 100) || isOtherItemFull || (isSelected && occupancyPct >= 100);
-                          const isPartiallyOccupied = occupancyPct > 0 && occupancyPct < 100;
+                          const isPartiallyOccupied = hasGoods && occupancyPct > 0 && occupancyPct < 100;
 
                           const countReq = maxBinsAllowed || 1;
                           const isQuotaReached = selectedBinCodes.length >= countReq;
@@ -1408,13 +1751,20 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                           if (mode === 'select') {
                             if (isOutbound) {
-                              // LOGIC XUẤT KHO:
-                              // 1. Ô KỆ KHÔNG CÓ HÀNG HÓA HOẶC KHÔNG CHỨA ĐÚNG MẶT HÀNG ĐANG CHỌN (isSuggested === false) -> In chìm & Khóa chọn
-                              if (!isSuggested && !isSelected) {
+                              // LOGIC XUẤT KHO / ĐIỀU CHUYỂN NỘI BỘ:
+                              // 1. Ô KỆ KHÔNG CÓ HÀNG HÓA HOẶC ĐÃ HẾT HÀNG (0%) -> Khóa chọn & In chìm!
+                              const isBinEmpty = occupancyPct <= 0 || !hasGoods || (occupiedInfo && (occupiedInfo.totalPhysical || 0) <= 0);
+                              if (isBinEmpty && !isSelected) {
                                 isBinDisabled = true;
                               }
 
-                              // 2. Khi đã chọn đủ số lượng/số kệ cần xuất (isQuotaReached) thì các kệ chưa chọn khác sẽ in chìm.
+                              // 2. Ô KỆ ĐANG CHỨA MẶT HÀNG KHÁC CỤ THỂ (KHÔNG PHẢI HÀNG ĐANG XUẤT VÀ KHÔNG PHẢI HÀNG TỒN CHUNG) -> Khóa chọn
+                              const isOtherDistinctProduct = hasGoods && occupancyPct > 0 && occName && !isGenericGoods && !isMatchingProduct;
+                              if (isOtherDistinctProduct && !isSelected) {
+                                isBinDisabled = true;
+                              }
+
+                              // 3. Khi đã chọn đủ số lượng/số kệ cần xuất (isQuotaReached) thì các kệ chưa chọn khác sẽ in chìm.
                               if (isQuotaReached && !isSelected) {
                                 isBinDisabled = true;
                               }
@@ -1430,6 +1780,12 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             <div
                               key={fullBinCode}
                               onClick={() => {
+                                if (mode === 'view') {
+                                  if (onBinClick) {
+                                    onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
+                                  }
+                                  return;
+                                }
                                 if (readOnly) {
                                   const curr = occupancyPct || customConfig?.occupancyPct || 100;
                                   setEditingBinConfig({
@@ -1443,6 +1799,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   return;
                                 }
                                 if (isBinDisabled) return;
+                                if (isOutbound && (occupancyPct <= 0 || !hasGoods)) return;
                                 if (mode === 'select') {
                                   if (onSelectBin) {
                                     onSelectBin(fullBinCode, {
@@ -1459,9 +1816,15 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
                                 }
                               }}
-                              className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] cursor-pointer ${readOnly
+                              className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] cursor-pointer ${mode === 'view'
+                                ? isSelected
+                                  ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] z-20 hover:ring-emerald-300'
+                                  : isFull || hasGoods
+                                    ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs font-black hover:border-cyan-600'
+                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-400'
+                                : readOnly
                                   ? isSelected
-                                    ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] z-20 hover:ring-emerald-300'
+                                    ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-sm font-black hover:border-cyan-600'
                                     : isFull || hasGoods
                                       ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs font-black hover:border-cyan-600'
                                       : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-400'
@@ -1482,10 +1845,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               {occupancyPct > 0 && (
                                 <div
                                   className={`absolute bottom-0 left-0 right-0 transition-all duration-300 pointer-events-none z-0 ${isOtherItemFull
-                                      ? 'bg-slate-300/60 dark:bg-slate-800/60'
-                                      : (isSelected || isFull || hasGoods || isPartiallyOccupied)
-                                        ? 'bg-[#197e96]/30 dark:bg-[#197e96]/50'
-                                        : 'bg-cyan-100/90 dark:bg-cyan-900/60'
+                                    ? 'bg-slate-300/60 dark:bg-slate-800/60'
+                                    : (isSelected || isFull || hasGoods || isPartiallyOccupied)
+                                      ? 'bg-[#197e96]/30 dark:bg-[#197e96]/50'
+                                      : 'bg-cyan-100/90 dark:bg-cyan-900/60'
                                     }`}
                                   style={{ height: `${occupancyPct}%` }}
                                 />
@@ -1495,10 +1858,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               <div className="w-full flex items-center justify-between gap-1 z-10">
                                 <span
                                   className={`text-xs font-black tracking-tight ${isOtherItemFull
-                                      ? 'text-slate-400 dark:text-slate-500'
-                                      : occupancyPct >= 80 && (isSelected || isFull)
-                                        ? 'text-cyan-950 dark:text-cyan-100 drop-shadow-xs'
-                                        : 'text-cyan-950 dark:text-cyan-300'
+                                    ? 'text-slate-400 dark:text-slate-500'
+                                    : occupancyPct >= 80 && (isSelected || isFull)
+                                      ? 'text-cyan-950 dark:text-cyan-100 drop-shadow-xs'
+                                      : 'text-cyan-950 dark:text-cyan-300'
                                     }`}
                                 >
                                   Ô {binCodeShort}
@@ -1506,13 +1869,34 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                                 {/* Unified Top-Right Icon Buttons */}
                                 <div className="flex items-center gap-1">
-                                  {onUpdateBinCapacity && !readOnly && !isBinDisabled && (
+                                  {mode === 'view' ? (
                                     <button
                                       type="button"
-                                      title="Cài đặt % độ chứa hoặc Số lượng ô"
+                                      title={isSelected ? 'Đã chọn ô' : 'Bấm để chọn / xem chi tiết'}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        const curr = occupancyPct || 0;
+                                        if (onBinClick) {
+                                          onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
+                                        }
+                                      }}
+                                      className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs cursor-pointer ${isSelected
+                                        ? 'bg-emerald-600 text-white border-emerald-600'
+                                        : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
+                                        }`}
+                                    >
+                                      {isSelected ? (
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                                      ) : (
+                                        <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                                      )}
+                                    </button>
+                                  ) : readOnly ? (
+                                    <button
+                                      type="button"
+                                      title="Bấm để xem chi tiết hàng hóa ở ô"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const curr = occupancyPct || customConfig?.occupancyPct || 100;
                                         setEditingBinConfig({
                                           binCode: fullBinCode,
                                           shortCode: binCodeShort,
@@ -1522,77 +1906,92 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                         setInputPctVal(curr);
                                         setIsAddMode(false);
                                       }}
-                                      className={`p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs ${isSelected
-                                          ? 'bg-white hover:bg-cyan-50 text-[#197e96] border-cyan-200'
-                                          : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
-                                        }`}
+                                      className="p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700"
                                     >
-                                      <Settings className="h-3.5 w-3.5" />
+                                      <Eye className="h-3.5 w-3.5" />
                                     </button>
-                                  )}
-
-                                  <button
-                                      type="button"
-                                      disabled={!readOnly && isBinDisabled}
-                                      title={readOnly ? 'Bấm để xem chi tiết hàng hóa ở ô' : isBinDisabled ? (isOtherItemFull ? `Đã đầy 100% (${otherItemName || 'Hàng khác'})` : 'Kệ đã đầy 100%') : isSelected ? 'Đã chọn ô' : 'Bấm để chọn ô'}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (readOnly) {
-                                          const curr = occupancyPct || customConfig?.occupancyPct || 100;
-                                          setEditingBinConfig({
-                                            binCode: fullBinCode,
-                                            shortCode: binCodeShort,
-                                            rackCode: rackCode || (activeRack as any)?.rackCode || '',
-                                            currentPct: curr,
-                                          });
-                                          setInputPctVal(curr);
-                                          setIsAddMode(false);
-                                          return;
-                                        }
-                                        if (isBinDisabled) return;
-                                        if (mode === 'select') {
-                                          if (onSelectBin) {
-                                            onSelectBin(fullBinCode, {
+                                  ) : (
+                                    <>
+                                      {onUpdateBinCapacity && !isBinDisabled && (
+                                        <button
+                                          type="button"
+                                          title="Cài đặt % độ chứa hoặc Số lượng ô"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const curr = occupancyPct || 0;
+                                            setEditingBinConfig({
                                               binCode: fullBinCode,
                                               shortCode: binCodeShort,
-                                              zoneCode: zoneCodeStr,
-                                              rackCode,
-                                              occupancyPct: occupancyPct,
-                                              maxWeight: customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500,
-                                              notes: customConfig?.notes || '',
+                                              rackCode: rackCode || (activeRack as any)?.rackCode || '',
+                                              currentPct: curr,
                                             });
-                                          }
-                                        } else if (onBinClick) {
-                                          onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
-                                        }
-                                      }}
-                                      className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs cursor-pointer ${readOnly
-                                          ? isSelected
-                                            ? 'bg-[#197e96] text-white border-[#197e96] hover:bg-[#15677b]'
+                                            setInputPctVal(curr);
+                                            setIsAddMode(false);
+                                          }}
+                                          className={`p-1 rounded-md transition cursor-pointer flex items-center justify-center border shadow-xs ${isSelected
+                                            ? 'bg-white hover:bg-cyan-50 text-[#197e96] border-cyan-200'
                                             : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700'
-                                          : isOtherItemFull
-                                            ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
-                                            : isSelected
-                                              ? 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
+                                            }`}
+                                        >
+                                          <Settings className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        disabled={isBinDisabled}
+                                        title={isBinDisabled ? (isOtherItemFull ? `Đã đầy 100% (${otherItemName || 'Hàng khác'})` : 'Kệ đã đầy 100%') : isSelected ? 'Đã chọn ô' : 'Bấm để chọn ô'}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isBinDisabled) return;
+                                          if (mode === 'select') {
+                                            if (onSelectBin) {
+                                              onSelectBin(fullBinCode, {
+                                                binCode: fullBinCode,
+                                                shortCode: binCodeShort,
+                                                zoneCode: zoneCodeStr,
+                                                rackCode,
+                                                occupancyPct: occupancyPct,
+                                                stockQty: occupiedInfo?.totalPhysical || customConfig?.totalPhysical || (occupancyPct > 0 ? 1 : 0),
+                                                productName: occupiedInfo?.productName || customConfig?.productName,
+                                                sku: occupiedInfo?.sku || customConfig?.sku,
+                                                maxWeight: customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500,
+                                                notes: customConfig?.notes || '',
+                                              });
+                                            }
+                                          } else if (onBinClick) {
+                                            onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
+                                          }
+                                        }}
+                                        className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs cursor-pointer ${isBinDisabled || isOtherItemFull
+                                          ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
+                                          : isSelected
+                                            ? 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
+                                            : isSuggested
+                                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm cursor-pointer'
                                               : isFull
                                                 ? 'bg-cyan-700 text-white border-cyan-700 opacity-90 cursor-pointer'
-                                                : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700 cursor-pointer'
-                                        }`}
-                                    >
-                                    {isSelected ? (
-                                      <CheckCircle2 className="h-3.5 w-3.5 text-white" />
-                                    ) : (
-                                      <Check className="h-3.5 w-3.5 stroke-[2.5]" />
-                                    )}
-                                  </button>
+                                                : !hasGoods || occupancyPct <= 0
+                                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 cursor-pointer'
+                                                  : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700 cursor-pointer'
+                                          }`}
+                                      >
+                                        {isSelected ? (
+                                          <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                                        ) : (
+                                          <Check className="h-3.5 w-3.5 stroke-[2.5]" />
+                                        )}
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </div>
 
                               {/* Shelf Subtitle */}
                               <span
                                 className={`text-[9px] font-bold block truncate z-10 ${isOtherItemFull
-                                    ? 'text-slate-400 dark:text-slate-500'
-                                    : 'text-cyan-900/80 dark:text-cyan-300'
+                                  ? 'text-slate-400 dark:text-slate-500'
+                                  : 'text-cyan-900/80 dark:text-cyan-300'
                                   }`}
                               >
                                 {rackCode} - Tầng {shelfPrefix}
@@ -1606,23 +2005,23 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   </span>
                                 ) : isOtherItemFull ? (
                                   <span className="text-[8.5px] font-black bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    FULL (100% - {otherItemName})
+                                    FULL (100%)
                                   </span>
                                 ) : otherItemName ? (
                                   <span className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    {otherItemName} (Dư {100 - occupancyPct}%)
+                                    Đã chứa {occupancyPct}% (Dư {100 - occupancyPct}%)
                                   </span>
                                 ) : isSuggested ? (
                                   <span className="text-[9px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs">
                                     GỢI Ý AI
                                   </span>
                                 ) : (hasGoods || isFull) && occupancyPct >= 100 ? (
-                                  <span title={occupiedInfo?.productName ? `${occupiedInfo.productName} (Đã đầy 100%)` : 'Đã xếp đầy'} className="text-[8.5px] font-black bg-[#197e96] text-white px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    {occupiedInfo?.productName ? `📦 ${occupiedInfo.productName}` : `${occupiedInfo?.totalPhysical ? `${occupiedInfo.totalPhysical} ${occupiedInfo.unit || 'cái'}` : 'ĐÃ XẾP'} (FULL)`}
+                                  <span title="Đã chứa 100% dung tích ô (Đầy)" className="text-[8.5px] font-black bg-[#197e96] text-white px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    Đã chứa 100% (FULL)
                                   </span>
-                                ) : isPartiallyOccupied || (hasGoods && occupancyPct < 100) ? (
-                                  <span title={occupiedInfo?.productName ? `${occupiedInfo.productName} (Đã xếp ${occupancyPct}%, còn trống ${100 - occupancyPct}%)` : `Đã xếp ${occupancyPct}%`} className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
-                                    {occupiedInfo?.productName ? `📦 ${occupiedInfo.productName} (Trống ${100 - occupancyPct}%)` : `ĐÃ XẾP (${occupancyPct}%, Trống ${100 - occupancyPct}%)`}
+                                ) : isPartiallyOccupied || (hasGoods && occupancyPct > 0) ? (
+                                  <span title={`Đã chứa ${occupancyPct}% dung tích ô (Trống ${100 - occupancyPct}%)`} className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    Đã chứa {occupancyPct}%
                                   </span>
                                 ) : (
                                   <span className="text-[9px] font-extrabold text-slate-500 bg-slate-100/90 dark:bg-slate-800/80 px-1.5 py-0.5 rounded-md w-full block truncate border border-slate-200/60">
@@ -1646,265 +2045,229 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       {editingBinConfig &&
         createPortal(
           <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-5 animate-in fade-in duration-150 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 border-2 border-cyan-500 rounded-2xl p-5 sm:p-6 w-full max-w-4xl lg:max-w-5xl shadow-2xl space-y-4 my-auto">
-            {/* 1. Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className={`p-2 rounded-xl ${readOnly ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : isOutbound ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300'}`}>
-                  <Settings className="h-5 w-5" />
+            <div className="bg-white dark:bg-slate-900 border-2 border-cyan-500 rounded-2xl p-5 sm:p-6 w-full max-w-4xl lg:max-w-5xl shadow-2xl space-y-4 my-auto">
+              {/* 1. Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-xl ${readOnly ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : isOutbound ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300'}`}>
+                    <Settings className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
+                      {readOnly || !isOutbound
+                        ? `Chi Tiết Vị Trí & Hàng Hóa Ô Kệ ${editingBinConfig.shortCode}`
+                        : `Cài Đặt Độ Chứa & Khấu Trừ Xuất Kệ Ô ${editingBinConfig.shortCode}`}
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${readOnly ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200' : isOutbound ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200' : 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/60 dark:text-cyan-200'}`}>
+                        {readOnly ? 'Chế độ xem' : isOutbound ? 'Xuất kho / Xuất hủy' : 'Chi tiết ô'}
+                      </span>
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      Mã vị trí ô: <span className="font-bold text-slate-700 dark:text-slate-300">{editingBinConfig.binCode}</span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-                    {readOnly
-                      ? `Chi Tiết Vị Trí & Hàng Hóa Ô Kệ ${editingBinConfig.shortCode}`
-                      : isOutbound
-                      ? `Cài Đặt Độ Chứa & Khấu Trừ Xuất Kệ Ô ${editingBinConfig.shortCode}`
-                      : `Cài Đặt Độ Chứa / Số Lượng Ô ${editingBinConfig.shortCode}`}
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${readOnly ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200' : isOutbound ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200' : 'bg-emerald-100 text-emerald-800'}`}>
-                      {readOnly ? 'Chế độ xem' : isOutbound ? 'Xuất kho / Xuất hủy' : 'Nhập kho'}
-                    </span>
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                    Mã vị trí ô: <span className="font-bold text-slate-700 dark:text-slate-300">{editingBinConfig.binCode}</span>
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingBinConfig(null)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setEditingBinConfig(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
 
-            {/* Resolve actual stored goods from bin */}
-            {(() => {
-              const binShort = editingBinConfig.shortCode;
-              const binFull = editingBinConfig.binCode;
-              const rackCode = editingBinConfig.rackCode || '';
-              const rawStoredGoods = getGoodsList(binFull, binShort, rackCode);
-              const storedGoods = rawStoredGoods.filter(
-                (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
-              );
-              const rawStoredInfo = getOccupiedInfo(binFull, binShort, rackCode);
-              const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
-              const storedInfo = isDraftInfo ? null : rawStoredInfo;
+              {/* Resolve actual stored goods from bin */}
+              {(() => {
+                const binShort = editingBinConfig.shortCode;
+                const binFull = editingBinConfig.binCode;
+                const rackCode = editingBinConfig.rackCode || '';
+                const rawStoredGoods = getGoodsList(binFull, binShort, rackCode);
+                const rawStoredInfo = getOccupiedInfo(binFull, binShort, rackCode);
+                const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
+                const storedInfo = isDraftInfo ? null : (rawStoredInfo || null);
 
-              let allStoredGoods: BinGoodsDetail[] = storedGoods && storedGoods.length > 0 ? [...storedGoods] : [];
-              if (allStoredGoods.length === 0 && storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0)) {
-                allStoredGoods = [{
-                  binCode: binFull,
-                  productName: storedInfo.productName || 'Hàng tồn kho',
-                  sku: storedInfo.sku || 'SKU-001',
-                  quantity: storedInfo.totalPhysical || 0,
-                  allocated: storedInfo.allocated || 0,
-                  supplierName: storedInfo.supplierName || '',
-                  inboundDate: storedInfo.inboundDate || '',
-                  orderCode: storedInfo.orderCode || '',
-                  unit: storedInfo.unit || 'Cái',
-                  occupancyPct: storedInfo.occupancyPct !== undefined ? Number(storedInfo.occupancyPct) : 0,
-                }];
-              }
-              if (allStoredGoods.length === 0 && editableBinItems && editableBinItems.length > 0) {
-                allStoredGoods = editableBinItems.map((it) => ({
-                  binCode: binFull,
-                  productName: (it.productName || 'Hàng hóa').replace(/\s*\(Tồn tại kệ\)|\s*\(Lô nhập mới\)/g, ''),
-                  sku: it.sku || 'SKU-001',
-                  quantity: it.qty || 0,
-                  allocated: 0,
-                  supplierName: '',
-                  inboundDate: 'Đã lưu kho',
-                  orderCode: '',
-                  unit: it.unit || 'Cái',
-                  occupancyPct: it.occupancyPct !== undefined ? Number(it.occupancyPct) : 100,
-                }));
-              }
+                const { activeGoods: allStoredGoods, totalQty: totalStoredQty, totalOccupancyPct: binOccupancyPct } = computeActiveStoredGoods(
+                  rawStoredGoods,
+                  storedInfo,
+                  binFull
+                );
 
-              const totalStoredQty = allStoredGoods.reduce((a, b) => a + (Number(b.quantity) || 0), 0);
-              const totalStoredPct = allStoredGoods.reduce((a, b) => a + (Number(b.occupancyPct) || 0), 0);
-              const binOccupancyPct = isOutbound
-                ? (totalStoredPct > 0 ? totalStoredPct : (editingBinConfig.currentPct || 0))
-                : totalStoredPct;
-
-              return (
-                <>
-                  {/* 2. Current Occupancy Status Banner */}
-                  <div className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${
-                    isOutbound
-                      ? 'bg-rose-50/70 border-rose-200/80 dark:bg-rose-950/40 dark:border-rose-900/60'
-                      : 'bg-cyan-50 border-cyan-200/80 dark:bg-cyan-950/70 dark:border-cyan-900/60'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col">
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">Trạng thái ô ({binShort}):</span>
-                        <span className="text-sm font-black text-slate-900 dark:text-white">
-                          {totalStoredQty > 0 ? `Đang lưu trữ ${totalStoredQty.toLocaleString('vi-VN')} cái` : 'Ô đang trống (0 cái)'}
-                        </span>
-                      </div>
-                      <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700 hidden sm:block" />
-                      <div className="flex flex-col">
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">Số loại mặt hàng:</span>
-                        <span className="text-sm font-black text-slate-800 dark:text-slate-200">
-                          {allStoredGoods.length} sản phẩm
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Độ chứa hiện tại:</span>
-                      <span className="px-3 py-1 rounded-lg font-black text-xs bg-white dark:bg-slate-800 shadow-xs border border-slate-200 dark:border-slate-700 text-cyan-700 dark:text-cyan-300">
-                        {binOccupancyPct}% dung tích ô
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 3. TOP SECTION: ALWAYS DISPLAY ALL CURRENT STORED GOODS IN THIS BIN */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                        <Boxes className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-                        Danh sách hàng hóa đang lưu trữ trên kệ ({allStoredGoods.length} dòng hàng)
-                      </span>
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                        Tổng dung tích đang chiếm: <strong className="text-cyan-700 dark:text-cyan-300 font-black">{binOccupancyPct}%</strong>
-                      </span>
-                    </div>
-
-                    <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs custom-scrollbar">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700">
-                          <tr>
-                            <th className="p-2.5 w-10 text-center">STT</th>
-                            <th className="p-2.5">Mặt hàng & SKU</th>
-                            <th className="p-2.5 text-center w-20">ĐVT</th>
-                            <th className="p-2.5 text-right w-36">Số lượng tồn</th>
-                            <th className="p-2.5 text-right w-36">Độ chứa (% ô)</th>
-                            <th className="p-2.5 text-center w-28">Trạng thái</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900 font-medium">
-                          {allStoredGoods.length > 0 ? (
-                            allStoredGoods.map((good, gIdx) => {
-                              const gQty = Number(good.quantity) || 0;
-                              const gPct = good.occupancyPct !== undefined
-                                ? Number(good.occupancyPct)
-                                : (totalStoredQty > 0 ? Math.round((gQty / totalStoredQty) * binOccupancyPct) : 100);
-
-                              return (
-                                <tr key={`stored-${gIdx}`} className="hover:bg-cyan-50/50 dark:hover:bg-slate-800/60 transition">
-                                  <td className="p-2.5 text-center text-slate-400 font-bold">{gIdx + 1}</td>
-                                  <td className="p-2.5">
-                                    <div className="font-bold text-slate-800 dark:text-slate-100">{good.productName}</div>
-                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
-                                      {good.sku && (
-                                        <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-[10px] text-slate-600 dark:text-slate-300">
-                                          SKU: {good.sku}
-                                        </span>
-                                      )}
-                                      {good.orderCode && <span>Lô: {good.orderCode}</span>}
-                                    </div>
-                                  </td>
-                                  <td className="p-2.5 text-center text-slate-600 dark:text-slate-300 font-bold">
-                                    {good.unit || 'Cái'}
-                                  </td>
-                                  <td className="p-2.5 text-right">
-                                    <span className="font-black text-slate-900 dark:text-white text-xs">
-                                      {gQty.toLocaleString('vi-VN')} {good.unit || 'cái'}
-                                    </span>
-                                  </td>
-                                  <td className="p-2.5 text-right">
-                                    <div className="flex flex-col items-end gap-1">
-                                      <span className="font-black text-cyan-700 dark:text-cyan-300">{gPct}%</span>
-                                      <div className="w-20 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                                        <div className="bg-cyan-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, gPct)}%` }} />
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="p-2.5 text-center">
-                                    <span className="text-[10px] font-black bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300 px-2 py-0.5 rounded-md tracking-tight uppercase">
-                                      TỒN TẠI KỆ
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          ) : (
-                            <tr>
-                              <td colSpan={6} className="p-4 text-center text-slate-500 italic">
-                                Ô kệ hiện đang trống (0% dung tích), không có hàng hóa lưu trữ.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* 4. BOTTOM SECTION: ONLY SHOWN WHEN EDITING (NOT IN READONLY VIEW MODE) */}
-                  {!readOnly && (isOutbound ? (
-                    <div className="rounded-2xl border-2 border-rose-300 dark:border-rose-900/70 bg-rose-50/60 dark:bg-rose-950/20 p-4 space-y-3 shadow-xs">
-                      <div className="flex items-center justify-between border-b border-rose-200 dark:border-rose-900/60 pb-2">
-                        <div className="flex items-center gap-2 text-xs font-black uppercase text-rose-800 dark:text-rose-300">
-                          <Package className="h-4 w-4 text-rose-600" />
-                          Khấu trừ xuất hàng / xuất hủy từ ô {editingBinConfig.shortCode} (Dòng trừ số lượng màu đỏ)
+                return (
+                  <>
+                    {/* 2. Current Occupancy Status Banner */}
+                    <div className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 text-xs ${isOutbound
+                        ? 'bg-rose-50/70 border-rose-200/80 dark:bg-rose-950/40 dark:border-rose-900/60'
+                        : 'bg-cyan-50 border-cyan-200/80 dark:bg-cyan-950/70 dark:border-cyan-900/60'
+                      }`}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-col">
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">Trạng thái ô ({binShort}):</span>
+                          <span className="text-sm font-black text-slate-900 dark:text-white">
+                            {totalStoredQty > 0 ? `Đang lưu trữ ${totalStoredQty.toLocaleString('vi-VN')} cái` : 'Ô đang trống (0 cái)'}
+                          </span>
                         </div>
-                        <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/50 px-2 py-0.5 rounded-md">
-                          Tự động tính % khấu trừ & cập nhật độ chứa
+                        <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+                        <div className="flex flex-col">
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">Số loại mặt hàng:</span>
+                          <span className="text-sm font-black text-slate-800 dark:text-slate-200">
+                            {allStoredGoods.length} sản phẩm
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Độ chứa hiện tại:</span>
+                        <span className="px-3 py-1 rounded-lg font-black text-xs bg-white dark:bg-slate-800 shadow-xs border border-slate-200 dark:border-slate-700 text-cyan-700 dark:text-cyan-300">
+                          {binOccupancyPct}% dung tích ô
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 3. TOP SECTION: ALWAYS DISPLAY ALL CURRENT STORED GOODS IN THIS BIN */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                          <Boxes className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                          Danh sách hàng hóa đang lưu trữ trên kệ ({allStoredGoods.length} dòng hàng)
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                          Tổng dung tích đang chiếm: <strong className="text-cyan-700 dark:text-cyan-300 font-black">{binOccupancyPct}%</strong>
                         </span>
                       </div>
 
-                      {/* Deduction Table */}
-                      <div className="overflow-x-auto">
+                      <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs custom-scrollbar">
                         <table className="w-full text-xs text-left border-collapse">
-                          <thead>
-                            <tr className="text-rose-900 dark:text-rose-200 font-bold border-b border-rose-200 dark:border-rose-900/60">
-                              <th className="pb-2">Mặt hàng xuất / trừ</th>
-                              <th className="pb-2 text-center w-28">Tồn gốc ở ô</th>
-                              <th className="pb-2 text-right w-44">Số lượng lấy đi (Trừ)</th>
-                              <th className="pb-2 text-right w-40">Khấu trừ (% ô)</th>
-                              <th className="pb-2 text-right w-36">Còn lại trên kệ</th>
+                          <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-slate-700">
+                            <tr>
+                              <th className="p-2.5 w-10 text-center">STT</th>
+                              <th className="p-2.5">Mặt hàng & SKU</th>
+                              <th className="p-2.5 text-center w-20">ĐVT</th>
+                              <th className="p-2.5 text-right w-36">Số lượng tồn</th>
+                              <th className="p-2.5 text-right w-36">Độ chứa (% ô)</th>
+                              <th className="p-2.5 text-center w-28">Trạng thái</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-rose-200/60 dark:divide-rose-900/40 font-medium">
-                            {editableBinItems.map((item, idx) => {
-                              const currentGood = allStoredGoods.find((g) =>
-                                (item.matchedSku && g.sku === item.matchedSku) ||
-                                (item.sku && g.sku === item.sku) ||
-                                (g.productName === item.productName)
-                              ) || allStoredGoods[0];
+                          <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900 font-medium">
+                            {allStoredGoods.length > 0 ? (
+                              allStoredGoods.map((good, gIdx) => {
+                                const gQty = Number(good.quantity) || 0;
+                                const gPct = good.occupancyPct !== undefined
+                                  ? Number(good.occupancyPct)
+                                  : (totalStoredQty > 0 ? Math.round((gQty / totalStoredQty) * binOccupancyPct) : 100);
 
-                              const stockQty = Number(item.stockQty !== undefined ? item.stockQty : (currentGood?.quantity || totalStoredQty || 0));
-                              const stockPct = Number(item.stockPct !== undefined ? item.stockPct : (currentGood?.occupancyPct !== undefined ? currentGood.occupancyPct : binOccupancyPct));
+                                return (
+                                  <tr key={`stored-${gIdx}`} className="hover:bg-cyan-50/50 dark:hover:bg-slate-800/60 transition">
+                                    <td className="p-2.5 text-center text-slate-400 font-bold">{gIdx + 1}</td>
+                                    <td className="p-2.5">
+                                      <div className="font-bold text-slate-800 dark:text-slate-100">{good.productName}</div>
+                                      <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
+                                        {good.sku && (
+                                          <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                                            SKU: {good.sku}
+                                          </span>
+                                        )}
+                                        {good.orderCode && <span>Lô: {good.orderCode}</span>}
+                                      </div>
+                                    </td>
+                                    <td className="p-2.5 text-center text-slate-600 dark:text-slate-300 font-bold">
+                                      {good.unit || 'Cái'}
+                                    </td>
+                                    <td className="p-2.5 text-right">
+                                      <span className="font-black text-slate-900 dark:text-white text-xs">
+                                        {gQty.toLocaleString('vi-VN')} {good.unit || 'cái'}
+                                      </span>
+                                    </td>
+                                    <td className="p-2.5 text-right">
+                                      <div className="flex flex-col items-end gap-1">
+                                        <span className="font-black text-cyan-700 dark:text-cyan-300">{gPct}%</span>
+                                        <div className="w-20 bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                                          <div className="bg-cyan-500 h-1.5 rounded-full" style={{ width: `${Math.min(100, gPct)}%` }} />
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="p-2.5 text-center">
+                                      <span className="text-[10px] font-black bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                        TỒN TẠI KỆ
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td colSpan={6} className="p-6 text-center text-slate-500 italic">
+                                  Ô kệ hiện đang trống (0% dung tích), không có hàng hóa lưu trữ.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
 
-                              const currentDeductQty = Number(item.qty) || 0;
-                              const currentDeductPct = Number(item.occupancyPct) || 0;
+                    {/* 4. BOTTOM SECTION: ONLY SHOWN FOR OUTBOUND DEDUCTION */}
+                    {!readOnly && isOutbound && (
+                      <div className="rounded-2xl border-2 border-rose-300 dark:border-rose-900/70 bg-rose-50/60 dark:bg-rose-950/20 p-4 space-y-3 shadow-xs">
+                        <div className="flex items-center justify-between border-b border-rose-200 dark:border-rose-900/60 pb-2">
+                          <div className="flex items-center gap-2 text-xs font-black uppercase text-rose-800 dark:text-rose-300">
+                            <Package className="h-4 w-4 text-rose-600" />
+                            Khấu trừ xuất hàng / xuất hủy từ ô {editingBinConfig.shortCode} (Dòng trừ số lượng màu đỏ)
+                          </div>
+                          <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/50 px-2 py-0.5 rounded-md">
+                            Tự động tính % khấu trừ & cập nhật độ chứa
+                          </span>
+                        </div>
 
-                              const remainingQty = Math.max(0, stockQty - currentDeductQty);
-                              const remainingPct = Math.max(0, Number((stockPct - currentDeductPct).toFixed(1)));
+                        {/* Deduction Table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs text-left border-collapse">
+                            <thead>
+                              <tr className="text-rose-900 dark:text-rose-200 font-bold border-b border-rose-200 dark:border-rose-900/60">
+                                <th className="pb-2">Mặt hàng xuất / trừ</th>
+                                <th className="pb-2 text-center w-28">Tồn gốc ở ô</th>
+                                <th className="pb-2 text-right w-44">Số lượng lấy đi (Trừ)</th>
+                                <th className="pb-2 text-right w-40">Khấu trừ (% ô)</th>
+                                <th className="pb-2 text-right w-36">Còn lại trên kệ</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-rose-200/60 dark:divide-rose-900/40 font-medium">
+                              {editableBinItems.map((item, idx) => {
+                                const currentGood = allStoredGoods.find((g) =>
+                                  (item.matchedSku && g.sku === item.matchedSku) ||
+                                  (item.sku && g.sku === item.sku) ||
+                                  (g.productName === item.productName)
+                                ) || allStoredGoods[0];
 
-                              return (
-                                <tr key={`deduct-${idx}`} className="align-middle">
-                                  <td className="py-2.5 pr-2">
-                                    {allStoredGoods.length > 1 ? (
-                                      <div className="space-y-1">
-                                        <select
-                                          value={item.matchedSku || currentGood?.sku || ''}
-                                          onChange={(e) => {
-                                            const chosenSku = e.target.value;
-                                            const chosenGood = allStoredGoods.find((g) => g.sku === chosenSku) || allStoredGoods[0];
-                                            if (chosenGood) {
-                                              const newStockQty = Number(chosenGood.quantity) || 0;
-                                              const newStockPct = Number(chosenGood.occupancyPct !== undefined ? chosenGood.occupancyPct : 100);
-                                              const newQty = Math.min(item.qty || 1, newStockQty);
-                                              let newPct = 0;
-                                              if (newStockQty > 0 && newStockPct > 0) {
-                                                newPct = Number(((newQty / newStockQty) * newStockPct).toFixed(1));
-                                                if (newPct === 0 && newQty > 0) newPct = 0.1;
-                                              }
-                                              setEditableBinItems((prev) =>
-                                                prev.map((it, i) =>
-                                                  i === idx
-                                                    ? {
+                                const stockQty = Number(item.stockQty !== undefined ? item.stockQty : (currentGood?.quantity || totalStoredQty || 0));
+                                const stockPct = Number(item.stockPct !== undefined ? item.stockPct : (currentGood?.occupancyPct !== undefined ? currentGood.occupancyPct : binOccupancyPct));
+
+                                const currentDeductQty = Number(item.qty) || 0;
+                                const currentDeductPct = Number(item.occupancyPct) || 0;
+
+                                const remainingQty = Math.max(0, stockQty - currentDeductQty);
+                                const remainingPct = Math.max(0, Number((stockPct - currentDeductPct).toFixed(1)));
+
+                                return (
+                                  <tr key={`deduct-${idx}`} className="align-middle">
+                                    <td className="py-2.5 pr-2">
+                                      {allStoredGoods.length > 1 ? (
+                                        <div className="space-y-1">
+                                          <select
+                                            value={item.matchedSku || currentGood?.sku || ''}
+                                            onChange={(e) => {
+                                              const chosenSku = e.target.value;
+                                              const chosenGood = allStoredGoods.find((g) => g.sku === chosenSku) || allStoredGoods[0];
+                                              if (chosenGood) {
+                                                const newStockQty = Number(chosenGood.quantity) || 0;
+                                                const newStockPct = Number(chosenGood.occupancyPct !== undefined ? chosenGood.occupancyPct : 100);
+                                                const newQty = Math.min(item.qty || 1, newStockQty);
+                                                let newPct = 0;
+                                                if (newStockQty > 0 && newStockPct > 0) {
+                                                  newPct = Number(((newQty / newStockQty) * newStockPct).toFixed(1));
+                                                  if (newPct === 0 && newQty > 0) newPct = 0.1;
+                                                }
+                                                setEditableBinItems((prev) =>
+                                                  prev.map((it, i) =>
+                                                    i === idx
+                                                      ? {
                                                         ...it,
                                                         productName: chosenGood.productName,
                                                         sku: chosenGood.sku,
@@ -1915,257 +2278,81 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                                         qty: newQty,
                                                         occupancyPct: newPct,
                                                       }
-                                                    : it
-                                                )
-                                              );
-                                            }
-                                          }}
-                                          className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-rose-500"
-                                        >
-                                          {allStoredGoods.map((g, gi) => (
-                                            <option key={gi} value={g.sku}>
-                                              {g.productName} ({g.quantity} {g.unit || 'cái'} - {g.occupancyPct}%)
-                                            </option>
-                                          ))}
-                                        </select>
-                                        <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 block">
-                                          Chọn mặt hàng cần trừ từ kệ này
-                                        </span>
-                                      </div>
-                                    ) : (
-                                      <div>
-                                        <span className="font-black text-slate-800 dark:text-slate-100">{item.productName}</span>
-                                        {item.sku && <div className="text-[10px] font-mono text-slate-500">SKU: {item.sku}</div>}
-                                      </div>
-                                    )}
-                                  </td>
-
-                                  <td className="py-2.5 px-2 text-center">
-                                    <span className="font-bold text-slate-700 dark:text-slate-300">
-                                      {stockQty.toLocaleString('vi-VN')} {item.unit || 'cái'}
-                                    </span>
-                                    <div className="text-[10px] text-slate-500">({stockPct}% dung tích)</div>
-                                  </td>
-
-                                  <td className="py-2.5 px-2 text-right">
-                                    <div className="flex items-center justify-end gap-1.5">
-                                      <span className="text-base font-black text-rose-600 dark:text-rose-400">-</span>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        max={stockQty > 0 ? stockQty : undefined}
-                                        value={item.qty > 0 ? item.qty : ''}
-                                        placeholder="0"
-                                        onChange={(e) => {
-                                          const val = Number(e.target.value) || 0;
-                                          setEditableBinItems((prev) =>
-                                            prev.map((it, i) => {
-                                              if (i !== idx) return it;
-                                              let calculatedPct = 0;
-                                              if (stockQty > 0 && stockPct > 0) {
-                                                calculatedPct = Number(((val / stockQty) * stockPct).toFixed(1));
-                                                if (calculatedPct === 0 && val > 0) calculatedPct = 0.1;
+                                                      : it
+                                                  )
+                                                );
                                               }
-                                              return {
-                                                ...it,
-                                                qty: val,
-                                                occupancyPct: calculatedPct > 0 ? calculatedPct : 0,
-                                              };
-                                            })
-                                          );
-                                        }}
-                                        className="w-24 px-2.5 py-1.5 text-right text-xs font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 rounded-xl focus:border-rose-600 focus:ring-2 focus:ring-rose-400/30 outline-none shadow-xs"
-                                      />
-                                      <span className="text-xs font-black text-rose-600 dark:text-rose-400">{item.unit || 'cái'}</span>
-                                    </div>
-                                  </td>
-
-                                  <td className="py-2.5 px-2 text-right">
-                                    <div className="relative inline-flex items-center justify-end w-28">
-                                      <span className="text-base font-black text-rose-600 dark:text-rose-400 mr-1">-</span>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        max={stockPct > 0 ? stockPct : 100}
-                                        step="0.1"
-                                        value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
-                                        placeholder="0"
-                                        onChange={(e) => {
-                                          const raw = e.target.value;
-                                          if (raw === '') {
-                                            setEditableBinItems((prev) =>
-                                              prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
-                                            );
-                                            return;
-                                          }
-                                          const parsed = parseFloat(raw);
-                                          const val = isNaN(parsed) ? 0 : Math.min(stockPct || 100, Math.max(0, parsed));
-                                          setEditableBinItems((prev) =>
-                                            prev.map((it, i) => {
-                                              if (i !== idx) return it;
-                                              let calcQty = it.qty;
-                                              if (stockPct > 0 && stockQty > 0) {
-                                                calcQty = Math.round((stockQty * val) / stockPct);
-                                              }
-                                              return {
-                                                ...it,
-                                                occupancyPct: val,
-                                                qty: calcQty,
-                                              };
-                                            })
-                                          );
-                                        }}
-                                        onBlur={() => {
-                                          if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined) {
-                                            setEditableBinItems((prev) =>
-                                              prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
-                                            );
-                                          }
-                                        }}
-                                        className="w-full px-2.5 py-1.5 pr-6 text-right text-xs font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 rounded-xl focus:border-rose-600 focus:ring-2 focus:ring-rose-400/30 outline-none shadow-xs"
-                                      />
-                                      <span className="absolute right-2 top-2 text-xs font-black text-rose-500">%</span>
-                                    </div>
-                                  </td>
-
-                                  <td className="py-2.5 pl-2 text-right">
-                                    <div className="font-black text-emerald-700 dark:text-emerald-400 text-xs">
-                                      {remainingQty.toLocaleString('vi-VN')} {item.unit || 'cái'}
-                                    </div>
-                                    <div className="text-[10px] font-bold text-slate-500">
-                                      Còn lại: {remainingPct}% ô
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {/* Summary calculation of bin capacity after export */}
-                      {(() => {
-                        const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
-                        const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
-                        const initialBinPct = totalStoredPct > 0 ? totalStoredPct : (editingBinConfig.currentPct || 100);
-                        const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
-                        const remainingEmptyPct = Math.max(0, Number((100 - remainingAfterExport).toFixed(1)));
-
-                        return (
-                          <div className="mt-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 shadow-xs space-y-2">
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                              <div className="p-2 bg-rose-50 dark:bg-rose-950/50 rounded-lg border border-rose-200 dark:border-rose-900/60 flex flex-col">
-                                <span className="text-[11px] font-bold text-rose-800 dark:text-rose-300">Khấu trừ xuất kho:</span>
-                                <span className="text-sm font-black text-rose-600 dark:text-rose-400 mt-0.5">
-                                  -{totalExportQty.toLocaleString('vi-VN')} cái (-{totalExportPct}%)
-                                </span>
-                              </div>
-                              <div className="p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-lg border border-cyan-200 dark:border-cyan-900/60 flex flex-col">
-                                <span className="text-[11px] font-bold text-cyan-800 dark:text-cyan-300">Sức chứa ô còn lại (Đã chứa):</span>
-                                <span className="text-sm font-black text-cyan-700 dark:text-cyan-300 mt-0.5">
-                                  {remainingAfterExport}% dung tích
-                                </span>
-                              </div>
-                              <div className="p-2 bg-emerald-50 dark:bg-emerald-950/50 rounded-lg border border-emerald-200 dark:border-emerald-900/60 flex flex-col">
-                                <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">Dung tích ô còn trống:</span>
-                                <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                  {remainingEmptyPct}% ô kệ
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Dual-color Progress bar visual */}
-                            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden flex">
-                              <div
-                                className="bg-cyan-600 h-2.5 transition-all duration-300"
-                                style={{ width: `${Math.min(100, remainingAfterExport)}%` }}
-                                title={`Còn lưu trữ: ${remainingAfterExport}%`}
-                              />
-                              <div
-                                className="bg-rose-500 h-2.5 transition-all duration-300"
-                                style={{ width: `${Math.min(100 - remainingAfterExport, totalExportPct)}%` }}
-                                title={`Khấu trừ xuất: ${totalExportPct}%`}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ) : (
-                    /* Inbound Mode Layout */
-                    <div className="space-y-2">
-                      <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs custom-scrollbar">
-                        <table className="w-full text-xs text-left border-collapse">
-                          <thead className="sticky top-0 z-10 bg-cyan-50 dark:bg-cyan-950 text-cyan-950 dark:text-cyan-200 font-bold border-b border-cyan-200 dark:border-slate-700 shadow-2xs">
-                            <tr>
-                              <th className="p-3">Tên hàng hóa</th>
-                              <th className="p-3 text-right w-28">Số lượng</th>
-                              <th className="p-3 text-right w-28">Lưu trữ</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900 font-medium">
-                            {editableBinItems.map((item, idx) => {
-                              const isExisting = Boolean(item.isExistingStock);
-                              return (
-                                <tr key={idx} className={isExisting ? "bg-cyan-50/40 dark:bg-slate-800/40 hover:bg-cyan-50/70 border-l-4 border-cyan-500" : "hover:bg-emerald-50/40 dark:hover:bg-slate-800/50 transition border-l-4 border-emerald-500"}>
-                                  <td className="p-3">
-                                    <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 flex-wrap">
-                                      <span>{item.productName}</span>
-                                      {isExisting ? (
-                                        <span className="text-[10px] font-black bg-cyan-200 text-cyan-900 dark:bg-cyan-900 dark:text-cyan-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
-                                          TỒN TẠI KỆ
-                                        </span>
-                                      ) : (
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
-                                            LÔ NHẬP MỚI
+                                            }}
+                                            className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-rose-500"
+                                          >
+                                            {allStoredGoods.map((g, gi) => (
+                                              <option key={gi} value={g.sku}>
+                                                {g.productName} ({g.quantity} {g.unit || 'cái'} - {g.occupancyPct}%)
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 block">
+                                            Chọn mặt hàng cần trừ từ kệ này
                                           </span>
-                                          {item.isCustomQty ? (
-                                            <span className="text-[9.5px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
-                                              Cố định {item.qty} cái
-                                            </span>
-                                          ) : (
-                                            <span className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
-                                              Tự chia đều
-                                            </span>
-                                          )}
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <span className="font-black text-slate-800 dark:text-slate-100">{item.productName}</span>
+                                          {item.sku && <div className="text-[10px] font-mono text-slate-500">SKU: {item.sku}</div>}
                                         </div>
                                       )}
-                                    </div>
-                                  </td>
-                                  <td className="p-2 text-right">
-                                    {isExisting ? (
-                                      <span className="text-xs font-black text-cyan-900 dark:text-cyan-200 px-2 py-1 inline-block">
-                                        {item.qty} cái
+                                    </td>
+
+                                    <td className="py-2.5 px-2 text-center">
+                                      <span className="font-bold text-slate-700 dark:text-slate-300">
+                                        {stockQty.toLocaleString('vi-VN')} {item.unit || 'cái'}
                                       </span>
-                                    ) : (
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={item.qty > 0 ? item.qty : ''}
-                                        placeholder="—"
-                                        onChange={(e) => {
-                                          const val = Number(e.target.value) || 0;
-                                          setEditableBinItems((prev) =>
-                                            prev.map((it, i) => (i === idx ? { ...it, qty: val, isCustomQty: val > 0 } : it))
-                                          );
-                                        }}
-                                        className="w-20 px-2 py-1 text-right text-xs font-bold border border-emerald-300 focus:border-emerald-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg outline-none"
-                                      />
-                                    )}
-                                  </td>
-                                  <td className="p-2 text-right">
-                                    {isExisting ? (
-                                      <span className="text-xs font-black text-cyan-900 dark:text-cyan-200 px-2 py-1 inline-block">
-                                        {item.occupancyPct}%
-                                      </span>
-                                    ) : (
-                                      <div className="relative inline-flex items-center justify-end w-20">
+                                      <div className="text-[10px] text-slate-500">({stockPct}% dung tích)</div>
+                                    </td>
+
+                                    <td className="py-2.5 px-2 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <span className="text-base font-black text-rose-600 dark:text-rose-400">-</span>
                                         <input
                                           type="number"
                                           min={0}
-                                          max={100}
+                                          max={stockQty > 0 ? stockQty : undefined}
+                                          value={item.qty > 0 ? item.qty : ''}
+                                          placeholder="0"
+                                          onChange={(e) => {
+                                            const val = Number(e.target.value) || 0;
+                                            setEditableBinItems((prev) =>
+                                              prev.map((it, i) => {
+                                                if (i !== idx) return it;
+                                                let calculatedPct = 0;
+                                                if (stockQty > 0 && stockPct > 0) {
+                                                  calculatedPct = Number(((val / stockQty) * stockPct).toFixed(1));
+                                                  if (calculatedPct === 0 && val > 0) calculatedPct = 0.1;
+                                                }
+                                                return {
+                                                  ...it,
+                                                  qty: val,
+                                                  occupancyPct: calculatedPct > 0 ? calculatedPct : 0,
+                                                };
+                                              })
+                                            );
+                                          }}
+                                          className="w-24 px-2.5 py-1.5 text-right text-xs font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 rounded-xl focus:border-rose-600 focus:ring-2 focus:ring-rose-400/30 outline-none shadow-xs"
+                                        />
+                                        <span className="text-xs font-black text-rose-600 dark:text-rose-400">{item.unit || 'cái'}</span>
+                                      </div>
+                                    </td>
+
+                                    <td className="py-2.5 px-2 text-right">
+                                      <div className="relative inline-flex items-center justify-end w-28">
+                                        <span className="text-base font-black text-rose-600 dark:text-rose-400 mr-1">-</span>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={stockPct > 0 ? stockPct : 100}
+                                          step="0.1"
                                           value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
+                                          placeholder="0"
                                           onChange={(e) => {
                                             const raw = e.target.value;
                                             if (raw === '') {
@@ -2174,112 +2361,138 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                               );
                                               return;
                                             }
-                                            const parsed = parseInt(raw, 10);
-                                            const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
-                                            // The occupancyPct represents how much of the shelf capacity is occupied, NOT a percentage of total goods
+                                            const parsed = parseFloat(raw);
+                                            const val = isNaN(parsed) ? 0 : Math.min(stockPct || 100, Math.max(0, parsed));
                                             setEditableBinItems((prev) =>
-                                              prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val } : it))
+                                              prev.map((it, i) => {
+                                                if (i !== idx) return it;
+                                                let calcQty = it.qty;
+                                                if (stockPct > 0 && stockQty > 0) {
+                                                  calcQty = Math.round((stockQty * val) / stockPct);
+                                                }
+                                                return {
+                                                  ...it,
+                                                  occupancyPct: val,
+                                                  qty: calcQty,
+                                                };
+                                              })
                                             );
                                           }}
-                                          className="w-full px-2 py-1 pr-5 text-right text-xs font-bold border border-emerald-300 focus:border-emerald-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg outline-none"
+                                          onBlur={() => {
+                                            if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined) {
+                                              setEditableBinItems((prev) =>
+                                                prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
+                                              );
+                                            }
+                                          }}
+                                          className="w-full px-2.5 py-1.5 pr-6 text-right text-xs font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 rounded-xl focus:border-rose-600 focus:ring-2 focus:ring-rose-400/30 outline-none shadow-xs"
                                         />
-                                        <span className="absolute right-1.5 top-1 text-xs font-black text-slate-400">%</span>
+                                        <span className="absolute right-2 top-2 text-xs font-black text-rose-500">%</span>
                                       </div>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                                    </td>
+
+                                    <td className="py-2.5 pl-2 text-right">
+                                      <div className="font-black text-emerald-700 dark:text-emerald-400 text-xs">
+                                        {remainingQty.toLocaleString('vi-VN')} {item.unit || 'cái'}
+                                      </div>
+                                      <div className="text-[10px] font-bold text-slate-500">
+                                        Còn lại: {remainingPct}% ô
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Summary calculation of bin capacity after export */}
+                        {(() => {
+                          const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
+                          const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
+                          const initialBinPct = binOccupancyPct > 0 ? binOccupancyPct : (editingBinConfig.currentPct || 100);
+                          const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
+                          const remainingEmptyPct = Math.max(0, Number((100 - remainingAfterExport).toFixed(1)));
+
+                          return (
+                            <div className="mt-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 shadow-xs space-y-2">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                                <div className="p-2 bg-rose-50 dark:bg-rose-950/50 rounded-lg border border-rose-200 dark:border-rose-900/60 flex flex-col">
+                                  <span className="text-[11px] font-bold text-rose-800 dark:text-rose-300">Khấu trừ xuất kho:</span>
+                                  <span className="text-sm font-black text-rose-600 dark:text-rose-400 mt-0.5">
+                                    -{totalExportQty.toLocaleString('vi-VN')} cái (-{totalExportPct}%)
+                                  </span>
+                                </div>
+                                <div className="p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-lg border border-cyan-200 dark:border-cyan-900/60 flex flex-col">
+                                  <span className="text-[11px] font-bold text-cyan-800 dark:text-cyan-300">Sức chứa ô còn lại (Đã chứa):</span>
+                                  <span className="text-sm font-black text-cyan-700 dark:text-cyan-300 mt-0.5">
+                                    {remainingAfterExport}% dung tích
+                                  </span>
+                                </div>
+                                <div className="p-2 bg-emerald-50 dark:bg-emerald-950/50 rounded-lg border border-emerald-200 dark:border-emerald-900/60 flex flex-col">
+                                  <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">Dung tích ô còn trống:</span>
+                                  <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                    {remainingEmptyPct}% ô kệ
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Dual-color Progress bar visual */}
+                              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden flex">
+                                <div
+                                  className="bg-cyan-600 h-2.5 transition-all duration-300"
+                                  style={{ width: `${Math.min(100, remainingAfterExport)}%` }}
+                                  title={`Còn lưu trữ: ${remainingAfterExport}%`}
+                                />
+                                <div
+                                  className="bg-rose-500 h-2.5 transition-all duration-300"
+                                  style={{ width: `${Math.min(100 - remainingAfterExport, totalExportPct)}%` }}
+                                  title={`Khấu trừ xuất: ${totalExportPct}%`}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
+                    )}
+                  </>
+                );
+              })()}
 
-                      {/* Add New Line in Inbound */}
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold text-slate-500">Thêm sản phẩm mới vào ô {editingBinConfig.shortCode}:</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-                            const remainingPct = Math.max(0, 100 - sumPct);
-                            setEditableBinItems((prev) => [
-                              ...prev,
-                              {
-                                rowId: `custom-line-${Date.now()}`,
-                                productName: `Mặt hàng bổ sung #${prev.length + 1} (Lô nhập mới)`,
-                                qty: 100,
-                                occupancyPct: remainingPct > 0 ? remainingPct : 10,
-                                isExistingStock: false,
-                              },
-                            ]);
-                          }}
-                          className="text-[11px] font-black text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                        >
-                          + Thêm dòng sản phẩm (Dòng #{editableBinItems.length + 1})
-                        </button>
-                      </div>
-
-                      {/* Inbound Summary */}
-                      {(() => {
-                        const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-                        const remainingPct = Math.max(0, 100 - sumPct);
-                        const isOverCap = sumPct > 100;
-                        return (
-                          <div className={`p-2.5 rounded-xl border text-[11px] font-bold ${isOverCap ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 text-rose-900 dark:text-rose-200' : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 text-amber-900 dark:text-amber-200'}`}>
-                            Tổng độ chứa ô = <strong className={`underline font-black ${isOverCap ? 'text-rose-700 dark:text-rose-300' : 'text-cyan-700 dark:text-cyan-300'}`}>{sumPct}%</strong>{' '}
-                            {isOverCap ? `(CẢNH BÁO: VƯỢT QUÁ SỨC CHỨA Ô ${sumPct - 100}%!)` : `(Còn trống ${remainingPct}%)`}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ))}
-                </>
-              );
-            })()}
-
-            {/* 5. Footer Buttons */}
-            {readOnly ? (
-              <div className="flex items-center justify-end w-full pt-3 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setEditingBinConfig(null)}
-                  className="h-9 px-6 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-sm active:scale-95"
-                >
-                  Đóng
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isOutbound) {
-                      setEditableBinItems((prev) => prev.map((it) => ({ ...it, qty: 0, occupancyPct: 0 })));
-                    } else {
-                      setEditableBinItems((prev) => prev.map((it) => ({ ...it, occupancyPct: 0, qty: 0 })));
-                      if (onUpdateBinCapacity) {
-                        onUpdateBinCapacity(editingBinConfig.binCode, 0, undefined, undefined, 0);
-                      }
-                      setEditingBinConfig(null);
-                    }
-                  }}
-                  className="h-9 px-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-bold rounded-xl transition cursor-pointer border border-rose-200 dark:border-rose-900/60"
-                >
-                  Reset về 0%
-                </button>
-
-                <div className="flex items-center gap-2">
+              {/* 5. Footer Buttons */}
+              {readOnly || !isOutbound ? (
+                <div className="flex items-center justify-end w-full pt-3 border-t border-slate-200 dark:border-slate-800">
                   <button
                     type="button"
                     onClick={() => setEditingBinConfig(null)}
-                    className="h-9 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                    className="h-9 px-6 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-sm active:scale-95"
                   >
                     Đóng
                   </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-800">
                   <button
                     type="button"
                     onClick={() => {
-                      if (isOutbound) {
+                      setEditableBinItems((prev) => prev.map((it) => ({ ...it, qty: 0, occupancyPct: 0 })));
+                    }}
+                    className="h-9 px-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-bold rounded-xl transition cursor-pointer border border-rose-200 dark:border-rose-900/60"
+                  >
+                    Reset về 0%
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingBinConfig(null)}
+                      className="h-9 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                    >
+                      Đóng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
                         const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
                         const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
                         const initialBinPct = editingBinConfig.currentPct || 100;
@@ -2297,38 +2510,18 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           }
                         });
                         setEditingBinConfig(null);
-                        return;
-                      }
-
-                      const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-                      if (!isOutbound && sumPct > 100) {
-                        alert(`Tổng % độ chứa (${sumPct}%) vượt quá 100%! Vui lòng điều chỉnh lại cho tổng các sản phẩm <= 100%.`);
-                        return;
-                      }
-                      editableBinItems.forEach((item) => {
-                        if (onUpdateBinCapacity) {
-                          onUpdateBinCapacity(
-                            editingBinConfig.binCode,
-                            Number(item.occupancyPct) || 0,
-                            undefined,
-                            item.rowId,
-                            item.isCustomQty && Number(item.qty) > 0 ? Number(item.qty) : undefined
-                          );
-                        }
-                      });
-                      setEditingBinConfig(null);
-                    }}
-                    className="h-9 px-5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
-                  >
-                    Lưu cài đặt
-                  </button>
+                      }}
+                      className="h-9 px-5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
+                    >
+                      Lưu cài đặt
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

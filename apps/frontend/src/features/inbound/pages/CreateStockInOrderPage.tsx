@@ -35,7 +35,7 @@ import {
   Eye,
   Calendar,
   Hash,
-  TrendingDown,
+  ArrowDownToLine,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -44,6 +44,19 @@ import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
+
+export const isCompletedInboundStatus = (status?: string): boolean => {
+  if (!status) return false;
+  const s = String(status).trim().toLowerCase();
+  return (
+    s === 'completed' ||
+    s === 'received' ||
+    s === 'đã nhập kho' ||
+    s === 'đã xuất trả' ||
+    s === 'shipped' ||
+    s === 'done'
+  );
+};
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -277,7 +290,7 @@ export interface InboundTab {
 }
 
 const DEFAULT_ROWS_COUNT = 50;
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function authHeaders() {
   return {
@@ -2239,8 +2252,7 @@ export default function CreateStockInOrderPage({
   }, [tabs, activeTabId]);
 
   const isViewMode = actionParam === 'view';
-  const isTabDraft = !activeTab?.id || ['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT');
-  const isReadOnly = isViewMode || !isTabDraft;
+  const isReadOnly = isViewMode || (Boolean(activeTab?.id) && isCompletedInboundStatus(activeTab?.status));
 
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;
@@ -2546,8 +2558,12 @@ export default function CreateStockInOrderPage({
           };
         });
 
-        while (detailsList.length < DEFAULT_ROWS_COUNT) {
-          detailsList.push(makeEmptyRow(detailsList.length + 1, orderWhCode));
+        if (actionParam !== 'view') {
+          while (detailsList.length < DEFAULT_ROWS_COUNT) {
+            detailsList.push(makeEmptyRow(detailsList.length + 1, orderWhCode));
+          }
+        } else if (detailsList.length === 0) {
+          detailsList.push(makeEmptyRow(1, orderWhCode));
         }
 
         const loadedTab: InboundTab = {
@@ -3105,10 +3121,10 @@ export default function CreateStockInOrderPage({
   ) => {
     if (!activeTab) return;
 
-    const isTabDraft = !activeTab.id || ['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab.status || 'DRAFT');
-    if (!isTabDraft) {
+    const isCompleted = isCompletedInboundStatus(activeTab.status);
+    if (isCompleted) {
       setToast({
-        message: 'Phiếu nhập kho này đã lưu chính thức và không thể chỉnh sửa lại!',
+        message: 'Phiếu nhập kho này đã hoàn thành và không thể chỉnh sửa lại!',
         type: 'error',
       });
       return;
@@ -3488,7 +3504,7 @@ export default function CreateStockInOrderPage({
       {!isFullscreen && (
         <div className="flex items-center justify-between gap-3 flex-wrap flex-shrink-0">
           <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
-            <TrendingDown className="h-5 w-5 text-cyan-100" />
+            <ArrowDownToLine className="h-5 w-5 text-cyan-100" />
             <h1 className="text-base font-black tracking-tight uppercase">
               {isViewMode
                 ? 'XEM CHI TIẾT PHIẾU NHẬP HÀNG HÓA'
@@ -3542,15 +3558,17 @@ export default function CreateStockInOrderPage({
             })}
 
             {/* Add New Tab Button */}
-            <button
-              type="button"
-              onClick={handleAddNewTab}
-              className="inline-flex items-center gap-1 rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-50/60 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 hover:border-cyan-600 transition cursor-pointer"
-              title="Tạo thêm phiếu nhập mới (Tab tiếp theo)"
-            >
-              <Plus size={14} className="text-cyan-700" />
-              <span>+ Thêm phiếu mới</span>
-            </button>
+            {!isViewMode && (
+              <button
+                type="button"
+                onClick={handleAddNewTab}
+                className="inline-flex items-center gap-1 rounded-xl border-2 border-dashed border-cyan-400 bg-cyan-50/60 px-3 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-100 hover:border-cyan-600 transition cursor-pointer"
+                title="Tạo thêm phiếu nhập mới (Tab tiếp theo)"
+              >
+                <Plus size={14} className="text-cyan-700" />
+                <span>+ Thêm phiếu mới</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -3823,13 +3841,12 @@ export default function CreateStockInOrderPage({
                     <th className="p-2.5 w-32 text-center bg-slate-100">THÀNH TIỀN</th>
                     <th className="p-2.5 w-36 text-center bg-slate-100">HẠN SỬ DỤNG</th>
                     <th className="p-2.5 min-w-[130px] text-center bg-slate-100">GHI CHÚ</th>
-                    <th className="p-2.5 w-44 text-center bg-slate-100 min-w-[150px]">THAO TÁC</th>
+                    <th className="p-2.5 w-36 text-center bg-slate-100 min-w-[120px]">THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {activeTab?.details.map((row, idx) => {
                     const isEven = idx % 2 === 1;
-                    const hasWeightOrVol = (row.weight || 0) > 0 || (row.volume || 0) > 0;
                     return (
                       <tr
                         key={row.rowId}
@@ -4015,23 +4032,6 @@ export default function CreateStockInOrderPage({
                               }
                             >
                               <Sparkles size={16} strokeWidth={2} />
-                            </button>
-
-                            {/* 2. Cấu hình Trọng lượng & Thể tích */}
-                            <button
-                              type="button"
-                              onClick={() => setWeightModalRow(row)}
-                              className={`flex h-8 w-8 items-center justify-center rounded-xl transition cursor-pointer ${hasWeightOrVol
-                                  ? 'border border-emerald-600 bg-emerald-600 text-white shadow-xs hover:bg-emerald-700'
-                                  : 'border border-cyan-400 bg-white text-cyan-600 shadow-2xs hover:bg-cyan-600 hover:text-white hover:border-cyan-600'
-                                }`}
-                              title={
-                                hasWeightOrVol
-                                  ? `Trọng lượng: ${(row.weight || 0).toFixed(1)} kg, Thể tích: ${(row.volume || 0).toFixed(3)} m³`
-                                  : 'Cấu hình Trọng lượng & Thể tích'
-                              }
-                            >
-                              <Scale size={16} strokeWidth={2} />
                             </button>
 
                             {!isReadOnly && (
@@ -4371,15 +4371,15 @@ export default function CreateStockInOrderPage({
               </>
             ) : (
               <>
-                {activeTab?.id && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT') && (
+                {activeTab?.id && isCompletedInboundStatus(activeTab?.status) && (
                   <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-center text-xs font-extrabold text-amber-800 shadow-xs">
-                    🔒 Phiếu đã lưu chính thức ({activeTab.status || 'Đã nhập kho'}). Chỉ hỗ trợ xem thông tin, không thể chỉnh sửa.
+                    🔒 Phiếu đã hoàn thành ({activeTab.status || 'Đã nhập kho'}). Chỉ hỗ trợ xem thông tin, không thể chỉnh sửa.
                   </div>
                 )}
 
                 <button
                   type="button"
-                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  disabled={saving || (Boolean(activeTab?.id) && isCompletedInboundStatus(activeTab?.status))}
                   onClick={() => handleSaveInboundOrder(true, 'COMPLETED')}
                   className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -4389,7 +4389,7 @@ export default function CreateStockInOrderPage({
 
                 <button
                   type="button"
-                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  disabled={saving || (Boolean(activeTab?.id) && isCompletedInboundStatus(activeTab?.status))}
                   onClick={() => handleSaveInboundOrder(false, 'COMPLETED')}
                   className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -4399,7 +4399,7 @@ export default function CreateStockInOrderPage({
 
                 <button
                   type="button"
-                  disabled={saving || (Boolean(activeTab?.id) && !['DRAFT', 'draft', 'Đơn nháp'].includes(activeTab?.status || 'DRAFT'))}
+                  disabled={saving || (Boolean(activeTab?.id) && isCompletedInboundStatus(activeTab?.status))}
                   onClick={() => handleSaveInboundOrder(false, 'DRAFT')}
                   className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-sm hover:bg-amber-600 transition active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >

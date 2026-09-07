@@ -1,13 +1,13 @@
 export const customerApi = {
   getProfile: async (token: string) => {
-    const res = await fetch('http://localhost:3000/api/customer-portal/me', {
+    const res = await fetch('/api/customer-portal/me', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('Failed to fetch profile');
     return res.json();
   },
   updateProfile: async (token: string, data: any) => {
-    const res = await fetch('http://localhost:3000/api/customer-portal/me', {
+    const res = await fetch('/api/customer-portal/me', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -19,21 +19,21 @@ export const customerApi = {
     return res.json();
   },
   getStockAvailability: async (token: string) => {
-    const res = await fetch('http://localhost:3000/api/customer-portal/stock-availability', {
+    const res = await fetch('/api/customer-portal/stock-availability', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('Failed to fetch stock availability');
     return res.json();
   },
   getOrders: async (token: string) => {
-    const res = await fetch('http://localhost:3000/api/customer-portal/orders', {
+    const res = await fetch('/api/customer-portal/orders', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('Failed to fetch orders');
     return res.json();
   },
   createOrder: async (token: string, data: any) => {
-    const res = await fetch('http://localhost:3000/api/customer-portal/orders', {
+    const res = await fetch('/api/customer-portal/orders', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

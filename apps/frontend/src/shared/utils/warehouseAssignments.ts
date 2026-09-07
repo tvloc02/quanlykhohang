@@ -135,7 +135,7 @@ export type WarehouseRecord = {
 };
 
 const STORAGE_KEY = 'smart-wms-warehouses';
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function authHeaders() {
   return {

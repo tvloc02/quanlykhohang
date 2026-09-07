@@ -36,7 +36,7 @@ import {
   type PermissionGroup,
 } from './PermissionGroupsPage';
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 const USERS_STORAGE_KEY = 'smart-wms-personnel-users';
 const PROFILES_STORAGE_KEY = 'smart-wms-personnel-profiles';
 

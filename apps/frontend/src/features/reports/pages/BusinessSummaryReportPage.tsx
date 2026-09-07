@@ -45,7 +45,7 @@ interface BranchBusinessSummary {
   items: BusinessItem[];
 }
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 function authHeaders() {
   const token = localStorage.getItem('token');
@@ -100,10 +100,10 @@ export default function BusinessSummaryReportPage() {
 
   const toggleBrowserFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
       setIsFullScreen(true);
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
       setIsFullScreen(false);
     }
   };
@@ -148,14 +148,14 @@ export default function BusinessSummaryReportPage() {
       try {
         const outRes = await fetch(`${API_BASE_URL}/outbound/orders`, { headers: authHeaders() });
         if (outRes.ok) outboundOrders = await outRes.json();
-      } catch {}
+      } catch { }
 
       // 3. Fetch Stock Balances (Inventory Valuation)
       let stockBalances: any[] = [];
       try {
         const stockRes = await fetch(`${API_BASE_URL}/reports/stock`, { headers: authHeaders() });
         if (stockRes.ok) stockBalances = await stockRes.json();
-      } catch {}
+      } catch { }
 
       // 4. Fetch Customers & Suppliers (Debt)
       let customersDebt = 0;
@@ -168,7 +168,7 @@ export default function BusinessSummaryReportPage() {
             customersDebt = cData.reduce((sum, c) => sum + Number(c.debtAmount || 0), 0);
           }
         }
-      } catch {}
+      } catch { }
 
       try {
         const supRes = await fetch(`${API_BASE_URL}/reports/supplier-debt`, { headers: authHeaders() });
@@ -178,7 +178,7 @@ export default function BusinessSummaryReportPage() {
             suppliersDebt = sData.reduce((sum, s) => sum + Number(s.debtAmount || 0), 0);
           }
         }
-      } catch {}
+      } catch { }
 
       // Local vouchers
       const localReceipts = readStoredReceiptVouchers();
@@ -500,11 +500,10 @@ export default function BusinessSummaryReportPage() {
                       setSelectedWarehouse('ALL');
                       setIsWarehouseDropdownOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
-                      selectedWarehouse === 'ALL'
+                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${selectedWarehouse === 'ALL'
                         ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
                         : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
-                    }`}
+                      }`}
                   >
                     <span>Tất cả chi nhánh</span>
                     {selectedWarehouse === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
@@ -518,11 +517,10 @@ export default function BusinessSummaryReportPage() {
                         setSelectedWarehouse(wh.id);
                         setIsWarehouseDropdownOpen(false);
                       }}
-                      className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
-                        selectedWarehouse === wh.id
+                      className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${selectedWarehouse === wh.id
                           ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
                           : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
-                      }`}
+                        }`}
                     >
                       <span>{wh.name}</span>
                       {selectedWarehouse === wh.id && <Check className="h-4 w-4 text-white shrink-0" />}

@@ -134,8 +134,8 @@ export default function Dashboard() {
       };
 
       const [resDashboard, resLogs] = await Promise.all([
-        fetch('http://localhost:3000/api/reports/dashboard', { headers }),
-        fetch('http://localhost:3000/api/audit-logs', { headers }).catch(() => null),
+        fetch('/api/reports/dashboard', { headers }),
+        fetch('/api/audit-logs', { headers }).catch(() => null),
       ]);
 
       if (!resDashboard.ok) {

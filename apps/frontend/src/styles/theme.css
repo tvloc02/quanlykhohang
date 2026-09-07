@@ -340,16 +340,15 @@ input[type=number] {
 /* ══════════════════════════════════════════════════════════════════ */
 /* GLOBAL PRINT OPTIMIZATIONS: HIDE CHATBOT, STRIP ALL BACKGROUNDS   */
 /* REPORT PRINT RULES: FORCE LANDSCAPE, FULL BORDERS, TABLE-ONLY     */
-/* ══════════════════════════════════════════════════════════════════ */
 @page {
-  size: landscape;
-  margin: 5mm 6mm;
+  size: auto;
+  margin: 8mm 10mm;
 }
 
 @media print {
   @page {
-    size: landscape;
-    margin: 5mm 6mm;
+    size: auto;
+    margin: 8mm 10mm;
   }
 
   /* 1. Hide floating chatbot, controls, sidebars, headers, and UI controls */
@@ -383,7 +382,36 @@ input[type=number] {
     display: block !important;
   }
 
-  /* 3. Strip dark/colored theme backgrounds so printout is clean black & white */
+  /* 3. Set global print font to Times New Roman and strip dark backgrounds */
+  *,
+  html,
+  body,
+  table,
+  th,
+  td,
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  span,
+  div {
+    font-family: 'Times New Roman', Tinos, 'Liberation Serif', Times, serif !important;
+  }
+
+  /* Force ALL borders in print to pure solid black, eliminating any cyan/blue/slate mismatch */
+  *,
+  *::before,
+  *::after,
+  tr,
+  th,
+  td,
+  table,
+  table *,
+  [class*="border-"] {
+    border-color: #000000 !important;
+  }
+
   html,
   html.dark,
   body,
@@ -423,11 +451,20 @@ input[type=number] {
     table-layout: auto !important;
     border-collapse: collapse !important;
     border: 1px solid #000000 !important;
+    border-color: #000000 !important;
     margin-top: 4px !important;
     background: #ffffff !important;
+    box-sizing: border-box !important;
   }
 
   /* 6. Vertical & horizontal black borders for ALL cells (th, td, tfoot) */
+  table tr,
+  table thead tr,
+  table tbody tr,
+  table tfoot tr {
+    border-color: #000000 !important;
+  }
+
   table th,
   table td,
   table thead th,
@@ -445,7 +482,7 @@ input[type=number] {
     white-space: normal !important;
     word-break: break-word !important;
     overflow-wrap: break-word !important;
-    font-size: 7.2pt !important;
+    font-size: 7.5pt !important;
     line-height: 1.25 !important;
     padding: 3px 2px !important;
     border: 1px solid #000000 !important;
@@ -453,8 +490,10 @@ input[type=number] {
     border-right: 1px solid #000000 !important;
     border-top: 1px solid #000000 !important;
     border-bottom: 1px solid #000000 !important;
+    border-color: #000000 !important;
     color: #000000 !important;
     background: #ffffff !important;
+    box-sizing: border-box !important;
   }
 
   thead {
@@ -464,6 +503,7 @@ input[type=number] {
   thead tr,
   table thead tr {
     background: #f1f5f9 !important;
+    border-color: #000000 !important;
   }
 
   thead th,
@@ -471,13 +511,14 @@ input[type=number] {
     background: #f1f5f9 !important;
     color: #000000 !important;
     font-weight: 800 !important;
-    font-size: 7.6pt !important;
+    font-size: 7.8pt !important;
     text-align: center !important;
     border: 1px solid #000000 !important;
     border-left: 1px solid #000000 !important;
     border-right: 1px solid #000000 !important;
     border-top: 1px solid #000000 !important;
     border-bottom: 1px solid #000000 !important;
+    border-color: #000000 !important;
     padding: 4px 2px !important;
   }
 
@@ -488,6 +529,7 @@ input[type=number] {
   tfoot tr,
   tr.bg-slate-100 {
     background: #f8fafc !important;
+    border-color: #000000 !important;
   }
 
   tfoot td,
@@ -496,12 +538,13 @@ input[type=number] {
     background: #f8fafc !important;
     color: #000000 !important;
     font-weight: 800 !important;
-    font-size: 7.2pt !important;
+    font-size: 7.5pt !important;
     border: 1px solid #000000 !important;
     border-left: 1px solid #000000 !important;
     border-right: 1px solid #000000 !important;
     border-top: 1px solid #000000 !important;
     border-bottom: 1px solid #000000 !important;
+    border-color: #000000 !important;
     padding: 3px 2px !important;
   }
 
@@ -522,4 +565,63 @@ input[type=number] {
     color: #000000 !important;
     border-color: #000000 !important;
   }
+
+  /* 8. Dedicated Styling for Printable Receipts & Vouchers (A4 Portrait, Full 100% Width) */
+  #printable-inbound-receipt,
+  #printable-outbound-order,
+  #printable-po-container,
+  .printable-receipt {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    font-size: 11pt !important;
+    line-height: 1.45 !important;
+  }
+
+  #printable-inbound-receipt table,
+  #printable-outbound-order table,
+  #printable-po-container table,
+  .printable-receipt table {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    margin: 12px 0 !important;
+  }
+
+  #printable-inbound-receipt th,
+  #printable-inbound-receipt td,
+  #printable-outbound-order th,
+  #printable-outbound-order td,
+  #printable-po-container th,
+  #printable-po-container td,
+  .printable-receipt th,
+  .printable-receipt td {
+    font-size: 10pt !important;
+    line-height: 1.35 !important;
+    padding: 6px 6px !important;
+    border: 1px solid #000000 !important;
+    vertical-align: middle !important;
+  }
+
+  #printable-inbound-receipt thead th,
+  #printable-outbound-order thead th,
+  #printable-po-container thead th,
+  .printable-receipt thead th {
+    background-color: #f1f5f9 !important;
+    font-weight: bold !important;
+    font-size: 10pt !important;
+    text-align: center !important;
+    padding: 6px 6px !important;
+  }
+
+  #printable-inbound-receipt tfoot td,
+  #printable-outbound-order tfoot td,
+  #printable-po-container tfoot td,
+  .printable-receipt tfoot td {
+    font-size: 10pt !important;
+    padding: 6px 6px !important;
+  }
 }
+

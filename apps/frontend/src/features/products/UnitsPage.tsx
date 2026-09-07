@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 const STORAGE_KEY = 'smart-wms-units';
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 export type UnitConversion = {
   id: string;

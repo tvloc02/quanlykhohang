@@ -18,7 +18,7 @@ import {
   parseAssignedBinsFromNote,
   stripAssignedBinsFromNote,
 } from '../../../shared/utils/warehouseAssignments';
-import { WarehouseSlottingGrid } from './WarehouseSlottingGrid';
+import { WarehouseSlottingGrid, findCachedBinInfo } from './WarehouseSlottingGrid';
 import {
   Sparkles,
   X,
@@ -37,7 +37,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 function authHeaders() {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
@@ -209,6 +209,26 @@ export const allocateBinsForInbound = (
   return { formattedBins, binQtyMap, binPctMap };
 };
 
+interface SmartSlottingCacheEntry {
+  timestamp: number;
+  occMap: Map<string, number>;
+  prodMap: Map<string, { productId: string; sku: string; productName: string; qty: number }>;
+}
+
+const smartSlottingCache = new Map<string, SmartSlottingCacheEntry>();
+
+function getCachedSmartSlotting(whCode?: string) {
+  const key = (whCode || '').trim().toUpperCase() || 'ALL';
+  const entry = smartSlottingCache.get(key);
+  if (entry && Date.now() - entry.timestamp < 30000) {
+    return {
+      occMap: new Map(entry.occMap),
+      prodMap: new Map(entry.prodMap),
+    };
+  }
+  return null;
+}
+
 export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemRow>({
   isOpen,
   onClose,
@@ -231,10 +251,13 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   const [selectedBinsMap, setSelectedBinsMap] = useState<Record<string, string[]>>({});
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const [inputMsg, setInputMsg] = useState('');
-  const [dbOccupiedBinsMap, setDbOccupiedBinsMap] = useState<Map<string, number>>(new Map());
+  const initialSlottingCached = getCachedSmartSlotting(warehouseCode);
+  const [dbOccupiedBinsMap, setDbOccupiedBinsMap] = useState<Map<string, number>>(
+    () => initialSlottingCached ? new Map(initialSlottingCached.occMap) : new Map()
+  );
   const [binProductsMap, setBinProductsMap] = useState<
     Map<string, { productId: string; sku: string; productName: string; qty: number }>
-  >(new Map());
+  >(() => initialSlottingCached ? new Map(initialSlottingCached.prodMap) : new Map());
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [manualBinAllocations, setManualBinAllocations] = useState<Record<string, Record<string, { qty: number; pct: number; isManual?: boolean; isCustomQty?: boolean }>>>({});
   const [allocatedQtyMap, setAllocatedQtyMap] = useState<Record<string, Record<string, number>>>({});
@@ -295,45 +318,61 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
         const targetWhUpper = (warehouseCode || '').trim().toUpperCase();
 
-        // 1. Fetch real physical inventory balances from CSDL (Single Source of Truth)
-        const balRes = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
-        if (balRes && balRes.ok) {
-          const balances: any[] = await balRes.json();
-          balances.forEach((b) => {
-            const lc = String(b.locationCode || '').trim();
-            const physical = Number(b.totalPhysical || b.available || b.allocated || 0);
-            const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
-
-            // Match if balance belongs to target warehouse or location code starts with warehouse code or targetWhUpper is not set
-            const belongsToWh =
-              !targetWhUpper ||
-              (bWhCode && bWhCode === targetWhUpper) ||
-              (lc && lc.toUpperCase().startsWith(targetWhUpper));
-
-            if (lc && physical > 0 && belongsToWh) {
-              const pItem = (products || []).find(
-                (p) => String(p.id) === String(b.productId) || String(p.id) === String(b.product?.id)
-              );
-              const pId = String(pItem?.id || b.productId || b.product?.id || '');
-              const pName = pItem?.name || b.productName || b.product?.name || 'Hàng hóa';
-              const pSku = pItem?.internalSku || (pItem as any)?.sku || b.productSku || b.product?.sku || '';
-
-              const norm = normalizeBinKey(lc);
-              occMap.set(lc, physical);
-              if (norm) occMap.set(norm, physical);
-              prodMap.set(lc, { productId: pId, sku: pSku, productName: pName, qty: physical });
-              if (norm) prodMap.set(norm, { productId: pId, sku: pSku, productName: pName, qty: physical });
-            }
-          });
+        // Check cache for instant load
+        const cacheKey = targetWhUpper || 'ALL';
+        const cached = smartSlottingCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < 30000) {
+          if (isMounted) {
+            setDbOccupiedBinsMap(new Map(cached.occMap));
+            setBinProductsMap(new Map(cached.prodMap));
+          }
         }
 
-        // 2. Fetch stock-in orders history (ALL statuses - draft, pending, completed, confirmed)
-        const inRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null);
-        if (inRes && inRes.ok) {
-          const orders: any[] = await inRes.json();
-          orders.forEach((ord) => {
-            const ordWhCode = String(ord.warehouseCode || ord.warehouse?.code || '').trim().toUpperCase();
-            if (targetWhUpper && ordWhCode && ordWhCode !== targetWhUpper) return;
+        // Parallel Fetch for instant loading
+        const [balRes, inRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null),
+          fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null),
+        ]);
+
+        const [balancesData, ordersData] = await Promise.all([
+          balRes && balRes.ok ? balRes.json().catch(() => []) : Promise.resolve([]),
+          inRes && inRes.ok ? inRes.json().catch(() => []) : Promise.resolve([]),
+        ]);
+
+        // 1. Process physical inventory balances from CSDL
+        const balances: any[] = Array.isArray(balancesData) ? balancesData : balancesData?.data || [];
+        balances.forEach((b) => {
+          const lc = String(b.locationCode || '').trim();
+          const physical = Number(b.totalPhysical || b.available || b.allocated || 0);
+          const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
+
+          // Match if balance belongs to target warehouse or location code starts with warehouse code or targetWhUpper is not set
+          const belongsToWh =
+            !targetWhUpper ||
+            (bWhCode && bWhCode === targetWhUpper) ||
+            (lc && lc.toUpperCase().startsWith(targetWhUpper));
+
+          if (lc && physical > 0 && belongsToWh) {
+            const pItem = (products || []).find(
+              (p) => String(p.id) === String(b.productId) || String(p.id) === String(b.product?.id)
+            );
+            const pId = String(pItem?.id || b.productId || b.product?.id || '');
+            const pName = pItem?.name || b.productName || b.product?.name || 'Hàng hóa';
+            const pSku = pItem?.internalSku || (pItem as any)?.sku || b.productSku || b.product?.sku || '';
+
+            const norm = normalizeBinKey(lc);
+            occMap.set(lc, physical);
+            if (norm) occMap.set(norm, physical);
+            prodMap.set(lc, { productId: pId, sku: pSku, productName: pName, qty: physical });
+            if (norm) prodMap.set(norm, { productId: pId, sku: pSku, productName: pName, qty: physical });
+          }
+        });
+
+        // 2. Process stock-in orders history
+        const orders: any[] = Array.isArray(ordersData) ? ordersData : ordersData?.data || [];
+        orders.forEach((ord) => {
+          const ordWhCode = String(ord.warehouseCode || ord.warehouse?.code || '').trim().toUpperCase();
+          if (targetWhUpper && ordWhCode && ordWhCode !== targetWhUpper) return;
 
             (ord.details || ord.items || []).forEach((item: any) => {
               const pItem = (products || []).find(
@@ -367,7 +406,6 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
               });
             });
           });
-        }
 
         // 3. Fallback: Parse from local stock-in orders & local inventory balances in localStorage
         try {
@@ -411,23 +449,32 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                     const pct = Number(cfg?.occupancyPct || 0);
                     const noteStr = String(cfg?.notes || '').trim();
                     const isStagingNote = noteStr.includes('Đã chọn nhập') || noteStr.includes('Đang xếp') || noteStr.includes('Đang chọn');
-                    if (!isStagingNote && (pct > 0 || (noteStr && noteStr !== 'Ô Trống'))) {
-                      const cleanBin = bKey.split('(')[0].trim();
-                      const norm = normalizeBinKey(cleanBin);
-                      const short = (cleanBin.split('-').pop() || cleanBin).toUpperCase();
+                    const isEmptyNote = noteStr.includes('Ô Trống') || noteStr.includes('0%') || noteStr.includes('Trống');
+                    const cleanBin = bKey.split('(')[0].trim();
+                    const norm = normalizeBinKey(cleanBin);
+                    const short = (cleanBin.split('-').pop() || cleanBin).toUpperCase();
 
+                    if (!isStagingNote && !isEmptyNote && pct > 0) {
                       // Extract productName from noteStr if available
                       let pName = noteStr.replace(/Đã chứa:\s*\d+%/gi, '').replace(/\(\d+%\)/gi, '').replace(/\[[^\]]+\]/gi, '').trim();
                       if (!pName || pName === 'Ô Trống') pName = 'Sản phẩm tồn kho';
 
-                      if (!occMap.has(cleanBin)) occMap.set(cleanBin, pct || 100);
-                      if (norm && !occMap.has(norm)) occMap.set(norm, pct || 100);
-                      if (short && !occMap.has(short)) occMap.set(short, pct || 100);
+                      if (!occMap.has(cleanBin)) occMap.set(cleanBin, pct);
+                      if (norm && !occMap.has(norm)) occMap.set(norm, pct);
+                      if (short && !occMap.has(short)) occMap.set(short, pct);
 
-                      const prodObj = { productId: '', sku: '', productName: pName, qty: pct || 100 };
+                      const prodObj = { productId: '', sku: '', productName: pName, qty: pct };
                       if (!prodMap.has(cleanBin)) prodMap.set(cleanBin, prodObj);
                       if (norm && !prodMap.has(norm)) prodMap.set(norm, prodObj);
                       if (short && !prodMap.has(short)) prodMap.set(short, prodObj);
+                    } else if (pct <= 0 || isEmptyNote) {
+                      // Explicitly clean up any empty bin keys
+                      occMap.delete(cleanBin);
+                      if (norm) occMap.delete(norm);
+                      if (short) occMap.delete(short);
+                      prodMap.delete(cleanBin);
+                      if (norm) prodMap.delete(norm);
+                      if (short) prodMap.delete(short);
                     }
                   });
                 }
@@ -436,43 +483,14 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           });
         } catch {}
 
-        // 5. Fallback: Parse assigned bins directly from items currently selected in draft form (OUTBOUND ONLY)
-        if (mode === 'OUTBOUND_TRANSFER') {
-          (items || []).forEach((item) => {
-          let bins: string[] = item.assignedBins || [];
-          if (bins.length === 0 && item.locationBin) {
-            bins = item.locationBin.split(',').map((s: string) => s.trim());
-          }
-          if (bins.length === 0 && item.note) {
-            bins = parseAssignedBinsFromNote(item.note);
-          }
-
-          bins.forEach((bCode) => {
-            if (bCode) {
-              const cleanBin = bCode.split('(')[0].trim();
-              const norm = normalizeBinKey(cleanBin);
-              const short = (cleanBin.split('-').pop() || cleanBin).toUpperCase();
-              const pId = String(item.productId || '');
-              const pName = item.productName || 'Hàng hóa';
-              const pSku = item.productSku || '';
-              const pQty = Number(item.qty || 1);
-
-              if (!occMap.has(cleanBin)) {
-                occMap.set(cleanBin, pQty);
-                if (norm) occMap.set(norm, pQty);
-                if (short) occMap.set(short, pQty);
-                prodMap.set(cleanBin, { productId: pId, sku: pSku, productName: pName, qty: pQty });
-                if (norm) prodMap.set(norm, { productId: pId, sku: pSku, productName: pName, qty: pQty });
-                if (short) prodMap.set(short, { productId: pId, sku: pSku, productName: pName, qty: pQty });
-              }
-            }
-          });
-          });
-        }
-
         if (isMounted) {
           setDbOccupiedBinsMap(occMap);
           setBinProductsMap(prodMap);
+          smartSlottingCache.set(cacheKey, {
+            timestamp: Date.now(),
+            occMap: new Map(occMap),
+            prodMap: new Map(prodMap),
+          });
         }
       } catch (err) {
         console.error('Lỗi tải dữ liệu ô kệ CSDL:', err);
@@ -585,11 +603,19 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       const infoPId = String(info.productId || '').trim().toLowerCase();
       const infoSku = String(info.sku || '').trim().toLowerCase();
       const infoName = String(info.productName || '').trim().toLowerCase();
+      const isGeneric = !infoName ||
+        infoName === 'sản phẩm tồn kho' ||
+        infoName === 'hàng trong kho' ||
+        infoName === 'hàng hóa' ||
+        infoName === 'kho-luu' ||
+        infoName.includes('đã chứa') ||
+        infoName.includes('tồn kho');
 
       const matches =
         (targetPId && infoPId && targetPId === infoPId) ||
         (targetSku && infoSku && targetSku === infoSku) ||
-        (targetName && infoName && (infoName.includes(targetName) || targetName.includes(infoName)));
+        (targetName && infoName && (infoName.includes(targetName) || targetName.includes(infoName))) ||
+        (info.qty > 0 && isGeneric);
 
       if (matches && info.qty > 0) {
         validBins.push(binKey);
@@ -610,9 +636,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         (dbSubWarehouses || []).forEach((sub: any) => {
           (sub.racks || []).forEach((rk: any) => {
             const cfg = rk.customBins?.[binKey] || rk.customBins?.[normKey];
-            if (cfg) {
+            if (cfg && Number(cfg.occupancyPct || 0) > 0) {
               const notes = String(cfg.notes || '').toLowerCase();
-              if ((targetName && notes.includes(targetName)) || (targetSku && notes.includes(targetSku))) {
+              const isGenNote = !notes || notes.includes('đã chứa') || notes.includes('tồn kho') || notes.includes('hàng trong kho');
+              if ((targetName && notes.includes(targetName)) || (targetSku && notes.includes(targetSku)) || isGenNote) {
                 foundMatch = true;
               }
             }
@@ -621,20 +648,28 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         if (foundMatch) {
           validBins.push(binKey);
           if (normKey) validBins.push(normKey);
+          const clean = binKey.split('(')[0].trim();
+          const short = (clean.split('-').pop() || clean).toUpperCase();
+          if (short) validBins.push(short);
+          if (short) validBins.push(normalizeBinKey(short));
         }
       }
     });
 
-    // Also include assignedBins and locationBin from activeItem
+    // Also include assignedBins and locationBin from activeItem ONLY IF they have physical stock > 0
     if (Array.isArray(activeItem.assignedBins)) {
       activeItem.assignedBins.forEach((b) => {
         if (b) {
           const clean = b.split('(')[0].trim();
-          validBins.push(clean);
           const norm = normalizeBinKey(clean);
-          if (norm) validBins.push(norm);
           const short = (clean.split('-').pop() || clean).toUpperCase();
-          if (short) validBins.push(short);
+          const stock = dbOccupiedBinsMap.get(clean) || (norm ? dbOccupiedBinsMap.get(norm) : 0) || (short ? dbOccupiedBinsMap.get(short) : 0) || 0;
+          const prodInfo = binProductsMap.get(clean) || (norm ? binProductsMap.get(norm) : null) || (short ? binProductsMap.get(short) : null);
+          if (stock > 0 && prodInfo && (prodInfo.qty || 0) > 0) {
+            validBins.push(clean);
+            if (norm) validBins.push(norm);
+            if (short) validBins.push(short);
+          }
         }
       });
     }
@@ -642,11 +677,15 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       activeItem.locationBin.split(',').forEach((b) => {
         const clean = b.trim();
         if (clean) {
-          validBins.push(clean);
           const norm = normalizeBinKey(clean);
-          if (norm) validBins.push(norm);
           const short = (clean.split('-').pop() || clean).toUpperCase();
-          if (short) validBins.push(short);
+          const stock = dbOccupiedBinsMap.get(clean) || (norm ? dbOccupiedBinsMap.get(norm) : 0) || (short ? dbOccupiedBinsMap.get(short) : 0) || 0;
+          const prodInfo = binProductsMap.get(clean) || (norm ? binProductsMap.get(norm) : null) || (short ? binProductsMap.get(short) : null);
+          if (stock > 0 && prodInfo && (prodInfo.qty || 0) > 0) {
+            validBins.push(clean);
+            if (norm) validBins.push(norm);
+            if (short) validBins.push(short);
+          }
         }
       });
     }
@@ -690,15 +729,17 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         for (const key of keysToTry) {
           const normKey = normalizeBinKey(key);
           if (dbOccupiedBinsMap.has(key) || (normKey && dbOccupiedBinsMap.has(normKey))) {
-            isOccupied = true;
             stockQty = dbOccupiedBinsMap.get(key) || dbOccupiedBinsMap.get(normKey) || 0;
-            const info = binProductsMap.get(key) || binProductsMap.get(normKey);
-            if (info) {
-              productId = info.productId;
-              productSku = info.sku;
-              productName = info.productName;
+            if (stockQty > 0) {
+              isOccupied = true;
+              const info = binProductsMap.get(key) || binProductsMap.get(normKey);
+              if (info) {
+                productId = info.productId;
+                productSku = info.sku;
+                productName = info.productName;
+              }
+              break;
             }
-            break;
           }
         }
 
@@ -709,10 +750,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           for (const [k, qty] of dbOccupiedBinsMap.entries()) {
             const normK = normalizeBinKey(k);
             if (!normK) continue;
-            const isShortMatch = normK === normShort || normK.endsWith(normShort) || k.toUpperCase().includes(binShortCode.toUpperCase());
+            const isShortMatch = normK === normShort || normK.endsWith('-' + normShort) || normK.endsWith('_' + normShort);
             const isRackMatch = !normK.includes('R0') || normK.includes(normRack);
 
-            if (isShortMatch && isRackMatch) {
+            if (isShortMatch && isRackMatch && qty > 0) {
               isOccupied = true;
               stockQty = qty;
               const info = binProductsMap.get(k);
@@ -732,8 +773,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           bayCode: `Khoang B${String(cellNum).padStart(2, '0')}`,
           maxWeight: defaultMaxW,
           freeVol: 450,
-          isOccupied,
-          stockQty,
+          isOccupied: isOccupied && stockQty > 0,
+          stockQty: stockQty > 0 ? stockQty : 0,
           productId,
           productSku,
           productName,
@@ -856,6 +897,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     const initialMap: Record<string, string[]> = {};
     const initialManualMap: Record<string, Record<string, { qty: number; pct: number; isManual?: boolean; isCustomQty?: boolean }>> = {};
     const initialAllocatedQtyMap: Record<string, Record<string, number>> = {};
+    const initialUpdates: Array<{ targetBinCode: string; targetShortCode: string; pct: number; notes?: string }> = [];
 
     // Preserve existing assigned bins from order rows ONLY (no forced auto-allocation for all items)
     items.forEach((item) => {
@@ -958,13 +1000,22 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             const keyB = normalizeBinKey(cleanB);
             const binPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
             const binQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
-            updateSubWarehousesTopology(cleanB, shortB, binPct, 'Đã chọn nhập: ' + binQty + ' ' + (item.unit || 'cái') + ' (' + binPct + '%)');
+            initialUpdates.push({
+              targetBinCode: cleanB,
+              targetShortCode: shortB,
+              pct: binPct,
+              notes: 'Đã chọn nhập: ' + binQty + ' ' + (item.unit || 'cái') + ' (' + binPct + '%)',
+            });
           });
         } else {
           initialMap[item.rowId] = [...validBins];
         }
       }
     });
+
+    if (initialUpdates.length > 0) {
+      batchUpdateSubWarehousesTopology(initialUpdates, []);
+    }
 
     setSelectedBinsMap(initialMap);
     setManualBinAllocations(initialManualMap);
@@ -1058,8 +1109,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   const isBinMatchingActiveItem = (cell: BinCell): boolean => {
     if (!currentItem) return false;
 
-    // Direct check from cell properties
-    if (cell.isOccupied) {
+    // Direct check from cell properties - MUST have positive stock!
+    if (cell.isOccupied && (cell.stockQty || 0) > 0) {
       if (currentItem.productId && cell.productId && String(cell.productId) === String(currentItem.productId)) {
         return true;
       }
@@ -1079,8 +1130,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     const shortCode = (cell.binCode.split('-').pop() || cell.binCode).toUpperCase();
     const keysToCheck = [cell.binCode, shortCode, cell.cellCode.replace('Ô ', '')];
     for (const k of keysToCheck) {
+      const stock = dbOccupiedBinsMap.get(k) || dbOccupiedBinsMap.get(normalizeBinKey(k)) || 0;
       const info = binProductsMap.get(k) || binProductsMap.get(normalizeBinKey(k));
-      if (info) {
+      if (stock > 0 && info && (info.qty || 0) > 0) {
         const curName = (currentItem.productName || '').trim().toLowerCase();
         const infoName = (info.productName || '').trim().toLowerCase();
         const curSku = (currentItem.productSku || '').trim().toLowerCase();
@@ -1098,24 +1150,68 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     return false;
   };
 
+  const batchUpdateSubWarehousesTopology = (
+    updates: Array<{ targetBinCode: string; targetShortCode: string; pct: number; notes?: string }> = [],
+    removals: Array<{ targetBinCode: string; targetShortCode?: string }> = []
+  ) => {
+    setDbSubWarehouses((prevSubs) => {
+      const base = (prevSubs && prevSubs.length > 0 ? prevSubs : currentWarehouseObj?.subWarehouses || []);
+      const updatedSubs = base.map((sub: any) => {
+        const racks = (sub.racks || []).map((rk: any) => {
+          const custom = { ...(rk.customBins || {}) };
+
+          // 1. Process removals first
+          removals.forEach(({ targetBinCode, targetShortCode }) => {
+            const cleanTarget = targetBinCode.split('(')[0].trim();
+            const shortC = (targetShortCode || cleanTarget.split('-').pop() || cleanTarget).toUpperCase();
+            const normKey = normalizeBinKey(cleanTarget);
+            delete custom[cleanTarget];
+            delete custom[targetBinCode];
+            delete custom[shortC];
+            if (normKey) delete custom[normKey];
+            const rackShort = `${rk.rackCode}-${shortC}`;
+            delete custom[rackShort];
+            const normRackShort = normalizeBinKey(rackShort);
+            if (normRackShort) delete custom[normRackShort];
+          });
+
+          // 2. Process updates
+          updates.forEach(({ targetBinCode, targetShortCode, pct, notes }) => {
+            const cleanTarget = targetBinCode.split('(')[0].trim();
+            const shortC = (targetShortCode || cleanTarget.split('-').pop() || cleanTarget).toUpperCase();
+            const isTargetRack = cleanTarget.includes(rk.id || rk.rackCode) || rk.id === activeRackId || rk.rackCode === activeRackId;
+            if (isTargetRack) {
+              const entry = {
+                occupancyPct: pct,
+                maxWeight: 500,
+                notes: notes || `Sức chứa ${pct}% (Còn trống ${100 - pct}%)`,
+              };
+              custom[cleanTarget] = entry;
+              custom[shortC] = entry;
+              const normKey = normalizeBinKey(cleanTarget);
+              if (normKey) custom[normKey] = entry;
+            }
+          });
+
+          return { ...rk, customBins: custom };
+        });
+        return { ...sub, racks };
+      });
+
+      if (currentWarehouseObj) {
+        setCurrentWarehouseObj((prevWh) => prevWh ? { ...prevWh, subWarehouses: updatedSubs } : null);
+      }
+      return updatedSubs;
+    });
+  };
+
   const removeBinCustomConfig = (binCode: string) => {
     const shortCode = (binCode.split('-').pop() || binCode).toUpperCase();
-    const normKey = normalizeBinKey(binCode);
-    const updatedSubs = (dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || []).map((sub: any) => {
-      const racks = (sub.racks || []).map((rk: any) => {
-        const custom = { ...(rk.customBins || {}) };
-        if (custom[binCode]) delete custom[binCode];
-        if (custom[shortCode]) delete custom[shortCode];
-        if (normKey && custom[normKey]) delete custom[normKey];
-        return { ...rk, customBins: custom };
-      });
-      return { ...sub, racks };
-    });
+    batchUpdateSubWarehousesTopology([], [{ targetBinCode: binCode, targetShortCode: shortCode }]);
+  };
 
-    setDbSubWarehouses(updatedSubs);
-    if (currentWarehouseObj) {
-      setCurrentWarehouseObj({ ...currentWarehouseObj, subWarehouses: updatedSubs });
-    }
+  const updateSubWarehousesTopology = (targetBinCode: string, targetShortCode: string, pct: number, notes?: string) => {
+    batchUpdateSubWarehousesTopology([{ targetBinCode, targetShortCode, pct, notes }]);
   };
 
   const toggleBinSelection = (cell: BinCell) => {
@@ -1130,11 +1226,18 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
     const targetQty = Number(activeItem?.qty || 1);
 
+    const isMatch = (b: string) => {
+      const cleanB = b.split('(')[0].trim();
+      const normB = normalizeBinKey(cleanB);
+      if (normB && normB === normKey) return true;
+      if (cleanB === cleanBinCode) return true;
+      const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+      if (shortB === shortCode) return true;
+      return false;
+    };
+
     const currentList = selectedBinsMap[activeRowId] || [];
-    const isCurrentlySelected = currentList.some((b) => {
-      const normB = normalizeBinKey(b);
-      return normB === normKey || b.startsWith(cleanBinCode) || b === cleanBinCode || b.includes(shortCode);
-    });
+    const isCurrentlySelected = currentList.some((b) => isMatch(b));
 
     let updatedRowManual = { ...(manualBinAllocations[activeRowId] || {}) };
     if (isCurrentlySelected) {
@@ -1155,31 +1258,87 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
       if (isCurrentlySelected) {
         // UNCHECKING BIN: Remove from current item's selection
-        updatedRawList = currentListInState.filter((b) => {
-          const normB = normalizeBinKey(b);
-          return normB !== normKey && !b.startsWith(cleanBinCode) && b !== cleanBinCode && !b.includes(shortCode);
-        });
+        updatedRawList = currentListInState.filter((b) => !isMatch(b));
 
         // Check if ANY OTHER item in selectedBinsMap is still using this bin
         const isUsedByOtherItems = Object.entries(prev).some(([rowId, bList]) => {
           if (rowId === activeRowId) return false;
-          return bList.some((b) => {
-            const normB = normalizeBinKey(b);
-            return normB === normKey || b.startsWith(cleanBinCode) || b.includes(shortCode);
-          });
+          return bList.some((b) => isMatch(b));
         });
 
-        // If no other item in order is using this bin, revert bin config back to original 0%/empty state!
-        if (!isUsedByOtherItems) {
-          removeBinCustomConfig(cleanBinCode);
-          updateSubWarehousesTopology(cleanBinCode, shortCode, 0, 'Ô Trống (500kg)');
+        const removals = !isUsedByOtherItems
+          ? [{ targetBinCode: cleanBinCode, targetShortCode: shortCode }]
+          : [];
+
+        if (mode !== 'OUTBOUND_TRANSFER') {
+          if (updatedRawList.length === 0) {
+            batchUpdateSubWarehousesTopology([], removals);
+            return { ...prev, [activeRowId]: [] };
+          }
+
+          const { formattedBins, binQtyMap, binPctMap } = allocateBinsForInbound(
+            updatedRawList,
+            targetQty,
+            updatedRowManual
+          );
+          setAllocatedQtyMap((prevQty) => ({ ...prevQty, [activeRowId]: binQtyMap }));
+
+          const updates = formattedBins.map((bCodeStr) => {
+            const cleanB = bCodeStr.split('(')[0].trim();
+            const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+            const keyB = normalizeBinKey(cleanB);
+            const binPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
+            const binQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
+            return {
+              targetBinCode: cleanB,
+              targetShortCode: shortB,
+              pct: binPct,
+              notes: 'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)',
+            };
+          });
+
+          batchUpdateSubWarehousesTopology(updates, removals);
+          return { ...prev, [activeRowId]: formattedBins };
         }
+
+        batchUpdateSubWarehousesTopology([], removals);
+        return { ...prev, [activeRowId]: updatedRawList };
       } else {
         // CHECKING BIN: Add to current item's selection
         if (mode === 'OUTBOUND_TRANSFER') {
+          const cellPct = (cell as any)?.occupancyPct !== undefined ? Number((cell as any).occupancyPct) : undefined;
+          const cellStock = (cell as any)?.stockQty !== undefined ? Number((cell as any).stockQty) : undefined;
+
+          const cachedInfo = findCachedBinInfo(cleanBinCode, warehouseCode);
+          const cachedStock = cachedInfo?.totalPhysical !== undefined ? Number(cachedInfo.totalPhysical) : 0;
+          const cachedPct = cachedInfo?.occupancyPct !== undefined ? Number(cachedInfo.occupancyPct) : 0;
+
+          const binStock = dbOccupiedBinsMap.get(cleanBinCode)
+            || (normKey ? dbOccupiedBinsMap.get(normKey) : 0)
+            || (shortCode ? dbOccupiedBinsMap.get(shortCode) : 0)
+            || cellStock
+            || cachedStock
+            || 0;
+
+          const binProd = binProductsMap.get(cleanBinCode)
+            || (normKey ? binProductsMap.get(normKey) : null)
+            || (shortCode ? binProductsMap.get(shortCode) : null)
+            || ((cell as any)?.productName ? { productName: (cell as any).productName, sku: (cell as any).productSku || '', qty: binStock } : null)
+            || (cachedInfo ? { productName: cachedInfo.productName, sku: cachedInfo.sku, qty: cachedStock } : null);
+
+          const hasAnyStock = binStock > 0
+            || (binProd && (binProd.qty || 0) > 0)
+            || (cellPct !== undefined && cellPct > 0)
+            || (cachedPct > 0);
+
+          if (!hasAnyStock) {
+            setWarningMessage(`⚠️ Kệ ${cleanBinCode} hiện tại đã hết hàng (0%). Không thể chọn lấy hàng từ kệ rỗng!`);
+            return prev;
+          }
+
           const assignedToOtherItem = Object.entries(prev).find(([rId, bList]) => {
             if (rId === activeRowId) return false;
-            return bList.some((b) => normalizeBinKey(b) === normKey || b.startsWith(cleanBinCode) || b.includes(shortCode));
+            return bList.some((b) => isMatch(b));
           });
           if (assignedToOtherItem) {
             const otherRowId = assignedToOtherItem[0];
@@ -1189,14 +1348,19 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             return prev;
           }
 
-          if (outboundValidBins.length > 0) {
-            const isValidForActiveProduct = outboundValidBins.some(
-              (b) => normalizeBinKey(b) === normKey || b === cleanBinCode || b.includes(shortCode) || normalizeBinKey(b) === normalizeBinKey(shortCode)
-            );
-            if (!isValidForActiveProduct) {
-              setWarningMessage(`⚠️ Kệ ${cleanBinCode} không lưu trữ mặt hàng "${activeItem?.productName || ''}". Vui lòng chỉ chọn các ô kệ có chứa mặt hàng này!`);
-              return prev;
-            }
+          const prodName = (binProd?.productName || (cell as any)?.productName || cachedInfo?.productName || '').trim().toLowerCase();
+          const activeProdName = (activeItem?.productName || '').trim().toLowerCase();
+          const isGeneric = !prodName ||
+            prodName === 'sản phẩm tồn kho' ||
+            prodName === 'hàng trong kho' ||
+            prodName === 'hàng hóa' ||
+            prodName.includes('tồn kho') ||
+            prodName.includes('đã chứa');
+          const isConflicting = prodName && !isGeneric && activeProdName && !prodName.includes(activeProdName) && !activeProdName.includes(prodName);
+
+          if (isConflicting) {
+            setWarningMessage(`⚠️ Kệ ${cleanBinCode} đang lưu trữ mặt hàng "${binProd?.productName || prodName}". Vui lòng chỉ chọn các ô kệ có chứa mặt hàng "${activeItem?.productName || ''}"!`);
+            return prev;
           }
 
           let currentSelectedStock = 0;
@@ -1214,7 +1378,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         }
 
         // INBOUND MODE: NO BLOCKING QUOTA! Free selection with even distribution
-        const filtered = currentListInState.filter((b) => normalizeBinKey(b) !== normKey && !b.startsWith(cleanBinCode) && !b.includes(shortCode));
+        const filtered = currentListInState.filter((b) => !isMatch(b));
         updatedRawList = [...filtered, cleanBinCode];
       }
 
@@ -1231,21 +1395,21 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         );
         setAllocatedQtyMap((prevQty) => ({ ...prevQty, [activeRowId]: binQtyMap }));
 
-        formattedBins.forEach((bCodeStr) => {
+        const updates = formattedBins.map((bCodeStr) => {
           const cleanB = bCodeStr.split('(')[0].trim();
           const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
           const keyB = normalizeBinKey(cleanB);
           const binPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
           const binQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
-
-          updateSubWarehousesTopology(
-            cleanB,
-            shortB,
-            binPct,
-            'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)'
-          );
+          return {
+            targetBinCode: cleanB,
+            targetShortCode: shortB,
+            pct: binPct,
+            notes: 'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)',
+          };
         });
 
+        batchUpdateSubWarehousesTopology(updates, []);
         return { ...prev, [activeRowId]: formattedBins };
       }
 
@@ -1282,32 +1446,6 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     });
     onConfirmAll(updatedRows, updatedSubs);
     onClose();
-  };
-
-  const updateSubWarehousesTopology = (targetBinCode: string, targetShortCode: string, pct: number, notes?: string) => {
-    const updatedSubs = (dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || []).map((sub: any) => {
-      const racks = (sub.racks || []).map((rk: any) => {
-        if (targetBinCode.includes(rk.id || rk.rackCode) || rk.id === activeRackId || rk.rackCode === activeRackId) {
-          const custom = { ...(rk.customBins || {}) };
-          custom[targetBinCode] = {
-            occupancyPct: pct,
-            maxWeight: 500,
-            notes: notes || `Sức chứa ${pct}% (Còn trống ${100 - pct}%)`,
-          };
-          custom[targetShortCode] = custom[targetBinCode];
-          return { ...rk, customBins: custom };
-        }
-        return rk;
-      });
-      return { ...sub, racks };
-    });
-
-    setDbSubWarehouses(updatedSubs);
-    if (currentWarehouseObj) {
-      const updatedWh = { ...currentWarehouseObj, subWarehouses: updatedSubs };
-      setCurrentWarehouseObj(updatedWh);
-      // NOTE: Staged in memory ONLY during AI interaction. Saved to CSDL ONLY when user clicks "Lưu"!
-    }
   };
 
   const handleUpdateBinCapacity = (binCode: string, pct: number, notes?: string, targetRowId?: string, newQty?: number) => {
@@ -1347,11 +1485,23 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       // Reallocate bins with this updated manualMap
       setSelectedBinsMap((prev) => {
         let currentList = prev[rId] || [];
-        if (pct <= 0 && (!newQty || newQty <= 0)) {
-          currentList = currentList.filter((b) => normalizeBinKey(b) !== normTarget && !b.startsWith(cleanBinCode) && !b.includes(shortCode));
-          updateSubWarehousesTopology(cleanBinCode, shortCode, 0, 'Ô Trống (500kg)');
+        const isRemoving = pct <= 0 && (!newQty || newQty <= 0);
+        const removals = isRemoving ? [{ targetBinCode: cleanBinCode, targetShortCode: shortCode }] : [];
+
+        if (isRemoving) {
+          currentList = currentList.filter((b) => {
+            const cleanB = b.split('(')[0].trim();
+            const normB = normalizeBinKey(cleanB);
+            const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+            return normB !== normTarget && cleanB !== cleanBinCode && shortB !== shortCode;
+          });
         } else {
-          const isAlready = currentList.some((b) => normalizeBinKey(b) === normTarget || b.startsWith(cleanBinCode) || b.includes(shortCode));
+          const isAlready = currentList.some((b) => {
+            const cleanB = b.split('(')[0].trim();
+            const normB = normalizeBinKey(cleanB);
+            const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
+            return normB === normTarget || cleanB === cleanBinCode || shortB === shortCode;
+          });
           if (!isAlready) {
             currentList = [...currentList, cleanBinCode];
           }
@@ -1364,11 +1514,17 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           [shortCode]: entry,
           [strippedKey]: entry,
         };
-        if (pct <= 0 && (!newQty || newQty <= 0)) {
+        if (isRemoving) {
           delete updatedRowManual[normTarget];
           delete updatedRowManual[cleanBinCode];
           delete updatedRowManual[shortCode];
           delete updatedRowManual[strippedKey];
+        }
+
+        if (currentList.length === 0) {
+          batchUpdateSubWarehousesTopology([], removals);
+          setAllocatedQtyMap((prevQty) => ({ ...prevQty, [rId]: {} }));
+          return { ...prev, [rId]: [] };
         }
 
         const { formattedBins, binQtyMap, binPctMap } = allocateBinsForInbound(
@@ -1378,15 +1534,21 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         );
         setAllocatedQtyMap((prevQty) => ({ ...prevQty, [rId]: binQtyMap }));
 
-        formattedBins.forEach((bCodeStr) => {
+        const updates = formattedBins.map((bCodeStr) => {
           const cleanB = bCodeStr.split('(')[0].trim();
           const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
           const keyB = normalizeBinKey(cleanB);
           const bPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
           const bQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
-          updateSubWarehousesTopology(cleanB, shortB, bPct, 'Đã chọn nhập: ' + bQty + ' ' + (targetItem?.unit || 'cái') + ' (' + bPct + '%)');
+          return {
+            targetBinCode: cleanB,
+            targetShortCode: shortB,
+            pct: bPct,
+            notes: 'Đã chọn nhập: ' + bQty + ' ' + (targetItem?.unit || 'cái') + ' (' + bPct + '%)',
+          };
         });
 
+        batchUpdateSubWarehousesTopology(updates, removals);
         return { ...prev, [rId]: formattedBins };
       });
 
@@ -1479,6 +1641,22 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         if (!activeRowId) return;
         if (mode !== 'OUTBOUND_TRANSFER') {
           const itemQty = Number(activeItem?.qty || 1);
+          const prevBins = selectedBinsMap[activeRowId] || [];
+          const removals = prevBins
+            .filter((pb) => {
+              const cleanPb = pb.split('(')[0].trim();
+              const shortPb = (cleanPb.split('-').pop() || cleanPb).toUpperCase();
+              return !candidateBins.some((cb) => {
+                const cleanCb = cb.split('(')[0].trim();
+                const shortCb = (cleanCb.split('-').pop() || cleanCb).toUpperCase();
+                return cleanPb === cleanCb || shortPb === shortCb;
+              });
+            })
+            .map((pb) => ({
+              targetBinCode: pb.split('(')[0].trim(),
+              targetShortCode: (pb.split('(')[0].trim().split('-').pop() || '').toUpperCase(),
+            }));
+
           const { formattedBins, binQtyMap, binPctMap } = allocateBinsForInbound(
             candidateBins,
             itemQty,
@@ -1486,14 +1664,22 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           );
           setAllocatedQtyMap((prevQty) => ({ ...prevQty, [activeRowId]: binQtyMap }));
           setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: formattedBins }));
-          formattedBins.forEach((bCodeStr) => {
+
+          const updates = formattedBins.map((bCodeStr) => {
             const cleanB = bCodeStr.split('(')[0].trim();
             const shortB = (cleanB.split('-').pop() || cleanB).toUpperCase();
             const keyB = normalizeBinKey(cleanB);
             const binPct = binPctMap[keyB] !== undefined ? binPctMap[keyB] : 100;
             const binQty = binQtyMap[keyB] !== undefined ? binQtyMap[keyB] : 0;
-            updateSubWarehousesTopology(cleanB, shortB, binPct, 'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)');
+            return {
+              targetBinCode: cleanB,
+              targetShortCode: shortB,
+              pct: binPct,
+              notes: 'Đã chọn nhập: ' + binQty + ' ' + (activeItem?.unit || 'cái') + ' (' + binPct + '%)',
+            };
           });
+
+          batchUpdateSubWarehousesTopology(updates, removals);
         } else {
           setSelectedBinsMap((prev) => ({ ...prev, [activeRowId]: candidateBins }));
         }
@@ -1702,13 +1888,14 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             fl.cells.forEach((cl) => {
               const clAny = cl as any;
               const isMatch = isBinMatchingActiveItem(cl);
-              if (isMatch) {
+              const cellStock = Number(cl.stockQty || clAny.totalPhysical || 0);
+              if (isMatch && cellStock > 0) {
                 matchingOccupiedBins.push({
                   binCode: cl.binCode,
                   rackId: rk.rackId,
                   rackName: rk.rackName || rk.rackId,
                   pct: clAny.occupancyPct || 100,
-                  qty: clAny.totalPhysical || (activeItem?.qty || 1),
+                  qty: cellStock,
                   pName: cl.productName || activeItem?.productName || 'Sản phẩm',
                   unit: clAny.unit || activeItem?.unit || 'Cái',
                 });
@@ -1784,7 +1971,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
           if (isOutbound) {
             const isMatch = isBinMatchingActiveItem(cell);
-            if (isMatch) candidateBins.push(cell.binCode);
+            const cellStock = Number(cell.stockQty || (cell as any).totalPhysical || 0);
+            if (isMatch && cellStock > 0) candidateBins.push(cell.binCode);
           } else {
             const cellAny = cell as any;
             if (!cell.isOccupied && (!cellAny.occupancyPct || cellAny.occupancyPct === 0)) candidateBins.push(cell.binCode);
@@ -2336,9 +2524,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 orderItems={items}
                 selectedBinsMap={selectedBinsMap}
                 activeRowId={activeRowId || items[0]?.rowId || ''}
-                onSelectBin={(fullBinCode) => {
+                onSelectBin={(fullBinCode, cellMeta) => {
                   if (readOnly) return;
-                  toggleBinSelection({ binCode: fullBinCode, cellCode: fullBinCode } as any);
+                  toggleBinSelection({
+                    binCode: fullBinCode,
+                    cellCode: fullBinCode,
+                    occupancyPct: cellMeta?.occupancyPct,
+                    stockQty: cellMeta?.stockQty,
+                    productName: cellMeta?.productName,
+                    productSku: cellMeta?.sku,
+                  } as any);
                 }}
                 onUpdateBinCapacity={readOnly ? undefined : handleUpdateBinCapacity}
               />

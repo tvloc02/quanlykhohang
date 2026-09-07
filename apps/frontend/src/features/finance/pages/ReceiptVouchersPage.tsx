@@ -43,7 +43,7 @@ export interface ReceiptVoucher {
 }
 
 const STORAGE_KEY = 'smart-wms-receipt-vouchers-data';
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = '/api';
 
 export interface PartnerOption {
   id: string;

@@ -4,7 +4,7 @@ import { ReportFilterDto } from './dto/report-filter.dto';
 
 @Controller('reports')
 export class DashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(private readonly dashboardService: DashboardService) { }
 
   @Get('dashboard')
   getDashboardOverview() {

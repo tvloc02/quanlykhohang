@@ -39,7 +39,7 @@ import ReceiptVouchersPage from './features/finance/pages/ReceiptVouchersPage';
 import PaymentVouchersPage from './features/finance/pages/PaymentVouchersPage';
 import ReceiptFromBillPage from './features/finance/pages/ReceiptFromBillPage';
 import AuditLog from './features/audit-log/AuditLog';
-import Settings, { MailSettings, AiSettings, StoreSettings } from './features/settings/Settings';
+import Settings from './features/settings/Settings';
 import ProfilePage from './features/user-management/pages/ProfilePage';
 import SupplierProfilePage from './features/supplier-portal/pages/SupplierProfilePage';
 import PurchaseOrdersPage from './features/inbound/pages/PurchaseOrdersPage';
@@ -82,6 +82,7 @@ import SyncConflictsPage from './features/offline-sync/pages/SyncConflictsPage';
 import ErpSyncStatusPage from './features/erp-status/pages/ErpSyncStatusPage';
 
 import DocumentsPage from './features/documents/DocumentsPage';
+import PrintTemplatesPage from './features/documents/pages/PrintTemplatesPage';
 import SalesInvoiceDocPage from './features/documents/pages/SalesInvoiceDocPage';
 import StockInDocPage from './features/documents/pages/StockInDocPage';
 import StockOutDocPage from './features/documents/pages/StockOutDocPage';
@@ -1067,7 +1068,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <SalesInvoiceDocPage />
+                <PrintTemplatesPage initialType="sales-invoice" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1077,7 +1078,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <StockInDocPage />
+                <PrintTemplatesPage initialType="stock-in-note" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1087,7 +1088,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <StockOutDocPage />
+                <PrintTemplatesPage initialType="stock-out-note" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1097,7 +1098,7 @@ function App() {
           element={
             <RoleRoute menuId="print-templates">
               <MainLayout>
-                <TransferDocPage />
+                <PrintTemplatesPage initialType="transfer-note" />
               </MainLayout>
             </RoleRoute>
           }
@@ -1183,7 +1184,7 @@ function App() {
           }
         />
         <Route
-          path="/settings/*"
+          path="/settings"
           element={
             <RoleRoute menuId="settings">
               <MainLayout>
@@ -1191,12 +1192,7 @@ function App() {
               </MainLayout>
             </RoleRoute>
           }
-        >
-          <Route index element={<Navigate to="mail" replace />} />
-          <Route path="mail" element={<MailSettings />} />
-          <Route path="ai" element={<AiSettings />} />
-          <Route path="store" element={<StoreSettings />} />
-        </Route>
+        />
         <Route path="/stocktake" element={<Navigate to="/inventory/stocktake" replace />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

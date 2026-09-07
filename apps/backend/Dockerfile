@@ -1,20 +1,31 @@
-# Use the official Node.js 18 image as the base image
-FROM node:18
+# Stage 1: Build NestJS application
+FROM node:20-alpine AS builder
 
-# Set the working directory
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy package.json and package-lock.json
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install
 
-# Copy the rest of the application code
 COPY . .
+RUN npm run build
 
-# Expose the application port
+# Stage 2: Production runtime
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package*.json ./
+RUN npm install --omit=dev
+
+# Install ts-node globally for running seeds inside container
+RUN npm install -g ts-node typescript
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/src/database ./src/database
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+
 EXPOSE 3000
 
-# Start the application
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/main.js"]
