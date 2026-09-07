@@ -56,6 +56,41 @@ function toDateString(value?: Date | string | null) {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+const STOCKTAKE_SELECT = {
+  id: true,
+  stocktakeNo: true,
+  requestNo: true,
+  requestDate: true,
+  locationCode: true,
+  status: true,
+  plannedDate: true,
+  dueDate: true,
+  assignee: true,
+  note: true,
+  branch: true,
+  purpose: true,
+  reference: true,
+  checkBy: true,
+  detailBy: true,
+  createdBy: true,
+  approvedBy: true,
+  approvedAt: true,
+  createdAt: true,
+  details: {
+    id: true,
+    systemQty: true,
+    countedQty: true,
+    difference: true,
+    note: true,
+    product: {
+      id: true,
+      internalSku: true,
+      name: true,
+      unit: true,
+    },
+  },
+} as const;
+
 @Injectable()
 export class StocktakeService {
   constructor(
@@ -160,6 +195,7 @@ export class StocktakeService {
 
   async findAll() {
     const stocktakes = await this.stocktakeRepo.find({
+      select: STOCKTAKE_SELECT,
       relations: ['details', 'details.product'],
       order: { id: 'DESC' },
     });
@@ -168,6 +204,7 @@ export class StocktakeService {
 
   async findMyTasks(userIdentifier: string) {
     const stocktakes = await this.stocktakeRepo.find({
+      select: STOCKTAKE_SELECT,
       relations: ['details', 'details.product'],
       order: { id: 'DESC' },
     });
@@ -183,6 +220,7 @@ export class StocktakeService {
   async findRequests() {
     const stocktakes = await this.stocktakeRepo.find({
       where: { status: 'REQUESTED' },
+      select: STOCKTAKE_SELECT,
       relations: ['details', 'details.product'],
       order: { id: 'DESC' },
     });
@@ -564,6 +602,7 @@ export class StocktakeService {
   private async findEntity(id: string) {
     const stocktake = await this.stocktakeRepo.findOne({
       where: { id },
+      select: STOCKTAKE_SELECT,
       relations: ['details', 'details.product'],
     });
     if (!stocktake) throw new NotFoundException('Phiên kiểm kê không tồn tại');
