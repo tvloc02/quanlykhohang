@@ -1338,11 +1338,12 @@ export default function Outbound({
   };
 
   return (
-    <div className={isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''}>
+    <div className={`${isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''} ${showPrintModal ? 'print:hidden' : ''}`}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
-      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
-      <style>{`
+      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (CHỈ ÁP DỤNG KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+      {!showPrintModal && (
+        <style>{`
         @page {
           size: landscape;
           margin: 5mm 6mm;
@@ -1499,36 +1500,39 @@ export default function Outbound({
           }
         }
       `}</style>
+      )}
 
-      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
-      <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
-        <div className="flex justify-between items-start mb-2 text-xs">
-          <div>
-            <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
-            <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+      {/* ─── HEADER BÁO CÁO KHI IN (CHỈ HIỂN THỊ KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+      {!showPrintModal && (
+        <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
+          <div className="flex justify-between items-start mb-2 text-xs">
+            <div>
+              <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
+              <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+            </div>
+            <div className="text-right text-[11px] text-slate-600">
+              <p>Mẫu biểu báo cáo hệ thống</p>
+              <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+            </div>
           </div>
-          <div className="text-right text-[11px] text-slate-600">
-            <p>Mẫu biểu báo cáo hệ thống</p>
-            <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+          <div className="text-center my-2">
+            <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+              {isDisposal ? 'LẬP BÁO CÁO PHIẾU XUẤT HỦY HÀNG HÓA' : 'LẬP BÁO CÁO PHIẾU XUẤT KHO'}
+            </h1>
+            <p className="text-xs text-slate-600 italic mt-0.5">
+              {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
+            </p>
+          </div>
+          <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
+            <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
+            <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
           </div>
         </div>
-        <div className="text-center my-2">
-          <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
-            {isDisposal ? 'LẬP BÁO CÁO PHIẾU XUẤT HỦY HÀNG HÓA' : 'LẬP BÁO CÁO PHIẾU XUẤT KHO'}
-          </h1>
-          <p className="text-xs text-slate-600 italic mt-0.5">
-            {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
-          </p>
-        </div>
-        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
-          <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
-          <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
-        </div>
-      </div>
+      )}
 
       {/* ═══ WHEN FORM IS CLOSED: SHOW TITLE, ACTION BUTTONS, KPI CARDS & ORDER LIST TABLE ═══ */}
       {!showFormModal ? (
-        <div className="space-y-6 animate-in fade-in duration-200">
+        <div className={`space-y-6 animate-in fade-in duration-200 ${showPrintModal ? 'print:hidden' : ''}`}>
           {/* Top Header Section matching PurchaseOrdersPage */}
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between print:hidden">
             <div>
@@ -2061,27 +2065,29 @@ export default function Outbound({
             </div>
           </div>
 
-          {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
-          <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
-              <div className="h-20" />
-              <p className="font-bold text-slate-900">{currentUserName}</p>
+          {/* ─── CHỮ KÝ BÁO CÁO KHI IN (CHỈ HIỂN THỊ KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+          {!showPrintModal && (
+            <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+                <div className="h-20" />
+                <p className="font-bold text-slate-900">{currentUserName}</p>
+              </div>
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+                <div className="h-20" />
+                <p className="text-slate-400 italic font-medium">................................................</p>
+              </div>
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
+                <div className="h-20" />
+                <p className="text-slate-400 italic font-medium">................................................</p>
+              </div>
             </div>
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
-              <div className="h-20" />
-              <p className="text-slate-400 italic font-medium">................................................</p>
-            </div>
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
-              <div className="h-20" />
-              <p className="text-slate-400 italic font-medium">................................................</p>
-            </div>
-          </div>
+          )}
         </div>
       ) : (
         <CreateOutboundOrderPage

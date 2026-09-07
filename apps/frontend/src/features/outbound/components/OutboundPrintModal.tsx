@@ -185,6 +185,15 @@ export default function OutboundPrintModal({
     setDirectorSign(s.directorName || 'Nguyễn Thị Thanh Xuyên');
   }, [isOpen, order, settings, isDisposal, featureMode, warehouses]);
 
+  // Set body class for print isolation
+  useEffect(() => {
+    if (!isOpen) return;
+    document.body.classList.add('is-printing-slip');
+    return () => {
+      document.body.classList.remove('is-printing-slip');
+    };
+  }, [isOpen]);
+
   // Keyboard shortcut Ctrl+P / Escape
   useEffect(() => {
     if (!isOpen) return;
@@ -309,6 +318,16 @@ export default function OutboundPrintModal({
                 min-height: 0 !important;
                 background: #fff !important;
               }
+              /* Ẩn toàn bộ giao diện phía sau (Root, Layout, Báo cáo danh sách) */
+              #root,
+              body > *:not(.outbound-print-modal) {
+                display: none !important;
+                visibility: hidden !important;
+                height: 0 !important;
+                max-height: 0 !important;
+                overflow: hidden !important;
+                opacity: 0 !important;
+              }
               .outbound-print-modal {
                 position: static !important;
                 display: block !important;
@@ -320,6 +339,8 @@ export default function OutboundPrintModal({
                 background: #fff !important;
                 overflow: visible !important;
                 inset: auto !important;
+                visibility: visible !important;
+                opacity: 1 !important;
               }
               .outbound-print-modal > div {
                 display: block !important;

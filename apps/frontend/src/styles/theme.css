@@ -368,6 +368,18 @@ input[type=number] {
     opacity: 0 !important;
   }
 
+  /* 1b. Khi in phiếu đơn lẻ (Phiếu nhập kho, Phiếu xuất kho modal), ẩn hoàn toàn toàn bộ ứng dụng nền & báo cáo */
+  body.is-printing-slip #root,
+  body:has(.inbound-print-modal) #root,
+  body:has(.outbound-print-modal) #root {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+  }
+
   /* 2. Hide all interactive buttons, inputs, dropdowns on printed reports */
   button,
   input,

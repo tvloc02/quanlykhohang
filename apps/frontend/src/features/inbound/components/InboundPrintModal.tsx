@@ -186,6 +186,15 @@ export default function InboundPrintModal({
     setChiefAccountantSign(s.chiefAccountantName || 'Trần Thị Hồng Mơ');
   }, [isOpen, order, settings, featureMode, warehouses]);
 
+  // Set body class for print isolation
+  useEffect(() => {
+    if (!isOpen) return;
+    document.body.classList.add('is-printing-slip');
+    return () => {
+      document.body.classList.remove('is-printing-slip');
+    };
+  }, [isOpen]);
+
   // Keyboard shortcut Ctrl+P / Escape
   useEffect(() => {
     if (!isOpen) return;
@@ -299,6 +308,16 @@ export default function InboundPrintModal({
                 min-height: 0 !important;
                 background: #fff !important;
               }
+              /* Ẩn toàn bộ giao diện phía sau (Root, Layout, Báo cáo danh sách) */
+              #root,
+              body > *:not(.inbound-print-modal) {
+                display: none !important;
+                visibility: hidden !important;
+                height: 0 !important;
+                max-height: 0 !important;
+                overflow: hidden !important;
+                opacity: 0 !important;
+              }
               .inbound-print-modal {
                 position: static !important;
                 display: block !important;
@@ -310,6 +329,8 @@ export default function InboundPrintModal({
                 background: #fff !important;
                 overflow: visible !important;
                 inset: auto !important;
+                visibility: visible !important;
+                opacity: 1 !important;
               }
               .inbound-print-modal > div {
                 display: block !important;
