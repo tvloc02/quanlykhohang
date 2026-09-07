@@ -957,19 +957,25 @@ export default function Delivery() {
         initialData={
           selectedOrder
             ? {
-                commandNo: `12/LDD-${selectedOrder.transferNo || 'KTTU'}`,
+                noteNo: selectedOrder.transferNo,
+                commandNo: selectedOrder.transferNo ? `12/LĐĐ-${selectedOrder.transferNo}` : undefined,
+                sourceWarehouse: renderWarehouse(selectedOrder.sourceWarehouse, warehouses),
+                destinationWarehouse: renderWarehouse(selectedOrder.destinationWarehouse, warehouses),
                 sourceAddress: renderWarehouse(selectedOrder.sourceWarehouse, warehouses),
-                receiverName: renderCreator(selectedOrder.createdBy),
                 destinationAddress: renderWarehouse(selectedOrder.destinationWarehouse, warehouses),
+                transporterName: selectedOrder.driverName || undefined,
+                vehicle: selectedOrder.vehiclePlate || undefined,
+                dispatchDate: selectedOrder.dispatchDate || selectedOrder.scheduledDate || selectedOrder.createdAt || undefined,
+                creatorName: renderCreator(selectedOrder.createdBy),
                 items: selectedOrder.items && selectedOrder.items.length > 0
-                  ? selectedOrder.items.map((item, idx) => ({
+                  ? selectedOrder.items.map((item: any, idx: number) => ({
                       id: item.id || String(idx + 1),
                       productName: item.productName || 'Sản phẩm điều chuyển',
                       productCode: item.productCode || 'SKU-001',
                       unit: item.unit || 'Cái',
                       quantityExported: Number(item.quantity) || 1,
                       quantityImported: Number(item.quantity) || 1,
-                      price: 10000000,
+                      price: Number(item.price || item.unitPrice || 150000),
                     }))
                   : undefined,
               }

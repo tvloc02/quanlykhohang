@@ -1,24 +1,22 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { Printer, X, Plus, Trash2 } from "lucide-react";
-import type { OutboundOrder } from "../Outbound";
+import type { InboundReceiptOrder } from "../Inbound";
 import { numberToWordsVietnamese } from "../../../shared/utils/numberToWords";
 
 interface WarehouseOption {
-  id: string;
-  code: string;
-  name: string;
+  id?: string;
+  code?: string;
+  name?: string;
   address?: string;
 }
 
-interface OutboundPrintModalProps {
+interface InboundPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
-  order: OutboundOrder | null;
+  order: InboundReceiptOrder | null;
   warehouses?: WarehouseOption[];
-  isDisposal?: boolean;
   featureMode?: string;
-  title?: string;
 }
 
 interface PrintItem {
@@ -26,39 +24,35 @@ interface PrintItem {
   productName: string;
   productSku: string;
   unit: string;
-  qtyReq: number;
+  qtyDoc: number;
   qtyActual: number;
   price: number;
-  lossAmount?: number;
-  totalDisposalAmount?: number;
 }
 
 const API_BASE_URL = "/api";
 
-export default function OutboundPrintModal({
+export default function InboundPrintModal({
   isOpen,
   onClose,
   order,
   warehouses = [],
-  isDisposal = false,
   featureMode,
-}: OutboundPrintModalProps) {
-  // Settings from backend
+}: InboundPrintModalProps) {
   const [settings, setSettings] = useState<any>(null);
 
   // 1. Company & Header State
   const [companyName, setCompanyName] = useState(
     "Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng",
   );
-  const [department, setDepartment] = useState("Bộ phận: Bán hàng");
+  const [department, setDepartment] = useState("Bộ phận: Kho vận");
   const [taxCode, setTaxCode] = useState("0101234567");
-  const [templateCode, setTemplateCode] = useState("Mẫu số 02-VT");
+  const [templateCode, setTemplateCode] = useState("Mẫu số 01-VT");
   const [templateStandard, setTemplateStandard] = useState(
     "Ban hành theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ Tài chính",
   );
 
   // 2. Voucher info
-  const [voucherTitle, setVoucherTitle] = useState("PHIẾU XUẤT KHO");
+  const [voucherTitle, setVoucherTitle] = useState("PHIẾU NHẬP KHO");
   const [dateDay, setDateDay] = useState(
     String(new Date().getDate()).padStart(2, "0"),
   );
@@ -66,29 +60,30 @@ export default function OutboundPrintModal({
     String(new Date().getMonth() + 1).padStart(2, "0"),
   );
   const [dateYear, setDateYear] = useState(String(new Date().getFullYear()));
-  const [orderNo, setOrderNo] = useState("");
-  const [debitAccount, setDebitAccount] = useState("632");
-  const [creditAccount, setCreditAccount] = useState("156");
+  const [receiptNo, setReceiptNo] = useState("");
+  const [debitAccount, setDebitAccount] = useState("156");
+  const [creditAccount, setCreditAccount] = useState("331");
 
-  // 3. Receiver & Warehouse
-  const [receiverName, setReceiverName] = useState("");
-  const [receiverAddress, setReceiverAddress] = useState("");
-  const [reason, setReason] = useState("");
+  // 3. Deliverer & Source & Warehouse
+  const [delivererName, setDelivererName] = useState("");
+  const [sourceDocText, setSourceDocText] = useState("");
   const [warehouseName, setWarehouseName] = useState("");
   const [warehouseLocation, setWarehouseLocation] = useState("");
+  const [reason, setReason] = useState("");
 
   // 4. Items Table
   const [items, setItems] = useState<PrintItem[]>([]);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [vatAmount, setVatAmount] = useState(0);
 
   // 5. Attached Docs
   const [attachedDocs, setAttachedDocs] = useState("");
 
-  // 6. Signatures
+  // 6. Signatures (4 vị trí Mẫu 01-VT)
   const [creatorSign, setCreatorSign] = useState("");
-  const [receiverSign, setReceiverSign] = useState("");
+  const [delivererSign, setDelivererSign] = useState("");
   const [storekeeperSign, setStorekeeperSign] = useState("");
   const [chiefAccountantSign, setChiefAccountantSign] = useState("");
-  const [directorSign, setDirectorSign] = useState("");
 
   // Fetch settings from API
   useEffect(() => {
@@ -101,7 +96,7 @@ export default function OutboundPrintModal({
       .catch(() => {});
   }, [isOpen]);
 
-  // Sync state whenever order or settings load
+  // Sync state when order or settings load
   useEffect(() => {
     if (!isOpen || !order) return;
 
@@ -109,101 +104,109 @@ export default function OutboundPrintModal({
 
     // 1. Company
     setCompanyName(s.companyName || "Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng");
-    setDepartment(s.department || "Bộ phận: Bán hàng");
+    setDepartment(s.department || "Bộ phận: Kho vận");
     setTaxCode(s.taxCode || "0101234567");
-    setTemplateCode("Mẫu số 02-VT");
+    setTemplateCode("Mẫu số 01-VT");
     setTemplateStandard(
       s.templateStandard ||
         "Ban hành theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ Tài chính",
     );
 
     // 2. Title
-    let defaultTitle = isDisposal ? "PHIẾU XUẤT HỦY KHO" : "PHIẾU XUẤT KHO";
-    if (featureMode === "retail") defaultTitle = "PHIẾU XUẤT BÁN LẺ";
-    if (featureMode === "sales-order") defaultTitle = "PHIẾU XUẤT ĐƠN ĐẶT HÀNG";
-    if (featureMode === "quote") defaultTitle = "BẢNG BÁO GIÁ HÀNG HÓA";
-    setVoucherTitle(defaultTitle);
+    const isReturn = featureMode === "return-supplier";
+    setVoucherTitle(
+      isReturn ? "PHIẾU XUẤT TRẢ NHÀ CUNG CẤP" : "PHIẾU NHẬP KHO",
+    );
 
     // Date
-    const orderDateObj = order.orderDate
-      ? new Date(order.orderDate)
-      : new Date();
+    let orderDateObj = new Date();
+    if (order.orderDate) {
+      const parsed = new Date(order.orderDate);
+      if (!Number.isNaN(parsed.getTime())) orderDateObj = parsed;
+    }
     setDateDay(String(orderDateObj.getDate()).padStart(2, "0"));
     setDateMonth(String(orderDateObj.getMonth() + 1).padStart(2, "0"));
     setDateYear(String(orderDateObj.getFullYear()));
 
-    setOrderNo(order.orderNo || "");
-    setDebitAccount(s.debitAccount || "632");
-    setCreditAccount(s.creditAccount || "156");
+    setReceiptNo(order.receiptNo || "");
+    setDebitAccount(isReturn ? "331" : "156");
+    setCreditAccount(isReturn ? "156" : s.creditAccount || "331");
 
-    // 3. Receiver & Warehouse
-    setReceiverName(order.customer || s.receiverName || "Phạm Thị Duyên");
-    setReceiverAddress(
-      order.customerAddress || "Công ty TNHH Thương mại Toàn Phát",
-    );
-    setReason(
-      order.description ||
-        (isDisposal
-          ? "Xuất hủy hàng hỏng / hết hạn sử dụng"
-          : "Xuất bán hàng hóa theo đơn"),
+    // 3. Deliverer & Source & Warehouse
+    setDelivererName(order.employeeName || order.supplier || "Nguyễn Văn Giao");
+    const dateFormatted = `${String(orderDateObj.getDate()).padStart(2, "0")}/${String(orderDateObj.getMonth() + 1).padStart(2, "0")}/${orderDateObj.getFullYear()}`;
+    const poNum = order.poNumber || order.receiptNo?.slice(-7) || "0000012";
+    setSourceDocText(
+      `Hóa đơn số ${poNum} ngày ${dateFormatted} của ${order.supplier || "Nhà cung cấp"}`,
     );
 
-    const whCode = order.branchCode || order.warehouseCode;
+    const whCode = order.warehouseCode;
     const foundWh = warehouses.find(
       (w) => w.code === whCode || w.name === whCode || w.id === whCode,
     );
     setWarehouseName(
-      foundWh ? `[${foundWh.code}] ${foundWh.name}` : whCode || "Kho Thanh Trì",
+      foundWh
+        ? `[${foundWh.code}] ${foundWh.name}`
+        : whCode || "Kho Tổng (KHO-NVL)",
     );
     setWarehouseLocation(foundWh?.address || s.address || "Hà Nội, Việt Nam");
+    setReason(
+      order.description ||
+        (isReturn
+          ? "Xuất trả hàng lỗi / không đạt quy chuẩn cho nhà cung cấp"
+          : "Nhập kho mua hàng hóa theo đơn"),
+    );
 
     // 4. Items
     if (order.details && order.details.length > 0) {
-      const mapped: PrintItem[] = order.details.map((d: any, i: number) => ({
-        id: String(d.id || i + 1),
-        productName: d.productName || `Sản phẩm ${i + 1}`,
-        productSku: d.productSku || "-",
-        unit: d.unit || "Bộ",
-        qtyReq: Number(d.qty || d.requestedQty || 1),
-        qtyActual: Number(d.actualQty || d.qty || 1),
-        price: Number(d.price || d.unitPrice || 0),
-        lossAmount:
-          (d as any).lossAmount !== undefined
-            ? Number((d as any).lossAmount)
-            : undefined,
-        totalDisposalAmount:
-          (d as any).totalDisposalAmount !== undefined
-            ? Number((d as any).totalDisposalAmount)
-            : undefined,
-      }));
+      const mapped: PrintItem[] = order.details.map((d: any, i: number) => {
+        const qtyVal = Number(d.qty || d.actualQty || d.requestedQty || 1);
+        const priceVal = Number(d.price || d.unitPrice || 0);
+        return {
+          id: String(d.id || i + 1),
+          productName: d.productName || `Sản phẩm ${i + 1}`,
+          productSku: d.productSku || "-",
+          unit: d.unit || "Cái",
+          qtyDoc: Number(d.requestedQty || qtyVal),
+          qtyActual: qtyVal,
+          price: priceVal,
+        };
+      });
       setItems(mapped);
     } else {
       setItems([
         {
           id: "1",
-          productName: "Hàng hóa mẫu",
-          productSku: "SP001",
+          productName: "Hàng hóa nhập kho",
+          productSku: "SKU001",
           unit: "Cái",
-          qtyReq: 1,
+          qtyDoc: 1,
           qtyActual: 1,
           price: 100000,
         },
       ]);
     }
 
+    setDiscountAmount(Number(order.discount || 0));
+    setVatAmount(Number(order.vatAmount || 0));
+
     // 5. Attached Docs
-    const dateFormatted = `ngày ${String(orderDateObj.getDate()).padStart(2, "0")}/${String(orderDateObj.getMonth() + 1).padStart(2, "0")}/${orderDateObj.getFullYear()}`;
     setAttachedDocs(
-      `01 Hóa đơn GTGT số ${order.orderNo?.slice(-7) || "0000025"} ${dateFormatted}`,
+      `01 Hóa đơn GTGT số ${poNum} kèm biên bản giao nhận hàng hóa`,
     );
 
-    // 6. Signatures
-    setCreatorSign(order.employeeName || s.creatorName || "Vũ Hữu Dũng");
-    setReceiverSign(order.customer || s.receiverName || "Phạm Thị Duyên");
+    // 6. Signatures (4 vị trí chuẩn Mẫu 01-VT)
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const currentUserName =
+      currentUser.fullName || currentUser.email?.split("@")[0] || "Quản lý kho";
+
+    setCreatorSign(
+      order.employeeName || currentUserName || s.creatorName || "Vũ Hữu Dũng",
+    );
+    setDelivererSign(order.supplier || "Nguyễn Văn Giao");
     setStorekeeperSign(s.storekeeperName || "Nguyễn Thị Thúy");
     setChiefAccountantSign(s.chiefAccountantName || "Trần Thị Hồng Mơ");
-    setDirectorSign(s.directorName || "Nguyễn Thị Thanh Xuyên");
-  }, [isOpen, order, settings, isDisposal, featureMode, warehouses]);
+  }, [isOpen, order, settings, featureMode, warehouses]);
 
   // Keyboard shortcut Ctrl+P / Escape
   useEffect(() => {
@@ -240,7 +243,7 @@ export default function OutboundPrintModal({
         productName: "Hàng hóa mới",
         productSku: "SKU-NEW",
         unit: "Cái",
-        qtyReq: 1,
+        qtyDoc: 1,
         qtyActual: 1,
         price: 0,
       },
@@ -253,49 +256,40 @@ export default function OutboundPrintModal({
   };
 
   // Calculations
-  const totalAmount = useMemo(() => {
-    return items.reduce((sum, item) => {
-      const lineTotal = Number(item.qtyActual || 0) * Number(item.price || 0);
-      return (
-        sum +
-        (isDisposal && item.lossAmount !== undefined
-          ? Number(item.lossAmount)
-          : lineTotal)
-      );
-    }, 0);
-  }, [items, isDisposal]);
+  const subtotalAmount = useMemo(() => {
+    return items.reduce(
+      (sum, item) =>
+        sum + Number(item.qtyActual || 0) * Number(item.price || 0),
+      0,
+    );
+  }, [items]);
 
-  const totalDisposalSum = useMemo(() => {
-    if (!isDisposal) return 0;
-    return items.reduce((sum, item) => {
-      const lineTotal = Number(item.qtyActual || 0) * Number(item.price || 0);
-      const val =
-        item.totalDisposalAmount !== undefined
-          ? Number(item.totalDisposalAmount)
-          : Number(item.price || 0) + lineTotal;
-      return sum + val;
-    }, 0);
-  }, [items, isDisposal]);
+  const totalPayment = useMemo(() => {
+    return Math.max(
+      0,
+      subtotalAmount - Number(discountAmount || 0) + Number(vatAmount || 0),
+    );
+  }, [subtotalAmount, discountAmount, vatAmount]);
 
-  const totalAmountWords = useMemo(() => {
-    return numberToWordsVietnamese(totalAmount);
-  }, [totalAmount]);
+  const totalPaymentWords = useMemo(() => {
+    return numberToWordsVietnamese(totalPayment);
+  }, [totalPayment]);
 
   if (!isOpen || !order) return null;
 
   return createPortal(
-    <div className="outbound-print-modal fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-2 sm:p-5 backdrop-blur-xs overflow-y-auto print:static print:block print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible">
+    <div className="inbound-print-modal fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 p-2 sm:p-5 backdrop-blur-xs overflow-y-auto print:static print:block print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible">
       {/* Container Dialog */}
       <div className="flex w-full max-w-5xl max-h-[96vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200 print:block print:max-h-none print:h-auto print:shadow-none print:w-full print:rounded-none print:border-none print:m-0 print:p-0">
         {/* Top Control Bar (Hidden on print - Light Neutral, No Black, No Cyan) */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3 text-slate-800 print:hidden">
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700 font-bold text-xs border border-blue-200">
-              02
+              01
             </span>
             <div>
               <h2 className="text-sm sm:text-base font-black uppercase tracking-wide text-slate-900">
-                Xem trước & Chỉnh sửa Phiếu xuất kho (Mẫu số 02-VT)
+                Xem trước & Chỉnh sửa Phiếu nhập kho (Mẫu số 01-VT)
               </h2>
               <p className="text-xs text-slate-500">
                 Có thể chỉnh sửa trực tiếp nội dung trước khi in • Bản in đen
@@ -339,7 +333,7 @@ export default function OutboundPrintModal({
                 min-height: 0 !important;
                 background: #fff !important;
               }
-              .outbound-print-modal {
+              .inbound-print-modal {
                 position: static !important;
                 display: block !important;
                 width: 100% !important;
@@ -351,7 +345,7 @@ export default function OutboundPrintModal({
                 overflow: visible !important;
                 inset: auto !important;
               }
-              .outbound-print-modal > div {
+              .inbound-print-modal > div {
                 display: block !important;
                 max-height: none !important;
                 height: auto !important;
@@ -362,13 +356,13 @@ export default function OutboundPrintModal({
                 box-shadow: none !important;
                 border-radius: 0 !important;
               }
-              .outbound-print-modal .overflow-y-auto {
+              .inbound-print-modal .overflow-y-auto {
                 overflow: visible !important;
                 padding: 0 !important;
                 margin: 0 !important;
                 background: transparent !important;
               }
-              .outbound-print-paper {
+              .inbound-print-paper {
                 box-shadow: none !important;
                 border: none !important;
                 border-radius: 0 !important;
@@ -394,10 +388,10 @@ export default function OutboundPrintModal({
 
           {/* VÙNG GIẤY IN A4 (CHUẨN ĐEN TRẮNG, TIMES NEW ROMAN) */}
           <div
-            className="outbound-print-paper mx-auto w-full max-w-[880px] rounded-lg border border-slate-300 bg-white p-6 sm:p-10 shadow-md text-black leading-normal"
+            className="inbound-print-paper mx-auto w-full max-w-[880px] rounded-lg border border-slate-300 bg-white p-6 sm:p-10 shadow-md text-black leading-normal"
             style={{ fontFamily: "'Times New Roman', Times, serif" }}
           >
-            {/* Header 2 bên: Đơn vị & Mẫu số 02-VT */}
+            {/* Header 2 bên: Đơn vị & Mẫu số 01-VT */}
             <div className="flex justify-between items-start mb-2 text-xs sm:text-sm gap-4">
               <div className="flex-1 space-y-1">
                 <div className="flex items-start gap-1">
@@ -453,7 +447,7 @@ export default function OutboundPrintModal({
                 </div>
               </div>
 
-              {/* Góc phải: Mẫu số 02-VT & Thông tư */}
+              {/* Góc phải: Mẫu số 01-VT & Thông tư */}
               <div className="text-right text-xs sm:text-sm w-64 shrink-0 space-y-0.5">
                 <div className="flex justify-end items-center gap-1 font-bold">
                   <span className="print-hide-input">
@@ -546,12 +540,12 @@ export default function OutboundPrintModal({
                   <span className="print-hide-input">
                     <input
                       type="text"
-                      value={orderNo}
-                      onChange={(e) => setOrderNo(e.target.value)}
+                      value={receiptNo}
+                      onChange={(e) => setReceiptNo(e.target.value)}
                       className="w-36 font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                     />
                   </span>
-                  <span className="print-show-val font-bold">{orderNo}</span>
+                  <span className="print-show-val font-bold">{receiptNo}</span>
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -586,65 +580,42 @@ export default function OutboundPrintModal({
               </div>
             </div>
 
-            {/* Thông tin người nhận, lý do, kho */}
+            {/* Thông tin người giao, chứng từ, kho */}
             <div className="space-y-1.5 text-xs sm:text-sm text-black mb-3 border-t border-black pt-2">
-              <div className="grid grid-cols-12 gap-2">
-                <div className="col-span-12 sm:col-span-6 flex items-baseline gap-1.5">
-                  <span className="shrink-0 whitespace-nowrap">
-                    {isDisposal
-                      ? "Người thực hiện / Hội đồng:"
-                      : "Họ và tên người nhận hàng:"}
-                  </span>
-                  <span className="print-hide-input flex-1">
-                    <input
-                      type="text"
-                      value={receiverName}
-                      onChange={(e) => setReceiverName(e.target.value)}
-                      className="w-full font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
-                    />
-                  </span>
-                  <span className="print-show-val font-bold flex-1">
-                    {receiverName}
-                  </span>
-                </div>
-
-                <div className="col-span-12 sm:col-span-6 flex items-baseline gap-1.5">
-                  <span className="shrink-0 whitespace-nowrap">
-                    Địa chỉ (bộ phận):
-                  </span>
-                  <span className="print-hide-input flex-1">
-                    <input
-                      type="text"
-                      value={receiverAddress}
-                      onChange={(e) => setReceiverAddress(e.target.value)}
-                      className="w-full border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
-                    />
-                  </span>
-                  <span className="print-show-val flex-1">
-                    {receiverAddress}
-                  </span>
-                </div>
-              </div>
-
               <div className="flex items-baseline gap-1.5">
                 <span className="shrink-0 whitespace-nowrap">
-                  {isDisposal ? "Lý do xuất hủy:" : "Lý do xuất kho:"}
+                  - Họ và tên người giao hàng:
                 </span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
+                    value={delivererName}
+                    onChange={(e) => setDelivererName(e.target.value)}
+                    className="w-full font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
+                  />
+                </span>
+                <span className="print-show-val font-bold flex-1">
+                  {delivererName}
+                </span>
+              </div>
+
+              <div className="flex items-baseline gap-1.5">
+                <span className="shrink-0 whitespace-nowrap">- Theo:</span>
+                <span className="print-hide-input flex-1">
+                  <input
+                    type="text"
+                    value={sourceDocText}
+                    onChange={(e) => setSourceDocText(e.target.value)}
                     className="w-full border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                   />
                 </span>
-                <span className="print-show-val flex-1">{reason}</span>
+                <span className="print-show-val flex-1">{sourceDocText}</span>
               </div>
 
               <div className="grid grid-cols-12 gap-2">
                 <div className="col-span-12 sm:col-span-6 flex items-baseline gap-1.5">
                   <span className="shrink-0 whitespace-nowrap">
-                    Xuất tại kho (ngăn lô):
+                    - Nhập tại kho:
                   </span>
                   <span className="print-hide-input flex-1">
                     <input
@@ -674,9 +645,24 @@ export default function OutboundPrintModal({
                   </span>
                 </div>
               </div>
+
+              <div className="flex items-baseline gap-1.5">
+                <span className="shrink-0 whitespace-nowrap">
+                  - Lý do nhập kho:
+                </span>
+                <span className="print-hide-input flex-1">
+                  <input
+                    type="text"
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    className="w-full border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
+                  />
+                </span>
+                <span className="print-show-val flex-1">{reason}</span>
+              </div>
             </div>
 
-            {/* BẢNG HÀNG HÓA MẪU 02-VT (ĐEN TRẮNG, KHÔNG MÀU MÈ) */}
+            {/* BẢNG HÀNG HÓA MẪU 01-VT (ĐEN TRẮNG, KHÔNG MÀU MÈ) */}
             <div className="overflow-x-auto w-full mb-3">
               <table
                 className="w-full border-collapse text-xs text-black text-left"
@@ -736,13 +722,13 @@ export default function OutboundPrintModal({
                           }}
                           className="font-bold"
                         >
-                          Yêu cầu
+                          Theo CT
                         </span>
                         <span
                           style={{ padding: "3px", width: "50%" }}
                           className="font-bold"
                         >
-                          Thực xuất
+                          Thực nhập
                         </span>
                       </div>
                     </th>
@@ -750,22 +736,14 @@ export default function OutboundPrintModal({
                       style={{ border: "1px solid #000000", padding: "5px" }}
                       className="text-center w-24"
                     >
-                      {isDisposal ? "Giá nhập" : "Đơn giá"}
+                      Đơn giá
                     </th>
                     <th
                       style={{ border: "1px solid #000000", padding: "5px" }}
                       className="text-center w-28"
                     >
-                      {isDisposal ? "Thất thoát" : "Thành tiền"}
+                      Thành tiền
                     </th>
-                    {isDisposal && (
-                      <th
-                        style={{ border: "1px solid #000000", padding: "5px" }}
-                        className="text-center w-28"
-                      >
-                        Tổng
-                      </th>
-                    )}
                     <th
                       style={{ border: "1px solid #000000", padding: "5px" }}
                       className="text-center w-10 print-hide"
@@ -823,14 +801,6 @@ export default function OutboundPrintModal({
                     >
                       4
                     </th>
-                    {isDisposal && (
-                      <th
-                        style={{ border: "1px solid #000000", padding: "2px" }}
-                        className="text-center"
-                      >
-                        5
-                      </th>
-                    )}
                     <th
                       style={{ border: "1px solid #000000", padding: "2px" }}
                       className="text-center print-hide"
@@ -841,14 +811,6 @@ export default function OutboundPrintModal({
                   {items.map((it, idx) => {
                     const lineTotal =
                       Number(it.qtyActual || 0) * Number(it.price || 0);
-                    const lossVal =
-                      it.lossAmount !== undefined
-                        ? Number(it.lossAmount)
-                        : lineTotal;
-                    const totalVal =
-                      it.totalDisposalAmount !== undefined
-                        ? Number(it.totalDisposalAmount)
-                        : Number(it.price || 0) + lineTotal;
 
                     return (
                       <tr key={it.id || idx}>
@@ -932,7 +894,7 @@ export default function OutboundPrintModal({
                           </span>
                           <span className="print-show-val">{it.unit}</span>
                         </td>
-                        {/* SL Yêu cầu */}
+                        {/* SL Theo chứng từ */}
                         <td
                           style={{
                             border: "1px solid #000000",
@@ -944,11 +906,11 @@ export default function OutboundPrintModal({
                             <input
                               type="number"
                               min={0}
-                              value={it.qtyReq}
+                              value={it.qtyDoc}
                               onChange={(e) =>
                                 handleItemChange(
                                   idx,
-                                  "qtyReq",
+                                  "qtyDoc",
                                   Number(e.target.value),
                                 )
                               }
@@ -956,10 +918,10 @@ export default function OutboundPrintModal({
                             />
                           </span>
                           <span className="print-show-val font-bold">
-                            {it.qtyReq}
+                            {it.qtyDoc}
                           </span>
                         </td>
-                        {/* SL Thực xuất */}
+                        {/* SL Thực nhập */}
                         <td
                           style={{
                             border: "1px solid #000000",
@@ -1013,7 +975,7 @@ export default function OutboundPrintModal({
                             {Number(it.price || 0).toLocaleString("vi-VN")}
                           </span>
                         </td>
-                        {/* Thành tiền / Thất thoát */}
+                        {/* Thành tiền */}
                         <td
                           style={{
                             border: "1px solid #000000",
@@ -1021,20 +983,8 @@ export default function OutboundPrintModal({
                           }}
                           className="text-right font-bold"
                         >
-                          {lossVal.toLocaleString("vi-VN")}
+                          {lineTotal.toLocaleString("vi-VN")}
                         </td>
-                        {/* Cột Tổng (xuất hủy) */}
-                        {isDisposal && (
-                          <td
-                            style={{
-                              border: "1px solid #000000",
-                              padding: "4px",
-                            }}
-                            className="text-right font-bold"
-                          >
-                            {totalVal.toLocaleString("vi-VN")}
-                          </td>
-                        )}
                         {/* Thao tác xóa dòng */}
                         <td
                           style={{
@@ -1057,7 +1007,7 @@ export default function OutboundPrintModal({
                     );
                   })}
 
-                  {/* Dòng Cộng tổng (ĐEN TRẮNG, KHÔNG MÀU MÈ) */}
+                  {/* Dòng Cộng tổng tiền hàng (ĐEN TRẮNG) */}
                   <tr className="bg-transparent font-black text-black">
                     <td
                       style={{ border: "1px solid #000000", padding: "5px" }}
@@ -1088,7 +1038,7 @@ export default function OutboundPrintModal({
                       className="text-center font-bold"
                     >
                       {items.reduce(
-                        (sum, it) => sum + Number(it.qtyReq || 0),
+                        (sum, it) => sum + Number(it.qtyDoc || 0),
                         0,
                       )}
                     </td>
@@ -1111,18 +1061,107 @@ export default function OutboundPrintModal({
                       style={{ border: "1px solid #000000", padding: "5px" }}
                       className="text-right font-black text-sm sm:text-base"
                     >
-                      {totalAmount.toLocaleString("vi-VN")}
+                      {subtotalAmount.toLocaleString("vi-VN")}
                     </td>
-                    {isDisposal && (
-                      <td
-                        style={{ border: "1px solid #000000", padding: "5px" }}
-                        className="text-right font-black text-sm sm:text-base"
-                      >
-                        {totalDisposalSum.toLocaleString("vi-VN")}
-                      </td>
-                    )}
                     <td
                       style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center print-hide"
+                    ></td>
+                  </tr>
+
+                  {/* Chiết khấu (nếu có) */}
+                  {(discountAmount > 0 || discountAmount === 0) && (
+                    <tr className="bg-transparent text-black">
+                      <td
+                        colSpan={7}
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-right italic font-semibold"
+                      >
+                        Chiết khấu thương mại:
+                      </td>
+                      <td
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-right font-semibold"
+                      >
+                        <span className="print-hide-input">
+                          <input
+                            type="number"
+                            min={0}
+                            value={discountAmount}
+                            onChange={(e) =>
+                              setDiscountAmount(Number(e.target.value))
+                            }
+                            className="w-24 text-right border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
+                          />
+                        </span>
+                        <span className="print-show-val">
+                          {discountAmount > 0
+                            ? `-${discountAmount.toLocaleString("vi-VN")}`
+                            : "0"}
+                        </span>
+                      </td>
+                      <td
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-center print-hide"
+                      ></td>
+                    </tr>
+                  )}
+
+                  {/* Thuế GTGT VAT (nếu có) */}
+                  {(vatAmount > 0 || vatAmount === 0) && (
+                    <tr className="bg-transparent text-black">
+                      <td
+                        colSpan={7}
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-right italic font-semibold"
+                      >
+                        Thuế GTGT (VAT):
+                      </td>
+                      <td
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-right font-semibold"
+                      >
+                        <span className="print-hide-input">
+                          <input
+                            type="number"
+                            min={0}
+                            value={vatAmount}
+                            onChange={(e) =>
+                              setVatAmount(Number(e.target.value))
+                            }
+                            className="w-24 text-right border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
+                          />
+                        </span>
+                        <span className="print-show-val">
+                          {vatAmount > 0
+                            ? `+${vatAmount.toLocaleString("vi-VN")}`
+                            : "0"}
+                        </span>
+                      </td>
+                      <td
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-center print-hide"
+                      ></td>
+                    </tr>
+                  )}
+
+                  {/* Tổng tiền thanh toán */}
+                  <tr className="bg-transparent font-black text-black">
+                    <td
+                      colSpan={7}
+                      style={{ border: "1px solid #000000", padding: "6px" }}
+                      className="text-right uppercase tracking-wider font-extrabold text-xs sm:text-sm"
+                    >
+                      Tổng tiền thanh toán:
+                    </td>
+                    <td
+                      style={{ border: "1px solid #000000", padding: "6px" }}
+                      className="text-right font-black text-sm sm:text-base"
+                    >
+                      {totalPayment.toLocaleString("vi-VN")}
+                    </td>
+                    <td
+                      style={{ border: "1px solid #000000", padding: "6px" }}
                       className="text-center print-hide"
                     ></td>
                   </tr>
@@ -1145,25 +1184,24 @@ export default function OutboundPrintModal({
             <div className="space-y-1 text-xs sm:text-sm text-black mb-4">
               <div className="flex items-baseline gap-1.5">
                 <span className="shrink-0">
-                  {isDisposal ? "Tổng thất thoát" : "Tổng số tiền"}{" "}
-                  <span className="italic">(Viết bằng chữ)</span>:
+                  - Tổng số tiền (Viết bằng chữ):
                 </span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
-                    value={totalAmountWords}
+                    value={totalPaymentWords}
                     onChange={(e) => {}}
                     readOnly
                     className="w-full italic font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                   />
                 </span>
                 <span className="print-show-val italic font-bold flex-1">
-                  {totalAmountWords}
+                  {totalPaymentWords}
                 </span>
               </div>
 
               <div className="flex items-baseline gap-1.5">
-                <span className="shrink-0">Số chứng từ gốc kèm theo:</span>
+                <span className="shrink-0">- Số chứng từ gốc kèm theo:</span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
@@ -1176,12 +1214,12 @@ export default function OutboundPrintModal({
               </div>
             </div>
 
-            {/* 5 KHỐI CHỮ KÝ CHUẨN MẪU 02-VT (ĐEN TRẮNG, CÓ THỂ SỬA TÊN) */}
+            {/* 4 KHỐI CHỮ KÝ CHUẨN MẪU 01-VT (ĐEN TRẮNG, CÓ THỂ SỬA TÊN) */}
             <div className="text-right text-xs sm:text-sm italic text-black mb-2">
               Ngày {dateDay} tháng {dateMonth} năm {dateYear}
             </div>
 
-            <div className="grid grid-cols-5 gap-2 text-center text-xs text-black page-break-inside-avoid">
+            <div className="grid grid-cols-4 gap-2 text-center text-xs text-black page-break-inside-avoid">
               {/* 1. Người lập phiếu */}
               <div className="flex flex-col justify-between min-h-[110px]">
                 <div>
@@ -1207,11 +1245,11 @@ export default function OutboundPrintModal({
                 </div>
               </div>
 
-              {/* 2. Người nhận hàng */}
+              {/* 2. Người giao hàng */}
               <div className="flex flex-col justify-between min-h-[110px]">
                 <div>
                   <p className="font-bold uppercase text-[11px] sm:text-xs">
-                    Người nhận hàng
+                    Người giao hàng
                   </p>
                   <p className="text-[10px] text-slate-600 italic mt-0.5">
                     (Ký, họ tên)
@@ -1221,13 +1259,13 @@ export default function OutboundPrintModal({
                   <span className="print-hide-input block">
                     <input
                       type="text"
-                      value={receiverSign}
-                      onChange={(e) => setReceiverSign(e.target.value)}
+                      value={delivererSign}
+                      onChange={(e) => setDelivererSign(e.target.value)}
                       className="w-full text-center font-bold text-black border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs"
                     />
                   </span>
                   <span className="print-show-val font-bold block">
-                    {receiverSign}
+                    {delivererSign}
                   </span>
                 </div>
               </div>
@@ -1257,14 +1295,14 @@ export default function OutboundPrintModal({
                 </div>
               </div>
 
-              {/* 4. Kế toán trưởng */}
+              {/* 4. Kế toán trưởng (hoặc bộ phận có nhu cầu nhập) */}
               <div className="flex flex-col justify-between min-h-[110px]">
                 <div>
                   <p className="font-bold uppercase text-[11px] sm:text-xs">
                     Kế toán trưởng
                   </p>
                   <p className="text-[10px] text-slate-600 italic mt-0.5">
-                    (Ký, họ tên)
+                    (Hoặc Giám đốc ký)
                   </p>
                 </div>
                 <div className="pt-8">
@@ -1278,31 +1316,6 @@ export default function OutboundPrintModal({
                   </span>
                   <span className="print-show-val font-bold block">
                     {chiefAccountantSign}
-                  </span>
-                </div>
-              </div>
-
-              {/* 5. Giám đốc */}
-              <div className="flex flex-col justify-between min-h-[110px]">
-                <div>
-                  <p className="font-bold uppercase text-[11px] sm:text-xs">
-                    Giám đốc
-                  </p>
-                  <p className="text-[10px] text-slate-600 italic mt-0.5">
-                    (Ký, họ tên, đóng dấu)
-                  </p>
-                </div>
-                <div className="pt-8">
-                  <span className="print-hide-input block">
-                    <input
-                      type="text"
-                      value={directorSign}
-                      onChange={(e) => setDirectorSign(e.target.value)}
-                      className="w-full text-center font-bold text-black border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs"
-                    />
-                  </span>
-                  <span className="print-show-val font-bold block">
-                    {directorSign}
                   </span>
                 </div>
               </div>
@@ -1329,7 +1342,7 @@ export default function OutboundPrintModal({
               onClick={() => window.print()}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-xs font-bold text-white hover:bg-blue-700 cursor-pointer shadow-md transition"
             >
-              <Printer size={16} /> In Phiếu Xuất Kho
+              <Printer size={16} /> In Phiếu Nhập Kho
             </button>
           </div>
         </div>

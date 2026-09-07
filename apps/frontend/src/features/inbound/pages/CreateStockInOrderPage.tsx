@@ -3841,13 +3841,12 @@ export default function CreateStockInOrderPage({
                     <th className="p-2.5 w-32 text-center bg-slate-100">THÀNH TIỀN</th>
                     <th className="p-2.5 w-36 text-center bg-slate-100">HẠN SỬ DỤNG</th>
                     <th className="p-2.5 min-w-[130px] text-center bg-slate-100">GHI CHÚ</th>
-                    <th className="p-2.5 w-44 text-center bg-slate-100 min-w-[150px]">THAO TÁC</th>
+                    <th className="p-2.5 w-36 text-center bg-slate-100 min-w-[120px]">THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {activeTab?.details.map((row, idx) => {
                     const isEven = idx % 2 === 1;
-                    const hasWeightOrVol = (row.weight || 0) > 0 || (row.volume || 0) > 0;
                     return (
                       <tr
                         key={row.rowId}
@@ -4033,23 +4032,6 @@ export default function CreateStockInOrderPage({
                               }
                             >
                               <Sparkles size={16} strokeWidth={2} />
-                            </button>
-
-                            {/* 2. Cấu hình Trọng lượng & Thể tích */}
-                            <button
-                              type="button"
-                              onClick={() => setWeightModalRow(row)}
-                              className={`flex h-8 w-8 items-center justify-center rounded-xl transition cursor-pointer ${hasWeightOrVol
-                                  ? 'border border-emerald-600 bg-emerald-600 text-white shadow-xs hover:bg-emerald-700'
-                                  : 'border border-cyan-400 bg-white text-cyan-600 shadow-2xs hover:bg-cyan-600 hover:text-white hover:border-cyan-600'
-                                }`}
-                              title={
-                                hasWeightOrVol
-                                  ? `Trọng lượng: ${(row.weight || 0).toFixed(1)} kg, Thể tích: ${(row.volume || 0).toFixed(3)} m³`
-                                  : 'Cấu hình Trọng lượng & Thể tích'
-                              }
-                            >
-                              <Scale size={16} strokeWidth={2} />
                             </button>
 
                             {!isReadOnly && (
