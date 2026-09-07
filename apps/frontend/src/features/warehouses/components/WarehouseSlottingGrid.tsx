@@ -1595,12 +1595,6 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             (normFull ? (activeRack.customBins as any)?.[normFull] : null);
                           const customConfig = rawCustomConfig && rawCustomConfig.occupancyPct !== undefined && rawCustomConfig.occupancyPct !== null ? rawCustomConfig : null;
 
-                          const occupiedInfo = getOccupiedInfo(fullBinCode, binCodeShort, rackCode);
-                          let hasGoods = Boolean(
-                            (occupiedInfo && ((occupiedInfo.totalPhysical || 0) > 0 || (occupiedInfo.allocated || 0) > 0 || (occupiedInfo.occupancyPct || 0) > 0)) ||
-                            (customConfig && ((customConfig.totalPhysical || 0) > 0 || (customConfig.occupancyPct || 0) > 0))
-                          );
-
                           const normShort = normalizeBinKey(binCodeShort);
                           const normRackShort = normalizeBinKey(`${rackCode}-${binCodeShort}`);
                           const isSelected = selectedSet.has(normFull) || (Boolean(normShort) && selectedSet.has(normShort)) || (Boolean(normRackShort) && selectedSet.has(normRackShort));
@@ -1623,6 +1617,31 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             otherItemPctFromLock = rawOtherEntry.occupancyPct;
                           }
 
+                          const customNotes = String(customConfig?.notes || '').trim();
+                          const isDraftStagingNote = customNotes.includes('Đã chọn nhập') ||
+                            customNotes.includes('Đang xếp') ||
+                            customNotes.includes('Đang chọn');
+                          const isEmptyNote = customNotes.includes('Ô Trống') ||
+                            customNotes.includes('0%') ||
+                            customNotes.includes('Trống') ||
+                            Number(customConfig?.occupancyPct || 0) <= 0;
+
+                          // Staging entry that is NOT selected by active item AND NOT selected by any other item:
+                          const isStagingUnselected = isDraftStagingNote && !isSelected && !otherItemName;
+
+                          const hasCustomGoods = Boolean(
+                            customConfig &&
+                            !isEmptyNote &&
+                            !isStagingUnselected &&
+                            ((customConfig.totalPhysical || 0) > 0 || (customConfig.occupancyPct || 0) > 0)
+                          );
+
+                          const occupiedInfo = getOccupiedInfo(fullBinCode, binCodeShort, rackCode);
+                          let hasGoods = Boolean(
+                            (occupiedInfo && ((occupiedInfo.totalPhysical || 0) > 0 || (occupiedInfo.allocated || 0) > 0 || (occupiedInfo.occupancyPct || 0) > 0)) ||
+                            hasCustomGoods
+                          );
+
                           const matchingSelectedCode = selectedBinCodes.find((s) => normalizeBinKey(s) === normFull);
                           let embeddedPct: number | undefined;
                           if (matchingSelectedCode) {
@@ -1630,7 +1649,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             if (match) embeddedPct = Number(match[1]);
                           }
 
-                          const customPct = customConfig?.occupancyPct !== undefined && customConfig?.occupancyPct !== null ? Number(customConfig.occupancyPct) : undefined;
+                          const customPct = (customConfig?.occupancyPct !== undefined && customConfig?.occupancyPct !== null && !isStagingUnselected && !isEmptyNote)
+                            ? Number(customConfig.occupancyPct)
+                            : undefined;
 
                           let occupancyPct = 0;
                           let isOtherItemFull = false;
@@ -1660,9 +1681,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             if (mode === 'select' && !isOutbound && isDifferentProduct && occupancyPct >= 100) {
                               isOtherItemFull = true;
                             }
-                          } else if (customPct !== undefined && customPct > 0) {
+                          } else if (hasCustomGoods && customPct !== undefined && customPct > 0) {
                             occupancyPct = customPct;
-                          } else if (knownPct !== undefined && knownPct > 0) {
+                          } else if (hasGoods && knownPct !== undefined && knownPct > 0) {
                             occupancyPct = knownPct;
                           } else {
                             occupancyPct = 0;

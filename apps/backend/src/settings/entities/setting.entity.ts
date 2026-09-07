@@ -53,6 +53,45 @@ export class SystemSetting {
   @Column({ name: 'template_standard', type: 'varchar', length: 255, default: 'Kèm theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ Tài chính' })
   templateStandard: string;
 
+  @Column({ name: 'transfer_standard', type: 'varchar', length: 255, default: 'Phụ lục 5 ban hành kèm Thông tư số 153/2010/TT-BTC ngày 28/9/2010 của Bộ Tài chính' })
+  transferStandard: string;
+
+  @Column({ name: 'transfer_form_no', type: 'varchar', length: 50, default: '03XKNB' })
+  transferFormNo: string;
+
+  @Column({ name: 'transfer_symbol', type: 'varchar', length: 50, default: '6C26TNB' })
+  transferSymbol: string;
+
+  @Column({ name: 'transfer_dispatch_no', type: 'varchar', length: 100, default: '12/LĐĐ-KTTU' })
+  transferDispatchNo: string;
+
+  @Column({ name: 'transfer_dispatch_date', type: 'varchar', length: 50, default: '' })
+  transferDispatchDate: string;
+
+  @Column({ name: 'transfer_dispatch_by', type: 'varchar', length: 255, default: 'Ban Giám đốc Công ty' })
+  transferDispatchBy: string;
+
+  @Column({ name: 'transfer_dispatch_reason', type: 'varchar', length: 255, default: 'Điều chuyển hàng hóa nội bộ phục vụ sản xuất / kinh doanh' })
+  transferDispatchReason: string;
+
+  @Column({ name: 'transfer_contract_no', type: 'varchar', length: 100, default: 'HĐVC-01/2026' })
+  transferContractNo: string;
+
+  @Column({ name: 'transfer_transporter', type: 'varchar', length: 100, default: 'Tạ Văn Thanh' })
+  transferTransporter: string;
+
+  @Column({ name: 'transfer_vehicle', type: 'varchar', length: 100, default: 'Xe tải bán tải số 30L-63686' })
+  transferVehicle: string;
+
+  @Column({ name: 'transfer_creator_name', type: 'varchar', length: 100, default: 'Vũ Hữu Dũng' })
+  transferCreatorName: string;
+
+  @Column({ name: 'transfer_export_storekeeper', type: 'varchar', length: 100, default: 'Nguyễn Thị Thúy' })
+  transferExportStorekeeper: string;
+
+  @Column({ name: 'transfer_import_storekeeper', type: 'varchar', length: 100, default: 'Phạm Thị Duyên' })
+  transferImportStorekeeper: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

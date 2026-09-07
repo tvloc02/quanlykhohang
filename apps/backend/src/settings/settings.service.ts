@@ -30,6 +30,19 @@ export class SettingsService {
         chiefAccountantName: 'Trần Thị Hồng Mơ',
         directorName: 'Nguyễn Thị Thanh Xuyên',
         templateStandard: 'Kèm theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ Tài chính',
+        transferStandard: 'Phụ lục 5 ban hành kèm Thông tư số 153/2010/TT-BTC ngày 28/9/2010 của Bộ Tài chính',
+        transferFormNo: '03XKNB',
+        transferSymbol: '6C26TNB',
+        transferDispatchNo: '12/LĐĐ-KTTU',
+        transferDispatchDate: '',
+        transferDispatchBy: 'Ban Giám đốc Công ty',
+        transferDispatchReason: 'Điều chuyển hàng hóa nội bộ phục vụ sản xuất / kinh doanh',
+        transferContractNo: 'HĐVC-01/2026',
+        transferTransporter: 'Tạ Văn Thanh',
+        transferVehicle: 'Xe tải bán tải số 30L-63686',
+        transferCreatorName: 'Vũ Hữu Dũng',
+        transferExportStorekeeper: 'Nguyễn Thị Thúy',
+        transferImportStorekeeper: 'Phạm Thị Duyên',
       });
       await this.settingsRepo.save(setting);
     }

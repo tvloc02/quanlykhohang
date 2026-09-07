@@ -14,6 +14,7 @@ import {
   FileText,
   CreditCard,
   Building,
+  Truck,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
 
@@ -40,6 +41,19 @@ export default function Settings() {
     chiefAccountantName: 'Trần Thị Hồng Mơ',
     directorName: 'Nguyễn Thị Thanh Xuyên',
     templateStandard: 'Kèm theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ trưởng Bộ Tài chính',
+    transferStandard: 'Phụ lục 5 ban hành kèm Thông tư số 153/2010/TT-BTC ngày 28/9/2010 của Bộ Tài chính',
+    transferFormNo: '03XKNB',
+    transferSymbol: '6C26TNB',
+    transferDispatchNo: '12/LĐĐ-KTTU',
+    transferDispatchDate: '',
+    transferDispatchBy: 'Ban Giám đốc Công ty',
+    transferDispatchReason: 'Điều chuyển hàng hóa nội bộ phục vụ sản xuất / kinh doanh',
+    transferContractNo: 'HĐVC-01/2026',
+    transferTransporter: 'Tạ Văn Thanh',
+    transferVehicle: 'Xe tải bán tải số 30L-63686',
+    transferCreatorName: 'Vũ Hữu Dũng',
+    transferExportStorekeeper: 'Nguyễn Thị Thúy',
+    transferImportStorekeeper: 'Phạm Thị Duyên',
   });
 
   // Mail settings state
@@ -419,6 +433,205 @@ export default function Settings() {
                   placeholder="Nguyễn Thị Thanh Xuyên"
                   className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Cấu hình Mẫu Phiếu xuất kho kiêm vận chuyển nội bộ (Mẫu số 03XKNB) */}
+          <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b-2 border-slate-200 bg-cyan-50 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-cyan-600 p-2 text-white shadow-sm">
+                  <Truck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-slate-900">
+                    Cấu hình Phiếu xuất kho kiêm vận chuyển nội bộ (Mẫu số: 03XKNB)
+                  </h2>
+                  <p className="text-xs font-semibold text-slate-500">
+                    Quy chuẩn theo Phụ lục 5 ban hành kèm Thông tư số 153/2010/TT-BTC ngày 28/9/2010 của Bộ Tài chính
+                  </p>
+                </div>
+              </div>
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300 bg-cyan-100/60 px-3 py-1 text-xs font-extrabold text-cyan-800">
+                <FileText size={13} />
+                Mẫu 03XKNB
+              </span>
+            </div>
+
+            <div className="p-6 space-y-5 text-xs sm:text-sm">
+              {/* Row 1: Tiêu chuẩn pháp lý & Mẫu số / Ký hiệu */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                    Mẫu số <span className="text-rose-600 font-black">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transferFormNo}
+                    onChange={(e) => setFormData({ ...formData, transferFormNo: e.target.value })}
+                    placeholder="03XKNB"
+                    className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                    Ký hiệu mặc định <span className="text-rose-600 font-black">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transferSymbol}
+                    onChange={(e) => setFormData({ ...formData, transferSymbol: e.target.value })}
+                    placeholder="6C26TNB"
+                    className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                    Quy chuẩn biểu mẫu (Tiêu đề phụ)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transferStandard}
+                    onChange={(e) => setFormData({ ...formData, transferStandard: e.target.value })}
+                    placeholder="Phụ lục 5 ban hành kèm Thông tư số 153/2010/TT-BTC ngày 28/9/2010 của Bộ Tài chính"
+                    className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-semibold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Căn cứ Lệnh điều động & Mục đích */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                    Căn cứ lệnh điều động số
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transferDispatchNo}
+                    onChange={(e) => setFormData({ ...formData, transferDispatchNo: e.target.value })}
+                    placeholder="12/LĐĐ-KTTU"
+                    className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                    Của (Đơn vị / Cấp ra lệnh)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transferDispatchBy}
+                    onChange={(e) => setFormData({ ...formData, transferDispatchBy: e.target.value })}
+                    placeholder="Ban Giám đốc Công ty"
+                    className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                    Về việc (Mục đích điều chuyển)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transferDispatchReason}
+                    onChange={(e) => setFormData({ ...formData, transferDispatchReason: e.target.value })}
+                    placeholder="Điều chuyển hàng hóa nội bộ phục vụ sản xuất / kinh doanh"
+                    className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+              </div>
+
+              {/* Row 3: Hợp đồng vận chuyển & Phương tiện */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                    Hợp đồng số mặc định
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transferContractNo}
+                    onChange={(e) => setFormData({ ...formData, transferContractNo: e.target.value })}
+                    placeholder="HĐVC-01/2026"
+                    className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                    Phương tiện vận chuyển mặc định
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.transferVehicle}
+                    onChange={(e) => setFormData({ ...formData, transferVehicle: e.target.value })}
+                    placeholder="Xe tải bán tải số 30L-63686"
+                    className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+              </div>
+
+              {/* Row 4: 4 Chữ ký phiếu xuất kho kiêm vận chuyển nội bộ */}
+              <div className="pt-3 border-t border-slate-200">
+                <h3 className="text-xs font-black uppercase text-slate-900 mb-3 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-cyan-600" />
+                  Danh mục 4 Người ký mặc định (Theo Mẫu số 03XKNB)
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                      1. Người lập
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.transferCreatorName}
+                      onChange={(e) => setFormData({ ...formData, transferCreatorName: e.target.value })}
+                      placeholder="Vũ Hữu Dũng"
+                      className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                      2. Thủ kho xuất
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.transferExportStorekeeper}
+                      onChange={(e) => setFormData({ ...formData, transferExportStorekeeper: e.target.value })}
+                      placeholder="Nguyễn Thị Thúy"
+                      className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                      3. Người vận chuyển
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.transferTransporter}
+                      onChange={(e) => setFormData({ ...formData, transferTransporter: e.target.value })}
+                      placeholder="Tạ Văn Thanh"
+                      className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
+                      4. Thủ kho nhập
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.transferImportStorekeeper}
+                      onChange={(e) => setFormData({ ...formData, transferImportStorekeeper: e.target.value })}
+                      placeholder="Phạm Thị Duyên"
+                      className="h-11 w-full rounded-xl border-2 border-slate-300 bg-white px-4 text-xs sm:text-sm font-bold text-slate-900 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
