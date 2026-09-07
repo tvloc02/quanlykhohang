@@ -64,6 +64,7 @@ import {
   Edit3,
   HelpCircle,
   BookMarked,
+  X,
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
 
@@ -667,11 +668,13 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
 
   return (
     <aside
-      className={`${
-        isOpen ? "w-80" : "w-20"
-      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen`}
+      className={`fixed inset-y-0 left-0 z-50 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen lg:relative ${
+        isOpen
+          ? "translate-x-0 w-80 shadow-2xl lg:shadow-none"
+          : "-translate-x-full lg:translate-x-0 lg:w-20"
+      }`}
     >
-      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex justify-center lg:justify-start box-border">
+      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex items-center justify-between box-border">
         <div
           className={`flex items-center gap-3 w-full ${!isOpen ? "justify-center" : ""}`}
         >
@@ -691,6 +694,14 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
             </div>
           )}
         </div>
+        <button
+          type="button"
+          onClick={onClose || onToggle}
+          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-[#0f172a] lg:hidden flex-shrink-0 cursor-pointer"
+          title="Đóng menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
       <div className="px-4 py-4 flex-shrink-0">
