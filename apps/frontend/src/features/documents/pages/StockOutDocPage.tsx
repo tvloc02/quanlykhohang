@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { documentsApi, type StockOutDoc } from '../api/documentsApi';
 import {
-  TrendingUp,
+  ArrowUpFromLine,
   Search,
   Eye,
   Printer,
@@ -811,7 +811,7 @@ export default function StockOutDocPage() {
           <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-8">
             <div className="flex items-center justify-between bg-cyan-700 px-6 py-4 text-white print:hidden">
               <div className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
+                <ArrowUpFromLine className="h-5 w-5" />
                 <h3 className="font-bold text-base">Chi Tiết Phiếu Xuất Kho: {previewDoc.noteNo || (previewDoc as any).dispatchNo || ''}</h3>
               </div>
               <div className="flex items-center gap-3">

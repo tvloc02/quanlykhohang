@@ -38,7 +38,7 @@ import {
   MapPin,
   Boxes,
   Warehouse,
-  TrendingDown,
+  ArrowDownToLine,
   CornerUpRight,
   CornerDownLeft,
   Repeat,
@@ -130,6 +130,19 @@ function StatusBadge({ status, featureMode }: { status?: string; featureMode?: s
     </span>
   );
 }
+
+export const isCompletedInboundStatus = (status?: string): boolean => {
+  if (!status) return false;
+  const s = String(status).trim().toLowerCase();
+  return (
+    s === 'completed' ||
+    s === 'received' ||
+    s === 'đã nhập kho' ||
+    s === 'đã xuất trả' ||
+    s === 'shipped' ||
+    s === 'done'
+  );
+};
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -409,7 +422,7 @@ export default function Inbound({
   const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
 
-  const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' = 'create', id?: string) => {
+  const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' | 'view' = 'create', id?: string | number) => {
     if (modeAction === 'create') {
       sessionStorage.removeItem('inbound_tabs_draft');
       sessionStorage.removeItem('inbound_active_tab_id');
@@ -417,12 +430,16 @@ export default function Inbound({
       sessionStorage.removeItem('outbound_active_tab_id');
       sessionStorage.removeItem('outbound_draft_mode');
     }
-    if (modeAction === 'edit' && id) {
-      setSearchParams({ action: 'edit', id });
+    if ((modeAction === 'edit' || modeAction === 'view') && id) {
+      setSearchParams({ action: modeAction, id: String(id) });
     } else {
       setSearchParams({ action: 'create' });
     }
   }, [setSearchParams]);
+
+  const handleViewOrderFullPage = useCallback((ord: InboundReceiptOrder) => {
+    handleOpenFormModal('view', ord.id);
+  }, [handleOpenFormModal]);
 
   const handleCloseFormModal = useCallback(() => {
     sessionStorage.removeItem('inbound_tabs_draft');
@@ -1007,6 +1024,12 @@ export default function Inbound({
   };
 
   const handleEditOrder = (ord: InboundReceiptOrder) => {
+    if (isCompletedInboundStatus(ord.status)) {
+      setToast({ message: 'Phiếu nhập kho này đã hoàn thành, chỉ hỗ trợ xem chi tiết!', type: 'error' });
+      handleViewOrderFullPage(ord);
+      return;
+    }
+
     const existingDetails: FormDetailRow[] = ord.details && ord.details.length > 0
       ? ord.details.map((d, idx) => ({
         rowId: `row-edit-${idx}-${Date.now()}`,
@@ -1120,11 +1143,21 @@ export default function Inbound({
 
   const handleViewDetail = async (ord: InboundReceiptOrder, openLocationOnly = false) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${ord.id}`, {
+      let fullPO: any = null;
+      const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${ord.id}`, {
         headers: authHeaders(),
-      });
-      if (res.ok) {
-        const fullPO = await res.json();
+      }).catch(() => null);
+      if (poRes && poRes.ok) {
+        fullPO = await poRes.json();
+      } else {
+        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${ord.id}`, {
+          headers: authHeaders(),
+        }).catch(() => null);
+        if (stockInRes && stockInRes.ok) {
+          fullPO = await stockInRes.json();
+        }
+      }
+      if (fullPO) {
         const rawDetails = fullPO.details || fullPO.items || [];
         const formattedDetails = rawDetails.map((d: any) => {
           const productSku = d.product?.internalSku || d.productSku || d.sku || 'SKU';
@@ -1669,7 +1702,7 @@ export default function Inbound({
               ) : featureMode === 'assembly' ? (
                 <LinkIcon className="h-5 w-5" />
               ) : (
-                <TrendingDown className="h-5 w-5" />
+                <ArrowDownToLine className="h-5 w-5" />
               )}
               <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
             </div>
@@ -1901,10 +1934,17 @@ export default function Inbound({
                 ) : (
                   paginatedOrders.map((ord, index) => {
                     const isSelected = selectedIds.has(ord.id);
+                    const isCompleted = isCompletedInboundStatus(ord.status);
                     return (
                       <React.Fragment key={ord.id}>
                         <tr
-                          onClick={() => handleEditOrder(ord)}
+                          onClick={() => {
+                            if (isCompleted) {
+                              handleViewOrderFullPage(ord);
+                            } else {
+                              handleEditOrder(ord);
+                            }
+                          }}
                           className={`group transition cursor-pointer border-b border-slate-200 dark:border-indigo-900/40 ${isSelected ? 'bg-cyan-100/60 dark:bg-indigo-950/70' : 'hover:bg-cyan-50/60 dark:hover:bg-indigo-950/40'}`}
                         >
                           <td className="border-r border-slate-200 dark:border-indigo-900/40 px-2 py-3.5 text-center print:hidden" onClick={(e) => e.stopPropagation()}>
@@ -1924,10 +1964,14 @@ export default function Inbound({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleEditOrder(ord);
+                                  if (isCompleted) {
+                                    handleViewOrderFullPage(ord);
+                                  } else {
+                                    handleEditOrder(ord);
+                                  }
                                 }}
                                 className="text-cyan-700 dark:text-indigo-300 hover:text-cyan-900 dark:hover:text-indigo-100 hover:underline font-extrabold text-center cursor-pointer whitespace-nowrap"
-                                title="Bấm để mở và chỉnh sửa phiếu nhập kho"
+                                title={isCompleted ? "Bấm để xem chi tiết phiếu nhập kho" : "Bấm để mở và chỉnh sửa phiếu nhập kho"}
                               >
                                 {ord.receiptNo}
                               </button>
@@ -1955,14 +1999,24 @@ export default function Inbound({
                           )}
                           <td className="sticky right-0 z-10 w-56 min-w-[210px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                             <div className="flex items-center justify-center gap-1.5">
-                              {canEdit && (
+                              {/* Nút Sửa: Nếu hoàn thành thì nút sửa chìm, còn nếu nháp thì nút sửa sáng và sửa được bình thường */}
+                              {isCompleted ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  title="Phiếu nhập kho đã hoàn thành, không thể chỉnh sửa"
+                                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 opacity-40 cursor-not-allowed shadow-none"
+                                >
+                                  <Pencil size={16} strokeWidth={2} />
+                                </button>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleEditOrder(ord);
                                   }}
-                                  title="Chỉnh sửa phiếu nhập kho"
+                                  title="Chỉnh sửa phiếu nhập kho (Đơn nháp)"
                                   className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 shadow-sm transition cursor-pointer"
                                 >
                                   <Pencil size={16} strokeWidth={2.5} />
@@ -1972,9 +2026,9 @@ export default function Inbound({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleEditOrder(ord);
+                                  handleViewOrderFullPage(ord);
                                 }}
-                                title="Xem & chỉnh sửa phiếu nhập kho"
+                                title="Xem chi tiết phiếu nhập kho"
                                 className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
                                 <Eye size={16} strokeWidth={2.5} />
@@ -1985,10 +2039,10 @@ export default function Inbound({
                                   e.stopPropagation();
                                   handleViewDetail(ord, true);
                                 }}
-                                title="Xem vị trí xếp kho & ô kệ"
+                                title="Xem vị trí lưu kệ & ô kho"
                                 className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
-                                <MapPin size={16} strokeWidth={2.5} />
+                                <Boxes size={16} strokeWidth={2.5} />
                               </button>
                               {canPrint && (
                                 <button

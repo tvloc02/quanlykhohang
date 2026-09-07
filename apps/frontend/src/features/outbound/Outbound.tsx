@@ -36,7 +36,7 @@ import {
   ShoppingCart,
   User,
   CreditCard,
-  TrendingUp,
+  ArrowUpFromLine,
   PackageCheck,
   Receipt,
   FileX,
@@ -1544,7 +1544,7 @@ export default function Outbound({
                 ) : featureMode === 'transfer-out' ? (
                   <Send className="h-5 w-5 text-cyan-100" />
                 ) : (
-                  <TrendingUp className="h-5 w-5 text-cyan-100" />
+                  <ArrowUpFromLine className="h-5 w-5 text-cyan-100" />
                 )}
                 <h1 className="text-lg font-bold tracking-tight text-white">{title}</h1>
               </div>

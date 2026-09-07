@@ -32,7 +32,7 @@ import {
   Check,
   Calendar,
   Hash,
-  TrendingUp,
+  ArrowUpFromLine,
   TrendingDown,
   FileX,
 } from 'lucide-react';
@@ -1674,7 +1674,7 @@ export default function CreateOutboundOrderPage({
             {isDisposal ? (
               <FileX className="h-5 w-5 text-cyan-100 dark:text-indigo-200" />
             ) : (
-              <TrendingUp className="h-5 w-5 text-cyan-100 dark:text-indigo-200" />
+              <ArrowUpFromLine className="h-5 w-5 text-cyan-100 dark:text-indigo-200" />
             )}
             <h1 className="text-base font-black tracking-tight uppercase">
               {isDisposal ? (title || 'TẠO PHIẾU XUẤT HỦY HÀNG HÓA') : 'TẠO PHIẾU XUẤT HÀNG HÓA'}

@@ -48,7 +48,7 @@ export class DashboardService {
     @InjectRepository(Role) private roleRepo: Repository<Role>,
     @InjectRepository(User) private userRepo: Repository<User>,
     @InjectRepository(Warehouse) private warehouseRepo: Repository<Warehouse>,
-  ) {}
+  ) { }
 
   async getDashboardOverview() {
     const [
