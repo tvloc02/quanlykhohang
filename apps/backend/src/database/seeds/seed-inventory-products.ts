@@ -16,9 +16,9 @@ export async function runInventorySeed() {
   const ds = new DataSource({
     type: "mysql",
     url: databaseUrl,
-    ssl: isSsl ? { rejectUnauthorized: true } : false,
+    ssl: isSsl ? { rejectUnauthorized: false } : false,
     extra: {
-      ssl: isSsl ? { rejectUnauthorized: true } : false,
+      ssl: isSsl ? { rejectUnauthorized: false } : false,
     },
   });
 

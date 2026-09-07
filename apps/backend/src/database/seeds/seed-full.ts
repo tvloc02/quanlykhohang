@@ -21,9 +21,9 @@ export async function runSeed() {
   const ds = new DataSource({
     type: "mysql",
     url: databaseUrl,
-    ssl: isSsl ? { rejectUnauthorized: true } : false,
+    ssl: isSsl ? { rejectUnauthorized: false } : false,
     extra: {
-      ssl: isSsl ? { rejectUnauthorized: true } : false,
+      ssl: isSsl ? { rejectUnauthorized: false } : false,
     },
   });
 

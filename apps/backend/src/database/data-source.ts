@@ -20,9 +20,9 @@ export const AppDataSource = new DataSource({
   migrations: [__dirname + "/../../migrations/*{.ts,.js}"],
   synchronize: false,
   logging: false,
-  ssl: isSsl ? { rejectUnauthorized: true } : false,
+  ssl: isSsl ? { rejectUnauthorized: false } : false,
   extra: {
-    ssl: isSsl ? { rejectUnauthorized: true } : false,
+    ssl: isSsl ? { rejectUnauthorized: false } : false,
   },
 });
 

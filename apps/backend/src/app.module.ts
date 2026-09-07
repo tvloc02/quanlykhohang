@@ -42,15 +42,15 @@ import { SettingsModule } from "./settings/settings.module";
       ssl:
         process.env.DB_SSL === "true" ||
         process.env.DATABASE_URL?.includes("tidbcloud") ||
-        process.env.DATABASE_URL?.includes("ssl=")
-          ? { rejectUnauthorized: true }
+        process.env.DATABASE_URL?.includes("ssl")
+          ? { rejectUnauthorized: false }
           : false,
       extra: {
         ssl:
           process.env.DB_SSL === "true" ||
           process.env.DATABASE_URL?.includes("tidbcloud") ||
-          process.env.DATABASE_URL?.includes("ssl=")
-            ? { rejectUnauthorized: true }
+          process.env.DATABASE_URL?.includes("ssl")
+            ? { rejectUnauthorized: false }
             : false,
       },
     }),
