@@ -333,9 +333,14 @@ export class DashboardService {
   /**
    * BÁO CÁO BÁN HÀNG (REAL DATABASE QUERY)
    */
+  /**
+   * BÁO CÁO BÁN HÀNG (REAL DATABASE QUERY)
+   */
   async getSalesReport(startDate?: string, endDate?: string, groupBy: string = 'day') {
     const qb = this.outboundRepo.createQueryBuilder('o')
       .leftJoin('o.details', 'd')
+      .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
+      .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
       .select('DATE(o.createdAt)', 'date')
       .addSelect('COUNT(DISTINCT o.id)', 'salesOrderCount')
       .addSelect('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'revenue')
@@ -377,6 +382,8 @@ export class DashboardService {
       .leftJoin('o.details', 'd')
       .leftJoin('o.customer', 'c')
       .leftJoin('warehouses', 'w', 'w.code = d.warehouseCode')
+      .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
+      .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
       .select("COALESCE(w.name, d.warehouseCode, 'Kho không xác định')", 'groupName')
       .addSelect("COALESCE(w.code, d.warehouseCode, '')", 'groupCode')
       .addSelect("COALESCE(c.name, 'Khách hàng')", 'staffName')
@@ -446,14 +453,31 @@ export class DashboardService {
   }
 
   async getCashflowReport(startDate?: string, endDate?: string, branch?: string) {
+    const sDate = parseSafeDate(startDate);
+    const eDate = parseSafeDate(endDate);
+
+    const inboundQb = this.inboundRepo.createQueryBuilder('i')
+      .select('COALESCE(SUM(CAST(i.totalAmount AS DECIMAL(15,2))), 0)', 'total');
+    const outboundQb = this.outboundRepo.createQueryBuilder('o')
+      .leftJoin('o.details', 'd')
+      .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
+      .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
+      .select('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'total');
+
+    if (sDate) {
+      inboundQb.andWhere('i.createdAt >= :sDate', { sDate });
+      outboundQb.andWhere('o.createdAt >= :sDate', { sDate });
+    }
+    if (eDate) {
+      const endOfDay = new Date(eDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      inboundQb.andWhere('i.createdAt <= :eDate', { eDate: endOfDay });
+      outboundQb.andWhere('o.createdAt <= :eDate', { eDate: endOfDay });
+    }
+
     const [inboundTotal, outboundTotal] = await Promise.all([
-      this.inboundRepo.createQueryBuilder('i')
-        .select('COALESCE(SUM(CAST(i.totalAmount AS DECIMAL(15,2))), 0)', 'total')
-        .getRawOne<{ total: string }>().catch(() => ({ total: '0' })),
-      this.outboundRepo.createQueryBuilder('o')
-        .leftJoin('o.details', 'd')
-        .select('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'total')
-        .getRawOne<{ total: string }>().catch(() => ({ total: '0' })),
+      inboundQb.getRawOne<{ total: string }>().catch(() => ({ total: '0' })),
+      outboundQb.getRawOne<{ total: string }>().catch(() => ({ total: '0' })),
     ]);
 
     const income = Number(outboundTotal?.total || 0);
@@ -616,8 +640,54 @@ export class DashboardService {
     const customers = await this.customerRepo.find();
     const outbounds = await this.outboundRepo.find({ relations: ['customer'] });
 
-    return customers.map((c, idx) => {
-      const custOrders = outbounds.filter(o => o.customer?.id === c.id || o.customerName === c.name);
+    const sDate = parseSafeDate(startDate);
+    const eDate = parseSafeDate(endDate);
+
+    // Chỉ tính toán các đơn xuất bán thực tế, loại bỏ hoàn toàn đơn xuất hủy (disposal) và chuyển kho nội bộ
+    const validSalesOrders = outbounds.filter((o) => {
+      const orderType = (o.orderType || '').toLowerCase();
+      const orderNo = (o.orderNo || '').toUpperCase();
+      const status = (o.status || '').toLowerCase();
+
+      // Loại bỏ đơn xuất hủy
+      if (orderType === 'disposal' || orderNo.startsWith('XH') || status.includes('xuất hủy')) {
+        return false;
+      }
+      // Loại bỏ đơn chuyển kho nội bộ
+      if (orderType === 'transfer-out' || orderNo.startsWith('XCK')) {
+        return false;
+      }
+
+      // Lọc theo khoảng ngày nếu có
+      if (sDate || eDate) {
+        const orderDateVal = o.orderDate || o.createdAt;
+        if (orderDateVal) {
+          const d = new Date(orderDateVal);
+          if (sDate && d < sDate) return false;
+          if (eDate) {
+            const endOfDay = new Date(eDate);
+            endOfDay.setHours(23, 59, 59, 999);
+            if (d > endOfDay) return false;
+          }
+        }
+      }
+
+      return true;
+    });
+
+    // Lọc bỏ các bản ghi khách hàng rác phát sinh do xuất hủy tạo nhầm (chứa từ khóa hết hạn, tiêu hủy, hư hỏng)
+    const validCustomers = customers.filter((c) => {
+      const cName = (c.name || '').toLowerCase();
+      if (cName.includes('hết hạn') || cName.includes('tiêu hủy') || cName.includes('hư hỏng') || cName.includes('xuất hủy')) {
+        return false;
+      }
+      return true;
+    });
+
+    return validCustomers.map((c, idx) => {
+      const custOrders = validSalesOrders.filter(
+        (o) => o.customer?.id === c.id || (o.customerName && o.customerName.trim().toLowerCase() === c.name.trim().toLowerCase())
+      );
       const totalRevenue = custOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
       const paid = custOrders.reduce((sum, o) => sum + Number(o.amountPaid || o.totalAmount || 0), 0);
       const debt = Math.max(0, totalRevenue - paid);
@@ -692,6 +762,13 @@ export class DashboardService {
     const logs: any[] = [];
 
     outboundRes.forEach((o) => {
+      const orderType = (o.orderType || '').toLowerCase();
+      const orderNo = (o.orderNo || '').toUpperCase();
+      // Loại trừ đơn xuất hủy vì xuất hủy không thu tiền bán hàng
+      if (orderType === 'disposal' || orderNo.startsWith('XH')) {
+        return;
+      }
+
       const amt = Number(o.amountPaid || o.totalAmount || 0);
       if (amt > 0) {
         logs.push({
@@ -793,6 +870,13 @@ export class DashboardService {
     let counter = 1;
 
     outbounds.forEach((o) => {
+      const orderType = (o.orderType || '').toLowerCase();
+      const orderNo = (o.orderNo || '').toUpperCase();
+      // Loại trừ đơn xuất hủy vì xuất hủy không phải hàng bán ra
+      if (orderType === 'disposal' || orderNo.startsWith('XH')) {
+        return;
+      }
+
       const details = o.details || [];
       details.forEach((d) => {
         const qty = Number(d.requiredQty || d.pickedQty || 1);
@@ -823,6 +907,13 @@ export class DashboardService {
     const staffMap = new Map<string, { orders: number; revenue: number; discount: number }>();
 
     outbounds.forEach((o) => {
+      const orderType = (o.orderType || '').toLowerCase();
+      const orderNo = (o.orderNo || '').toUpperCase();
+      // Loại trừ đơn xuất hủy khỏi doanh số nhân viên
+      if (orderType === 'disposal' || orderNo.startsWith('XH')) {
+        return;
+      }
+
       const staff = o.employeeName || 'Quản trị viên hệ thống';
       const rev = Number(o.totalAmount || 0);
       const disc = Number(o.discount || 0);

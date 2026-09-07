@@ -49,6 +49,14 @@ export class OutboundItemDto {
 
   @IsOptional()
   @IsNumber()
+  lossAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  totalDisposalAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
   discountPercent?: number;
 
   @IsOptional()

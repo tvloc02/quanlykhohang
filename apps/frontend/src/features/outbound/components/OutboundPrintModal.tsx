@@ -229,7 +229,7 @@ export default function OutboundPrintModal({
           <div className="space-y-1.5 text-xs sm:text-sm text-slate-900 mb-3 border-t border-slate-300 pt-2">
             <div className="grid grid-cols-12 gap-2">
               <div className="col-span-6 flex">
-                <span className="shrink-0 text-slate-700">Họ và tên người nhận hàng:</span>
+                <span className="shrink-0 text-slate-700">{isDisposal ? 'Người thực hiện / Hội đồng:' : 'Họ và tên người nhận hàng:'}</span>
                 <span className="font-bold ml-2 text-slate-950 truncate">
                   {nfc(order.customer || settings.receiverName || 'Nguyễn Thị Thúy')}
                 </span>
@@ -243,7 +243,7 @@ export default function OutboundPrintModal({
             </div>
 
             <div className="flex">
-              <span className="shrink-0 text-slate-700">Lý do xuất kho:</span>
+              <span className="shrink-0 text-slate-700">{isDisposal ? 'Lý do xuất hủy:' : 'Lý do xuất kho:'}</span>
               <span className="font-semibold ml-2 text-slate-950">
                 {nfc(order.description || (isDisposal ? 'Xuất hủy hàng hỏng / hết hạn sử dụng' : 'Xuất bán hàng hóa theo đơn'))}
               </span>
@@ -269,9 +269,8 @@ export default function OutboundPrintModal({
               className="w-full border-collapse text-xs sm:text-sm text-slate-900 text-left"
               style={{ borderCollapse: 'collapse', border: '1px solid #000000', width: '100%' }}
             >
-              <thead>
-                {/* Dòng tiêu đề 1 */}
-                <tr className="bg-[#fef9c3] print:bg-[#fef9c3] font-bold text-center text-slate-950">
+              <thead className="bg-[#fef08a] print:bg-[#fef08a] text-slate-950 font-bold uppercase text-[11px] sm:text-xs">
+                <tr>
                   <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-10">STT</th>
                   <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center min-w-[180px]">
                     Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ, sản phẩm, hàng hóa
@@ -285,8 +284,11 @@ export default function OutboundPrintModal({
                       <span style={{ padding: '4px', width: '50%' }} className="font-bold">Thực xuất</span>
                     </div>
                   </th>
-                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-28">Đơn giá</th>
-                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-32">Thành tiền</th>
+                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-28">{isDisposal ? 'Giá nhập' : 'Đơn giá'}</th>
+                  <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-32">{isDisposal ? 'Thất thoát' : 'Thành tiền'}</th>
+                  {isDisposal && (
+                    <th style={{ border: '1px solid #000000', padding: '6px' }} className="text-center w-32">Tổng</th>
+                  )}
                 </tr>
                 {/* Dòng đánh mã cột A B C D 1 2 3 4 */}
                 <tr className="bg-[#fef08a] print:bg-[#fef08a] text-center italic text-xs font-semibold text-slate-800">
@@ -298,11 +300,14 @@ export default function OutboundPrintModal({
                   <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center w-14">2</th>
                   <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">3</th>
                   <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">4</th>
+                  {isDisposal && <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">5</th>}
                 </tr>
               </thead>
               <tbody>
                 {details.map((d, i) => {
                   const lineTotal = d.totalLineAmount || (d.qty * d.price);
+                  const lossVal = (d as any).lossAmount !== undefined && (d as any).lossAmount !== null ? Number((d as any).lossAmount) : lineTotal;
+                  const totalVal = (d as any).totalDisposalAmount !== undefined && (d as any).totalDisposalAmount !== null ? Number((d as any).totalDisposalAmount) : (Number(d.price || 0) + lineTotal);
                   return (
                     <tr key={i} className="hover:bg-slate-50 transition">
                       <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center font-medium">{i + 1}</td>
@@ -319,8 +324,13 @@ export default function OutboundPrintModal({
                         {Number(d.price || 0).toLocaleString('vi-VN')}
                       </td>
                       <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-right font-bold text-slate-950">
-                        {lineTotal.toLocaleString('vi-VN')}
+                        {lossVal.toLocaleString('vi-VN')}
                       </td>
+                      {isDisposal && (
+                        <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-right font-bold text-rose-700">
+                          {totalVal.toLocaleString('vi-VN')}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -336,6 +346,7 @@ export default function OutboundPrintModal({
                     <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
                     <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
                     <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>
+                    {isDisposal && <td style={{ border: '1px solid #000000', padding: '4px' }}>&nbsp;</td>}
                   </tr>
                 ))}
 
@@ -353,6 +364,11 @@ export default function OutboundPrintModal({
                   <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-right font-black text-base">
                     {totalAmount.toLocaleString('vi-VN')}
                   </td>
+                  {isDisposal && (
+                    <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-right font-black text-base text-rose-700">
+                      {details.reduce((acc, cur) => acc + Number(cur.price || 0) + (cur.totalLineAmount || (cur.qty * cur.price)), 0).toLocaleString('vi-VN')}
+                    </td>
+                  )}
                 </tr>
               </tbody>
             </table>
@@ -361,7 +377,7 @@ export default function OutboundPrintModal({
           {/* Tổng tiền viết bằng chữ & Chứng từ gốc */}
           <div className="space-y-1 text-xs sm:text-sm text-slate-900 mb-4">
             <p>
-              Tổng số tiền <span className="italic">(Viết bằng chữ)</span>:{' '}
+              {isDisposal ? 'Tổng thất thoát' : 'Tổng số tiền'} <span className="italic">(Viết bằng chữ)</span>:{' '}
               <strong className="italic font-bold text-slate-950">{nfc(totalAmountWords)}</strong>
             </p>
             <p>

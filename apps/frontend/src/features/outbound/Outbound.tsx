@@ -364,7 +364,7 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', 
     orderNo: isDisposal ? `XH_${Math.floor(100 + Math.random() * 900)}` : '',
     branchCode: 'KHO-TONG',
     employeeName: currentUserName || 'Quản lý kho',
-    customer: isDisposal ? 'Hàng hết hạn sử dụng (HSD)' : 'Khách hàng bán lẻ',
+    customer: isDisposal ? 'Xuất hủy nội bộ' : 'Khách hàng bán lẻ',
     customerPhone: '',
     customerAddress: '',
     orderDate: dateFormatted,
@@ -1728,7 +1728,7 @@ export default function Outbound({
                     {isDisposal ? (
                       <>
                         <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Tổng SL hủy</th>
-                        <th className="min-w-[170px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Giá trị hủy (đ)</th>
+                        <th className="min-w-[170px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Thất thoát (đ)</th>
                       </>
                     ) : (
                       <>
@@ -1954,7 +1954,7 @@ export default function Outbound({
                         <td className="p-3 text-center font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
                           {reportTotals.totalQty.toLocaleString('vi-VN')}
                         </td>
-                        <td className="p-3 text-right font-black text-cyan-950 dark:text-indigo-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                        <td className="p-3 text-right font-black text-rose-600 dark:text-rose-400 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
                           {reportTotals.totalAmount.toLocaleString('vi-VN')} đ
                         </td>
                       </>
@@ -2301,8 +2301,11 @@ export default function Outbound({
                       <th className="p-3 text-center w-16 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">ĐVT</th>
                       <th className="p-3 text-center w-36 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">Vị trí kệ lấy hàng</th>
                       <th className="p-3 text-center w-20 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">SL {isDisposal ? 'hủy' : 'xuất'}</th>
-                      <th className="p-3 text-center w-28 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">{isDisposal ? 'Giá vốn ước tính' : 'Đơn giá'}</th>
-                      <th className="p-3 text-center w-32 whitespace-nowrap">{isDisposal ? 'Giá trị thiệt hại' : 'Thành tiền'}</th>
+                      <th className="p-3 text-center w-28 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">{isDisposal ? 'Giá nhập (đ)' : 'Đơn giá'}</th>
+                      <th className={`p-3 text-center w-32 whitespace-nowrap ${isDisposal ? 'border-r border-cyan-500 dark:border-indigo-800' : ''}`}>{isDisposal ? 'Thất thoát (đ)' : 'Thành tiền'}</th>
+                      {isDisposal && (
+                        <th className="p-3 text-center w-32 whitespace-nowrap">Tổng (đ)</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40 bg-white dark:bg-slate-950">
@@ -2319,14 +2322,21 @@ export default function Outbound({
                         </td>
                         <td className="p-2.5 text-center font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40">{d.qty}</td>
                         <td className="p-2.5 text-right font-semibold text-slate-800 dark:text-slate-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">{d.price.toLocaleString('vi-VN')} đ</td>
-                        <td className="p-2.5 text-right font-black text-cyan-900 dark:text-indigo-300 whitespace-nowrap">{(d.qty * d.price).toLocaleString('vi-VN')} đ</td>
+                        <td className={`p-2.5 text-right font-black text-rose-600 dark:text-rose-400 whitespace-nowrap ${isDisposal ? 'border-r border-slate-200 dark:border-indigo-900/40' : ''}`}>
+                          {((d as any).lossAmount !== undefined && (d as any).lossAmount !== null ? Number((d as any).lossAmount) : (d.qty * d.price)).toLocaleString('vi-VN')} đ
+                        </td>
+                        {isDisposal && (
+                          <td className="p-2.5 text-right font-black text-rose-700 dark:text-rose-300 bg-rose-50/40 dark:bg-rose-950/30 whitespace-nowrap">
+                            {((d as any).totalDisposalAmount !== undefined && (d as any).totalDisposalAmount !== null ? Number((d as any).totalDisposalAmount) : (Number(d.price || 0) + (d.qty * d.price))).toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <div className="flex justify-end text-sm font-black text-slate-900 dark:text-slate-100 border-t-2 border-slate-200 dark:border-indigo-900/60 pt-3">
-                {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng giá trị: '}
+                {isDisposal ? 'Tổng thất thoát: ' : 'Tổng giá trị: '}
                 <span className={isDisposal ? 'text-rose-600 dark:text-rose-400 ml-2 font-black text-base' : 'text-cyan-700 dark:text-indigo-400 ml-2 font-black text-base'}>
                   {selectedOrder.totalAmount.toLocaleString('vi-VN')} đ
                 </span>

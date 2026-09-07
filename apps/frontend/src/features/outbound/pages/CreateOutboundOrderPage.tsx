@@ -225,6 +225,8 @@ export interface FormDetailRow {
   unit: string;
   qty: number;
   price: number;
+  lossAmount?: number;
+  totalDisposalAmount?: number;
   discountPercent: number;
   discountAmount: number;
   vatPercent: number;
@@ -415,6 +417,8 @@ function makeEmptyRow(index: number, defaultWhCode = 'KHO-TONG'): FormDetailRow 
     unit: 'Cái',
     qty: 0,
     price: 0,
+    lossAmount: 0,
+    totalDisposalAmount: 0,
     discountPercent: 0,
     discountAmount: 0,
     vatPercent: 0,
@@ -451,7 +455,7 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administra
     orderNo: defaultOrderNo,
     branchCode: 'KHO-TONG',
     employeeName: currentUserName || 'System Administrator',
-    customer: isReturnSupplier ? '' : (isDisposal ? 'Hàng hết hạn sử dụng (HSD)' : 'Khách hàng bán lẻ'),
+    customer: isReturnSupplier ? '' : (isDisposal ? 'Xuất hủy nội bộ' : 'Khách hàng bán lẻ'),
     customerPhone: '',
     customerAddress: '',
     orderDate: dateFormatted,
@@ -493,14 +497,14 @@ export default function CreateOutboundOrderPage({
   const isReturnSupplier = featureMode === 'return-supplier' || orderType === 'return-supplier' || partnerLabel === 'Nhà cung cấp';
 
   const getProductPriceForMode = useCallback((p: ProductOption) => {
-    if (isReturnSupplier) {
-      return p.purchasePrice || (p as any).importPrice || 0;
+    if (isDisposal || isReturnSupplier) {
+      return p.purchasePrice || (p as any).importPrice || (p as any).costPrice || 0;
     }
     if (isRetail) {
       return p.salePrice || p.price || 0;
     }
     return (p.wholesalePrice && p.wholesalePrice > 0) ? p.wholesalePrice : (p.salePrice || p.price || 0);
-  }, [isReturnSupplier, isRetail]);
+  }, [isDisposal, isReturnSupplier, isRetail]);
 
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'System Administrator';
@@ -857,6 +861,17 @@ export default function CreateOutboundOrderPage({
         const price = Number(newRow.price) || 0;
         const lineTotalBeforeDisc = qty * price;
 
+        if (isDisposal) {
+          if (patch.lossAmount !== undefined) {
+            newRow.lossAmount = patch.lossAmount;
+          } else if (patch.qty !== undefined || patch.price !== undefined || patch.productId !== undefined) {
+            newRow.lossAmount = qty * price;
+          } else if (newRow.lossAmount === undefined) {
+            newRow.lossAmount = qty * price;
+          }
+          newRow.totalDisposalAmount = price + Number(newRow.lossAmount || 0);
+        }
+
         const discPercent = Number(newRow.discountPercent) || 0;
         const discAmount = (lineTotalBeforeDisc * discPercent) / 100;
 
@@ -910,7 +925,8 @@ export default function CreateOutboundOrderPage({
     const barcodeVal = scanned.supplierBarcode || scanned.internalSku || '';
     const rawRetail = scanned.salePrice || scanned.purchasePrice || 0;
     const rawWholesale = (scanned as any).wholesalePrice || rawRetail;
-    const priceVal = isRetail ? rawRetail : (rawWholesale > 0 ? rawWholesale : rawRetail);
+    const rawPurchase = scanned.purchasePrice || (scanned as any).importPrice || 0;
+    const priceVal = (isDisposal || isReturnSupplier) ? rawPurchase : (isRetail ? rawRetail : (rawWholesale > 0 ? rawWholesale : rawRetail));
 
     // 1. Ưu tiên kiểm tra sản phẩm đã có trong bảng chưa, nếu có thì cộng dồn số lượng
     const existingIndex = activeTab.details.findIndex(
@@ -1047,10 +1063,10 @@ export default function CreateOutboundOrderPage({
   // Tổng tiền gốc chưa chiết khấu/VAT
   const baseSubtotal = useMemo(() => {
     return activeValidItems.reduce(
-      (s, r) => s + (Number(r.qty) || 0) * (Number(r.price) || 0),
+      (s, r) => s + (isDisposal ? Number(r.lossAmount !== undefined && r.lossAmount !== null ? r.lossAmount : ((Number(r.qty) || 0) * (Number(r.price) || 0))) : ((Number(r.qty) || 0) * (Number(r.price) || 0))),
       0
     );
-  }, [activeValidItems]);
+  }, [activeValidItems, isDisposal]);
 
   // Tổng chiết khấu của tất cả các dòng
   const totalRowDiscount = useMemo(() => {
@@ -1122,7 +1138,7 @@ export default function CreateOutboundOrderPage({
           orderType: 'disposal',
           branchCode: activeTab.branchCode || 'KHO-TONG',
           employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
-          customerName: disposalReasonSelect || 'Hàng hết hạn / Hư hỏng',
+          customerName: 'Xuất hủy nội bộ',
           orderDate: activeTab.orderDate,
           expectedDate: activeTab.orderDate,
           status: activeTab.status || 'Đã xuất hủy',
@@ -1133,18 +1149,25 @@ export default function CreateOutboundOrderPage({
           vatAmount: 0,
           totalAmount: subtotal,
           amountPaid: 0,
-          details: activeValidItems.map((r) => ({
-            productId: r.productId,
-            productSku: r.productSku,
-            productName: r.productName,
-            warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
-            locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
-            assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
-            unit: r.unit,
-            qty: Number(r.qty),
-            price: Number(r.price),
-            note: r.note,
-          })),
+          details: activeValidItems.map((r) => {
+            const lineLoss = r.lossAmount !== undefined && r.lossAmount !== null ? Number(r.lossAmount) : (Number(r.qty) * Number(r.price));
+            const lineTotal = Number(r.price) + lineLoss;
+            return {
+              productId: r.productId,
+              productSku: r.productSku,
+              productName: r.productName,
+              warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
+              locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
+              assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
+              unit: r.unit,
+              qty: Number(r.qty),
+              price: Number(r.price),
+              lossAmount: lineLoss,
+              totalDisposalAmount: lineTotal,
+              totalLineAmount: lineTotal,
+              note: r.note,
+            };
+          }),
         }
       : {
           orderNo: finalOrderNo,
@@ -2038,7 +2061,7 @@ export default function CreateOutboundOrderPage({
                       {isDisposal ? 'SL HỦY' : 'SỐ LƯỢNG'}
                     </th>
                     <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
-                      {isDisposal ? 'GIÁ VỐN (đ)' : (isReturnSupplier ? 'GIÁ NHẬP (đ)' : 'ĐƠN GIÁ (đ)')}
+                      {isDisposal ? 'GIÁ NHẬP (đ)' : (isReturnSupplier ? 'GIÁ NHẬP (đ)' : 'ĐƠN GIÁ (đ)')}
                     </th>
                     {!isDisposal && (
                       <>
@@ -2047,14 +2070,16 @@ export default function CreateOutboundOrderPage({
                       </>
                     )}
                     <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
-                      {isDisposal ? 'GIÁ TRỊ HỦY' : 'THÀNH TIỀN'}
-                    </th>
-                    <th className="p-2 w-56 min-w-[200px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
-                      {isDisposal ? 'TÌNH TRẠNG / LÝ DO HỦY' : 'GHI CHÚ'}
+                      {isDisposal ? 'THẤT THOÁT (đ)' : 'THÀNH TIỀN'}
                     </th>
                     {isDisposal && (
-                      <th className="p-2 w-36 min-w-[120px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">BIÊN BẢN / GHI CHÚ</th>
+                      <th className="p-2 w-36 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
+                        TỔNG (đ)
+                      </th>
                     )}
+                    <th className="p-2 w-64 min-w-[220px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
+                      {isDisposal ? 'LÝ DO HỦY / GHI CHÚ' : 'GHI CHÚ'}
+                    </th>
                     <th className="p-2.5 w-24 text-center bg-slate-100 dark:bg-slate-950 min-w-[90px]">THAO TÁC</th>
                   </tr>
                 </thead>
@@ -2250,33 +2275,43 @@ export default function CreateOutboundOrderPage({
                           </>
                         )}
 
-                        {/* THÀNH TIỀN / GIÁ TRỊ HỦY */}
-                        <td className="p-1.5 text-right font-extrabold text-cyan-900 dark:text-indigo-300 border-r border-slate-200 dark:border-indigo-900/40 bg-cyan-50/40 dark:bg-indigo-950/40">
-                          {(isDisposal ? (row.qty * row.price) : row.totalAmount).toLocaleString('vi-VN')}
+                        {/* THÀNH TIỀN / THẤT THOÁT */}
+                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
+                          {isDisposal ? (
+                            <input
+                              type="text"
+                              value={row.lossAmount !== undefined && row.lossAmount !== null ? (row.lossAmount === 0 && row.qty === 0 ? '' : formatNumberWithCommas(row.lossAmount)) : (row.qty * row.price === 0 ? '' : formatNumberWithCommas(row.qty * row.price))}
+                              onChange={(e) => {
+                                const parsed = parseFormattedNumber(e.target.value);
+                                updateRow(row.rowId, { lossAmount: parsed });
+                              }}
+                              placeholder="0"
+                              className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
+                            />
+                          ) : (
+                            <div className="w-full h-9 px-2 flex items-center justify-end font-extrabold text-cyan-900 dark:text-indigo-300 bg-cyan-50/40 dark:bg-indigo-950/40">
+                              {row.totalAmount.toLocaleString('vi-VN')}
+                            </div>
+                          )}
                         </td>
 
-                        {/* GHI CHÚ / TÌNH TRẠNG LÝ DO HỦY */}
+                        {/* TỔNG = GIÁ NHẬP + THẤT THOÁT */}
+                        {isDisposal && (
+                          <td className="p-1.5 text-right font-black text-rose-600 dark:text-rose-400 border-r border-slate-200 dark:border-indigo-900/40 bg-rose-50/40 dark:bg-rose-950/30 whitespace-nowrap">
+                            {(Number(row.price || 0) + Number(row.lossAmount !== undefined && row.lossAmount !== null ? row.lossAmount : (row.qty * row.price))).toLocaleString('vi-VN')}
+                          </td>
+                        )}
+
+                        {/* LÝ DO HỦY / GHI CHÚ (ĐÃ GỘP THÀNH 1 CỘT DUY NHẤT) */}
                         <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
                           <input
                             type="text"
                             value={row.note}
                             onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
-                            placeholder={isDisposal ? "Lý do: Hết hạn, vỡ móp, mốc ẩm..." : "Ghi chú..."}
+                            placeholder={isDisposal ? "Lý do: Hết hạn, vỡ móp, mốc ẩm, biên bản số..." : "Ghi chú..."}
                             className="w-full h-9 px-2.5 rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
-
-                        {isDisposal && (
-                          <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
-                            <input
-                              type="text"
-                              value={activeTab.description || ''}
-                              onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
-                              placeholder="Biên bản số..."
-                              className="w-full h-9 px-2.5 rounded-xl border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
-                            />
-                          </td>
-                        )}
 
                         {/* TT (Actions) */}
                         <td className="p-1.5 text-center pr-2">
@@ -2374,10 +2409,18 @@ export default function CreateOutboundOrderPage({
                 </div>
                 <div className="border-t border-cyan-200/80 dark:border-indigo-900/60 pt-2 flex items-center justify-between">
                   <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-950 dark:text-indigo-200">
-                    TỔNG GIÁ TRỊ THIỆT HẠI:
+                    TỔNG THẤT THOÁT:
                   </span>
                   <span className="text-sm font-black text-rose-600 dark:text-rose-400 tracking-tight">
                     {subtotal.toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
+                <div className="border-t border-cyan-200/80 dark:border-indigo-900/60 pt-2 flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-950 dark:text-indigo-200">
+                    TỔNG CỘNG:
+                  </span>
+                  <span className="text-sm font-black text-rose-700 dark:text-rose-300 tracking-tight">
+                    {activeValidItems.reduce((s, r) => s + Number(r.price || 0) + Number(r.lossAmount !== undefined && r.lossAmount !== null ? r.lossAmount : (r.qty * r.price)), 0).toLocaleString('vi-VN')} đ
                   </span>
                 </div>
               </div>

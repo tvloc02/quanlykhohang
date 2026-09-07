@@ -122,6 +122,13 @@ export default function GenericReportPage({
       flatList = data;
     }
 
+    if (reportType === 'customer-debt') {
+      flatList = flatList.filter((item: any) => {
+        const name = String(item.name || '').toLowerCase();
+        return !name.includes('hết hạn') && !name.includes('tiêu hủy') && !name.includes('hư hỏng') && !name.includes('xuất hủy');
+      });
+    }
+
     if (selectedBranch !== 'ALL') {
       flatList = flatList.filter((item: any) => {
         const b = String(item.branch || item.warehouseName || item.branchName || '').toLowerCase();
