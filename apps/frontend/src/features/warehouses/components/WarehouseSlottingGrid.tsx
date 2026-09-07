@@ -228,6 +228,89 @@ export function computeActiveStoredGoods(
   };
 }
 
+interface CachedBinsEntry {
+  timestamp: number;
+  data: {
+    occupiedMap: Map<string, BinOccupiedInfo>;
+    detailsMap: Map<string, BinGoodsDetail>;
+    goodsListMap: Map<string, BinGoodsDetail[]>;
+  };
+}
+
+const warehouseBinsCache = new Map<string, CachedBinsEntry>();
+
+export function getCachedWarehouseBins(warehouseCode?: string, warehouseId?: string) {
+  const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
+  const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
+  const cacheKey = `${currentWhCode}_${currentWhId}`;
+  const entry = warehouseBinsCache.get(cacheKey);
+  if (entry && Date.now() - entry.timestamp < 30000) {
+    return {
+      occupiedMap: new Map(entry.data.occupiedMap),
+      detailsMap: new Map(entry.data.detailsMap),
+      goodsListMap: new Map(entry.data.goodsListMap),
+    };
+  }
+  return null;
+}
+
+export function findCachedBinInfo(cleanBinCode: string, warehouseCode?: string, warehouseId?: string): BinOccupiedInfo | null {
+  const normKey = normalizeBinKey(cleanBinCode);
+  const shortCode = (cleanBinCode.split('-').pop() || cleanBinCode).toUpperCase();
+
+  // Try targeted warehouse cache
+  const targeted = getCachedWarehouseBins(warehouseCode, warehouseId);
+  if (targeted) {
+    const info = targeted.occupiedMap.get(cleanBinCode)
+      || (normKey ? targeted.occupiedMap.get(normKey) : null)
+      || (shortCode ? targeted.occupiedMap.get(shortCode) : null);
+    if (info) return info;
+  }
+
+  // Check all available cache entries across warehouses
+  for (const entry of warehouseBinsCache.values()) {
+    if (Date.now() - entry.timestamp < 60000) {
+      const info = entry.data.occupiedMap.get(cleanBinCode)
+        || (normKey ? entry.data.occupiedMap.get(normKey) : null)
+        || (shortCode ? entry.data.occupiedMap.get(shortCode) : null);
+      if (info) return info;
+    }
+  }
+
+  // Fallback check in stored warehouses customBins
+  try {
+    const storedWhs = JSON.parse(localStorage.getItem('smart-wms-warehouses') || '[]');
+    if (Array.isArray(storedWhs)) {
+      for (const wh of storedWhs) {
+        for (const sub of (wh.subWarehouses || [])) {
+          for (const rk of (sub.racks || [])) {
+            if (rk.customBins) {
+              const cfg = rk.customBins[cleanBinCode] || rk.customBins[shortCode] || (normKey ? rk.customBins[normKey] : null);
+              if (cfg && (Number(cfg.occupancyPct || 0) > 0 || Number(cfg.totalPhysical || 0) > 0)) {
+                return {
+                  totalPhysical: Number(cfg.totalPhysical || 1),
+                  allocated: 0,
+                  productsCount: 1,
+                  productName: cfg.productName || 'Hàng trong kho',
+                  sku: cfg.sku || 'SKU-001',
+                  supplierName: 'Nhà cung cấp',
+                  inboundDate: 'Đã lưu',
+                  orderCode: 'KHO-LUU',
+                  unit: cfg.unit || 'cái',
+                  occupancyPct: Number(cfg.occupancyPct || 100),
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+
 /**
  * Single Source of Truth to load occupied bins for a specific warehouse
  */
@@ -245,10 +328,22 @@ export async function fetchWarehouseOccupiedBins(
   let allStockInOrders: any[] = [];
   let allOutboundOrders: any[] = [];
 
+  const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
+  const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
+
   try {
     const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
-    const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
-    const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
+
+    // Check in-memory cache first for instant 0ms rendering
+    const cacheKey = `${currentWhCode}_${currentWhId}`;
+    const cached = warehouseBinsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 30000) {
+      return {
+        occupiedMap: new Map(cached.data.occupiedMap),
+        detailsMap: new Map(cached.data.detailsMap),
+        goodsListMap: new Map(cached.data.goodsListMap),
+      };
+    }
 
     // If creating a new warehouse, it has 0 inventory balances
     if (!currentWhCode && !currentWhId || currentWhId === 'temp-id' || currentWhId === 'new' || currentWhId.startsWith('wh_new')) {
@@ -439,67 +534,86 @@ export async function fetchWarehouseOccupiedBins(
       }
     };
 
-    // 1. Fetch real physical inventory balances from CSDL
-    const res = await fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null);
-    if (res && res.ok) {
-      const balances: any[] = await res.json();
-      balances.forEach((b) => {
-        const bWhId = String(b.warehouseId || b.warehouse?.id || '').toLowerCase();
-        const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
+    // Parallel Fetch across all CSDL endpoints for instant loading speed
+    const [
+      res,
+      apiOrdersRes,
+      poOrdersRes,
+      transferRes,
+      apiOutboundRes,
+      apiOutboundsRes,
+    ] = await Promise.all([
+      fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/delivery/transfer-orders`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/outbound/orders`, { headers }).catch(() => null),
+      fetch(`${API_BASE_URL}/outbounds`, { headers }).catch(() => null),
+    ]);
 
-        if (!isWhMatch(bWhCode, bWhId, b.locationCode)) return;
+    const [
+      balancesData,
+      apiOrdersData,
+      poOrdersData,
+      transferData,
+      apiOutboundData,
+      apiOutboundsData,
+    ] = await Promise.all([
+      res && res.ok ? res.json().catch(() => []) : Promise.resolve([]),
+      apiOrdersRes && apiOrdersRes.ok ? apiOrdersRes.json().catch(() => []) : Promise.resolve([]),
+      poOrdersRes && poOrdersRes.ok ? poOrdersRes.json().catch(() => []) : Promise.resolve([]),
+      transferRes && transferRes.ok ? transferRes.json().catch(() => []) : Promise.resolve([]),
+      apiOutboundRes && apiOutboundRes.ok ? apiOutboundRes.json().catch(() => []) : Promise.resolve([]),
+      apiOutboundsRes && apiOutboundsRes.ok ? apiOutboundsRes.json().catch(() => []) : Promise.resolve([]),
+    ]);
 
-        const lc = String(b.locationCode || '').trim();
-        const physical = Number(b.totalPhysical || b.available || 0);
-        const allocated = Number(b.allocated || 0);
+    // 1. Process real physical inventory balances from CSDL
+    const balances = Array.isArray(balancesData) ? balancesData : balancesData?.data || [];
+    balances.forEach((b: any) => {
+      const bWhId = String(b.warehouseId || b.warehouse?.id || '').toLowerCase();
+      const bWhCode = String(b.warehouseCode || b.warehouse?.code || '').trim().toUpperCase();
 
-        if (lc && (physical > 0 || allocated > 0)) {
-          const info: BinOccupiedInfo = {
-            totalPhysical: physical || 1,
-            allocated,
-            productsCount: 1,
-            productName: b.product?.name || b.productName || 'Sản phẩm tồn kho',
-            sku: b.product?.internalSku || b.product?.sku || b.sku || 'SKU-001',
-            supplierName: b.product?.supplier || b.supplierName || 'Nhà cung cấp',
-            inboundDate: b.updatedAt
-              ? new Date(b.updatedAt).toLocaleDateString('vi-VN') +
+      if (!isWhMatch(bWhCode, bWhId, b.locationCode)) return;
+
+      const lc = String(b.locationCode || '').trim();
+      const physical = Number(b.totalPhysical || b.available || 0);
+      const allocated = Number(b.allocated || 0);
+
+      if (lc && (physical > 0 || allocated > 0)) {
+        const info: BinOccupiedInfo = {
+          totalPhysical: physical || 1,
+          allocated,
+          productsCount: 1,
+          productName: b.product?.name || b.productName || 'Sản phẩm tồn kho',
+          sku: b.product?.internalSku || b.product?.sku || b.sku || 'SKU-001',
+          supplierName: b.product?.supplier || b.supplierName || 'Nhà cung cấp',
+          inboundDate: b.updatedAt
+            ? new Date(b.updatedAt).toLocaleDateString('vi-VN') +
               ' ' +
               new Date(b.updatedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-              : 'Hôm nay',
-            orderCode: b.orderCode || b.stockInOrderCode || 'TỒN-KHO',
-            unit: b.product?.unit || 'Cái',
-            occupancyPct: b.occupancyPct !== undefined ? Number(b.occupancyPct) : (b.occupancy !== undefined ? Number(b.occupancy) : 100),
-          };
-          addBinOccupied(lc, info);
-        }
-      });
-    }
+            : 'Hôm nay',
+          orderCode: b.orderCode || b.stockInOrderCode || 'TỒN-KHO',
+          unit: b.product?.unit || 'Cái',
+          occupancyPct: b.occupancyPct !== undefined ? Number(b.occupancyPct) : (b.occupancy !== undefined ? Number(b.occupancy) : 100),
+        };
+        addBinOccupied(lc, info);
+      }
+    });
 
-    // 2. Fetch stock-in and purchase orders history (from API and localStorage)
+    // 2. Process stock-in and purchase orders history
     try {
       const storedStockInStr = localStorage.getItem('stored_stock_in_orders');
       const localStockInOrders: any[] = storedStockInStr ? JSON.parse(storedStockInStr) : [];
 
-      const [apiOrdersRes, poOrdersRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/inbound/stock-in-orders`, { headers }).catch(() => null),
-        fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null),
-      ]);
+      const list = Array.isArray(apiOrdersData) ? apiOrdersData : apiOrdersData?.data || [];
+      allStockInOrders = [...list];
 
-      allStockInOrders = [];
-      if (apiOrdersRes && apiOrdersRes.ok) {
-        const apiData = await apiOrdersRes.json();
-        const list = Array.isArray(apiData) ? apiData : apiData.data || [];
-        allStockInOrders = [...allStockInOrders, ...list];
-      }
-      if (poOrdersRes && poOrdersRes.ok) {
-        const poData = await poOrdersRes.json();
-        const poList = Array.isArray(poData) ? poData : poData.data || [];
-        poList.forEach((po: any) => {
-          if (!allStockInOrders.some((ao: any) => String(ao.id) === String(po.id) || (ao.poNumber && po.poNumber && ao.poNumber === po.poNumber) || (ao.receiptNo && po.receiptNo && ao.receiptNo === po.receiptNo))) {
-            allStockInOrders.push(po);
-          }
-        });
-      }
+      const poList = Array.isArray(poOrdersData) ? poOrdersData : poOrdersData?.data || [];
+      poList.forEach((po: any) => {
+        if (!allStockInOrders.some((ao: any) => String(ao.id) === String(po.id) || (ao.poNumber && po.poNumber && ao.poNumber === po.poNumber) || (ao.receiptNo && po.receiptNo && ao.receiptNo === po.receiptNo))) {
+          allStockInOrders.push(po);
+        }
+      });
       if (Array.isArray(localStockInOrders) && (!apiOrdersRes?.ok && !poOrdersRes?.ok)) {
         localStockInOrders.forEach((lo: any) => {
           if (!allStockInOrders.some((ao: any) => ao.id === lo.id || (ao.code && lo.code && ao.code === lo.code) || (ao.orderNumber && lo.orderNumber && ao.orderNumber === lo.orderNumber) || (ao.poNumber && lo.poNumber && ao.poNumber === lo.poNumber))) {
@@ -516,8 +630,8 @@ export async function fetchWarehouseOccupiedBins(
         const supplierName = ord.supplierName || ord.supplier?.name || ord.supplier || 'Nhà cung cấp';
         const inboundDate = ord.createdAt || ord.orderDate
           ? new Date(ord.createdAt || ord.orderDate).toLocaleDateString('vi-VN') +
-          ' ' +
-          new Date(ord.createdAt || ord.orderDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+            ' ' +
+            new Date(ord.createdAt || ord.orderDate).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
           : 'Hôm nay';
 
         (ord.details || ord.items || []).forEach((item: any) => {
@@ -533,7 +647,6 @@ export async function fetchWarehouseOccupiedBins(
             rawBins = parseAssignedBinsFromNote(item.note);
           }
 
-          // Deduplicate bin list so duplicate formatting does not divide target qty
           const uniqueBinsMap = new Map<string, string>();
           rawBins.forEach((b) => {
             if (!b) return;
@@ -582,13 +695,8 @@ export async function fetchWarehouseOccupiedBins(
       console.error('Error loading stock-in orders for bins:', e);
     }
 
-    // 3. Fetch transfer orders (from API & localStorage)
-    const transferRes = await fetch(`${API_BASE_URL}/delivery/transfer-orders`, { headers }).catch(() => null);
-    let transferOrders: any[] = [];
-    if (transferRes && transferRes.ok) {
-      const data = await transferRes.json();
-      transferOrders = Array.isArray(data) ? data : data.data || [];
-    }
+    // 3. Process transfer orders
+    let transferOrders: any[] = Array.isArray(transferData) ? transferData : transferData?.data || [];
     try {
       const localTransfers = JSON.parse(localStorage.getItem('smart-wms-transfer-orders') || '[]');
       if (Array.isArray(localTransfers)) {
@@ -687,30 +795,21 @@ export async function fetchWarehouseOccupiedBins(
       }
     } catch { }
 
-    // 2.8. Fetch outbound orders history (from API & localStorage)
+    // 2.8. Process outbound orders history
     try {
       const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
       const localOutboundOrders: any[] = storedOutboundStr ? JSON.parse(storedOutboundStr) : [];
-      const [apiOutboundRes, apiOutboundsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/outbound/orders`, { headers }).catch(() => null),
-        fetch(`${API_BASE_URL}/outbounds`, { headers }).catch(() => null),
-      ]);
 
       allOutboundOrders = [];
-      if (apiOutboundRes && apiOutboundRes.ok) {
-        const apiData = await apiOutboundRes.json();
-        const list = Array.isArray(apiData) ? apiData : apiData.data || [];
-        allOutboundOrders = [...allOutboundOrders, ...list];
-      }
-      if (apiOutboundsRes && apiOutboundsRes.ok) {
-        const obsData = await apiOutboundsRes.json();
-        const obsList = Array.isArray(obsData) ? obsData : obsData.data || [];
-        obsList.forEach((ob: any) => {
-          if (!allOutboundOrders.some((ao: any) => String(ao.id) === String(ob.id) || (ao.orderNo && ob.orderNo && ao.orderNo === ob.orderNo))) {
-            allOutboundOrders.push(ob);
-          }
-        });
-      }
+      const list = Array.isArray(apiOutboundData) ? apiOutboundData : apiOutboundData?.data || [];
+      allOutboundOrders = [...list];
+
+      const obsList = Array.isArray(apiOutboundsData) ? apiOutboundsData : apiOutboundsData?.data || [];
+      obsList.forEach((ob: any) => {
+        if (!allOutboundOrders.some((ao: any) => String(ao.id) === String(ob.id) || (ao.orderNo && ob.orderNo && ao.orderNo === ob.orderNo))) {
+          allOutboundOrders.push(ob);
+        }
+      });
       if (Array.isArray(localOutboundOrders)) {
         localOutboundOrders.forEach((lo: any) => {
           if (!allOutboundOrders.some((ao: any) => String(ao.id) === String(lo.id) || (ao.orderNo && lo.orderNo && ao.orderNo === lo.orderNo))) {
@@ -892,7 +991,10 @@ export async function fetchWarehouseOccupiedBins(
     console.error('Error in fetchWarehouseOccupiedBins:', err);
   }
 
-  return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
+  const result = { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
+  const cacheKey = `${currentWhCode}_${currentWhId}`;
+  warehouseBinsCache.set(cacheKey, { timestamp: Date.now(), data: result });
+  return result;
 }
 
 export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
@@ -915,9 +1017,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   maxBinsAllowed,
   readOnly = false,
 }) => {
-  const [occupiedMap, setOccupiedMap] = useState<Map<string, BinOccupiedInfo>>(new Map());
-  const [detailsMap, setDetailsMap] = useState<Map<string, BinGoodsDetail>>(new Map());
-  const [occupiedGoodsListMap, setOccupiedGoodsListMap] = useState<Map<string, BinGoodsDetail[]>>(new Map());
+  const initialCached = getCachedWarehouseBins(warehouse?.code, warehouse?.id);
+  const [occupiedMap, setOccupiedMap] = useState<Map<string, BinOccupiedInfo>>(() => initialCached ? new Map(initialCached.occupiedMap) : new Map());
+  const [detailsMap, setDetailsMap] = useState<Map<string, BinGoodsDetail>>(() => initialCached ? new Map(initialCached.detailsMap) : new Map());
+  const [occupiedGoodsListMap, setOccupiedGoodsListMap] = useState<Map<string, BinGoodsDetail[]>>(() => initialCached ? new Map(initialCached.goodsListMap) : new Map());
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
   const [selectedRackId, setSelectedRackId] = useState<string>('');
   const [editingBinConfig, setEditingBinConfig] = useState<{
@@ -1570,9 +1673,51 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             hasGoods = false;
                           }
 
-                          // In Outbound or Transfer, an empty bin (occupancyPct <= 0 or !hasGoods) CAN NEVER be suggested!
-                          if (isOutbound && (occupancyPct <= 0 || !hasGoods || (occupiedInfo && (occupiedInfo.totalPhysical || 0) <= 0))) {
-                            isSuggested = false;
+                          // In Outbound or Transfer, evaluate matching product directly from bin storage & order items:
+                          const curItem = (orderItems && activeRowId) ? orderItems.find((i: any) => i.rowId === activeRowId) : null;
+                          const curName = (curItem?.productName || '').trim().toLowerCase();
+                          const curSku = (curItem?.productSku || curItem?.sku || '').trim().toLowerCase();
+                          const occName = (occupiedInfo?.productName || '').trim().toLowerCase();
+                          const occSku = (occupiedInfo?.sku || '').trim().toLowerCase();
+
+                          const goodsInBin = getGoodsList(fullBinCode, binCodeShort, rackCode);
+                          const matchesGoodsInBin = goodsInBin.some((g) => {
+                            const gName = (g.productName || '').trim().toLowerCase();
+                            const gSku = (g.sku || '').trim().toLowerCase();
+                            return (curSku && gSku && curSku === gSku) ||
+                                   (curName && gName && (curName.includes(gName) || gName.includes(curName)));
+                          });
+
+                          // Check if bin stored goods are generic placeholder records (e.g. "Hàng trong kho", "Sản phẩm tồn kho", "Hàng hóa", "KHO-LUU")
+                          const isGenericGoods = !occName ||
+                            occName === 'sản phẩm tồn kho' ||
+                            occName === 'hàng trong kho' ||
+                            occName === 'hàng hóa' ||
+                            occName === 'kho-luu' ||
+                            occName === 'nhà cung cấp' ||
+                            occName.includes('đã chứa') ||
+                            occName.includes('tồn kho');
+
+                          const isMatchingProduct = Boolean(
+                            suggestedSet.has(normFull) ||
+                            (Boolean(normShort) && suggestedSet.has(normShort)) ||
+                            (Boolean(normRackShort) && suggestedSet.has(normRackShort)) ||
+                            matchesGoodsInBin ||
+                            (curSku && occSku && curSku === occSku) ||
+                            (curName && occName && (curName.includes(occName) || occName.includes(curName))) ||
+                            (curItem && (
+                              (Array.isArray(curItem.assignedBins) && curItem.assignedBins.some((b: string) => normalizeBinKey(b) === normFull || b.includes(binCodeShort))) ||
+                              (curItem.locationBin && String(curItem.locationBin).includes(binCodeShort))
+                            )) ||
+                            (hasGoods && occupancyPct > 0 && isGenericGoods)
+                          );
+
+                          if (isOutbound) {
+                            if (hasGoods && occupancyPct > 0 && (isMatchingProduct || isGenericGoods)) {
+                              isSuggested = true;
+                            } else {
+                              isSuggested = false;
+                            }
                           }
 
                           const isFull = (hasGoods && occupancyPct >= 100) || isOtherItemFull || (isSelected && occupancyPct >= 100);
@@ -1592,8 +1737,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                 isBinDisabled = true;
                               }
 
-                              // 2. Ô KỆ KHÔNG CHỨA ĐÚNG MẶT HÀNG ĐANG CHỌN (isSuggested === false) -> In chìm & Khóa chọn
-                              if (!isSuggested && !isSelected) {
+                              // 2. Ô KỆ ĐANG CHỨA MẶT HÀNG KHÁC CỤ THỂ (KHÔNG PHẢI HÀNG ĐANG XUẤT VÀ KHÔNG PHẢI HÀNG TỒN CHUNG) -> Khóa chọn
+                              const isOtherDistinctProduct = hasGoods && occupancyPct > 0 && occName && !isGenericGoods && !isMatchingProduct;
+                              if (isOtherDistinctProduct && !isSelected) {
                                 isBinDisabled = true;
                               }
 
@@ -1785,6 +1931,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                                 zoneCode: zoneCodeStr,
                                                 rackCode,
                                                 occupancyPct: occupancyPct,
+                                                stockQty: occupiedInfo?.totalPhysical || customConfig?.totalPhysical || (occupancyPct > 0 ? 1 : 0),
+                                                productName: occupiedInfo?.productName || customConfig?.productName,
+                                                sku: occupiedInfo?.sku || customConfig?.sku,
                                                 maxWeight: customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500,
                                                 notes: customConfig?.notes || '',
                                               });
@@ -1797,11 +1946,13 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                           ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
                                           : isSelected
                                             ? 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
-                                            : isFull
-                                              ? 'bg-cyan-700 text-white border-cyan-700 opacity-90 cursor-pointer'
-                                              : !hasGoods || occupancyPct <= 0
-                                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 cursor-pointer'
-                                                : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700 cursor-pointer'
+                                            : isSuggested
+                                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm cursor-pointer'
+                                              : isFull
+                                                ? 'bg-cyan-700 text-white border-cyan-700 opacity-90 cursor-pointer'
+                                                : !hasGoods || occupancyPct <= 0
+                                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 cursor-pointer'
+                                                  : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border-cyan-200/80 dark:bg-slate-800 dark:text-cyan-300 dark:border-slate-700 cursor-pointer'
                                           }`}
                                       >
                                         {isSelected ? (
