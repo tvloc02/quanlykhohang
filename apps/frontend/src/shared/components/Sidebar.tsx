@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   BarChart3,
@@ -14,6 +14,8 @@ import {
   Settings,
   TrendingDown,
   TrendingUp,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Truck,
   Users,
   Warehouse,
@@ -62,7 +64,6 @@ import {
   Edit3,
   HelpCircle,
   BookMarked,
-  X,
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
 
@@ -106,19 +107,78 @@ const menuItems: MenuItem[] = [
     path: "/nhap-xuat",
     allowedRoles: ["admin", "manager", "staff"],
     children: [
-      { id: "outbound-orders", icon: TrendingUp, label: "Xuất bán", path: "/outbound/orders" },
-      { id: "outbound-retail", icon: Receipt, label: "Xuất bán lẻ", path: "/outbound/retail" },
-      { id: "inbound-stock-in-orders", icon: TrendingDown, label: "Nhập hàng", path: "/inbound/stock-in-orders" },
-      { id: "inbound-return-requests", icon: CornerUpRight, label: "Xuất trả Nhà cung cấp", path: "/inbound/return-requests" },
-      { id: "inbound-return-customers", icon: CornerDownLeft, label: "Nhập hàng Khách trả lại", path: "/inbound/return-customers" },
-      { id: "delivery-transfer-orders", icon: Send, label: "Xuất kho nội bộ", path: "/delivery/transfer-orders" },
-      { id: "delivery-transfer-requests", icon: Repeat, label: "Nhập kho nội bộ", path: "/delivery/transfer-requests" },
-      { id: "inventory-initial-stock", icon: PlusCircle, label: "Nhập hàng tồn đầu kỳ", path: "/inventory/initial-stock" },
-      { id: "inventory-stocktake", icon: FileCheck, label: "Kiểm kho", path: "/inventory/stocktake" },
-      { id: "outbound-sales-orders", icon: ShoppingCart, label: "Đơn đặt hàng", path: "/outbound/sales-orders" },
-      { id: "inbound-purchase-orders", icon: PackageCheck, label: "Đơn đặt hàng NCC", path: "/inbound/purchase-orders" },
-      { id: "outbound-disposal", icon: FileX, label: "Xuất hủy", path: "/outbound/disposal" },
-      { id: "inbound-assembly", icon: LinkIcon, label: "Tạo bộ/Combo", path: "/inbound/assembly" },
+      {
+        id: "outbound-orders",
+        icon: ArrowUpFromLine,
+        label: "Xuất bán",
+        path: "/outbound/orders",
+      },
+      {
+        id: "outbound-retail",
+        icon: Receipt,
+        label: "Xuất bán lẻ",
+        path: "/outbound/retail",
+      },
+      {
+        id: "inbound-stock-in-orders",
+        icon: ArrowDownToLine,
+        label: "Nhập hàng",
+        path: "/inbound/stock-in-orders",
+      },
+      {
+        id: "inbound-return-requests",
+        icon: CornerUpRight,
+        label: "Xuất trả Nhà cung cấp",
+        path: "/inbound/return-requests",
+      },
+      {
+        id: "inbound-return-customers",
+        icon: CornerDownLeft,
+        label: "Nhập hàng Khách trả lại",
+        path: "/inbound/return-customers",
+      },
+      {
+        id: "delivery-transfer-orders",
+        icon: Send,
+        label: "Xuất kho nội bộ",
+        path: "/delivery/transfer-orders",
+      },
+      {
+        id: "delivery-transfer-requests",
+        icon: Repeat,
+        label: "Nhập kho nội bộ",
+        path: "/delivery/transfer-requests",
+      },
+      {
+        id: "inventory-initial-stock",
+        icon: PlusCircle,
+        label: "Nhập hàng tồn đầu kỳ",
+        path: "/inventory/initial-stock",
+      },
+      {
+        id: "inventory-stocktake",
+        icon: FileCheck,
+        label: "Kiểm kho",
+        path: "/inventory/stocktake",
+      },
+      {
+        id: "outbound-sales-orders",
+        icon: ShoppingCart,
+        label: "Đơn đặt hàng",
+        path: "/outbound/sales-orders",
+      },
+      {
+        id: "inbound-purchase-orders",
+        icon: PackageCheck,
+        label: "Đơn đặt hàng NCC",
+        path: "/inbound/purchase-orders",
+      },
+      {
+        id: "outbound-disposal",
+        icon: FileX,
+        label: "Xuất hủy",
+        path: "/outbound/disposal",
+      },
     ],
   },
   // 3. Thu chi
@@ -283,7 +343,7 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-  // 6. Danh mục
+  // 7. Danh mục
   {
     id: "danh-muc",
     icon: AlignLeft,
@@ -331,50 +391,31 @@ const menuItems: MenuItem[] = [
       },
     ],
   },
-  // 7. Chăm sóc Khách hàng
-  {
-    id: "cham-soc-khach-hang",
-    icon: PhoneCall,
-    label: "Chăm sóc Khách hàng",
-    path: "/customers",
-    allowedRoles: ["admin", "manager", "staff"],
-    children: [
-      {
-        id: "cskh-customers",
-        icon: UserPlus,
-        label: "Danh sách Khách hàng",
-        path: "/customers",
-      },
-      {
-        id: "cskh-suppliers",
-        icon: Contact,
-        label: "Nhà cung cấp",
-        path: "/suppliers",
-      },
-    ],
-  },
-  // 8. Hệ thống
+  // 9. Hệ thống
   {
     id: "he-thong",
     icon: Settings,
     label: "Hệ thống",
     path: "/system-menu",
-    allowedRoles: ["admin", "manager", "staff"],
     children: [
-      { id: "settings", icon: Settings, label: "Cấu hình hệ thống", path: "/settings" },
       {
-        id: "personnel",
-        icon: User,
-        label: "Người dùng / Nhân viên",
-        path: "/personnel",
-        allowedRoles: ["admin"],
+        id: "settings",
+        icon: Settings,
+        label: "Cấu hình hệ thống",
+        path: "/settings",
       },
+      { id: "personnel", icon: Users, label: "Nhân viên", path: "/personnel" },
       {
         id: "permission-groups",
         icon: ShieldCheck,
-        label: "Nhóm quyền",
+        label: "Nhóm người dùng",
         path: "/personnel/permission-groups",
-        allowedRoles: ["admin"],
+      },
+      {
+        id: "evat-config",
+        icon: FileEdit,
+        label: "Hóa đơn & VAT",
+        path: "/vat/management",
       },
       {
         id: "print-templates",
@@ -383,136 +424,44 @@ const menuItems: MenuItem[] = [
         path: "/documents",
       },
       {
-        id: "evat-config",
-        icon: Receipt,
-        label: "Cấu hình e-VAT",
-        path: "/vat/config",
-      },
-      {
         id: "audit-log",
         icon: History,
-        label: "Lịch sử thao tác",
+        label: "Nhật ký Hoạt động",
         path: "/audit-log",
-        allowedRoles: ["admin"],
-      },
-      {
-        id: "zalo-config",
-        icon: MessageCircle,
-        label: "Cấu hình Zalo OA",
-        path: "/settings",
-      },
-      {
-        id: "change-password",
-        icon: Lock,
-        label: "Đổi mật khẩu",
-        path: "/profile",
-      },
-      { id: "logout", icon: LogOut, label: "Đăng xuất", path: "/login" },
-    ],
-  },
-  // 9. Shipper
-  {
-    id: "shipper",
-    icon: Bike,
-    label: "Shipper",
-    path: "/delivery/shippers",
-    allowedRoles: ["admin", "manager", "staff"],
-    children: [
-      {
-        id: "shipper-delivery",
-        icon: Truck,
-        label: "Quản lý Giao hàng",
-        path: "/delivery/transfer-orders",
-      },
-      {
-        id: "shipper-list",
-        icon: Bike,
-        label: "Danh sách Shipper / Tài xế",
-        path: "/delivery/shippers",
       },
     ],
-  },
-  // 10. VAT Điện tử
-  {
-    id: "vat-dien-tu",
-    icon: Receipt,
-    label: "VAT Điện tử",
-    path: "/vat/management",
-    allowedRoles: ["admin", "manager", "staff"],
-    children: [
-      {
-        id: "vat-management",
-        icon: Repeat,
-        label: "Quản lý VAT Điện tử",
-        path: "/vat/management",
-      },
-      {
-        id: "vat-config",
-        icon: Settings,
-        label: "Thiết lập thông tin VAT",
-        path: "/vat/config",
-      },
-    ],
-  },
-  // 11. Hướng dẫn sử dụng
-  {
-    id: "huong-dan-su-dung",
-    icon: BookMarked,
-    label: "Hướng dẫn sử dụng",
-    path: "/settings",
-    allowedRoles: ["admin", "manager", "staff"],
   },
 ];
 
-function isRouteActive(pathname: string, targetPath: string): boolean {
-  if (!targetPath || targetPath === "#") return false;
+function isRouteActive(currentPath: string, targetPath: string) {
   if (targetPath === "/dashboard") {
-    return pathname === "/dashboard" || pathname === "/";
+    return currentPath === "/dashboard" || currentPath === "/";
   }
-  if (pathname === targetPath) return true;
-  if (targetPath === "/" || targetPath === "") return false;
-  if (targetPath === "/products/main" && pathname.startsWith("/products"))
-    return true;
-  if (targetPath === "/inbound/receipts" && pathname.startsWith("/inbound"))
-    return true;
-  if (targetPath === "/outbound/orders" && pathname.startsWith("/outbound"))
-    return true;
-  if (targetPath === "/delivery/shippers" && pathname.startsWith("/delivery"))
-    return true;
-  if (
-    targetPath === "/categories-menu" &&
-    (pathname.startsWith("/products") ||
-      pathname.startsWith("/categories") ||
-      pathname.startsWith("/customers") ||
-      pathname.startsWith("/suppliers") ||
-      pathname.startsWith("/warehouses") ||
-      pathname.startsWith("/units") ||
-      pathname.startsWith("/currencies") ||
-      pathname.startsWith("/bank-accounts"))
-  ) {
+  if (currentPath === targetPath) {
     return true;
   }
-  if (pathname.startsWith(targetPath + "/")) return true;
+  // Prevent prefix collision between /personnel and /personnel/permission-groups
+  if (targetPath === "/personnel") {
+    return currentPath === "/personnel";
+  }
+  if (currentPath.startsWith(targetPath + "/")) {
+    return true;
+  }
   return false;
 }
 
 export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
-  const [, setPermissionTick] = useState(0);
+  const [userRole, setUserRole] = useState<string>("");
 
   useEffect(() => {
-    const handlePermissionsChange = () => {
-      setTimeout(() => setPermissionTick((prev) => prev + 1), 0);
-    };
-
-    window.addEventListener("storage", handlePermissionsChange);
-    window.addEventListener("permissions-updated", handlePermissionsChange);
-
-    return () => {
-      window.removeEventListener("storage", handlePermissionsChange);
-      window.removeEventListener("permissions-updated", handlePermissionsChange);
-    };
+    try {
+      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      setUserRole(user.role || (user.roles && user.roles[0]?.name) || "staff");
+    } catch {
+      setUserRole("staff");
+    }
   }, []);
 
   const { isAdmin, canViewMenu } = usePermissions();
@@ -599,34 +548,6 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
       hasChildren &&
       item.children?.some((c) => isRouteActive(location.pathname, c.path));
     const isExpanded = expandedItems.has(item.path);
-
-    // SPECIAL BUTTON FOR TRANG CHỦ
-    if (item.isSpecialButton) {
-      const isActive = isRouteActive(location.pathname, item.path);
-      return (
-        <Link
-          key={item.path + item.id}
-          to={item.path}
-          className={`w-full flex items-center ${
-            isOpen ? "px-4 py-3" : "justify-center p-3"
-          } text-sm font-black rounded-xl transition-all duration-200 ${
-            isActive
-              ? "bg-gradient-to-r from-cyan-600 to-cyan-700 text-white border-2 border-cyan-500 shadow-md shadow-cyan-600/20"
-              : "bg-cyan-50/90 hover:bg-cyan-100 text-cyan-900 border-2 border-cyan-300/80 shadow-xs"
-          } mb-2 cursor-pointer`}
-          title={!isOpen ? item.label : ""}
-        >
-          <Icon
-            className={`h-5 w-5 ${isOpen ? "mr-3" : ""} flex-shrink-0 ${isActive ? "text-white" : "text-cyan-700"}`}
-          />
-          {isOpen && (
-            <span className="flex-1 text-left truncate font-black tracking-wide">
-              {item.label}
-            </span>
-          )}
-        </Link>
-      );
-    }
 
     if (hasChildren) {
       return (
@@ -746,13 +667,11 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-50 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen lg:relative ${
-        isOpen
-          ? "translate-x-0 w-80 shadow-2xl lg:shadow-none"
-          : "-translate-x-full lg:translate-x-0 lg:w-20"
-      }`}
+      className={`${
+        isOpen ? "w-80" : "w-20"
+      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen`}
     >
-      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex items-center justify-between box-border">
+      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex justify-center lg:justify-start box-border">
         <div
           className={`flex items-center gap-3 w-full ${!isOpen ? "justify-center" : ""}`}
         >
@@ -772,14 +691,6 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
             </div>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onClose || onToggle}
-          className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-[#0f172a] lg:hidden flex-shrink-0 cursor-pointer"
-          title="Đóng menu"
-        >
-          <X className="h-5 w-5" />
-        </button>
       </div>
 
       <div className="px-4 py-4 flex-shrink-0">
