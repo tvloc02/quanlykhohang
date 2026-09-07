@@ -193,19 +193,28 @@ export default function InternalShippingNoteModal({
         </div>
 
         {/* Document Content Box */}
-        <div className="overflow-y-auto p-6 sm:p-10 text-slate-900 bg-white print:p-4 font-sans text-base leading-relaxed">
+        <div
+          className="overflow-y-auto p-6 sm:p-10 text-slate-900 bg-white print:p-4 text-base leading-relaxed"
+          style={{ fontFamily: "'Times New Roman', Tinos, 'Liberation Serif', Times, serif" }}
+        >
           
           <style>{`
             @media print {
               body:has(.internal-shipping-modal) * { visibility: hidden; }
               body:has(.internal-shipping-modal) .print-area,
-              body:has(.internal-shipping-modal) .print-area * { visibility: visible; }
+              body:has(.internal-shipping-modal) .print-area * {
+                visibility: visible;
+                font-family: 'Times New Roman', Tinos, 'Liberation Serif', Times, serif !important;
+              }
               body:has(.internal-shipping-modal) .print-area { position: absolute; left: 0; top: 0; width: 100%; }
               .no-print { display: none !important; }
             }
           `}</style>
 
-          <div className="print-area max-w-4xl mx-auto border-4 border-cyan-500/80 p-6 sm:p-8 rounded-lg shadow-inner print:border-2 print:border-black font-sans">
+          <div
+            className="print-area max-w-4xl mx-auto border-4 border-cyan-500/80 p-6 sm:p-8 rounded-lg shadow-inner print:border-2 print:border-black"
+            style={{ fontFamily: "'Times New Roman', Tinos, 'Liberation Serif', Times, serif" }}
+          >
             
             {/* Header Right Form Code */}
             <div className="text-right font-sans font-bold text-slate-800 text-sm mb-4">

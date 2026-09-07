@@ -18,7 +18,6 @@ import {
   ClipboardList,
   FileText,
   Eye,
-  LayoutGrid,
   Layers,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
@@ -446,10 +445,11 @@ export default function CreateStocktakeOrderPage({
   const [storageInfoBalances, setStorageInfoBalances] = useState<any[]>([]);
   const [loadingStorageInfo, setLoadingStorageInfo] = useState(false);
 
-  // Rack & Bin Locator Modal State
-  const [rackModalData, setRackModalData] = useState<{
+  // Rack & Bin Locator Modal State (SmartSlottingGridModal)
+  const [slottingTarget, setSlottingTarget] = useState<{
     product: ProductOption;
-    zone: ZoneItem;
+    pIdx: number;
+    zIdx: number;
   } | null>(null);
 
   // Master Data
@@ -869,18 +869,33 @@ export default function CreateStocktakeOrderPage({
     <div className="space-y-4 pb-24 animate-[fadeIn_0.2s_ease-out]">
       {/* Toast Alert */}
       {toast && (
-        <div
-          className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${
-            toast.type === 'error'
-              ? 'bg-red-50 text-red-600 border-red-200'
-              : 'bg-emerald-50 text-emerald-600 border-emerald-200'
-          }`}
-        >
-          {toast.type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
-          <p className="text-sm font-bold">{toast.message}</p>
-          <button onClick={() => setToast(null)} className="ml-2 rounded-lg p-1 hover:bg-white/50 transition cursor-pointer">
-            <X size={16} />
-          </button>
+        <div className="fixed top-6 right-6 z-[99999] pointer-events-none">
+          <div
+            className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-2xl border backdrop-blur-md transition-all animate-in slide-in-from-top-4 duration-300 ${
+              toast.type === 'error'
+                ? 'bg-slate-900/95 text-white border-red-500/50 shadow-red-950/30'
+                : 'bg-slate-900/95 text-white border-emerald-500/50 shadow-emerald-950/30'
+            }`}
+          >
+            {toast.type === 'error' ? (
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/20 text-red-400 shrink-0">
+                <XCircle size={20} />
+              </div>
+            ) : (
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
+                <CheckCircle2 size={20} />
+              </div>
+            )}
+            <p className="text-sm font-bold text-white tracking-wide">{toast.message}</p>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="ml-3 rounded-xl p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              title="Đóng thông báo"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1007,27 +1022,7 @@ export default function CreateStocktakeOrderPage({
         </div>
       )}
 
-      {/* Rack & Bin Locator Modal (SmartSlottingGridModal) */}
-      <SmartSlottingGridModal
-        isOpen={!!rackModalData}
-        onClose={() => setRackModalData(null)}
-        mode="OUTBOUND_TRANSFER"
-        warehouseCode={locationCode || 'KH006'}
-        items={items.map((it) => ({
-          rowId: String(it.product.id),
-          productId: String(it.product.id),
-          productSku: it.product.internalSku,
-          productName: it.product.name,
-          unit: it.product.unit || 'Cái',
-          qty: it.zones.reduce((s, z) => s + (z.countedQty || 0), 0),
-          warehouseCode: locationCode || 'KH006',
-        }))}
-        targetRowId={rackModalData ? String(rackModalData.product.id) : null}
-        products={products}
-        onConfirmAll={() => {
-          setRackModalData(null);
-        }}
-      />
+
 
       {/* ═══ 1. TOP HEADER BAR ═══ */}
       <div className="flex items-center justify-between">
@@ -1128,7 +1123,7 @@ export default function CreateStocktakeOrderPage({
       {/* ═══ 3. DUAL PANE MAIN SECTION ═══ */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* ── LEFT COLUMN (9/12 width): PRODUCT TABLE WITH ROWSPAN ── */}
-        <div className="lg:col-span-9 flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="lg:col-span-9 flex flex-col rounded-2xl border-2 border-slate-200 bg-white shadow-xs overflow-hidden">
           {/* Section Header */}
           <div className="px-3 py-2 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between">
             <div className="flex items-center gap-2 text-cyan-800 font-extrabold text-xs">
@@ -1241,41 +1236,38 @@ export default function CreateStocktakeOrderPage({
             </div>
           </div>
 
-          {/* TABLE WITH ROWSPAN PRODUCT MERGING & PER-ROW STAFF ASSIGNMENT */}
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-slate-100 text-slate-800 font-extrabold border-b-2 border-slate-200 uppercase text-xs">
+          {/* TABLE WITH ROUNDED BORDERS & COLOR PALETTE MATCHING INBOUND CREATE */}
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0">
+            <table className="w-full text-left border-collapse text-xs min-w-[1050px]">
+              <thead className="bg-slate-100 text-slate-700 font-black border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
                 <tr>
-                  <th className="p-2.5 w-12 text-center border-r border-slate-200 bg-slate-100">STT</th>
-                  <th className="p-2.5 w-28 text-center border-r border-slate-200 bg-slate-100">MÃ HÀNG</th>
-                  <th className="p-2.5 min-w-[160px] border-r border-slate-200 bg-slate-100">TÊN HÀNG HÓA</th>
-                  <th className="p-2.5 w-16 text-center border-r border-slate-200 bg-slate-100">ĐVT</th>
-                  <th className="p-2.5 w-40 text-center border-r border-slate-200 bg-cyan-50/70 text-cyan-900">
-                    PHÂN KHU / DÃY KỆ
+                  <th className="p-2.5 w-12 text-center bg-slate-100 border-r border-slate-200">STT</th>
+                  <th className="p-2.5 w-28 text-center bg-slate-100 border-r border-slate-200">MÃ HÀNG</th>
+                  <th className="p-2.5 min-w-[200px] text-center bg-slate-100 border-r border-slate-200">TÊN HÀNG HÓA</th>
+                  <th className="p-2.5 w-20 text-center bg-slate-100 border-r border-slate-200">ĐVT</th>
+                  <th className="p-2.5 w-60 text-center bg-slate-100 border-r border-slate-200">
+                    PHÂN KHU & Ô KỆ KIỂM KÊ
                   </th>
-                  <th className="p-2.5 w-24 text-center border-r border-slate-200 bg-cyan-50/80 text-cyan-900">
+                  <th className="p-2.5 w-28 text-center bg-slate-100 border-r border-slate-200">
                     SỐ TỒN KHO
                   </th>
-                  <th className="p-2.5 w-24 text-center border-r border-slate-200 bg-emerald-50/80 text-emerald-900">
+                  <th className="p-2.5 w-28 text-center bg-slate-100 border-r border-slate-200">
                     THỰC TỒN
                   </th>
-                  <th className="p-2.5 w-20 text-center border-r border-slate-200 bg-amber-50/80 text-amber-900">
+                  <th className="p-2.5 w-24 text-center bg-slate-100 border-r border-slate-200">
                     LỆCH
                   </th>
-                  <th className="p-2.5 w-40 text-center border-r border-slate-200 bg-indigo-50/80 text-indigo-900">
-                    NHÂN VIÊN KIỂM KÊ
-                  </th>
-                  <th className="p-2.5 min-w-[120px] border-r border-slate-200 bg-slate-100">GHI CHÚ</th>
-                  <th className="p-2.5 w-28 text-center bg-slate-100">THAO TÁC</th>
+                  <th className="p-2.5 min-w-[140px] text-center bg-slate-100 border-r border-slate-200">GHI CHÚ</th>
+                  <th className="p-2.5 w-20 text-center bg-slate-100">THAO TÁC</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-6 py-20 text-center text-xs text-slate-400 font-semibold italic">
+                    <td colSpan={10} className="px-6 py-20 text-center text-xs text-slate-400 font-semibold italic">
                       Chưa có hàng hóa nào được chọn để kiểm kê.
                       <br />
-                      Vui lòng nhập từ khóa vào ô tìm kiếm ở trên để chọn sản phẩm.
+                      Vui lòng gõ mã hoặc tên hàng hóa vào ô tìm kiếm ở trên để chọn sản phẩm.
                     </td>
                   </tr>
                 ) : (
@@ -1286,19 +1278,20 @@ export default function CreateStocktakeOrderPage({
                       const isFirstZone = zIdx === 0;
                       const isLastZoneInProd = zIdx === zoneCount - 1;
                       const zDiff = zone.countedQty - (zone.systemQty || 0);
+                      const isEven = (pIdx + zIdx) % 2 === 1;
 
                       return (
                         <tr
                           key={`${item.product.id}-${zone.zoneCode}-${zIdx}`}
-                          className={`hover:bg-cyan-50/50 transition-colors ${
-                            zIdx % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'
-                          } ${isLastZoneInProd ? 'border-b-2 border-slate-300' : 'border-b border-slate-200'}`}
+                          className={`${isEven ? 'bg-cyan-50/20' : 'bg-white'} hover:bg-cyan-50/80 transition-colors ${
+                            isLastZoneInProd ? 'border-b-2 border-slate-300' : 'border-b border-slate-200'
+                          }`}
                         >
                           {/* ══ ROWSPAN MERGED CELL 1: STT ══ */}
                           {isFirstZone && (
                             <td
                               rowSpan={zoneCount}
-                              className="p-2.5 text-center font-bold text-slate-600 border-r border-slate-200 bg-slate-50/70 align-middle"
+                              className="p-2 text-center font-extrabold text-slate-600 border-r border-slate-200 align-middle"
                             >
                               {pIdx + 1}.
                             </td>
@@ -1308,9 +1301,11 @@ export default function CreateStocktakeOrderPage({
                           {isFirstZone && (
                             <td
                               rowSpan={zoneCount}
-                              className="p-2.5 text-center font-black text-cyan-800 border-r border-slate-200 bg-slate-50/70 align-middle"
+                              className="p-1.5 border-r border-slate-200 align-middle"
                             >
-                              {item.product.internalSku}
+                              <div className="h-9 px-2.5 flex items-center justify-center rounded-xl border border-slate-300 bg-white font-black text-cyan-800 text-xs font-mono shadow-2xs">
+                                {item.product.internalSku}
+                              </div>
                             </td>
                           )}
 
@@ -1318,12 +1313,14 @@ export default function CreateStocktakeOrderPage({
                           {isFirstZone && (
                             <td
                               rowSpan={zoneCount}
-                              className="p-2.5 font-extrabold text-slate-900 border-r border-slate-200 bg-slate-50/70 align-middle"
+                              className="p-1.5 border-r border-slate-200 align-middle"
                             >
-                              <div>
-                                <p className="font-extrabold text-slate-900">{item.product.name}</p>
-                                <span className="inline-block mt-1 text-[10px] font-extrabold text-cyan-700 bg-cyan-100/80 px-2 py-0.5 rounded-full">
-                                  {zoneCount} phân khu
+                              <div className="h-9 px-3 flex items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white font-bold text-slate-800 text-xs shadow-2xs">
+                                <span className="truncate" title={item.product.name}>
+                                  {item.product.name}
+                                </span>
+                                <span className="shrink-0 text-[10px] font-black text-cyan-700 bg-cyan-100/80 px-2 py-0.5 rounded-full">
+                                  {zoneCount} khu
                                 </span>
                               </div>
                             </td>
@@ -1333,48 +1330,59 @@ export default function CreateStocktakeOrderPage({
                           {isFirstZone && (
                             <td
                               rowSpan={zoneCount}
-                              className="p-2.5 text-center font-semibold text-slate-600 border-r border-slate-200 bg-slate-50/70 align-middle"
+                              className="p-1.5 border-r border-slate-200 align-middle"
                             >
-                              {item.product.unit || 'Cái'}
+                              <div className="h-9 w-full flex items-center justify-center rounded-xl border border-slate-300 bg-white font-bold text-slate-700 text-xs shadow-2xs">
+                                {item.product.unit || 'Cái'}
+                              </div>
                             </td>
                           )}
 
-                          {/* ══ CELL 5: PHÂN KHU / DÃY KỆ ══ */}
-                          <td className="p-1.5 border-r border-slate-200 bg-cyan-50/20">
-                            <select
-                              value={zone.zoneCode}
-                              onChange={(e) => handleUpdateZoneCode(pIdx, zIdx, e.target.value)}
-                              className="h-8 w-full rounded-lg border-2 border-slate-200 bg-white px-2 text-[11px] font-extrabold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
-                            >
-                              {activeSubWarehouses.map((sub: any) => (
-                                <option key={sub.id || sub.code} value={sub.code || sub.id}>
-                                  [{sub.code || sub.id}] {sub.name}
-                                </option>
-                              ))}
-                            </select>
-                            {/* Interactive shelf/bin button directly opening rack popup modal */}
-                            <button
-                              type="button"
-                              onClick={() => setRackModalData({ product: item.product, zone })}
-                              className="mt-1 w-full flex items-center justify-between gap-1 text-[10px] font-extrabold text-cyan-900 bg-cyan-100/90 hover:bg-cyan-200/90 px-2 py-1 rounded-lg border border-cyan-300 shadow-2xs transition cursor-pointer active:scale-95 group"
-                              title="Bấm vào để mở sơ đồ kệ - Kệ lưu hàng hiện xanh, không lưu in chìm"
-                            >
-                              <span className="shrink-0 text-cyan-700 font-bold group-hover:text-cyan-900 flex items-center gap-1">
-                                📍 Kệ:
-                              </span>
-                              <span className="truncate font-extrabold text-cyan-950 group-hover:underline">
-                                {zone.locationBin || (zone.assignedBins && zone.assignedBins.length > 0 ? zone.assignedBins.join(', ') : 'Chưa xếp ô')}
-                              </span>
-                            </button>
+                          {/* ══ CELL 5: PHÂN KHU & Ô KỆ KIỂM KÊ (Chuẩn mẫu Inbound) ══ */}
+                          <td className="p-1.5 border-r border-slate-200">
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={zone.zoneCode}
+                                onChange={(e) => handleUpdateZoneCode(pIdx, zIdx, e.target.value)}
+                                className="h-9 flex-1 rounded-xl border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
+                              >
+                                {activeSubWarehouses.map((sub: any) => (
+                                  <option key={sub.id || sub.code} value={sub.code || sub.id}>
+                                    [{sub.code || sub.id}] {sub.name}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => setSlottingTarget({ product: item.product, pIdx, zIdx })}
+                                className={`h-9 px-2.5 flex items-center gap-1.5 rounded-xl border transition-all cursor-pointer shadow-2xs shrink-0 ${
+                                  zone.assignedBins && zone.assignedBins.length > 0
+                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold'
+                                    : 'border-cyan-300 bg-white text-cyan-800 hover:bg-cyan-50 font-bold'
+                                }`}
+                                title="Xem sơ đồ & chọn ô kệ"
+                              >
+                                <span className="text-xs">📍</span>
+                                <span className="max-w-[85px] truncate text-xs">
+                                  {zone.locationBin && zone.locationBin !== 'Chưa xếp ô'
+                                    ? zone.locationBin
+                                    : zone.assignedBins && zone.assignedBins.length > 0
+                                    ? zone.assignedBins.join(', ')
+                                    : 'Chọn ô'}
+                                </span>
+                              </button>
+                            </div>
                           </td>
 
                           {/* ══ CELL 6: SỐ TỒN KHO ══ */}
-                          <td className="p-2 text-center font-black text-cyan-900 border-r border-slate-200 bg-cyan-50/40 font-mono text-sm">
-                            {(zone.systemQty || 0).toLocaleString('vi-VN')}
+                          <td className="p-1.5 border-r border-slate-200">
+                            <div className="h-9 w-full flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50/80 font-black text-slate-800 font-mono text-xs shadow-2xs">
+                              {(zone.systemQty || 0).toLocaleString('vi-VN')}
+                            </div>
                           </td>
 
                           {/* ══ CELL 7: THỰC TỒN ══ */}
-                          <td className="p-1 text-center border-r border-slate-200 bg-emerald-50/40">
+                          <td className="p-1.5 border-r border-slate-200">
                             <input
                               type="number"
                               min="0"
@@ -1382,101 +1390,46 @@ export default function CreateStocktakeOrderPage({
                               onChange={(e) =>
                                 handleUpdateZoneCounted(pIdx, zIdx, Number(e.target.value))
                               }
-                              className="h-7 w-20 text-center rounded-md border-2 border-emerald-500/80 bg-white font-black text-emerald-900 outline-none text-xs focus:border-emerald-600 shadow-2xs"
+                              className="h-9 w-full text-center rounded-xl border-2 border-emerald-400 bg-white font-black text-emerald-900 outline-none focus:border-emerald-600 text-xs shadow-2xs"
                             />
                           </td>
 
                           {/* ══ CELL 8: LỆCH ══ */}
-                          <td className="p-2 text-center border-r border-slate-200 bg-amber-50/40 font-mono text-sm font-black">
-                            <span
-                              className={
+                          <td className="p-1.5 border-r border-slate-200">
+                            <div
+                              className={`h-9 w-full flex items-center justify-center rounded-xl border font-black font-mono text-xs shadow-2xs ${
                                 zDiff > 0
-                                  ? 'text-emerald-600'
+                                  ? 'border-emerald-300 bg-emerald-50/70 text-emerald-700'
                                   : zDiff < 0
-                                  ? 'text-red-600'
-                                  : 'text-slate-500'
-                              }
+                                  ? 'border-rose-300 bg-rose-50/70 text-rose-700'
+                                  : 'border-slate-200 bg-slate-50 text-slate-500'
+                              }`}
                             >
                               {zDiff > 0 ? `+${zDiff}` : zDiff}
-                            </span>
+                            </div>
                           </td>
 
-                          {/* ══ CELL 9: NHÂN VIÊN KIỂM KÊ (Dành riêng từng phân khu) ══ */}
-                          <td className="p-1.5 border-r border-slate-200 bg-indigo-50/20">
-                            <select
-                              value={zone.assignedStaff || ''}
-                              onChange={(e) => handleUpdateZoneStaff(pIdx, zIdx, e.target.value)}
-                              className="h-8 w-full rounded-lg border-2 border-indigo-200 bg-white px-2 text-[11px] font-bold text-slate-800 outline-none focus:border-indigo-600 cursor-pointer shadow-2xs"
-                            >
-                              <option value="">— Chọn NV kiểm —</option>
-                              {staffList.map((u: any) => {
-                                const displayName = u.fullName || u.name || u.username || u.email || `User #${u.id}`;
-                                const roleTag = u.role ? ` (${u.role})` : '';
-                                return (
-                                  <option key={u.id || displayName} value={displayName}>
-                                    {displayName}{roleTag}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </td>
-
-                          {/* ══ CELL 10: GHI CHÚ ══ */}
-                          <td className="p-1 border-r border-slate-200">
+                          {/* ══ CELL 9: GHI CHÚ ══ */}
+                          <td className="p-1.5 border-r border-slate-200">
                             <input
                               type="text"
                               value={zone.note || ''}
                               onChange={(e) => handleUpdateZoneNote(pIdx, zIdx, e.target.value)}
-                              placeholder="Ghi chú dòng..."
-                              className="w-full h-7 px-2 bg-transparent font-medium text-slate-700 outline-none focus:bg-cyan-50 text-xs"
+                              placeholder="Ghi chú..."
+                              className="h-9 w-full px-2.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-700 outline-none focus:border-cyan-600 text-xs shadow-2xs"
                             />
                           </td>
 
-                          {/* ══ CELL 11: THAO TÁC ══ */}
+                          {/* ══ CELL 10: THAO TÁC (Chỉ nút Xóa) ══ */}
                           <td className="p-1.5 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              {/* Rack & Bin Locator Modal Button */}
-                              <button
-                                type="button"
-                                onClick={() => setRackModalData({ product: item.product, zone })}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-300 bg-cyan-100 text-cyan-800 hover:bg-cyan-200 transition cursor-pointer font-bold"
-                                title="Xem vị trí dãy kệ & ô kệ trong phân khu này"
-                              >
-                                <LayoutGrid size={14} />
-                              </button>
-
-                              {/* Storage Info Modal Button */}
-                              {isFirstZone && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenStorageInfo(item.product)}
-                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 transition cursor-pointer font-bold"
-                                  title="Xem thông tin lưu trữ tất cả các kho"
-                                >
-                                  <Eye size={14} />
-                                </button>
-                              )}
-
-                              {/* Add Zone Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleAddZoneToProduct(pIdx)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer font-bold"
-                                title="Thêm phân khu đếm mới"
-                              >
-                                <Plus size={14} />
-                              </button>
-
-                              {/* Delete Zone Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveZoneRow(pIdx, zIdx)}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition cursor-pointer font-bold"
-                                title="Xóa phân khu này khỏi danh sách"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveZoneRow(pIdx, zIdx)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-rose-300 bg-white text-rose-500 shadow-2xs hover:bg-rose-500 hover:text-white hover:border-rose-500 transition cursor-pointer"
+                              title="Xóa hàng kiểm kê này"
+                            >
+                              <Trash2 size={16} strokeWidth={2} />
+                            </button>
                           </td>
                         </tr>
                       );
@@ -1487,33 +1440,36 @@ export default function CreateStocktakeOrderPage({
 
               {/* TABLE FOOTER SUMMARY ROW */}
               {items.length > 0 && (
-                <tfoot className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-slate-200 uppercase text-xs">
+                <tfoot className="bg-slate-100 font-extrabold text-slate-800 border-t-2 border-slate-200 uppercase text-xs sticky bottom-0 z-10">
                   <tr>
-                    <td colSpan={5} className="p-3 text-right font-extrabold text-slate-800 border-r border-slate-200">
-                      TỔNG CỘNG ({items.length} sản phẩm - {items.reduce((s, i) => s + i.zones.length, 0)} phân khu kiểm):
+                    <td colSpan={5} className="p-2.5 text-right font-black text-slate-800 border-r border-slate-200">
+                      TỔNG CỘNG ({items.length} SẢN PHẨM - {items.reduce((s, i) => s + i.zones.length, 0)} PHÂN KHU):
                     </td>
-                    <td className="p-3 text-center font-black text-cyan-900 border-r border-slate-200 bg-cyan-100/60 font-mono text-sm">
-                      {totalSystemQty.toLocaleString('vi-VN')}
+                    <td className="p-1.5 text-center border-r border-slate-200">
+                      <div className="h-9 w-full flex items-center justify-center rounded-xl border border-cyan-300 bg-cyan-100/60 font-black text-cyan-900 font-mono text-xs shadow-2xs">
+                        {totalSystemQty.toLocaleString('vi-VN')}
+                      </div>
                     </td>
-                    <td className="p-3 text-center font-black text-emerald-900 border-r border-slate-200 bg-emerald-100/60 font-mono text-sm">
-                      {totalCountedQty.toLocaleString('vi-VN')}
+                    <td className="p-1.5 text-center border-r border-slate-200">
+                      <div className="h-9 w-full flex items-center justify-center rounded-xl border border-emerald-300 bg-emerald-100/60 font-black text-emerald-900 font-mono text-xs shadow-2xs">
+                        {totalCountedQty.toLocaleString('vi-VN')}
+                      </div>
                     </td>
-                    <td className="p-3 text-center font-black border-r border-slate-200 bg-amber-100/60 font-mono text-sm">
-                      <span
-                        className={
+                    <td className="p-1.5 text-center border-r border-slate-200">
+                      <div
+                        className={`h-9 w-full flex items-center justify-center rounded-xl border font-black font-mono text-xs shadow-2xs ${
                           totalDifference > 0
-                            ? 'text-emerald-600'
+                            ? 'border-emerald-300 bg-emerald-100/70 text-emerald-700'
                             : totalDifference < 0
-                            ? 'text-red-600'
-                            : 'text-slate-600'
-                        }
+                            ? 'border-rose-300 bg-rose-100/70 text-rose-700'
+                            : 'border-slate-200 bg-slate-100 text-slate-600'
+                        }`}
                       >
                         {totalDifference > 0 ? `+${totalDifference}` : totalDifference}
-                      </span>
+                      </div>
                     </td>
-                    <td className="p-3 border-r border-slate-200 text-slate-400 font-medium italic text-center">—</td>
-                    <td className="p-3 border-r border-slate-200 text-slate-400 font-medium italic text-center">—</td>
-                    <td className="p-3 text-center text-slate-400 font-medium italic">—</td>
+                    <td className="p-2 border-r border-slate-200 text-slate-400 font-medium italic text-center">—</td>
+                    <td className="p-2 text-center text-slate-400 font-medium italic">—</td>
                   </tr>
                 </tfoot>
               )}
@@ -1630,14 +1586,14 @@ export default function CreateStocktakeOrderPage({
           </div>
         </div>
 
-        {/* ══ SMART SLOTTING RACK GRID MODAL ══ */}
-        {rackModalData && (
+        {/* ══ SMART SLOTTING RACK GRID MODAL (Mẫu Inbound) ══ */}
+        {slottingTarget && (
           <SmartSlottingGridModal
-            isOpen={Boolean(rackModalData)}
-            onClose={() => setRackModalData(null)}
-            mode="STOCKTAKE"
-            warehouseCode={locationCode}
-            targetRowId={rackModalData.product.id}
+            isOpen={Boolean(slottingTarget)}
+            onClose={() => setSlottingTarget(null)}
+            mode="INBOUND"
+            warehouseCode={locationCode || 'KH006'}
+            targetRowId={slottingTarget.product.id}
             products={products}
             subWarehouses={activeSubWarehouses}
             items={items.map((it) => {
@@ -1648,27 +1604,37 @@ export default function CreateStocktakeOrderPage({
                   ? z.locationBin.split(',').map((s) => s.trim())
                   : []
               );
+              const uniqueBins = Array.from(new Set(allBins.filter(Boolean)));
               return {
                 rowId: it.product.id,
                 productId: it.product.id,
                 productSku: it.product.internalSku,
                 productName: it.product.name,
-                unit: it.product.unit,
+                unit: it.product.unit || 'Cái',
                 qty: it.zones.reduce((sum, z) => sum + (z.countedQty ?? z.systemQty ?? 0), 0),
-                assignedBins: Array.from(new Set(allBins.filter(Boolean))),
-                locationBin: Array.from(new Set(allBins.filter(Boolean))).join(', '),
+                assignedBins: uniqueBins,
+                locationBin: uniqueBins.join(', '),
               };
             })}
             onConfirmAll={(updatedRows) => {
               setItems((prev) =>
-                prev.map((it) => {
-                  const match = updatedRows.find((r) => r.rowId === it.product.id);
+                prev.map((it, pIdx) => {
+                  const match = updatedRows.find(
+                    (r) => r.rowId === it.product.id || r.productId === it.product.id
+                  );
                   if (match && match.assignedBins) {
                     const updatedZones = it.zones.map((z, zIdx) => {
-                      if (zIdx === 0) {
+                      if (slottingTarget && slottingTarget.pIdx === pIdx && slottingTarget.zIdx === zIdx) {
                         return {
                           ...z,
-                          locationBin: match.locationBin,
+                          locationBin: match.locationBin || match.assignedBins.join(', '),
+                          assignedBins: match.assignedBins,
+                        };
+                      }
+                      if (slottingTarget && slottingTarget.pIdx === pIdx && zIdx === 0 && (!z.assignedBins || z.assignedBins.length === 0)) {
+                        return {
+                          ...z,
+                          locationBin: match.locationBin || match.assignedBins.join(', '),
                           assignedBins: match.assignedBins,
                         };
                       }
@@ -1679,7 +1645,8 @@ export default function CreateStocktakeOrderPage({
                   return it;
                 })
               );
-              setRackModalData(null);
+              setSlottingTarget(null);
+              showSuccess('Đã cập nhật vị trí ô kệ kiểm kê thành công!');
             }}
           />
         )}

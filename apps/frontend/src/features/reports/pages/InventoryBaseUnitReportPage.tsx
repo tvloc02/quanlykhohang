@@ -79,10 +79,10 @@ export default function InventoryBaseUnitReportPage() {
 
   const toggleBrowserFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
       setIsFullScreen(true);
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
       setIsFullScreen(false);
     }
   };

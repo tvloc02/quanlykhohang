@@ -183,10 +183,10 @@ export default function Delivery() {
   const loadOrders = useCallback(async () => {
     try {
       const data = await deliveryApi.listTransferOrders();
-      setOrders(data);
-    } catch (error) {
-      console.error(error);
-      setToast({ type: 'error', message: 'Không tải được phiếu điều chuyển' });
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('Lỗi tải phiếu điều chuyển:', error);
+      setToast({ type: 'error', message: error?.message || 'Không tải được phiếu điều chuyển' });
     }
   }, []);
 

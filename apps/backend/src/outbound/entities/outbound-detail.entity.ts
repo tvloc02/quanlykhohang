@@ -48,6 +48,13 @@ export class OutboundDetail extends BaseEntity {
   vatAmount: string;
 
   @Column({ type: 'decimal', precision: 14, scale: 2, default: '0.00' })
+  lossAmount: string;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: '0.00' })
+  totalDisposalAmount: string;
+
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: '0.00' })
   totalLineAmount: string;
 
   @Column({ length: 500, nullable: true })

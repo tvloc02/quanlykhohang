@@ -1,5 +1,5 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   Activity,
   AlertTriangle,
@@ -23,7 +23,7 @@ import {
   Truck,
   Users,
   Warehouse,
-} from "lucide-react";
+} from 'lucide-react';
 
 type DashboardOverview = {
   generatedAt: string;
@@ -71,7 +71,7 @@ type AuditLogItem = {
   metadata?: Record<string, unknown>;
 };
 
-const formatter = new Intl.NumberFormat("vi-VN");
+const formatter = new Intl.NumberFormat('vi-VN');
 
 function formatNumber(value: number) {
   return formatter.format(value);
@@ -79,82 +79,81 @@ function formatNumber(value: number) {
 
 function getUserLabel() {
   try {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    return user.fullName || user.email || "Quản trị viên";
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    return user.fullName || user.email || 'Quản trị viên';
   } catch {
-    return "Quản trị viên";
+    return 'Quản trị viên';
   }
 }
 
 function getUserRole() {
   try {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
     if (Array.isArray(user.roles) && user.roles.length > 0) {
-      return user.roles[0].name || "Administrator";
+      return user.roles[0].name || 'Administrator';
     }
-    return "Quản trị hệ thống";
+    return 'Quản trị hệ thống';
   } catch {
-    return "Quản trị hệ thống";
+    return 'Quản trị hệ thống';
   }
 }
 
 function formatLogDescription(log: AuditLogItem): string {
-  const act = (log.action || "").toUpperCase();
-  const res = (log.resource || "").toUpperCase();
+  const act = (log.action || '').toUpperCase();
+  const res = (log.resource || '').toUpperCase();
   const meta = log.metadata || {};
 
-  if (act.includes("LOGIN")) return `Đăng nhập hệ thống`;
-  if (act.includes("CREATE") && res.includes("SẢN PHẨM"))
-    return `Thêm sản phẩm mới "${meta.name || meta.sku || ""}"`;
-  if (act.includes("UPDATE") && res.includes("SẢN PHẨM"))
-    return `Cập nhật sản phẩm ${meta.sku || meta.name || ""}`;
-  if (act.includes("RECEIPT") || act.includes("STOCK_IN"))
-    return `Nhập kho ${meta.poCode ? `đơn ${meta.poCode}` : ""}`;
-  if (act.includes("OUTBOUND") || act.includes("STOCK_OUT"))
-    return `Xuất kho ${meta.orderNo ? `đơn ${meta.orderNo}` : ""}`;
+  if (act.includes('LOGIN')) return `Đăng nhập hệ thống`;
+  if (act.includes('CREATE') && res.includes('SẢN PHẨM')) return `Thêm sản phẩm mới "${meta.name || meta.sku || ''}"`;
+  if (act.includes('UPDATE') && res.includes('SẢN PHẨM')) return `Cập nhật sản phẩm ${meta.sku || meta.name || ''}`;
+  if (act.includes('RECEIPT') || act.includes('STOCK_IN')) return `Nhập kho ${meta.poCode ? `đơn ${meta.poCode}` : ''}`;
+  if (act.includes('OUTBOUND') || act.includes('STOCK_OUT')) return `Xuất kho ${meta.orderNo ? `đơn ${meta.orderNo}` : ''}`;
 
-  let actionText = "Thao tác";
-  if (act.includes("CREATE") || act.includes("ADD")) actionText = "Tạo mới";
-  else if (act.includes("UPDATE") || act.includes("EDIT"))
-    actionText = "Cập nhật";
-  else if (act.includes("DELETE") || act.includes("REMOVE")) actionText = "Xóa";
+  let actionText = 'Thao tác';
+  if (act.includes('CREATE') || act.includes('ADD')) actionText = 'Tạo mới';
+  else if (act.includes('UPDATE') || act.includes('EDIT')) actionText = 'Cập nhật';
+  else if (act.includes('DELETE') || act.includes('REMOVE')) actionText = 'Xóa';
 
   return `${actionText} dữ liệu ${log.resource}`;
 }
 
 export default function Dashboard() {
-  const [overview, setOverview] = React.useState<DashboardOverview | null>(
-    null,
-  );
+  const [overview, setOverview] = React.useState<DashboardOverview | null>(null);
   const [recentLogs, setRecentLogs] = React.useState<AuditLogItem[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState("");
-  const [chartView, setChartView] = React.useState<"bar" | "line">("bar");
+  const [error, setError] = React.useState('');
+  const [chartView, setChartView] = React.useState<'bar' | 'line'>('bar');
 
   const loadDashboard = React.useCallback(async () => {
     setLoading(true);
-    setError("");
+    setError('');
 
     try {
-      const response = await fetch("/api/reports/dashboard", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-      });
+      const headers = {
+        Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+      };
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(
-          errorData?.message || "Không tải được dữ liệu dashboard",
-        );
+      const [resDashboard, resLogs] = await Promise.all([
+        fetch('/api/reports/dashboard', { headers }),
+        fetch('/api/audit-logs', { headers }).catch(() => null),
+      ]);
+
+      if (!resDashboard.ok) {
+        const errorData = await resDashboard.json().catch(() => null);
+        throw new Error(errorData?.message || 'Không tải được dữ liệu dashboard');
       }
 
-      const data = (await response.json()) as DashboardOverview;
+      const data = (await resDashboard.json()) as DashboardOverview;
       setOverview(data);
+
+      if (resLogs && resLogs.ok) {
+        const logsData = await resLogs.json();
+        if (Array.isArray(logsData)) {
+          setRecentLogs(logsData.slice(0, 5));
+        }
+      }
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Không tải được dữ liệu dashboard",
-      );
+      setError(err instanceof Error ? err.message : 'Không tải được dữ liệu dashboard');
     } finally {
       setLoading(false);
     }
@@ -165,29 +164,23 @@ export default function Dashboard() {
   }, [loadDashboard]);
 
   const updatedAt = overview
-    ? new Intl.DateTimeFormat("vi-VN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
+    ? new Intl.DateTimeFormat('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
       }).format(new Date(overview.generatedAt))
-    : "--";
+    : '--';
 
-  const totalFlow = overview
-    ? overview.inbound.totalReceipts + overview.outbound.totalOrders
-    : 0;
-  const completedFlow = overview
-    ? overview.inbound.completedReceipts + overview.outbound.completedOrders
-    : 0;
-  const completionRate =
-    totalFlow > 0 ? Math.round((completedFlow / totalFlow) * 100) : 100;
+  const totalFlow = overview ? overview.inbound.totalReceipts + overview.outbound.totalOrders : 0;
+  const completedFlow = overview ? overview.inbound.completedReceipts + overview.outbound.completedOrders : 0;
+  const completionRate = totalFlow > 0 ? Math.round((completedFlow / totalFlow) * 100) : 100;
 
   // Real Status Calculations
   const draftStatusCount = overview
-    ? (overview.inbound.byStatus?.["DRAFT"] || 0) +
-      (overview.outbound.byStatus?.["DRAFT"] || 0)
+    ? (overview.inbound.byStatus?.['DRAFT'] || 0) + (overview.outbound.byStatus?.['DRAFT'] || 0)
     : 0;
   const openStatusCount = overview
     ? overview.inbound.openReceipts + overview.outbound.openOrders
@@ -196,22 +189,13 @@ export default function Dashboard() {
     ? overview.inbound.completedReceipts + overview.outbound.completedOrders
     : 0;
   const approvedStatusCount = overview
-    ? (overview.inbound.byStatus?.["APPROVED"] || 0) +
-      (overview.outbound.byStatus?.["APPROVED"] || 0)
+    ? (overview.inbound.byStatus?.['APPROVED'] || 0) + (overview.outbound.byStatus?.['APPROVED'] || 0)
     : 0;
   const cancelledStatusCount = overview
-    ? (overview.inbound.byStatus?.["CANCELLED"] || 0) +
-      (overview.outbound.byStatus?.["CANCELLED"] || 0)
+    ? (overview.inbound.byStatus?.['CANCELLED'] || 0) + (overview.outbound.byStatus?.['CANCELLED'] || 0)
     : 0;
 
-  const maxStatusCount = Math.max(
-    1,
-    draftStatusCount,
-    openStatusCount,
-    completedStatusCount,
-    approvedStatusCount,
-    cancelledStatusCount,
-  );
+  const maxStatusCount = Math.max(1, draftStatusCount, openStatusCount, completedStatusCount, approvedStatusCount, cancelledStatusCount);
 
   return (
     <div className="space-y-6">
@@ -225,16 +209,11 @@ export default function Dashboard() {
             </h1>
           </div>
           <p className="mt-2 text-sm font-semibold text-slate-600">
-            Xin chào,{" "}
-            <span className="font-extrabold text-cyan-700">
-              {getUserLabel()}
-            </span>
-            ! Vai trò:{" "}
+            Xin chào, <span className="font-extrabold text-cyan-700">{getUserLabel()}</span>! Vai trò:{' '}
             <span className="font-extrabold text-cyan-800 bg-cyan-50 border border-cyan-200 px-2.5 py-0.5 rounded-md">
               {getUserRole()}
             </span>
-            . Cập nhật dữ liệu thời gian thực lúc{" "}
-            <span className="font-bold text-slate-700">{updatedAt}</span>.
+            . Cập nhật dữ liệu thời gian thực lúc <span className="font-bold text-slate-700">{updatedAt}</span>.
           </p>
         </div>
 
@@ -245,9 +224,7 @@ export default function Dashboard() {
             disabled={loading}
             className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-500 bg-white px-5 py-2.5 text-xs font-bold text-cyan-700 shadow-xs transition hover:bg-cyan-50 cursor-pointer disabled:opacity-60"
           >
-            <RefreshCcw
-              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-            />
+            <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Làm mới dữ liệu
           </button>
           <Link
@@ -270,10 +247,7 @@ export default function Dashboard() {
       {loading && !overview ? (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-36 animate-pulse rounded-3xl bg-cyan-50/60 border-2 border-cyan-200"
-            />
+            <div key={index} className="h-36 animate-pulse rounded-3xl bg-cyan-50/60 border-2 border-cyan-200" />
           ))}
         </div>
       ) : overview ? (
@@ -292,24 +266,18 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="mt-3">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    Tồn kho khả dụng
-                  </p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Tồn kho khả dụng</p>
                   <div className="mt-1 flex items-baseline gap-2">
                     <p className="text-3xl font-black text-cyan-800 tracking-tight">
                       {formatNumber(overview.inventory.available)}
                     </p>
-                    <span className="text-xs font-bold text-slate-400">
-                      sản phẩm
-                    </span>
+                    <span className="text-xs font-bold text-slate-400">sản phẩm</span>
                   </div>
                 </div>
               </div>
               <p className="mt-4 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-500 flex items-center justify-between">
                 <span>Tổng tồn vật lý:</span>
-                <span className="font-extrabold text-slate-800">
-                  {formatNumber(overview.inventory.totalPhysical)} SP
-                </span>
+                <span className="font-extrabold text-slate-800">{formatNumber(overview.inventory.totalPhysical)} SP</span>
               </p>
             </div>
 
@@ -325,24 +293,18 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="mt-3">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    Tổng số mặt hàng
-                  </p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Tổng số mặt hàng</p>
                   <div className="mt-1 flex items-baseline gap-2">
                     <p className="text-3xl font-black text-cyan-800 tracking-tight">
                       {formatNumber(overview.catalog.products)}
                     </p>
-                    <span className="text-xs font-bold text-slate-400">
-                      SKU
-                    </span>
+                    <span className="text-xs font-bold text-slate-400">SKU</span>
                   </div>
                 </div>
               </div>
               <p className="mt-4 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-500 flex items-center justify-between">
                 <span>{overview.catalog.categories} Nhóm hàng</span>
-                <span className="font-extrabold text-cyan-700">
-                  {overview.catalog.barcodeMappedProducts} có Barcode
-                </span>
+                <span className="font-extrabold text-cyan-700">{overview.catalog.barcodeMappedProducts} có Barcode</span>
               </p>
             </div>
 
@@ -358,24 +320,18 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="mt-3">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                    Tổng phiếu Xuất/Nhập
-                  </p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Tổng phiếu Xuất/Nhập</p>
                   <div className="mt-1 flex items-baseline gap-2">
                     <p className="text-3xl font-black text-cyan-800 tracking-tight">
                       {formatNumber(totalFlow)}
                     </p>
-                    <span className="text-xs font-bold text-slate-400">
-                      phiếu
-                    </span>
+                    <span className="text-xs font-bold text-slate-400">phiếu</span>
                   </div>
                 </div>
               </div>
               <p className="mt-4 pt-3 border-t border-slate-100 text-xs font-semibold text-slate-500 flex items-center justify-between">
                 <span>Nhập: {overview.inbound.totalReceipts}</span>
-                <span className="font-extrabold text-emerald-700">
-                  Xuất: {overview.outbound.totalOrders}
-                </span>
+                <span className="font-extrabold text-emerald-700">Xuất: {overview.outbound.totalOrders}</span>
               </p>
             </div>
 
@@ -391,16 +347,12 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="mt-3">
-                  <p className="text-xs font-extrabold text-amber-900 uppercase tracking-wide">
-                    Hàng dưới định mức
-                  </p>
+                  <p className="text-xs font-extrabold text-amber-900 uppercase tracking-wide">Hàng dưới định mức</p>
                   <div className="mt-1 flex items-baseline gap-2">
                     <p className="text-3xl font-black text-amber-900 tracking-tight">
                       {overview.inventory.lowStockItems}
                     </p>
-                    <span className="text-xs font-bold text-amber-700">
-                      mặt hàng
-                    </span>
+                    <span className="text-xs font-bold text-amber-700">mặt hàng</span>
                   </div>
                 </div>
               </div>
@@ -429,11 +381,11 @@ export default function Dashboard() {
                   <div className="flex items-center gap-1 rounded-xl bg-cyan-50 p-1 border border-cyan-200">
                     <button
                       type="button"
-                      onClick={() => setChartView("bar")}
+                      onClick={() => setChartView('bar')}
                       className={`rounded-lg p-1.5 transition cursor-pointer ${
-                        chartView === "bar"
-                          ? "bg-cyan-600 text-white shadow-xs"
-                          : "text-cyan-700 hover:bg-cyan-100"
+                        chartView === 'bar'
+                          ? 'bg-cyan-600 text-white shadow-xs'
+                          : 'text-cyan-700 hover:bg-cyan-100'
                       }`}
                       title="Biểu đồ cột"
                     >
@@ -441,11 +393,11 @@ export default function Dashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setChartView("line")}
+                      onClick={() => setChartView('line')}
                       className={`rounded-lg p-1.5 transition cursor-pointer ${
-                        chartView === "line"
-                          ? "bg-cyan-600 text-white shadow-xs"
-                          : "text-cyan-700 hover:bg-cyan-100"
+                        chartView === 'line'
+                          ? 'bg-cyan-600 text-white shadow-xs'
+                          : 'text-cyan-700 hover:bg-cyan-100'
                       }`}
                       title="Biểu đồ xu hướng"
                     >
@@ -459,35 +411,22 @@ export default function Dashboard() {
                   <div className="relative flex h-56 w-full items-end justify-between gap-6 border-b border-slate-200 px-4 pb-2">
                     {/* Y-Axis Gridlines */}
                     <div className="absolute inset-0 flex flex-col justify-between pointer-events-none text-[11px] font-extrabold text-slate-300">
-                      <div className="border-b border-dashed border-slate-100 pb-1">
-                        {maxStatusCount}
-                      </div>
-                      <div className="border-b border-dashed border-slate-100 pb-1">
-                        {Math.round(maxStatusCount * 0.5)}
-                      </div>
+                      <div className="border-b border-dashed border-slate-100 pb-1">{maxStatusCount}</div>
+                      <div className="border-b border-dashed border-slate-100 pb-1">{Math.round(maxStatusCount * 0.5)}</div>
                       <div className="pb-1">0</div>
                     </div>
 
                     {/* Dynamic Status Bars */}
                     {[
-                      { label: "MỚI TẠO", count: draftStatusCount },
-                      { label: "ĐANG XỬ LÝ", count: openStatusCount },
-                      { label: "HOÀN THÀNH", count: completedStatusCount },
-                      { label: "ĐÃ DUYỆT", count: approvedStatusCount },
-                      { label: "ĐÃ HỦY", count: cancelledStatusCount },
+                      { label: 'MỚI TẠO', count: draftStatusCount },
+                      { label: 'ĐANG XỬ LÝ', count: openStatusCount },
+                      { label: 'HOÀN THÀNH', count: completedStatusCount },
+                      { label: 'ĐÃ DUYỆT', count: approvedStatusCount },
+                      { label: 'ĐÃ HỦY', count: cancelledStatusCount },
                     ].map((item) => {
-                      const heightPct = Math.max(
-                        8,
-                        Math.min(
-                          100,
-                          Math.round((item.count / maxStatusCount) * 100),
-                        ),
-                      );
+                      const heightPct = Math.max(8, Math.min(100, Math.round((item.count / maxStatusCount) * 100)));
                       return (
-                        <div
-                          key={item.label}
-                          className="relative z-10 flex flex-1 flex-col items-center h-full justify-end group"
-                        >
+                        <div key={item.label} className="relative z-10 flex flex-1 flex-col items-center h-full justify-end group">
                           <div className="mb-2 text-xs font-black text-cyan-900 bg-cyan-50 px-2 py-0.5 rounded-md border border-cyan-200">
                             {item.count}
                           </div>
@@ -540,12 +479,7 @@ export default function Dashboard() {
                       </span>
                       <span className="font-black text-slate-900">
                         {formatNumber(overview.inventory.available)} unit (
-                        {Math.round(
-                          (overview.inventory.available /
-                            (overview.inventory.totalPhysical || 1)) *
-                            100,
-                        )}
-                        %)
+                        {Math.round((overview.inventory.available / (overview.inventory.totalPhysical || 1)) * 100)}%)
                       </span>
                     </div>
                     <div className="h-3.5 overflow-hidden rounded-full bg-slate-100 p-0.5 border border-slate-200">
@@ -554,11 +488,7 @@ export default function Dashboard() {
                         style={{
                           width: `${Math.max(
                             3,
-                            Math.round(
-                              (overview.inventory.available /
-                                (overview.inventory.totalPhysical || 1)) *
-                                100,
-                            ),
+                            Math.round((overview.inventory.available / (overview.inventory.totalPhysical || 1)) * 100)
                           )}%`,
                         }}
                       />
@@ -573,12 +503,7 @@ export default function Dashboard() {
                       </span>
                       <span className="font-black text-slate-900">
                         {formatNumber(overview.inventory.allocated)} unit (
-                        {Math.round(
-                          (overview.inventory.allocated /
-                            (overview.inventory.totalPhysical || 1)) *
-                            100,
-                        )}
-                        %)
+                        {Math.round((overview.inventory.allocated / (overview.inventory.totalPhysical || 1)) * 100)}%)
                       </span>
                     </div>
                     <div className="h-3.5 overflow-hidden rounded-full bg-slate-100 p-0.5 border border-slate-200">
@@ -587,11 +512,7 @@ export default function Dashboard() {
                         style={{
                           width: `${Math.max(
                             3,
-                            Math.round(
-                              (overview.inventory.allocated /
-                                (overview.inventory.totalPhysical || 1)) *
-                                100,
-                            ),
+                            Math.round((overview.inventory.allocated / (overview.inventory.totalPhysical || 1)) * 100)
                           )}%`,
                         }}
                       />
@@ -605,8 +526,7 @@ export default function Dashboard() {
                         Tổng tồn kho vật lý (Total Physical)
                       </span>
                       <span className="font-black text-slate-900">
-                        {formatNumber(overview.inventory.totalPhysical)} unit
-                        (100%)
+                        {formatNumber(overview.inventory.totalPhysical)} unit (100%)
                       </span>
                     </div>
                     <div className="h-3.5 overflow-hidden rounded-full bg-slate-100 p-0.5 border border-slate-200">
@@ -619,20 +539,15 @@ export default function Dashboard() {
               {/* Bottom Quick System Stats */}
               <div className="mt-6 grid grid-cols-2 gap-3 pt-4 border-t border-slate-100 text-center">
                 <div className="rounded-2xl border-2 border-cyan-500 bg-cyan-50/50 p-3">
-                  <p className="text-[11px] font-extrabold text-slate-500 uppercase">
-                    Số lượng vị trí kho
-                  </p>
+                  <p className="text-[11px] font-extrabold text-slate-500 uppercase">Số lượng vị trí kho</p>
                   <p className="mt-1 text-base font-black text-cyan-900">
                     {overview.inventory.locations} Vị trí / Kho
                   </p>
                 </div>
                 <div className="rounded-2xl border-2 border-cyan-500 bg-cyan-50/50 p-3">
-                  <p className="text-[11px] font-extrabold text-slate-500 uppercase">
-                    Tài khoản & Nhóm quyền
-                  </p>
+                  <p className="text-[11px] font-extrabold text-slate-500 uppercase">Tài khoản & Nhóm quyền</p>
                   <p className="mt-1 text-base font-black text-cyan-900">
-                    {overview.accessControl.users} User ·{" "}
-                    {overview.accessControl.roles} Quyền
+                    {overview.accessControl.users} User · {overview.accessControl.roles} Quyền
                   </p>
                 </div>
               </div>
@@ -647,9 +562,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-cyan-600" />
-                    <h2 className="text-base font-black text-slate-900">
-                      Thao Tác Nhanh WMS
-                    </h2>
+                    <h2 className="text-base font-black text-slate-900">Thao Tác Nhanh WMS</h2>
                   </div>
                   <span className="rounded-full bg-cyan-100 px-2.5 py-0.5 text-xs font-bold text-cyan-800">
                     Lối tắt
@@ -658,42 +571,12 @@ export default function Dashboard() {
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   {[
-                    {
-                      label: "Tạo đơn đặt mua",
-                      path: "/inbound/purchase-orders",
-                      icon: PackageCheck,
-                      color: "text-cyan-600",
-                    },
-                    {
-                      label: "Tạo đơn xuất kho",
-                      path: "/outbound/orders/create",
-                      icon: Truck,
-                      color: "text-sky-600",
-                    },
-                    {
-                      label: "Phiên kiểm kê kho",
-                      path: "/inventory/stocktake/create",
-                      icon: ClipboardCheck,
-                      color: "text-emerald-600",
-                    },
-                    {
-                      label: "Yêu cầu chuyển kho",
-                      path: "/delivery/transfer-requests",
-                      icon: RefreshCcw,
-                      color: "text-violet-600",
-                    },
-                    {
-                      label: "Sơ đồ & Kệ kho",
-                      path: "/inventory/visualizer",
-                      icon: MapPin,
-                      color: "text-amber-600",
-                    },
-                    {
-                      label: "Nhật ký hệ thống",
-                      path: "/audit-log",
-                      icon: History,
-                      color: "text-indigo-600",
-                    },
+                    { label: 'Tạo đơn đặt mua', path: '/inbound/purchase-orders', icon: PackageCheck, color: 'text-cyan-600' },
+                    { label: 'Tạo đơn xuất kho', path: '/outbound/orders/create', icon: Truck, color: 'text-sky-600' },
+                    { label: 'Phiên kiểm kê kho', path: '/inventory/stocktake/create', icon: ClipboardCheck, color: 'text-emerald-600' },
+                    { label: 'Yêu cầu chuyển kho', path: '/delivery/transfer-requests', icon: RefreshCcw, color: 'text-violet-600' },
+                    { label: 'Sơ đồ & Kệ kho', path: '/inventory/visualizer', icon: MapPin, color: 'text-amber-600' },
+                    { label: 'Nhật ký hệ thống', path: '/audit-log', icon: History, color: 'text-indigo-600' },
                   ].map((action) => {
                     const ActionIcon = action.icon;
                     return (
@@ -703,14 +586,10 @@ export default function Dashboard() {
                         className="group flex items-center justify-between rounded-2xl border-2 border-cyan-500 bg-white p-3 transition hover:bg-cyan-50 shadow-xs cursor-pointer"
                       >
                         <div className="flex items-center gap-2.5">
-                          <div
-                            className={`flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 ${action.color}`}
-                          >
+                          <div className={`flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 ${action.color}`}>
                             <ActionIcon className="h-4 w-4" />
                           </div>
-                          <span className="text-xs font-bold text-slate-800 group-hover:text-cyan-700">
-                            {action.label}
-                          </span>
+                          <span className="text-xs font-bold text-slate-800 group-hover:text-cyan-700">{action.label}</span>
                         </div>
                         <ArrowRight className="h-3.5 w-3.5 text-slate-400 transition group-hover:translate-x-1 group-hover:text-cyan-600" />
                       </Link>
@@ -726,9 +605,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                   <div className="flex items-center gap-2">
                     <Clock className="h-5 w-5 text-cyan-600" />
-                    <h2 className="text-base font-black text-slate-900">
-                      Hoạt Động Vận Hành Mới Nhất
-                    </h2>
+                    <h2 className="text-base font-black text-slate-900">Hoạt Động Vận Hành Mới Nhất</h2>
                   </div>
                   <Link
                     to="/audit-log"
@@ -753,24 +630,17 @@ export default function Dashboard() {
                       >
                         <div className="flex items-center gap-3">
                           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-600 text-white font-black text-xs">
-                            {log.resource
-                              ? log.resource.charAt(0).toUpperCase()
-                              : "W"}
+                            {log.resource ? log.resource.charAt(0).toUpperCase() : 'W'}
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-slate-900">
-                              {formatLogDescription(log)}
-                            </p>
+                            <p className="text-xs font-bold text-slate-900">{formatLogDescription(log)}</p>
                             <p className="text-[11px] font-semibold text-slate-500">
-                              Bởi {log.actorEmail || "Hệ thống"}
+                              Bởi {log.actorEmail || 'Hệ thống'}
                             </p>
                           </div>
                         </div>
                         <span className="text-[11px] font-extrabold text-slate-400">
-                          {new Date(log.createdAt).toLocaleTimeString("vi-VN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
+                          {new Date(log.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                     ))
