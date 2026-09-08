@@ -65,9 +65,6 @@ export default function CustomerProfitReportPage() {
   const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Pagination states
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Toast
   const [toastMessage, setToastMessage] = useState('');
@@ -198,10 +195,6 @@ export default function CustomerProfitReportPage() {
   const totalProfitSum = filteredData.reduce((sum, i) => sum + i.profit, 0);
   const overallMargin = totalRevenue > 0 ? (totalProfitSum / totalRevenue) * 100 : 0;
 
-  const totalItems = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const endIndex = Math.min(currentPage * pageSize, totalItems);
 
   const handleExportExcel = () => {
     const exportRows = filteredData.map((item, idx) => ({
@@ -520,60 +513,11 @@ export default function CustomerProfitReportPage() {
           </table>
         </div>
 
-        {/* PAGINATION FOOTER */}
-        {totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-white px-6 py-3 sm:flex-row text-xs font-extrabold text-slate-700">
+        {/* SUMMARY FOOTER */}
+        {filteredData.length > 0 && (
+          <div className="flex items-center justify-between border-t-2 border-slate-200 bg-white px-6 py-3 text-xs font-extrabold text-slate-700 print:hidden">
             <div className="font-semibold text-slate-600">
-              Tổng số: <b>{totalItems}</b> <span className="ml-2">Hiển thị {startIndex} - {endIndex}</span>
-            </div>
-            <div className="mt-4 flex items-center gap-2 sm:mt-0">
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-700 outline-none cursor-pointer"
-              >
-                <option value={10}>10 dòng / trang</option>
-                <option value={20}>20 dòng / trang</option>
-                <option value={50}>50 dòng / trang</option>
-                <option value={100}>100 dòng / trang</option>
-              </select>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  «
-                </button>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ‹
-                </button>
-                <span className="px-3 py-1 font-extrabold text-slate-800 bg-slate-100 rounded-lg">
-                  {currentPage} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  ›
-                </button>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-                >
-                  »
-                </button>
-              </div>
+              Tổng cộng: <b>{filteredData.length}</b> khách hàng
             </div>
           </div>
         )}

@@ -9,10 +9,6 @@ import {
   Settings,
   Maximize2,
   Minimize2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   SlidersHorizontal,
 } from 'lucide-react';
 import { reportsApi } from '../api/reportsApi';
@@ -51,9 +47,6 @@ export default function CashflowReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Pagination states
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Fullscreen state
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -118,7 +111,6 @@ export default function CashflowReportPage() {
     return filteredGroups.flatMap((g) => g.items);
   }, [filteredGroups]);
 
-  const totalPages = Math.ceil(allItems.length / pageSize) || 1;
 
   const totals = useMemo(() => {
     let income = 0;
@@ -240,10 +232,7 @@ export default function CashflowReportPage() {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
               placeholder="Tìm theo nội dung giao dịch thu chi..."
             />
@@ -259,20 +248,14 @@ export default function CashflowReportPage() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setStartDate(e.target.value)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
               <span className="text-xs font-bold text-slate-600">Đến</span>
               <input
                 type="date"
                 value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setEndDate(e.target.value)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
             </div>
@@ -357,68 +340,9 @@ export default function CashflowReportPage() {
           </table>
         </div>
 
-        {/* Pagination Footer matching Sales Report */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
-          <div className="flex items-center gap-2">
-            <span>Hiển thị:</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="h-8 px-2 rounded-lg border-2 border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-500 cursor-pointer"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-            <span>dòng/trang</span>
-            <span className="mx-2 text-slate-300">|</span>
-            <span>Tổng cộng {allItems.length} mục giao dịch</span>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-              title="Trang đầu"
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-              disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-              title="Trang trước"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="px-3 py-1 font-extrabold text-slate-800 bg-slate-100 rounded-lg">
-              Trang {currentPage} / {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-              title="Trang tiếp"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-              title="Trang cuối"
-            >
-              <ChevronsRight className="h-4 w-4" />
-            </button>
-          </div>
+        {/* Table Summary Footer */}
+        <div className="flex items-center justify-between px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
+          <span>Tổng cộng: {allItems.length} mục giao dịch</span>
         </div>
       </div>
 
