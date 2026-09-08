@@ -45,6 +45,12 @@ export default function StocktakeFreezePage() {
       ]);
       setWarehouses(whRes || []);
       setStocktakes(stRes || []);
+      if (Array.isArray(whRes) && whRes.length > 0) {
+        try {
+          const { saveStoredWarehouses } = await import('../../../shared/utils/warehouseAssignments');
+          saveStoredWarehouses(whRes);
+        } catch {}
+      }
     } catch (err) {
       console.error(err);
     } finally {

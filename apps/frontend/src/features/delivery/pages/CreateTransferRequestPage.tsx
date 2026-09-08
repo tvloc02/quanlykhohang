@@ -60,6 +60,7 @@ export interface WarehouseOption {
   id: string;
   code: string;
   name: string;
+  isFrozen?: boolean;
 }
 
 export interface UserOption {
@@ -415,12 +416,27 @@ export default function CreateTransferRequestPage({
           const rawList = Array.isArray(whData) ? whData : whData.data || [];
           const list = mergeStoredWarehouses(rawList, getStoredWarehouses());
           setWarehouses(list);
-          if (list.length >= 2 && !targetEditData) {
+          const unfrozen = list.filter((w) => !w.isFrozen);
+          if (unfrozen.length >= 2 && !targetEditData) {
             setTabs((prev) =>
               prev.map((tab) => ({
                 ...tab,
-                sourceWarehouseCode: tab.sourceWarehouseCode || list[0].code || 'KHO-TONG',
-                destinationWarehouseCode: tab.destinationWarehouseCode || list[1].code || 'KHO-CN-HCM',
+                sourceWarehouseCode:
+                  tab.sourceWarehouseCode && !list.find((w) => w.code === tab.sourceWarehouseCode)?.isFrozen
+                    ? tab.sourceWarehouseCode
+                    : unfrozen[0].code,
+                destinationWarehouseCode:
+                  tab.destinationWarehouseCode && !list.find((w) => w.code === tab.destinationWarehouseCode)?.isFrozen
+                    ? tab.destinationWarehouseCode
+                    : unfrozen[1].code,
+              }))
+            );
+          } else if (unfrozen.length === 1 && !targetEditData) {
+            setTabs((prev) =>
+              prev.map((tab) => ({
+                ...tab,
+                sourceWarehouseCode: unfrozen[0].code,
+                destinationWarehouseCode: unfrozen[0].code,
               }))
             );
           }
@@ -853,12 +869,14 @@ export default function CreateTransferRequestPage({
                   onChange={(e) => handleSourceWarehouseChange(e.target.value)}
                   className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
                 >
-                  {warehouses.length > 0 ? (
-                    warehouses.map((wh) => (
-                      <option key={wh.id || wh.code} value={wh.code}>
-                        [{wh.code}] {wh.name}
-                      </option>
-                    ))
+                  {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                    warehouses
+                      .filter((wh) => !wh.isFrozen)
+                      .map((wh) => (
+                        <option key={wh.id || wh.code} value={wh.code}>
+                          [{wh.code}] {wh.name}
+                        </option>
+                      ))
                   ) : (
                     <>
                       <option value="KHO-TONG">KHO-TONG - Kho Tổng Hà Nội</option>
@@ -880,12 +898,14 @@ export default function CreateTransferRequestPage({
                   onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
                   className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
                 >
-                  {warehouses.length > 0 ? (
-                    warehouses.map((wh) => (
-                      <option key={wh.id || wh.code} value={wh.code}>
-                        [{wh.code}] {wh.name}
-                      </option>
-                    ))
+                  {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                    warehouses
+                      .filter((wh) => !wh.isFrozen)
+                      .map((wh) => (
+                        <option key={wh.id || wh.code} value={wh.code}>
+                          [{wh.code}] {wh.name}
+                        </option>
+                      ))
                   ) : (
                     <>
                       <option value="KHO-CN-HCM">KHO-CN-HCM - Kho Hàng TP.HCM</option>
@@ -1195,12 +1215,14 @@ export default function CreateTransferRequestPage({
                             onChange={(e) => updateRow(row.rowId, { destinationWarehouseCode: e.target.value })}
                             className="w-full h-8 px-1 rounded border border-slate-300 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500"
                           >
-                            {warehouses.length > 0 ? (
-                              warehouses.map((wh) => (
-                                <option key={wh.id || wh.code} value={wh.code}>
-                                  {wh.code}
-                                </option>
-                              ))
+                            {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                              warehouses
+                                .filter((wh) => !wh.isFrozen)
+                                .map((wh) => (
+                                  <option key={wh.id || wh.code} value={wh.code}>
+                                    {wh.code}
+                                  </option>
+                                ))
                             ) : (
                               <>
                                 <option value="KHO-CN-HCM">KHO-CN-HCM</option>

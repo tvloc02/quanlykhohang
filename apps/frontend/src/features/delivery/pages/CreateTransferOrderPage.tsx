@@ -69,6 +69,7 @@ export interface WarehouseOption {
   id: string;
   code: string;
   name: string;
+  isFrozen?: boolean;
 }
 
 export interface UserOption {
@@ -591,13 +592,18 @@ export default function CreateTransferOrderPage({
           const rawList = Array.isArray(whData) ? whData : whData.data || [];
           const list = mergeStoredWarehouses(rawList, getStoredWarehouses());
           setWarehouses(list);
-          if (list.length > 0 && !targetEditData) {
-            const firstWh = list[0]?.code || list[0]?.id || 'KH002';
-            const secondWh = list[1]?.code || list[1]?.id || list[0]?.code || list[0]?.id || 'KH006';
+          const unfrozen = list.filter((w: any) => !w.isFrozen);
+          if (unfrozen.length > 0 && !targetEditData) {
+            const firstWh = unfrozen[0]?.code || unfrozen[0]?.id || 'KH002';
+            const secondWh = unfrozen[1]?.code || unfrozen[1]?.id || unfrozen[0]?.code || unfrozen[0]?.id || 'KH006';
             setTabs((prev) =>
               prev.map((tab) => {
-                const isSourceValid = list.some((w: any) => w.code === tab.sourceWarehouseCode || w.id === tab.sourceWarehouseCode);
-                const isDestValid = list.some((w: any) => w.code === tab.destinationWarehouseCode || w.id === tab.destinationWarehouseCode);
+                const isSourceValid = unfrozen.some(
+                  (w: any) => w.code === tab.sourceWarehouseCode || w.id === tab.sourceWarehouseCode
+                );
+                const isDestValid = unfrozen.some(
+                  (w: any) => w.code === tab.destinationWarehouseCode || w.id === tab.destinationWarehouseCode
+                );
                 return {
                   ...tab,
                   sourceWarehouseCode: isSourceValid ? tab.sourceWarehouseCode : secondWh,
@@ -1019,12 +1025,14 @@ export default function CreateTransferOrderPage({
               onChange={(e) => handleSourceWarehouseChange(e.target.value)}
               className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
             >
-              {warehouses.length > 0 ? (
-                warehouses.map((wh) => (
-                  <option key={wh.id || wh.code} value={wh.code || wh.id}>
-                    [{wh.code || wh.id}] {wh.name}
-                  </option>
-                ))
+              {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                warehouses
+                  .filter((wh) => !wh.isFrozen)
+                  .map((wh) => (
+                    <option key={wh.id || wh.code} value={wh.code || wh.id}>
+                      [{wh.code || wh.id}] {wh.name}
+                    </option>
+                  ))
               ) : (
                 <>
                   <option value="KH006">KH006 - Kho Thanh Trì</option>
@@ -1047,12 +1055,14 @@ export default function CreateTransferOrderPage({
               onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
               className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
             >
-              {warehouses.length > 0 ? (
-                warehouses.map((wh) => (
-                  <option key={wh.id || wh.code} value={wh.code || wh.id}>
-                    [{wh.code || wh.id}] {wh.name}
-                  </option>
-                ))
+              {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                warehouses
+                  .filter((wh) => !wh.isFrozen)
+                  .map((wh) => (
+                    <option key={wh.id || wh.code} value={wh.code || wh.id}>
+                      [{wh.code || wh.id}] {wh.name}
+                    </option>
+                  ))
               ) : (
                 <>
                   <option value="KH002">KH002 - Kho Chi Nhánh HCM</option>

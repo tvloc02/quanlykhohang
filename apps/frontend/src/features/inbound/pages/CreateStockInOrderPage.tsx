@@ -94,6 +94,7 @@ export interface WarehouseOption {
   id: string;
   code: string;
   name: string;
+  isFrozen?: boolean;
 }
 
 export interface FormDetailRow {
@@ -2384,17 +2385,28 @@ export default function CreateStockInOrderPage({
             const merged = mergeStoredWarehouses(list);
             saveStoredWarehouses(merged);
           } catch { }
-          if (list.length > 0) {
-            const firstWhCode = list[0].code;
+          const unfrozenList = list.filter((w: any) => !w.isFrozen);
+          const firstWh = unfrozenList[0] || list[0];
+          const firstWhCode = firstWh ? firstWh.code : 'KHO-TONG';
+          if (firstWhCode) {
             setTabs((prevTabs) =>
               prevTabs.map((t) => {
-                if (!t.warehouseCode || t.warehouseCode === 'KHO-NVL') {
+                if (
+                  !t.warehouseCode ||
+                  t.warehouseCode === 'KHO-NVL' ||
+                  list.find((w: any) => w.code === t.warehouseCode)?.isFrozen
+                ) {
                   return {
                     ...t,
                     warehouseCode: firstWhCode,
                     details: t.details.map((d) => ({
                       ...d,
-                      warehouseCode: !d.warehouseCode || d.warehouseCode === 'KHO-NVL' ? firstWhCode : d.warehouseCode,
+                      warehouseCode:
+                        !d.warehouseCode ||
+                        d.warehouseCode === 'KHO-NVL' ||
+                        list.find((w: any) => w.code === d.warehouseCode)?.isFrozen
+                          ? firstWhCode
+                          : d.warehouseCode,
                     })),
                   };
                 }
@@ -3729,28 +3741,34 @@ export default function CreateStockInOrderPage({
                     <div className="p-3 text-center text-xs text-slate-400 font-bold">
                       Đang tải thông tin kho từ CSDL...
                     </div>
+                  ) : warehouses.filter((w) => !w.isFrozen).length === 0 ? (
+                    <div className="p-3 text-center text-xs text-amber-600 font-bold">
+                      Tất cả kho đang bị đóng băng kiểm kê. Vui lòng mở khóa kho để tạo đơn nhập.
+                    </div>
                   ) : (
-                    warehouses.map((wh) => {
-                      const isSelected = wh.code === activeTab?.warehouseCode;
-                      return (
-                        <div
-                          key={wh.id || wh.code}
-                          onClick={() => {
-                            handleWarehouseChange(wh.code);
-                            setShowWarehouseDropdown(false);
-                          }}
-                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition cursor-pointer ${isSelected
-                              ? 'bg-cyan-600 text-white shadow-xs'
-                              : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
-                            }`}
-                        >
-                          <span>
-                            [{wh.code}] {wh.name}
-                          </span>
-                          {isSelected && <Check size={14} className="text-white" />}
-                        </div>
-                      );
-                    })
+                    warehouses
+                      .filter((w) => !w.isFrozen)
+                      .map((wh) => {
+                        const isSelected = wh.code === activeTab?.warehouseCode;
+                        return (
+                          <div
+                            key={wh.id || wh.code}
+                            onClick={() => {
+                              handleWarehouseChange(wh.code);
+                              setShowWarehouseDropdown(false);
+                            }}
+                            className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-xs font-bold transition cursor-pointer ${isSelected
+                                ? 'bg-cyan-600 text-white shadow-xs'
+                                : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-900'
+                              }`}
+                          >
+                            <span>
+                              [{wh.code}] {wh.name}
+                            </span>
+                            {isSelected && <Check size={14} className="text-white" />}
+                          </div>
+                        );
+                      })
                   )}
                 </div>
               </div>

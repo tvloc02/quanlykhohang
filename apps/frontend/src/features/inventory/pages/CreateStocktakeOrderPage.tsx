@@ -19,11 +19,21 @@ import {
   FileText,
   Eye,
   Layers,
+  Lock,
+  Unlock,
+  AlertTriangle,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner from '../../../shared/components/BarcodeScanner';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
+import {
+  getStoredWarehouses,
+  saveStoredWarehouses,
+  toggleWarehouseFreezeApi,
+} from '../../../shared/utils/warehouseAssignments';
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -475,7 +485,9 @@ export default function CreateStocktakeOrderPage({
         const whData = await whRes.json();
         setWarehouses(whData);
         if (whData.length > 0 && !locationCode) {
-          setLocationCode(whData[0].code || whData[0].id || 'KH006');
+          // Ưu tiên chọn kho đang đóng băng đầu tiên
+          const firstFrozen = whData.find((w: any) => w.isFrozen);
+          setLocationCode(firstFrozen?.code || whData[0].code || whData[0].id || 'KH006');
         }
       }
       if (uRes && uRes.ok) {
@@ -494,6 +506,75 @@ export default function CreateStocktakeOrderPage({
   useEffect(() => {
     loadMasterData();
   }, [loadMasterData]);
+
+  // Freeze state and quick-toggle for current warehouse
+  const [freezeLoading, setFreezeLoading] = useState(false);
+  const [whDropdownOpen, setWhDropdownOpen] = useState(false);
+  const [freezeModalOpen, setFreezeModalOpen] = useState(false);
+
+  const frozenWarehouses = useMemo(() => {
+    return warehouses.filter((w) => Boolean(w.isFrozen));
+  }, [warehouses]);
+
+  const selectedWh = useMemo(() => {
+    return warehouses.find((w) => w.code === locationCode || w.id === locationCode) || null;
+  }, [warehouses, locationCode]);
+  const isWhFrozen = Boolean(selectedWh?.isFrozen);
+
+  const handleToggleFreezeCurrentWh = async () => {
+    if (!selectedWh) {
+      showError('Vui lòng chọn Kho kiểm kê trước!');
+      return;
+    }
+    const nextState = !isWhFrozen;
+    const actionText = nextState ? 'đóng băng' : 'mở khóa';
+    setFreezeLoading(true);
+    try {
+      await toggleWarehouseFreezeApi(selectedWh.id || selectedWh.code, nextState, warehouses);
+      // Cập nhật state nội bộ
+      setWarehouses((prev) =>
+        prev.map((w) => (w.id === selectedWh.id || w.code === selectedWh.code ? { ...w, isFrozen: nextState } : w))
+      );
+      if (nextState) {
+        showSuccess(`Đã đóng băng kho "${selectedWh.name}" thành công! Kho đã sẵn sàng kiểm kê.`);
+      } else {
+        showSuccess(`Đã mở khóa kho "${selectedWh.name}". Các giao dịch nhập/xuất đã được mở lại.`);
+        const remainingFrozen = warehouses.filter((w) => w.isFrozen && w.code !== selectedWh.code);
+        setLocationCode(remainingFrozen[0]?.code || '');
+      }
+    } catch (err: any) {
+      showError(err.message || `Lỗi khi ${actionText} kho`);
+    } finally {
+      setFreezeLoading(false);
+    }
+  };
+
+  const handleToggleFreezeSpecificWh = async (wh: any) => {
+    if (!wh) return;
+    const nextState = !wh.isFrozen;
+    const actionText = nextState ? 'đóng băng' : 'mở khóa';
+    setFreezeLoading(true);
+    try {
+      await toggleWarehouseFreezeApi(wh.id || wh.code, nextState, warehouses);
+      setWarehouses((prev) =>
+        prev.map((w) => (w.id === wh.id || w.code === wh.code ? { ...w, isFrozen: nextState } : w))
+      );
+      if (nextState) {
+        setLocationCode(wh.code);
+        showSuccess(`Đã đóng băng kho "${wh.name}" thành công! Kho đã sẵn sàng kiểm kê.`);
+      } else {
+        showSuccess(`Đã mở khóa kho "${wh.name}". Các giao dịch nhập/xuất đã được mở lại.`);
+        if (locationCode === wh.code) {
+          const remainingFrozen = warehouses.filter((w) => w.isFrozen && (w.code !== wh.code && w.id !== wh.id));
+          setLocationCode(remainingFrozen[0]?.code || '');
+        }
+      }
+    } catch (err: any) {
+      showError(err.message || `Lỗi khi ${actionText} kho`);
+    } finally {
+      setFreezeLoading(false);
+    }
+  };
 
   // Active Sub-Warehouses / Zones for the selected Warehouse
   const activeSubWarehouses = useMemo(() => {
@@ -546,12 +627,15 @@ export default function CreateStocktakeOrderPage({
     });
   }, [locationCode, products, activeSubWarehouses, userIdentifier]);
 
-  // Click outside listener to close search dropdown
+  // Click outside listener to close search dropdown & warehouse dropdown
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as HTMLElement;
       if (!target.closest('.product-search-box')) {
         setShowDropdown(false);
+      }
+      if (!target.closest('.warehouse-dropdown-container')) {
+        setWhDropdownOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -762,6 +846,12 @@ export default function CreateStocktakeOrderPage({
       showError('Vui lòng chọn Kho kiểm kê');
       return;
     }
+    if (!isWhFrozen) {
+      showError(
+        `Kho "${selectedWh?.name || locationCode}" chưa được đóng băng! Vui lòng bấm nút "❄️ Đóng băng kho này" ở góc trên bên phải trước khi lưu phiếu.`
+      );
+      return;
+    }
     if (items.length === 0 && finalStatus !== 'DRAFT') {
       showError('Vui lòng chọn ít nhất 1 sản phẩm để kiểm kê');
       return;
@@ -867,30 +957,30 @@ export default function CreateStocktakeOrderPage({
 
   const contentMarkup = (
     <div className="space-y-4 pb-24 animate-[fadeIn_0.2s_ease-out]">
-      {/* Toast Alert */}
+      {/* Toast Alert: Nền trắng sạch sẽ, cố định dưới navbar ở top-20 right-6, tuyệt đối không làm biến dạng hay đẩy trang */}
       {toast && (
-        <div className="fixed top-6 right-6 z-[99999] pointer-events-none">
+        <div className="fixed top-20 right-6 z-[99999] pointer-events-none transition-all duration-300">
           <div
-            className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-2xl border backdrop-blur-md transition-all animate-in slide-in-from-top-4 duration-300 ${
+            className={`pointer-events-auto flex items-center gap-3 rounded-2xl bg-white px-5 py-3.5 shadow-2xl border-2 transition-all animate-in slide-in-from-top-4 duration-300 ${
               toast.type === 'error'
-                ? 'bg-slate-900/95 text-white border-red-500/50 shadow-red-950/30'
-                : 'bg-slate-900/95 text-white border-emerald-500/50 shadow-emerald-950/30'
+                ? 'border-red-200 text-slate-800 shadow-red-500/10'
+                : 'border-slate-200 text-slate-800 shadow-slate-900/10'
             }`}
           >
             {toast.type === 'error' ? (
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/20 text-red-400 shrink-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-100 text-red-600 shrink-0">
                 <XCircle size={20} />
               </div>
             ) : (
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 shrink-0">
                 <CheckCircle2 size={20} />
               </div>
             )}
-            <p className="text-sm font-bold text-white tracking-wide">{toast.message}</p>
+            <p className="text-xs sm:text-sm font-bold text-slate-800 tracking-normal">{toast.message}</p>
             <button
               type="button"
               onClick={() => setToast(null)}
-              className="ml-3 rounded-xl p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              className="ml-3 rounded-xl p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
               title="Đóng thông báo"
             >
               <X size={16} />
@@ -1025,28 +1115,20 @@ export default function CreateStocktakeOrderPage({
 
 
       {/* ═══ 1. TOP HEADER BAR ═══ */}
-      <div className="flex items-center justify-between">
-        <div className="inline-flex items-center gap-2.5 rounded-xl bg-cyan-600 px-4 py-2 text-white shadow-sm">
-          <ClipboardList className="h-5 w-5" />
-          <h1 className="text-base font-black tracking-tight uppercase">TẠO PHIẾU KIỂM KÊ HÀNG HÓA</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-3 rounded-xl bg-cyan-600 px-5 py-2.5 text-white shadow-sm">
+          <ClipboardList className="h-6 w-6" />
+          <h1 className="text-base font-black tracking-wide uppercase">TẠO PHIẾU KIỂM KÊ HÀNG HÓA</h1>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setScannerOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-3.5 py-1.5 text-xs font-extrabold text-cyan-700 shadow-xs hover:bg-cyan-50 transition cursor-pointer"
-          >
-            <ScanLine className="h-4 w-4" />
-            <span>Quét Barcode</span>
-          </button>
-
+        <div className="flex items-center">
+          {/* Nút Quay lại duy nhất ở góc phải theo yêu cầu */}
           <button
             type="button"
             onClick={handleClose}
-            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 transition shadow-2xs cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-slate-300 bg-white px-4 py-2 text-xs font-bold whitespace-nowrap text-slate-700 shadow-xs hover:bg-slate-100 hover:border-slate-400 hover:text-slate-900 transition active:scale-95 cursor-pointer"
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft className="h-4 w-4 shrink-0" />
             <span>Quay lại</span>
           </button>
         </div>
@@ -1062,7 +1144,7 @@ export default function CreateStocktakeOrderPage({
               type="date"
               value={plannedDate}
               onChange={(e) => setPlannedDate(e.target.value)}
-              className="h-9 w-full rounded-lg border-2 border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
+              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-600 cursor-pointer shadow-2xs"
             />
           </div>
 
@@ -1073,35 +1155,77 @@ export default function CreateStocktakeOrderPage({
               type="text"
               readOnly
               placeholder="MÃ TỰ ĐỘNG (KK...)"
-              className="h-9 w-full rounded-lg border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-cyan-800 uppercase outline-none focus:border-cyan-600"
+              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-cyan-800 uppercase outline-none focus:border-cyan-600"
             />
           </div>
 
-          {/* Chọn Kho kiểm kê */}
-          <div>
+          {/* Chọn Kho kiểm kê (Custom Dropdown Bo Góc Cao Ráo h-11, Không emoji, Chỉ hiện kho đã đóng băng) */}
+          <div className="relative warehouse-dropdown-container">
             <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
               <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
               <span>Kho kiểm kê (*)</span>
             </label>
-            <select
-              value={locationCode}
-              onChange={(e) => setLocationCode(e.target.value)}
-              className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
+
+            {/* Custom Select Box Taller h-11 */}
+            <button
+              type="button"
+              onClick={() => setWhDropdownOpen((prev) => !prev)}
+              className="h-11 w-full flex items-center justify-between rounded-xl border-2 border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-800 outline-none hover:border-cyan-600 focus:border-cyan-600 transition cursor-pointer shadow-2xs"
             >
-              {warehouses.length > 0 ? (
-                warehouses.map((wh) => (
-                  <option key={wh.id || wh.code} value={wh.code}>
-                    [{wh.code}] {wh.name}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="KH006">KH006 - Kho Thanh Trì</option>
-                  <option value="KH001">KH001 - Kho Hà Đông</option>
-                  <option value="KH002">KH002 - Kho Chi Nhánh HCM</option>
-                </>
-              )}
-            </select>
+              <span className="truncate">
+                {selectedWh && isWhFrozen
+                  ? `[${selectedWh.code}] ${selectedWh.name}`
+                  : frozenWarehouses.length > 0
+                  ? '— Chọn kho kiểm kê —'
+                  : '— Chưa có kho nào đóng băng —'}
+              </span>
+              <ChevronDown className={`h-4.5 w-4.5 text-slate-500 transition-transform duration-200 shrink-0 ${whDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Menu Sổ Xuống với styles bo góc cao cấp, không dùng mặc định của trình duyệt */}
+            {whDropdownOpen && (
+              <div className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-150">
+                <div className="max-h-52 overflow-y-auto space-y-1">
+                  {frozenWarehouses.length > 0 ? (
+                    frozenWarehouses.map((wh) => (
+                      <div
+                        key={wh.id || wh.code}
+                        onClick={() => {
+                          setLocationCode(wh.code);
+                          setWhDropdownOpen(false);
+                        }}
+                        className={`flex items-center justify-between rounded-lg px-3.5 py-2.5 text-xs font-bold cursor-pointer transition ${
+                          locationCode === wh.code
+                            ? 'bg-cyan-50 text-cyan-900 font-extrabold'
+                            : 'text-slate-700 hover:bg-slate-100 hover:text-cyan-800'
+                        }`}
+                      >
+                        <span>[{wh.code}] {wh.name}</span>
+                        {locationCode === wh.code && <Check className="h-3.5 w-3.5 text-cyan-600 shrink-0" />}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-3 text-center text-xs font-medium text-slate-500 italic">
+                      Không có kho nào đang đóng băng
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-100 pt-1 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWhDropdownOpen(false);
+                      setFreezeModalOpen(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Đóng băng kho để kiểm kê</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Người lập / Quản lý phiếu */}
@@ -1114,7 +1238,7 @@ export default function CreateStocktakeOrderPage({
               type="text"
               value={createdByStaff}
               readOnly
-              className="h-9 w-full rounded-lg border-2 border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none"
+              className="h-11 w-full rounded-xl border-2 border-slate-200 bg-slate-50 px-3.5 text-xs font-bold text-slate-700 outline-none"
             />
           </div>
         </div>
@@ -1543,14 +1667,14 @@ export default function CreateStocktakeOrderPage({
             </div>
 
             {/* Action Buttons */}
-            <div className="space-y-2 pt-1">
+            <div className="space-y-3 pt-2">
               <button
                 type="button"
                 onClick={() => executeSubmit(isManager ? 'COUNTING' : 'COUNTING_DONE', true)}
                 disabled={submitting || items.length === 0}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-emerald-700 disabled:opacity-50 transition active:scale-95 cursor-pointer"
+                className="w-full h-12 flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-5 text-sm font-black text-white shadow-md hover:shadow-lg hover:from-emerald-700 hover:to-teal-700 disabled:opacity-50 transition active:scale-[0.98] cursor-pointer"
               >
-                <Printer size={16} />
+                <Printer className="h-5 w-5" />
                 <span>Lưu & In phiếu kiểm</span>
               </button>
 
@@ -1558,9 +1682,9 @@ export default function CreateStocktakeOrderPage({
                 type="button"
                 onClick={() => executeSubmit(isManager ? 'COUNTING' : 'COUNTING_DONE', false)}
                 disabled={submitting || items.length === 0}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-cyan-800 disabled:opacity-50 transition active:scale-95 cursor-pointer"
+                className="w-full h-12 flex items-center justify-center gap-2.5 rounded-xl bg-cyan-700 px-5 text-sm font-black text-white shadow-md hover:shadow-lg hover:bg-cyan-800 disabled:opacity-50 transition active:scale-[0.98] cursor-pointer"
               >
-                <Save size={16} />
+                <Save className="h-5 w-5" />
                 <span>Lưu phiếu kiểm kho</span>
               </button>
 
@@ -1568,18 +1692,18 @@ export default function CreateStocktakeOrderPage({
                 type="button"
                 onClick={() => executeSubmit('DRAFT', false)}
                 disabled={submitting}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-amber-600 disabled:opacity-50 transition active:scale-95 cursor-pointer"
+                className="w-full h-11 flex items-center justify-center gap-2.5 rounded-xl bg-amber-500 px-5 text-sm font-black text-white shadow-md hover:shadow-lg hover:bg-amber-600 disabled:opacity-50 transition active:scale-[0.98] cursor-pointer"
               >
-                <FileText size={16} />
+                <FileText className="h-5 w-5" />
                 <span>Lưu tạm (Draft)</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleClose}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-4 py-2 text-xs font-extrabold text-slate-700 hover:bg-slate-100 transition active:scale-95 cursor-pointer"
+                className="w-full h-11 flex items-center justify-center gap-2.5 rounded-xl border-2 border-slate-300 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-100 hover:border-slate-400 active:scale-[0.98] transition cursor-pointer"
               >
-                <ArrowLeft size={16} />
+                <ArrowLeft className="h-5 w-5" />
                 <span>Hủy / Quay lại</span>
               </button>
             </div>
@@ -1649,6 +1773,80 @@ export default function CreateStocktakeOrderPage({
               showSuccess('Đã cập nhật vị trí ô kệ kiểm kê thành công!');
             }}
           />
+        )}
+
+        {/* ══ MODAL QUẢN LÝ / ĐÓNG BĂNG KHO KIỂM KÊ ══ */}
+        {freezeModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+            <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl border border-slate-100 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2 text-cyan-900">
+                  <Lock className="h-4.5 w-4.5 text-cyan-700" />
+                  <h3 className="text-sm font-black uppercase tracking-wide">
+                    Đóng Băng Kho Kiểm Kê
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFreezeModalOpen(false)}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Chỉ những kho <strong>được đóng băng</strong> mới hiển thị để thực hiện kiểm kê. Khi đóng băng, mọi giao dịch nhập/xuất tại kho này sẽ tạm ngưng để đảm bảo số liệu chính xác.
+              </p>
+
+              <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+                {warehouses.map((wh) => (
+                  <div
+                    key={wh.id || wh.code}
+                    className="flex items-center justify-between rounded-xl border border-slate-200 p-3 hover:border-slate-300 transition"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-900">
+                        [{wh.code}] {wh.name}
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        {wh.isFrozen ? (
+                          <span className="font-semibold text-cyan-700">Đang đóng băng (Đủ ĐK kiểm kê)</span>
+                        ) : (
+                          <span>Bình thường (Đang mở nhập/xuất)</span>
+                        )}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={freezeLoading}
+                      onClick={async () => {
+                        await handleToggleFreezeSpecificWh(wh);
+                      }}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition active:scale-95 cursor-pointer disabled:opacity-50 ${
+                        wh.isFrozen
+                          ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                          : 'bg-cyan-600 text-white hover:bg-cyan-700'
+                      }`}
+                    >
+                      {wh.isFrozen ? 'Mở khóa' : 'Đóng băng ngay'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setFreezeModalOpen(false)}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

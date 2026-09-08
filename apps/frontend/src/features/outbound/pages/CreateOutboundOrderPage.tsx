@@ -212,6 +212,7 @@ export interface WarehouseOption {
   id: string;
   code: string;
   name: string;
+  isFrozen?: boolean;
 }
 
 export interface FormDetailRow {
@@ -676,13 +677,19 @@ export default function CreateOutboundOrderPage({
 
   const selectedWarehouse = useMemo(() => {
     const curCode = activeTab?.branchCode || 'KHO-TONG';
-    return warehouses.find((w) => w.code === curCode || w.id === curCode) || warehouses[0] || { code: curCode, name: `Kho ${curCode}` };
+    const unfrozen = warehouses.filter((w) => !w.isFrozen);
+    return (
+      unfrozen.find((w) => w.code === curCode || w.id === curCode) ||
+      unfrozen[0] ||
+      warehouses.find((w) => w.code === curCode || w.id === curCode) || { code: curCode, name: `Kho ${curCode}` }
+    );
   }, [warehouses, activeTab?.branchCode]);
 
   const filteredWarehousesList = useMemo(() => {
+    const unfrozen = warehouses.filter((w) => !w.isFrozen);
     const kw = warehouseSearch.trim().toLowerCase();
-    if (!kw) return warehouses;
-    return warehouses.filter((w) => w.name.toLowerCase().includes(kw) || w.code.toLowerCase().includes(kw));
+    if (!kw) return unfrozen;
+    return unfrozen.filter((w) => w.name.toLowerCase().includes(kw) || w.code.toLowerCase().includes(kw));
   }, [warehouses, warehouseSearch]);
 
   // Click outside listener for dropdowns
@@ -798,7 +805,20 @@ export default function CreateOutboundOrderPage({
         if (whRes && whRes.ok) {
           const whData = await whRes.json();
           const list = Array.isArray(whData) ? whData : whData.data || [];
-          setWarehouses(mergeStoredWarehouses(list, getStoredWarehouses()));
+          const merged = mergeStoredWarehouses(list, getStoredWarehouses());
+          setWarehouses(merged);
+          const firstUnfrozen = merged.find((w) => !w.isFrozen);
+          if (firstUnfrozen) {
+            setTabs((prev) =>
+              prev.map((t) => {
+                const isCurrentFrozen = merged.find((w) => w.code === t.branchCode)?.isFrozen;
+                if (!t.branchCode || isCurrentFrozen) {
+                  return { ...t, branchCode: firstUnfrozen.code };
+                }
+                return t;
+              })
+            );
+          }
         }
       } catch (err) {
         console.error('Error loading master data:', err);
@@ -1456,7 +1476,8 @@ export default function CreateOutboundOrderPage({
 
     const { foundBin, foundPrice } = findInboundDetailsForProduct(p);
     const targetPrice = foundPrice || getProductPriceForMode(p);
-    const rowWhCode = activeTab.branchCode || warehouses[0]?.code || 'KHO-TONG';
+    const firstUnfrozen = warehouses.find((w) => !w.isFrozen);
+    const rowWhCode = activeTab.branchCode || firstUnfrozen?.code || 'KHO-TONG';
 
     const emptyRow = activeTab.details.find((r) => !r.productId && !r.productName);
     if (emptyRow) {
@@ -1920,7 +1941,7 @@ export default function CreateOutboundOrderPage({
                     </span>
                   </div>
                   <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-300">
-                    {warehouses.length} Kho
+                    {filteredWarehousesList.length} Kho
                   </span>
                 </div>
 

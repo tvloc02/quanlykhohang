@@ -368,10 +368,11 @@ input[type=number] {
     opacity: 0 !important;
   }
 
-  /* 1b. Khi in phiếu đơn lẻ (Phiếu nhập kho, Phiếu xuất kho modal), ẩn hoàn toàn toàn bộ ứng dụng nền & báo cáo */
+  /* 1b. Khi in phiếu đơn lẻ (Phiếu nhập kho, Phiếu xuất kho modal, Phiếu điều chuyển nội bộ), ẩn hoàn toàn toàn bộ ứng dụng nền & báo cáo */
   body.is-printing-slip #root,
   body:has(.inbound-print-modal) #root,
-  body:has(.outbound-print-modal) #root {
+  body:has(.outbound-print-modal) #root,
+  body:has(.internal-shipping-modal) #root {
     display: none !important;
     visibility: hidden !important;
     height: 0 !important;

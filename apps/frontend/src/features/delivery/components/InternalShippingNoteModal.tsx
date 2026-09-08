@@ -212,6 +212,29 @@ export default function InternalShippingNoteModal({
     }
   }, [open, initialData, settings]);
 
+  // Set body class for print isolation
+  useEffect(() => {
+    if (!open) return;
+    document.body.classList.add('is-printing-slip');
+    return () => {
+      document.body.classList.remove('is-printing-slip');
+    };
+  }, [open]);
+
+  // Keyboard shortcut Ctrl+P / Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        window.print();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
   // Handle item changes
   const handleItemChange = (index: number, field: keyof ShippingNoteItem, value: any) => {
     setItems((prev) => {
@@ -351,6 +374,16 @@ export default function InternalShippingNoteModal({
                 min-height: 0 !important;
                 background: #fff !important;
               }
+              /* Ẩn toàn bộ giao diện phía sau (Root, Layout, danh sách phía sau) */
+              #root,
+              body > *:not(.internal-shipping-modal) {
+                display: none !important;
+                visibility: hidden !important;
+                height: 0 !important;
+                max-height: 0 !important;
+                overflow: hidden !important;
+                opacity: 0 !important;
+              }
               .internal-shipping-modal {
                 position: static !important;
                 display: block !important;
@@ -362,6 +395,8 @@ export default function InternalShippingNoteModal({
                 background: #fff !important;
                 overflow: visible !important;
                 inset: auto !important;
+                visibility: visible !important;
+                opacity: 1 !important;
               }
               .internal-shipping-modal > div {
                 display: block !important;
@@ -388,8 +423,11 @@ export default function InternalShippingNoteModal({
                 margin: 0 auto !important;
                 width: 100% !important;
                 max-width: 100% !important;
+                page-break-after: avoid;
+                break-after: avoid;
               }
-              .print-hide {
+              .print-hide,
+              .print\\:hidden {
                 display: none !important;
               }
               .print-show-val {
