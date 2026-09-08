@@ -1556,6 +1556,8 @@ export default function CreateOutboundOrderPage({
           });
         }
         localStorage.setItem('stored_outbound_orders', JSON.stringify(storedOutbound));
+        window.dispatchEvent(new Event('outbound-order-created'));
+        window.dispatchEvent(new Event('storage'));
       } catch (errLocal) {
         console.warn('Lỗi lưu stored_outbound_orders vào localStorage:', errLocal);
       }

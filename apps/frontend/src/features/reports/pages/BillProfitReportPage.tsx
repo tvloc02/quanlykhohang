@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
+
 export interface BillProfitItem {
   id: string;
   stt: number;
@@ -54,12 +56,9 @@ export default function BillProfitReportPage() {
   const [error, setError] = useState('');
 
   // Filters
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 3);
-    return d.toISOString().split('T')[0];
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { firstDay, today } = useMemo(() => getInitialReportDates(90), []);
+  const [fromDate, setFromDate] = useState(firstDay);
+  const [toDate, setToDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState('');
 
 
@@ -133,52 +132,75 @@ export default function BillProfitReportPage() {
       }
 
       let itemsList: BillProfitItem[] = [];
+      const existingBills = new Set<string>();
+
+      const processOrder = (order: any, countRef: { val: number }) => {
+        const billCode = order.orderNo || order.code || `XBH_${String(order.id).slice(0, 6)}`;
+        const oType = String(order.orderType || '').toLowerCase();
+        if (oType === 'disposal' || billCode.startsWith('XH')) return;
+        if (['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(order.status || '').toUpperCase())) return;
+        if (existingBills.has(billCode)) return;
+
+        const branchName = order.warehouseName || order.branchName || order.warehouse?.name || order.branchCode || order.branch || 'Kho Tổng';
+        const orderDate = parseAnyDateToLocalString(order.orderDate || order.createdAt);
+        const custName = order.customerName || (typeof order.customer === 'string' ? order.customer : order.customer?.name) || 'Khách hàng bán lẻ';
+
+        const details = Array.isArray(order.details) ? order.details : Array.isArray(order.items) ? order.items : [];
+
+        details.forEach((d: any) => {
+          const pCode = d.productCode || d.productSku || d.product?.internalSku || d.sku || '';
+          const pName = d.productName || d.product?.name || 'Sản phẩm kinh doanh';
+          const exportQty = Number(d.requiredQty || d.pickedQty || d.qty || d.quantity || 0);
+          const exportPrice = Number(d.unitPrice || d.price || 1000000);
+          const revenue = exportQty * exportPrice;
+
+          const matchedProd = productsMap.get(pCode);
+          const importPrice = matchedProd ? matchedProd.importPrice : Math.round(exportPrice * 0.7);
+          const totalCost = exportQty * importPrice;
+          const profit = revenue - totalCost;
+          const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+
+          itemsList.push({
+            id: `${order.id || billCode}-${countRef.val}`,
+            stt: countRef.val++,
+            billCode,
+            branchName,
+            productCode: pCode,
+            productName: pName,
+            exportQty,
+            exportPrice,
+            revenue,
+            importPrice,
+            totalCost,
+            profit,
+            profitMargin: Math.round(profitMargin * 100) / 100,
+            date: orderDate,
+            customerName: custName,
+          });
+        });
+
+        existingBills.add(billCode);
+      };
+
+      let countRef = { val: 1 };
       if (outboundRes && outboundRes.ok) {
         const outboundData = await outboundRes.json();
         if (Array.isArray(outboundData)) {
-          let count = 1;
-          outboundData.forEach((order: any) => {
-            const billCode = order.orderNo || order.code || `XBH_${String(order.id).slice(0, 6)}`;
-            const branchName = order.warehouseName || order.branchName || order.warehouse?.name || order.branch || 'Kho Tổng Hồ Chí Minh';
-            const orderDate = order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-            const custName = order.customer || order.customerName || 'Khách hàng lẻ';
-
-            const details = Array.isArray(order.details) ? order.details : Array.isArray(order.items) ? order.items : [];
-
-            details.forEach((d: any) => {
-              const pCode = d.productCode || d.productSku || d.product?.internalSku || d.sku || '';
-              const pName = d.productName || d.product?.name || 'Sản phẩm kinh doanh';
-              const exportQty = Number(d.requiredQty || d.pickedQty || d.qty || d.quantity || 0);
-              const exportPrice = Number(d.unitPrice || d.price || 1000000);
-              const revenue = exportQty * exportPrice;
-
-              const matchedProd = productsMap.get(pCode);
-              const importPrice = matchedProd ? matchedProd.importPrice : Math.round(exportPrice * 0.7);
-              const totalCost = exportQty * importPrice;
-              const profit = revenue - totalCost;
-              const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
-
-              itemsList.push({
-                id: `${order.id}-${count}`,
-                stt: count++,
-                billCode,
-                branchName,
-                productCode: pCode,
-                productName: pName,
-                exportQty,
-                exportPrice,
-                revenue,
-                importPrice,
-                totalCost,
-                profit,
-                profitMargin: Math.round(profitMargin * 100) / 100,
-                date: orderDate,
-                customerName: custName,
-              });
-            });
-          });
+          outboundData.forEach((order: any) => processOrder(order, countRef));
         }
       }
+
+      // Hợp nhất stored_outbound_orders từ localStorage
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList)) {
+            localList.forEach((order: any) => processOrder(order, countRef));
+          }
+        }
+      } catch {}
+
       setReportData(itemsList);
     } catch (err: any) {
       setError(err?.message || 'Không thể tải dữ liệu báo cáo lợi nhuận');
@@ -189,6 +211,16 @@ export default function BillProfitReportPage() {
 
   useEffect(() => {
     fetchProfitReport();
+  }, []);
+
+  useEffect(() => {
+    const handleOrderEvent = () => fetchProfitReport();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, []);
 
   const filteredData = useMemo(() => {

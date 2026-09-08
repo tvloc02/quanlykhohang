@@ -19,6 +19,7 @@ import {
   Check,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
 
 export interface CategoryProfitItem {
   id: string;
@@ -73,12 +74,9 @@ export default function CategoryProfitReportPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 3);
-    return d.toISOString().split('T')[0];
-  });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { firstDay, today } = useMemo(() => getInitialReportDates(90), []);
+  const [fromDate, setFromDate] = useState(firstDay);
+  const [toDate, setToDate] = useState(today);
   const [searchQuery, setSearchQuery] = useState('');
 
 
@@ -137,76 +135,103 @@ export default function CategoryProfitReportPage() {
 
       let itemsList: CategoryProfitItem[] = [];
 
+      const prodStats = new Map<
+        string,
+        { branch: string; categoryName: string; code: string; name: string; exportQty: number; revenue: number; totalCost: number; price: number; importPrice: number }
+      >();
+
+      const processedBills = new Set<string>();
+
+      const processOrder = (order: any) => {
+        const billCode = String(order.orderNo || order.code || '').trim().toUpperCase();
+        const oType = String(order.orderType || '').toLowerCase();
+        if (oType === 'disposal' || billCode.startsWith('XH')) return;
+        if (['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(order.status || '').toUpperCase())) return;
+        if (billCode && processedBills.has(billCode)) return;
+
+        const orderDate = parseAnyDateToLocalString(order.orderDate || order.createdAt);
+        if (fromDate && orderDate && orderDate < fromDate) return;
+        if (toDate && orderDate && orderDate > toDate) return;
+
+        const branch = order.warehouseName || order.branchName || order.warehouse?.name || order.branchCode || order.branch || 'Kho Tổng';
+        const details = Array.isArray(order.details) ? order.details : Array.isArray(order.items) ? order.items : [];
+
+        details.forEach((d: any) => {
+          const pCode = d.productCode || d.productSku || d.product?.internalSku || d.sku || '';
+          const pName = d.productName || d.product?.name || 'Sản phẩm';
+          const qty = Number(d.requiredQty || d.pickedQty || d.qty || d.quantity || 0);
+          const price = Number(d.unitPrice || d.price || 0);
+
+          const matchedProd = productsMap.get(pCode);
+          const catName = matchedProd ? matchedProd.category : 'Nhóm chung';
+          const cost = matchedProd ? matchedProd.importPrice : price * 0.7;
+
+          const rev = qty * price;
+          const totCost = qty * cost;
+
+          const key = `${branch}-${pCode}`;
+          const existing = prodStats.get(key);
+          if (existing) {
+            existing.exportQty += qty;
+            existing.revenue += rev;
+            existing.totalCost += totCost;
+          } else {
+            prodStats.set(key, {
+              branch,
+              categoryName: catName,
+              code: pCode,
+              name: pName,
+              exportQty: qty,
+              revenue: rev,
+              totalCost: totCost,
+              price,
+              importPrice: cost,
+            });
+          }
+        });
+
+        if (billCode) processedBills.add(billCode);
+      };
+
       if (outboundRes && outboundRes.ok) {
         const outbounds = await outboundRes.json();
         if (Array.isArray(outbounds)) {
-          const prodStats = new Map<
-            string,
-            { branch: string; categoryName: string; code: string; name: string; exportQty: number; revenue: number; totalCost: number; price: number; importPrice: number }
-          >();
-
-          outbounds.forEach((order: any) => {
-            const branch = order.warehouseName || order.branch || 'Kho Tổng';
-            const details = Array.isArray(order.details) ? order.details : [];
-
-            details.forEach((d: any) => {
-              const pCode = d.productCode || d.productSku || d.product?.internalSku || '';
-              const pName = d.productName || d.product?.name || 'Sản phẩm';
-              const qty = Number(d.requiredQty || d.pickedQty || d.qty || 0);
-              const price = Number(d.unitPrice || d.price || 0);
-
-              const matchedProd = productsMap.get(pCode);
-              const catName = matchedProd ? matchedProd.category : 'Nhóm chung';
-              const cost = matchedProd ? matchedProd.importPrice : price * 0.7;
-
-              const rev = qty * price;
-              const totCost = qty * cost;
-
-              const key = `${branch}-${pCode}`;
-              const existing = prodStats.get(key);
-              if (existing) {
-                existing.exportQty += qty;
-                existing.revenue += rev;
-                existing.totalCost += totCost;
-              } else {
-                prodStats.set(key, {
-                  branch,
-                  categoryName: catName,
-                  code: pCode,
-                  name: pName,
-                  exportQty: qty,
-                  revenue: rev,
-                  totalCost: totCost,
-                  price,
-                  importPrice: cost,
-                });
-              }
-            });
-          });
-
-          let sttCounter = 1;
-          prodStats.forEach((val) => {
-            const profit = val.revenue - val.totalCost;
-            const profitMargin = val.revenue > 0 ? (profit / val.revenue) * 100 : 0;
-
-            itemsList.push({
-              id: `cat-profit-${sttCounter}`,
-              branch: val.branch,
-              categoryName: val.categoryName,
-              stt: sttCounter++,
-              productCode: val.code,
-              productName: val.name,
-              exportQty: val.exportQty,
-              exportPrice: val.price,
-              revenue: val.revenue,
-              importPrice: val.importPrice,
-              totalCost: Math.round(val.totalCost),
-              profit: Math.round(profit),
-              profitMargin: Math.round(profitMargin * 100) / 100,
-            });
-          });
+          outbounds.forEach((order: any) => processOrder(order));
         }
       }
+
+      // Hợp nhất stored_outbound_orders từ localStorage
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList)) {
+            localList.forEach((order: any) => processOrder(order));
+          }
+        }
+      } catch {}
+
+      let sttCounter = 1;
+      prodStats.forEach((val) => {
+        const profit = val.revenue - val.totalCost;
+        const profitMargin = val.revenue > 0 ? (profit / val.revenue) * 100 : 0;
+
+        itemsList.push({
+          id: `cat-profit-${sttCounter}`,
+          branch: val.branch,
+          categoryName: val.categoryName,
+          stt: sttCounter++,
+          productCode: val.code,
+          productName: val.name,
+          exportQty: val.exportQty,
+          exportPrice: val.price,
+          revenue: val.revenue,
+          importPrice: val.importPrice,
+          totalCost: Math.round(val.totalCost),
+          profit: Math.round(profit),
+          profitMargin: Math.round(profitMargin * 100) / 100,
+        });
+      });
 
       setReportData(itemsList);
     } catch {
@@ -218,7 +243,18 @@ export default function CategoryProfitReportPage() {
 
   useEffect(() => {
     fetchCategoryProfitReport();
-  }, []);
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => fetchCategoryProfitReport();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
+  }, [fromDate, toDate]);
+
 
   const branchOptions = useMemo(() => {
     const branches = Array.from(new Set(reportData.map((d) => d.branch)));

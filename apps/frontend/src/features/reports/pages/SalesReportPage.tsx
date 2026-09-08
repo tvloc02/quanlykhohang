@@ -22,6 +22,8 @@ import { reportsApi } from '../api/reportsApi';
 import { ReportPrintHeader } from '../components/ReportPrintHeader';
 import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
+
 const API_BASE_URL = 'http://localhost:3000/api';
 
 const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
@@ -35,17 +37,13 @@ function authHeaders() {
 }
 
 function getInitialDates() {
-  const now = new Date();
-  const past14 = new Date(now);
-  past14.setDate(past14.getDate() - 14);
-
-  const formatD = (d: Date) => d.toISOString().split('T')[0];
-  return { firstDay: formatD(past14), today: formatD(now) };
+  return getInitialReportDates(14);
 }
 
 function formatSampleDate(dateStr: string): string {
   if (!dateStr) return '';
-  const parts = dateStr.split('-');
+  const clean = parseAnyDateToLocalString(dateStr);
+  const parts = clean.split('-');
   if (parts.length === 3) {
     const day = parts[2].padStart(2, '0');
     const month = parts[1].padStart(2, '0');
@@ -68,8 +66,6 @@ interface SalesGroupItem {
   orders: any[];
 }
 
-
-
 function buildChartTimeline(
   rawGroupedItems: SalesGroupItem[],
   startDateStr: string,
@@ -83,14 +79,16 @@ function buildChartTimeline(
 
   if (timeGroup === 'day') {
     if (!startDateStr || !endDateStr) return rawGroupedItems;
-    const start = new Date(startDateStr);
-    const end = new Date(endDateStr);
+    const [sy, sm, sd] = startDateStr.split('-').map(Number);
+    const [ey, em, ed] = endDateStr.split('-').map(Number);
+    const start = new Date(sy, sm - 1, sd);
+    const end = new Date(ey, em - 1, ed);
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return rawGroupedItems;
 
     const cur = new Date(start);
     let steps = 0;
     while (cur <= end && steps < 31) {
-      const key = cur.toISOString().split('T')[0];
+      const key = getLocalDateString(cur);
       const existing = map.get(key);
       if (existing) {
         results.push(existing);
@@ -228,31 +226,126 @@ export default function SalesReportPage() {
       const activeGroup = groupBy === 'chart' ? chartTimeGroup : groupBy;
       const res = await reportsApi.getSalesReport(startDate, endDate, activeGroup);
       const items = Array.isArray(res) ? res : [];
-      setData(
-        items.map((item: any, idx: number) => {
-          const rev = Number(item.revenue || 0);
-          const disc = Number(item.discount || 0);
-          const vat = Number(item.vatAmount || 0);
-          const ret = Number(item.returnAmount || 0);
-          // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
-          const net = item.netRevenue !== undefined && item.netRevenue !== null
-            ? Number(item.netRevenue)
-            : Math.max(0, rev - disc - ret + vat);
+      let mappedItems = items.map((item: any, idx: number) => {
+        const rev = Number(item.revenue || 0);
+        const disc = Number(item.discount || 0);
+        const vat = Number(item.vatAmount || 0);
+        const ret = Number(item.returnAmount || 0);
+        // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
+        const net = item.netRevenue !== undefined && item.netRevenue !== null
+          ? Number(item.netRevenue)
+          : Math.max(0, rev - disc - ret + vat);
 
-          return {
-            id: String(item.id || idx + 1),
-            dateOrName: item.dateOrName || item.groupName || item.date || `Nhóm ${idx + 1}`,
-            salesOrderCount: Number(item.salesOrderCount || item.ordersCount || 0),
-            revenue: rev,
-            discount: disc,
-            vatAmount: vat,
-            returnOrderCount: Number(item.returnOrderCount || 0),
-            returnAmount: ret,
-            netRevenue: net,
-            orders: Array.isArray(item.orders) ? item.orders : [],
-          };
-        })
-      );
+        return {
+          id: String(item.id || idx + 1),
+          dateOrName: item.dateOrName || item.groupName || item.date || `Nhóm ${idx + 1}`,
+          salesOrderCount: Number(item.salesOrderCount || item.ordersCount || 0),
+          revenue: rev,
+          discount: disc,
+          vatAmount: vat,
+          returnOrderCount: Number(item.returnOrderCount || 0),
+          returnAmount: ret,
+          netRevenue: net,
+          orders: Array.isArray(item.orders) ? [...item.orders] : [],
+        };
+      });
+
+      // Hợp nhất đơn hàng từ localStorage stored_outbound_orders nếu chưa có trên DB
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList) && localList.length > 0) {
+            const existingOrderNos = new Set<string>();
+            mappedItems.forEach((grp) => {
+              (grp.orders || []).forEach((o: any) => {
+                if (o.orderNo) existingOrderNos.add(String(o.orderNo).trim().toUpperCase());
+              });
+            });
+
+            localList.forEach((lo) => {
+              const oNo = String(lo.orderNo || lo.orderCode || '').trim().toUpperCase();
+              const oType = String(lo.orderType || '').toLowerCase();
+              const isDisposal = oType === 'disposal' || oNo.startsWith('XH');
+              const isCancelled = ['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(lo.status || '').toUpperCase());
+
+              if (isDisposal || isCancelled || (oNo && existingOrderNos.has(oNo))) {
+                return;
+              }
+
+              const oDateStr = parseAnyDateToLocalString(lo.orderDate || lo.createdAt);
+              if (startDate && oDateStr && oDateStr < startDate) return;
+              if (endDate && oDateStr && oDateStr > endDate) return;
+
+              let groupKey = oDateStr || 'Không xác định';
+              let groupLabel = oDateStr || 'Không xác định';
+
+              if (activeGroup === 'month') {
+                groupKey = oDateStr ? oDateStr.substring(0, 7) : 'Không xác định';
+                groupLabel = oDateStr ? `Tháng ${oDateStr.substring(5, 7)}/${oDateStr.substring(0, 4)}` : 'Không xác định';
+              } else if (activeGroup === 'year') {
+                groupKey = oDateStr ? oDateStr.substring(0, 4) : 'Không xác định';
+                groupLabel = oDateStr ? `Năm ${oDateStr.substring(0, 4)}` : 'Không xác định';
+              } else if (activeGroup === 'staff') {
+                groupKey = (lo.employeeName || '').trim() || 'NV Chưa rõ';
+                groupLabel = groupKey;
+              } else if (activeGroup === 'customer') {
+                groupKey = (lo.customerName || lo.customer || '').trim() || 'Khách lẻ / vãng lai';
+                groupLabel = groupKey;
+              } else if (activeGroup === 'branch') {
+                groupKey = (lo.branchCode || lo.warehouseCode || 'KHO-TONG').trim().toUpperCase();
+                groupLabel = groupKey;
+              }
+
+              const subtotal = Number(lo.subtotal || lo.totalAmount || 0);
+              const disc = Number(lo.discount || 0);
+              const vat = Number(lo.vatAmount || 0);
+              const net = Math.max(0, subtotal - disc + vat);
+
+              let foundGroup = mappedItems.find((g) => g.id === groupKey || g.dateOrName === groupLabel);
+              if (!foundGroup) {
+                foundGroup = {
+                  id: groupKey,
+                  dateOrName: groupLabel,
+                  salesOrderCount: 0,
+                  revenue: 0,
+                  discount: 0,
+                  vatAmount: 0,
+                  returnOrderCount: 0,
+                  returnAmount: 0,
+                  netRevenue: 0,
+                  orders: [],
+                };
+                mappedItems.push(foundGroup);
+              }
+
+              foundGroup.salesOrderCount += 1;
+              foundGroup.revenue += subtotal;
+              foundGroup.discount += disc;
+              foundGroup.vatAmount += vat;
+              foundGroup.netRevenue += net;
+              foundGroup.orders.push({
+                id: lo.id || oNo,
+                orderNo: lo.orderNo || lo.orderCode,
+                orderDate: lo.orderDate || lo.createdAt,
+                customerName: lo.customerName || lo.customer || 'Khách hàng bán lẻ',
+                employeeName: lo.employeeName || 'System Administrator',
+                subtotal,
+                discount: disc,
+                vatAmount: vat,
+                totalAmount: Number(lo.totalAmount || (subtotal - disc + vat)),
+                status: lo.status || 'Đã giao hàng',
+              });
+
+              if (oNo) existingOrderNos.add(oNo);
+            });
+          }
+        }
+      } catch (eLocal) {
+        console.warn('Lỗi đọc stored_outbound_orders:', eLocal);
+      }
+
+      setData(mappedItems);
     } catch (err: any) {
       console.error('Không thể kết nối dữ liệu báo cáo bán hàng:', err);
       setError(err?.message || 'Không thể kết nối dữ liệu báo cáo bán hàng');
@@ -264,6 +357,18 @@ export default function SalesReportPage() {
 
   useEffect(() => {
     loadData();
+  }, [startDate, endDate, groupBy, chartTimeGroup]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => {
+      loadData();
+    };
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, [startDate, endDate, groupBy, chartTimeGroup]);
 
   // Filtered dataset for search

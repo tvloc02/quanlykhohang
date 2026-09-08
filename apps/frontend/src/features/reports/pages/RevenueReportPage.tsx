@@ -15,14 +15,12 @@ import { reportsApi } from '../api/reportsApi';
 import { ReportPrintHeader } from '../components/ReportPrintHeader';
 import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
+
 const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
 
 function getInitialDates() {
-  const now = new Date();
-  const past30 = new Date(now);
-  past30.setDate(past30.getDate() - 30);
-  const formatD = (d: Date) => d.toISOString().split('T')[0];
-  return { firstDay: formatD(past30), today: formatD(now) };
+  return getInitialReportDates(30);
 }
 
 interface RevenueItem {
@@ -84,7 +82,56 @@ export default function RevenueReportPage() {
     setError('');
     try {
       const res = await reportsApi.getRevenueReport(startDate, endDate);
-      setData(Array.isArray(res) ? res : []);
+      let groups: RevenueGroup[] = Array.isArray(res) ? [...res] : [];
+
+      // Hợp nhất stored_outbound_orders nếu chưa có
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList) && localList.length > 0) {
+            localList.forEach((lo) => {
+              const oNo = String(lo.orderNo || lo.orderCode || '').trim().toUpperCase();
+              const oType = String(lo.orderType || '').toLowerCase();
+              const isDisposal = oType === 'disposal' || oNo.startsWith('XH');
+              const isCancelled = ['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(lo.status || '').toUpperCase());
+              if (isDisposal || isCancelled) return;
+
+              const oDateStr = parseAnyDateToLocalString(lo.orderDate || lo.createdAt);
+              if (startDate && oDateStr && oDateStr < startDate) return;
+              if (endDate && oDateStr && oDateStr > endDate) return;
+
+              const whCode = (lo.branchCode || lo.warehouseCode || 'KHO-NVL').trim().toUpperCase();
+              const staffName = lo.customerName || lo.customer || 'Khách hàng bán lẻ';
+              const amt = Number(lo.totalAmount || lo.subtotal || 0);
+
+              let targetGroup = groups.find((g) => (g.groupCode || '').toUpperCase() === whCode || g.groupName.toUpperCase().includes(whCode));
+              if (!targetGroup && groups.length > 0) targetGroup = groups[0];
+
+              if (targetGroup) {
+                targetGroup.items = targetGroup.items.filter((it) => !it.id.startsWith('empty_'));
+                const existingItem = targetGroup.items.find((it) => it.staffName === staffName);
+                if (existingItem) {
+                  existingItem.revenue += amt;
+                  existingItem.netRevenue += amt;
+                  existingItem.cashReceived += amt;
+                } else {
+                  targetGroup.items.push({
+                    id: `local_${Date.now()}_${Math.random()}`,
+                    staffName,
+                    revenue: amt,
+                    returnAmount: 0,
+                    netRevenue: amt,
+                    cashReceived: amt,
+                  });
+                }
+              }
+            });
+          }
+        }
+      } catch (e) {}
+
+      setData(groups);
     } catch (err: any) {
       setError(err?.message || 'Không thể kết nối dữ liệu báo cáo doanh thu');
     } finally {
@@ -94,6 +141,16 @@ export default function RevenueReportPage() {
 
   useEffect(() => {
     loadData();
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => loadData();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, [startDate, endDate]);
 
   // Filter dataset by search term

@@ -588,15 +588,13 @@ export class DashboardService {
       .addGroupBy("COALESCE(w.code, d.warehouseCode, '')")
       .addGroupBy("COALESCE(c.name, 'Khách hàng')");
 
-    const sDate = parseSafeDate(startDate);
-    const eDate = parseSafeDate(endDate);
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
     if (sDate) {
-      qb.andWhere('o.createdAt >= :sDate', { sDate });
+      qb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
     }
     if (eDate) {
-      const endOfDay = new Date(eDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      qb.andWhere('o.createdAt <= :eDate', { eDate: endOfDay });
+      qb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
     }
 
     const rows = await qb.getRawMany().catch(() => []);
@@ -649,8 +647,8 @@ export class DashboardService {
   }
 
   async getCashflowReport(startDate?: string, endDate?: string, branch?: string) {
-    const sDate = parseSafeDate(startDate);
-    const eDate = parseSafeDate(endDate);
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
 
     const inboundQb = this.inboundRepo.createQueryBuilder('i')
       .select('COALESCE(SUM(CAST(i.totalAmount AS DECIMAL(15,2))), 0)', 'total');
@@ -661,14 +659,12 @@ export class DashboardService {
       .select('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'total');
 
     if (sDate) {
-      inboundQb.andWhere('i.createdAt >= :sDate', { sDate });
-      outboundQb.andWhere('o.createdAt >= :sDate', { sDate });
+      inboundQb.andWhere('COALESCE(i.orderDate, i.expectedDate, i.createdAt) >= :sDate', { sDate });
+      outboundQb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
     }
     if (eDate) {
-      const endOfDay = new Date(eDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      inboundQb.andWhere('i.createdAt <= :eDate', { eDate: endOfDay });
-      outboundQb.andWhere('o.createdAt <= :eDate', { eDate: endOfDay });
+      inboundQb.andWhere('COALESCE(i.orderDate, i.expectedDate, i.createdAt) <= :eDate', { eDate });
+      outboundQb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
     }
 
     const [inboundTotal, outboundTotal] = await Promise.all([
@@ -1060,20 +1056,39 @@ export class DashboardService {
 
   /** BÁO CÁO CHI TIẾT HÀNG BÁN RA */
   async getSalesDetailReport(startDate?: string, endDate?: string) {
-    const outbounds = await this.outboundRepo.find({ relations: ['details', 'details.product'] }).catch(() => []);
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
+
+    const obQb = this.outboundRepo.createQueryBuilder('o')
+      .leftJoinAndSelect('o.details', 'd')
+      .leftJoinAndSelect('d.product', 'p')
+      .leftJoinAndSelect('o.customer', 'c')
+      .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
+      .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
+      .andWhere('(o.status IS NULL OR o.status NOT IN (:...cancelledStatuses))', {
+        cancelledStatuses: ['Đã hủy', 'CANCELLED', 'cancelled'],
+      });
+
+    if (sDate) {
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
+    }
+    if (eDate) {
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
+    }
+
+    const outbounds = await obQb.orderBy('COALESCE(o.orderDate, o.createdAt)', 'DESC').getMany().catch(() => []);
 
     const rows: any[] = [];
     let counter = 1;
 
     outbounds.forEach((o) => {
-      const orderType = (o.orderType || '').toLowerCase();
-      const orderNo = (o.orderNo || '').toUpperCase();
-      // Loại trừ đơn xuất hủy vì xuất hủy không phải hàng bán ra
-      if (orderType === 'disposal' || orderNo.startsWith('XH')) {
-        return;
-      }
-
       const details = o.details || [];
+      const orderDateVal = o.orderDate || o.createdAt;
+      const dObj = orderDateVal ? new Date(orderDateVal) : new Date();
+      const dateStr = !isNaN(dObj.getTime())
+        ? `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`
+        : '';
+
       details.forEach((d) => {
         const qty = Number(d.requiredQty || d.pickedQty || 1);
         const price = Number(d.unitPrice || 0);
@@ -1082,14 +1097,15 @@ export class DashboardService {
         rows.push({
           id: String(counter++),
           orderNo: o.orderNo || `XBH-${o.id}`,
-          date: o.orderDate ? new Date(o.orderDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          customerName: o.customerName || 'Khách bán lẻ',
+          date: dateStr,
+          customerName: o.customerName || o.customer?.name || 'Khách bán lẻ',
           productSku: d.productSku || d.product?.internalSku || 'SKU',
           productName: d.productName || d.product?.name || 'Sản phẩm',
           unit: d.unit || d.product?.unit || 'Cái',
           qty,
           price,
           totalAmount: revenue,
+          branch: o.branchCode || 'KHO-NVL',
         });
       });
     });
@@ -1099,19 +1115,29 @@ export class DashboardService {
 
   /** BÁO CÁO HÀNG BÁN RA THEO NHÂN VIÊN */
   async getSalesByStaffReport(startDate?: string, endDate?: string) {
-    const outbounds = await this.outboundRepo.find().catch(() => []);
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
+
+    const obQb = this.outboundRepo.createQueryBuilder('o')
+      .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
+      .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
+      .andWhere('(o.status IS NULL OR o.status NOT IN (:...cancelledStatuses))', {
+        cancelledStatuses: ['Đã hủy', 'CANCELLED', 'cancelled'],
+      });
+
+    if (sDate) {
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
+    }
+    if (eDate) {
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
+    }
+
+    const outbounds = await obQb.getMany().catch(() => []);
     const staffMap = new Map<string, { orders: number; revenue: number; discount: number }>();
 
     outbounds.forEach((o) => {
-      const orderType = (o.orderType || '').toLowerCase();
-      const orderNo = (o.orderNo || '').toUpperCase();
-      // Loại trừ đơn xuất hủy khỏi doanh số nhân viên
-      if (orderType === 'disposal' || orderNo.startsWith('XH')) {
-        return;
-      }
-
       const staff = o.employeeName || 'Quản trị viên hệ thống';
-      const rev = Number(o.totalAmount || 0);
+      const rev = Number(o.totalAmount || o.subtotal || 0);
       const disc = Number(o.discount || 0);
 
       const current = staffMap.get(staff) || { orders: 0, revenue: 0, discount: 0 };

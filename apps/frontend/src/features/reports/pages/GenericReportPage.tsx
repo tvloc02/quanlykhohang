@@ -17,6 +17,8 @@ import { reportsApi } from '../api/reportsApi';
 import { ReportPrintHeader } from '../components/ReportPrintHeader';
 import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
+
 interface Props {
   title: string;
   description: string;
@@ -32,12 +34,9 @@ export default function GenericReportPage({
   reportType = 'sales-detail',
   badgeColor = 'bg-cyan-600',
 }: Props) {
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 3);
-    return d.toISOString().split('T')[0];
-  });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { firstDay, today } = useMemo(() => getInitialReportDates(90), []);
+  const [startDate, setStartDate] = useState(firstDay);
+  const [endDate, setEndDate] = useState(today);
   const [search, setSearch] = useState('');
   const [data, setData] = useState<any>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +89,54 @@ export default function GenericReportPage({
     setError('');
     try {
       const res = await reportsApi.getGenericReport(reportType, startDate, endDate);
-      setData(res);
+      let list = Array.isArray(res) ? [...res] : [];
+
+      // Hợp nhất đơn hàng từ localStorage nếu xem báo cáo bán hàng
+      if (reportType === 'sales-detail') {
+        try {
+          const raw = localStorage.getItem('stored_outbound_orders');
+          if (raw) {
+            const stored = JSON.parse(raw);
+            if (Array.isArray(stored)) {
+              const existingNos = new Set(list.map((r: any) => String(r.orderNo || '').trim().toUpperCase()));
+              let counter = list.length + 1;
+              stored.forEach((o: any) => {
+                const oNo = String(o.orderNo || o.orderCode || '').trim().toUpperCase();
+                const oType = String(o.orderType || '').toLowerCase();
+                if (oType === 'disposal' || oNo.startsWith('XH')) return;
+                if (['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(o.status || '').toUpperCase())) return;
+                if (oNo && existingNos.has(oNo)) return;
+
+                const oDate = parseAnyDateToLocalString(o.orderDate || o.createdAt);
+                if (startDate && oDate && oDate < startDate) return;
+                if (endDate && oDate && oDate > endDate) return;
+
+                (o.details || []).forEach((d: any) => {
+                  const qty = Number(d.qty || d.requiredQty || d.pickedQty || 1);
+                  const price = Number(d.price || d.unitPrice || 0);
+                  const totalAmount = Number(d.totalAmount || d.totalLineAmount || qty * price);
+                  list.push({
+                    id: String(counter++),
+                    orderNo: o.orderNo || o.orderCode,
+                    date: oDate,
+                    customerName: o.customerName || o.customer || 'Khách bán lẻ',
+                    productSku: d.productSku || d.sku || 'SKU',
+                    productName: d.productName || d.name || 'Sản phẩm',
+                    unit: d.unit || 'Cái',
+                    qty,
+                    price,
+                    totalAmount,
+                    branch: o.branchCode || o.warehouseCode || 'KHO-NVL',
+                  });
+                });
+                if (oNo) existingNos.add(oNo);
+              });
+            }
+          }
+        } catch {}
+      }
+
+      setData(list);
     } catch (err: any) {
       console.error('Lỗi tải báo cáo:', err);
       setError(err?.message || 'Không thể kết nối dữ liệu báo cáo');
@@ -101,6 +147,16 @@ export default function GenericReportPage({
 
   useEffect(() => {
     loadData();
+  }, [reportType, startDate, endDate]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => loadData();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, [reportType, startDate, endDate]);
 
   // Filtered & Flattened Rows
