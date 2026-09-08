@@ -225,123 +225,36 @@ export default function SalesReportPage() {
     setLoading(true);
     setError('');
     try {
-      // 1. Fetch live Outbound Orders for full accuracy
-      let liveOutbounds: any[] = [];
-      try {
-        const obRes = await fetch(`${API_BASE_URL}/outbounds`, { headers: authHeaders() });
-        if (obRes.ok) {
-          const raw = await obRes.json();
-          liveOutbounds = Array.isArray(raw) ? raw : raw.data || [];
-        }
-      } catch (err) {
-        console.warn('Could not fetch live outbounds directly:', err);
-      }
+      const activeGroup = groupBy === 'chart' ? chartTimeGroup : groupBy;
+      const res = await reportsApi.getSalesReport(startDate, endDate, activeGroup);
+      const items = Array.isArray(res) ? res : [];
+      setData(
+        items.map((item: any, idx: number) => {
+          const rev = Number(item.revenue || 0);
+          const disc = Number(item.discount || 0);
+          const vat = Number(item.vatAmount || 0);
+          const ret = Number(item.returnAmount || 0);
+          // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
+          const net = item.netRevenue !== undefined && item.netRevenue !== null
+            ? Number(item.netRevenue)
+            : Math.max(0, rev - disc - ret + vat);
 
-      // 2. Fetch report API summary
-      let apiSummary: any[] = [];
-      try {
-        const activeGroup = groupBy === 'chart' ? chartTimeGroup : groupBy;
-        const res = await reportsApi.getSalesReport(startDate, endDate, activeGroup);
-        apiSummary = Array.isArray(res) ? res : [];
-      } catch (err) {
-        console.warn('Reports API fallback triggered');
-      }
-
-      // 3. Process live Outbounds if available
-      if (liveOutbounds.length > 0) {
-        const startTimestamp = startDate ? new Date(`${startDate}T00:00:00`).getTime() : 0;
-        const endTimestamp = endDate ? new Date(`${endDate}T23:59:59`).getTime() : Date.now();
-
-        const filtered = liveOutbounds.filter((o) => {
-          if (o.status === 'Đã hủy' || o.orderType === 'disposal') return false;
-          const orderDateStr = o.orderDate || o.createdAt;
-          if (!orderDateStr) return true;
-          const t = new Date(orderDateStr).getTime();
-          return t >= startTimestamp && t <= endTimestamp;
-        });
-
-        const activeGroup = groupBy === 'chart' ? chartTimeGroup : groupBy;
-        const groupMap = new Map<string, SalesGroupItem>();
-
-        filtered.forEach((o) => {
-          let groupKey = '';
-          const rawDateStr = (o.orderDate || o.createdAt || '').split('T')[0];
-
-          if (activeGroup === 'day') {
-            groupKey = rawDateStr || 'Không xác định';
-          } else if (activeGroup === 'month') {
-            groupKey = rawDateStr ? rawDateStr.substring(0, 7) : 'Không xác định';
-          } else if (activeGroup === 'year') {
-            groupKey = rawDateStr ? rawDateStr.substring(0, 4) : 'Không xác định';
-          } else if (activeGroup === 'staff') {
-            groupKey = o.employeeName || o.creatorName || o.createdByName || 'NV Chưa rõ';
-          } else if (activeGroup === 'customer') {
-            groupKey = o.customerName || o.customer?.name || 'Khách lẻ / vãng lai';
-          } else if (activeGroup === 'branch') {
-            groupKey = o.branchCode || o.warehouseCode || 'Kho Tổng';
-          }
-
-          const existing = groupMap.get(groupKey) || {
-            id: groupKey,
-            dateOrName: groupKey,
-            salesOrderCount: 0,
-            revenue: 0,
-            discount: 0,
-            vatAmount: 0,
-            returnOrderCount: 0,
-            returnAmount: 0,
-            netRevenue: 0,
-            orders: [],
-          };
-
-          const isReturn = o.orderType === 'return_customer' || o.orderType === 'return';
-          const subtotal = Number(o.subtotal || o.totalAmount || 0);
-          const disc = Number(o.discount || 0);
-          const vat = Number(o.vatAmount || 0);
-          const total = Number(o.totalAmount || subtotal - disc + vat);
-
-          if (isReturn) {
-            existing.returnOrderCount += 1;
-            existing.returnAmount += total;
-          } else {
-            existing.salesOrderCount += 1;
-            existing.revenue += subtotal;
-            existing.discount += disc;
-            existing.vatAmount += vat;
-            existing.netRevenue += total;
-          }
-
-          existing.orders.push(o);
-          groupMap.set(groupKey, existing);
-        });
-
-        const items = Array.from(groupMap.values());
-        if (activeGroup === 'day' || activeGroup === 'month' || activeGroup === 'year') {
-          items.sort((a, b) => a.dateOrName.localeCompare(b.dateOrName));
-        } else {
-          items.sort((a, b) => b.netRevenue - a.netRevenue);
-        }
-
-        setData(items);
-      } else if (apiSummary.length > 0) {
-        setData(
-          apiSummary.map((item: any, idx: number) => ({
-            id: String(idx + 1),
+          return {
+            id: String(item.id || idx + 1),
             dateOrName: item.dateOrName || item.groupName || item.date || `Nhóm ${idx + 1}`,
             salesOrderCount: Number(item.salesOrderCount || item.ordersCount || 0),
-            revenue: Number(item.revenue || 0),
-            discount: Number(item.discount || 0),
-            vatAmount: Number(item.vatAmount || 0),
+            revenue: rev,
+            discount: disc,
+            vatAmount: vat,
             returnOrderCount: Number(item.returnOrderCount || 0),
-            returnAmount: Number(item.returnAmount || 0),
-            netRevenue: Number(item.netRevenue || (item.revenue || 0) - (item.discount || 0)),
-            orders: [],
-          }))
-        );
-      } else {
-        setData([]);
-      }
+            returnAmount: ret,
+            netRevenue: net,
+            orders: Array.isArray(item.orders) ? item.orders : [],
+          };
+        })
+      );
     } catch (err: any) {
+      console.error('Không thể kết nối dữ liệu báo cáo bán hàng:', err);
       setError(err?.message || 'Không thể kết nối dữ liệu báo cáo bán hàng');
       setData([]);
     } finally {
@@ -362,9 +275,9 @@ export default function SalesReportPage() {
 
   const paginatedData = filteredData;
 
-  // Totals calculations
+  // Totals calculations: cột cuối mới tổng lại
   const totals = useMemo(() => {
-    return filteredData.reduce(
+    const sum = filteredData.reduce(
       (acc, item) => ({
         orders: acc.orders + (item.salesOrderCount || 0),
         revenue: acc.revenue + (item.revenue || 0),
@@ -372,10 +285,13 @@ export default function SalesReportPage() {
         vatAmount: acc.vatAmount + (item.vatAmount || 0),
         returnOrders: acc.returnOrders + (item.returnOrderCount || 0),
         returnAmount: acc.returnAmount + (item.returnAmount || 0),
-        netRevenue: acc.netRevenue + (item.netRevenue || 0),
+        netRevenue: 0,
       }),
       { orders: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrders: 0, returnAmount: 0, netRevenue: 0 }
     );
+    // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
+    sum.netRevenue = sum.revenue - sum.discount - sum.returnAmount + sum.vatAmount;
+    return sum;
   }, [filteredData]);
 
   // Build full timeline for Chart mode

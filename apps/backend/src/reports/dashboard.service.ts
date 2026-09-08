@@ -14,24 +14,34 @@ import { User } from '../entities/user.entity';
 import { Warehouse } from '../entities/warehouse.entity';
 import { calculateAggregatedStock } from '../products/products.service';
 
-function parseSafeDate(dateStr?: string): Date | null {
+function parseSafeDate(dateStr?: string, isEndOfDay = false): Date | null {
   if (!dateStr || typeof dateStr !== 'string') return null;
   const s = dateStr.trim();
   if (!s) return null;
 
-  if (s.includes('/')) {
+  let d: Date | null = null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [year, month, day] = s.split('-').map(Number);
+    d = new Date(year, month - 1, day);
+  } else if (s.includes('/')) {
     const parts = s.split('/');
     if (parts.length === 3) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
       const year = parseInt(parts[2], 10);
-      const d = new Date(year, month, day);
-      if (!isNaN(d.getTime())) return d;
+      d = new Date(year, month, day);
     }
+  } else {
+    d = new Date(s);
   }
 
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
+  if (!d || isNaN(d.getTime())) return null;
+  if (isEndOfDay) {
+    d.setHours(23, 59, 59, 999);
+  } else {
+    d.setHours(0, 0, 0, 0);
+  }
+  return d;
 }
 
 @Injectable()
@@ -334,41 +344,227 @@ export class DashboardService {
    * BÁO CÁO BÁN HÀNG (REAL DATABASE QUERY)
    */
   /**
-   * BÁO CÁO BÁN HÀNG (REAL DATABASE QUERY)
+   * BÁO CÁO BÁN HÀNG TỔNG HỢP (REAL DATABASE QUERY WITH PROPER GROUPING, IMPORT-PRICE RETURN & NET REVENUE)
    */
   async getSalesReport(startDate?: string, endDate?: string, groupBy: string = 'day') {
-    const qb = this.outboundRepo.createQueryBuilder('o')
-      .leftJoin('o.details', 'd')
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
+
+    // 1. Query Outbound Orders (sales & returns)
+    const obQb = this.outboundRepo.createQueryBuilder('o')
+      .leftJoinAndSelect('o.details', 'd')
+      .leftJoinAndSelect('d.product', 'p')
+      .leftJoinAndSelect('o.customer', 'c')
       .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
       .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
-      .select('DATE(o.createdAt)', 'date')
-      .addSelect('COUNT(DISTINCT o.id)', 'salesOrderCount')
-      .addSelect('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'revenue')
-      .groupBy('DATE(o.createdAt)')
-      .orderBy('DATE(o.createdAt)', 'DESC');
+      .andWhere('(o.status IS NULL OR o.status NOT IN (:...cancelledStatuses))', {
+        cancelledStatuses: ['Đã hủy', 'CANCELLED', 'cancelled'],
+      });
 
-    const sDate = parseSafeDate(startDate);
-    const eDate = parseSafeDate(endDate);
     if (sDate) {
-      qb.andWhere('o.createdAt >= :sDate', { sDate });
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
     }
     if (eDate) {
-      const endOfDay = new Date(eDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      qb.andWhere('o.createdAt <= :eDate', { eDate: endOfDay });
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
     }
 
-    const rows = await qb.getRawMany().catch(() => []);
-    return rows.map((r, idx) => ({
-      id: String(idx + 1),
-      dateOrName: r.date ? new Date(r.date).toLocaleDateString('vi-VN') : 'Hôm nay',
-      salesOrderCount: Number(r.salesOrderCount || 0),
-      revenue: Number(r.revenue || 0),
-      discount: 0,
-      returnOrderCount: 0,
-      returnAmount: 0,
-      netRevenue: Number(r.revenue || 0),
-    }));
+    const outbounds = await obQb.getMany().catch((err) => {
+      console.error('Error fetching outbounds for sales report:', err);
+      return [];
+    });
+
+    // 2. Query Inbound Customer Returns
+    const ibQb = this.inboundRepo.createQueryBuilder('i')
+      .leftJoinAndSelect('i.details', 'd')
+      .leftJoinAndSelect('d.product', 'p')
+      .where('(i.receiptType IN (:...returnTypes) OR i.poNumber LIKE :nhktPrefix)', {
+        returnTypes: ['return-customer', 'RETURNED_GOODS', 'return', 'return_customer'],
+        nhktPrefix: 'NHKT%',
+      })
+      .andWhere('(i.status IS NULL OR i.status NOT IN (:...cancelledStatuses))', {
+        cancelledStatuses: ['Đã hủy', 'CANCELLED', 'cancelled'],
+      });
+
+    if (sDate) {
+      ibQb.andWhere('COALESCE(i.orderDate, i.expectedDate) >= :sDate', { sDate });
+    }
+    if (eDate) {
+      ibQb.andWhere('COALESCE(i.orderDate, i.expectedDate) <= :eDate', { eDate });
+    }
+
+    const inboundReturns = await ibQb.getMany().catch((err) => {
+      console.error('Error fetching inbound returns for sales report:', err);
+      return [];
+    });
+
+    // 3. Warehouses for branch names
+    const warehouses = await this.warehouseRepo.find().catch(() => []);
+    const whMap = new Map<string, string>();
+    warehouses.forEach((w) => {
+      if (w.code) whMap.set(w.code.toUpperCase(), w.name || w.code);
+    });
+
+    // Map to aggregate groups
+    const groupMap = new Map<string, {
+      id: string;
+      dateOrName: string;
+      salesOrderCount: number;
+      revenue: number;
+      discount: number;
+      vatAmount: number;
+      returnOrderCount: number;
+      returnAmount: number;
+      netRevenue: number;
+      orders: any[];
+    }>();
+
+    const getGroupKeyAndLabel = (rawDate: any, employeeName?: string, customerName?: string, branchCode?: string) => {
+      let dStr = '';
+      if (rawDate) {
+        const dObj = new Date(rawDate);
+        if (!isNaN(dObj.getTime())) {
+          const y = dObj.getFullYear();
+          const m = String(dObj.getMonth() + 1).padStart(2, '0');
+          const d = String(dObj.getDate()).padStart(2, '0');
+          dStr = `${y}-${m}-${d}`;
+        }
+      }
+
+      if (groupBy === 'day') {
+        const key = dStr || 'Không xác định';
+        return { key, label: key };
+      }
+      if (groupBy === 'month') {
+        const key = dStr ? dStr.substring(0, 7) : 'Không xác định';
+        const label = dStr ? `Tháng ${dStr.substring(5, 7)}/${dStr.substring(0, 4)}` : 'Không xác định';
+        return { key, label };
+      }
+      if (groupBy === 'year') {
+        const key = dStr ? dStr.substring(0, 4) : 'Không xác định';
+        const label = dStr ? `Năm ${dStr.substring(0, 4)}` : 'Không xác định';
+        return { key, label };
+      }
+      if (groupBy === 'staff') {
+        const key = (employeeName || '').trim() || 'NV Chưa rõ';
+        return { key, label: key };
+      }
+      if (groupBy === 'customer') {
+        const key = (customerName || '').trim() || 'Khách lẻ / vãng lai';
+        return { key, label: key };
+      }
+      if (groupBy === 'branch') {
+        const code = (branchCode || '').trim().toUpperCase();
+        const label = whMap.get(code) || (code ? `Kho ${code}` : 'Kho Tổng');
+        return { key: code || 'KHO-TONG', label };
+      }
+      const key = dStr || 'Không xác định';
+      return { key, label: key };
+    };
+
+    const getOrCreateGroup = (key: string, label: string) => {
+      let g = groupMap.get(key);
+      if (!g) {
+        g = {
+          id: key,
+          dateOrName: label,
+          salesOrderCount: 0,
+          revenue: 0,
+          discount: 0,
+          vatAmount: 0,
+          returnOrderCount: 0,
+          returnAmount: 0,
+          netRevenue: 0,
+          orders: [],
+        };
+        groupMap.set(key, g);
+      }
+      return g;
+    };
+
+    // Process Outbound Orders
+    for (const o of outbounds) {
+      const isReturn = o.orderType === 'return' || o.orderType === 'return_customer' || o.orderType === 'return-supplier';
+      const rawDate = o.orderDate || o.createdAt;
+      const { key, label } = getGroupKeyAndLabel(rawDate, o.employeeName, o.customerName || o.customer?.name, o.branchCode);
+      const group = getOrCreateGroup(key, label);
+
+      if (isReturn) {
+        group.returnOrderCount += 1;
+        // Tiền hàng trả tính theo GIÁ NHẬP của sản phẩm
+        let returnVal = 0;
+        if (o.details && o.details.length > 0) {
+          for (const d of o.details) {
+            const qty = Number(d.pickedQty || d.requiredQty || 0);
+            const importPrice = Number(d.product?.importPrice || 0);
+            returnVal += qty * (importPrice > 0 ? importPrice : Number(d.unitPrice || 0));
+          }
+        }
+        if (returnVal === 0) {
+          returnVal = Number(o.totalAmount || o.subtotal || 0);
+        }
+        group.returnAmount += returnVal;
+      } else {
+        group.salesOrderCount += 1;
+        const subtotal = Number(o.subtotal || 0) || (o.details || []).reduce((sum, d) => sum + Number(d.totalLineAmount || 0), 0);
+        const disc = Number(o.discount || 0);
+        const vat = Number(o.vatAmount || 0);
+        const total = Number(o.totalAmount || (subtotal - disc + vat));
+
+        group.revenue += subtotal;
+        group.discount += disc;
+        group.vatAmount += vat;
+
+        group.orders.push({
+          id: o.id,
+          orderNo: o.orderNo,
+          orderDate: o.orderDate || o.createdAt,
+          customerName: o.customerName || o.customer?.name,
+          employeeName: o.employeeName,
+          subtotal,
+          discount: disc,
+          vatAmount: vat,
+          totalAmount: total,
+          status: o.status || 'Hoàn thành',
+        });
+      }
+    }
+
+    // Process Inbound Customer Returns
+    for (const i of inboundReturns) {
+      const rawDate = i.orderDate || i.expectedDate;
+      const { key, label } = getGroupKeyAndLabel(rawDate, i.creatorName, i.supplierName, i.warehouseCode || i.branchCode);
+      const group = getOrCreateGroup(key, label);
+
+      group.returnOrderCount += 1;
+      // Tiền hàng trả tính theo GIÁ NHẬP của sản phẩm
+      let returnVal = 0;
+      if (i.details && i.details.length > 0) {
+        for (const d of i.details) {
+          const qty = Number(d.receivedQty || d.expectedQty || 0);
+          const importPrice = Number(d.product?.importPrice || 0);
+          returnVal += qty * (importPrice > 0 ? importPrice : Number(d.unitPrice || 0));
+        }
+      }
+      if (returnVal === 0) {
+        returnVal = Number(i.totalAmount || i.subtotal || 0);
+      }
+      group.returnAmount += returnVal;
+    }
+
+    // CỘT CUỐI MỚI TỔNG LẠI: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
+    const results = Array.from(groupMap.values()).map((g) => {
+      g.netRevenue = Math.max(0, g.revenue - g.discount - g.returnAmount + g.vatAmount);
+      return g;
+    });
+
+    // Sorting
+    if (['day', 'month', 'year'].includes(groupBy)) {
+      results.sort((a, b) => b.id.localeCompare(a.id));
+    } else {
+      results.sort((a, b) => b.netRevenue - a.netRevenue);
+    }
+
+    return results;
   }
 
   /**
