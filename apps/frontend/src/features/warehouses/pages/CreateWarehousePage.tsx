@@ -706,10 +706,10 @@ export default function CreateWarehousePage() {
       rackLength: defaultRL,
       rackWidth: defaultRW,
       rackHeight: defaultRH,
-      racksCount: 3,
+      racksCount: 1,
       shelvesPerRack: 5,
       binsPerShelf: 2,
-      racks: generateDefaultRacks(3, 20, 6, 6, 5, 2, defaultRL, defaultRW, defaultRH),
+      racks: generateDefaultRacks(1, 20, 6, 2, 5, 2, defaultRL, defaultRW, defaultRH),
     };
     setSubWarehouses([initialZone]);
     setActiveZoneId(initialZone.id);
@@ -860,7 +860,7 @@ export default function CreateWarehousePage() {
         const nextRackWidth = fields.rackWidth !== undefined ? fields.rackWidth : (z.rackWidth ?? z.racks?.[0]?.width ?? defaultRW);
         const nextRackHeight = fields.rackHeight !== undefined ? fields.rackHeight : (z.rackHeight ?? z.racks?.[0]?.height ?? defaultRH);
 
-        const nextRacksCount = fields.racksCount !== undefined ? fields.racksCount : (z.racksCount ?? 4);
+        const nextRacksCount = fields.racksCount !== undefined ? fields.racksCount : (z.racksCount ?? 1);
         const nextShelves = fields.shelvesPerRack !== undefined ? fields.shelvesPerRack : (z.shelvesPerRack ?? 5);
         const nextBinsPerShelf = fields.binsPerShelf !== undefined ? fields.binsPerShelf : (z.binsPerShelf ?? 2);
         const nextMaxWeight = fields.maxWeightPerBin !== undefined ? fields.maxWeightPerBin : (z.maxWeightPerBin ?? 500);
@@ -1018,10 +1018,10 @@ export default function CreateWarehousePage() {
       rackLength: defaultRL,
       rackWidth: defaultRW,
       rackHeight: defaultRH,
-      racksCount: 3,
+      racksCount: 1,
       shelvesPerRack: 5,
       binsPerShelf: 2,
-      racks: generateDefaultRacks(3, 20, 6, 6, 5, 2, defaultRL, defaultRW, defaultRH),
+      racks: generateDefaultRacks(1, 20, 6, 2, 5, 2, defaultRL, defaultRW, defaultRH),
     };
     setSubWarehouses([...subWarehouses, newZone]);
     setActiveZoneId(newZone.id);
@@ -1097,6 +1097,16 @@ export default function CreateWarehousePage() {
         {/* PAGE HEADER & TOP NAVIGATION BAR (Exact Products/Main UI Style) */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/warehouses')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-sm font-extrabold text-slate-700 dark:text-slate-200 shadow-xs transition hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 cursor-pointer"
+              title="Quay lại danh sách kho hàng"
+            >
+              <ArrowLeft className="h-4.5 w-4.5 text-slate-600 dark:text-slate-300" />
+              <span>Quay lại</span>
+            </button>
+
             <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
               <Store className="h-5 w-5 text-cyan-100" />
               <h1 className="text-lg font-bold tracking-tight text-white">

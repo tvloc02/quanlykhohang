@@ -393,15 +393,21 @@ export default function Inbound({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDetail, setShowDetail] = useState(false);
 
+function getLocalDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
   // Date filters
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
+    return getLocalDateString(d);
   });
   const [dateTo, setDateTo] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
+    return getLocalDateString(new Date());
   });
 
   // Pagination

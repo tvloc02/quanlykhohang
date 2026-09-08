@@ -242,6 +242,13 @@ function authHeaders() {
   };
 }
 
+function getLocalDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function toDateOnlyString(dateStr?: string | Date | null): string {
   if (!dateStr) return '';
   const str = String(dateStr).trim();
@@ -427,11 +434,10 @@ export default function Outbound({
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
+    return getLocalDateString(d);
   });
   const [dateTo, setDateTo] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
+    return getLocalDateString(new Date());
   });
 
   // Pagination
@@ -597,56 +603,77 @@ export default function Outbound({
         fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
       ]);
 
+      // Read local storage stored_outbound_orders backup
+      let localOrders: any[] = [];
+      try {
+        const stored = localStorage.getItem('stored_outbound_orders');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) localOrders = parsed;
+        }
+      } catch { }
+
+      let rawList: any[] = [];
       if (ordRes && ordRes.ok) {
         const raw = await ordRes.json();
-        const list = Array.isArray(raw) ? raw : raw.data || [];
-        if (list.length > 0) {
-          const targetList = isDisposal
-            ? list.filter((item: any) => item.orderType === 'disposal' || (item.orderNo && item.orderNo.startsWith('XH')))
-            : isRetail
-            ? list.filter((item: any) => item.orderType === 'retail' || item.orderType === 'RETAIL' || (item.orderNo && item.orderNo.startsWith('XBL')))
-            : isSalesOrder
-            ? list.filter((item: any) => item.orderType === 'sales-order' || (item.orderNo && item.orderNo.startsWith('DDH')))
-            : isQuote
-            ? list.filter((item: any) => item.orderType === 'quote' || (item.orderNo && item.orderNo.startsWith('BG')))
-            : list.filter((item: any) => item.orderType !== 'disposal' && item.orderType !== 'retail' && item.orderType !== 'RETAIL' && item.orderType !== 'sales-order' && item.orderType !== 'quote' && (!item.orderNo || (!item.orderNo.startsWith('XH') && !item.orderNo.startsWith('XBL') && !item.orderNo.startsWith('DDH') && !item.orderNo.startsWith('BG'))));
+        rawList = Array.isArray(raw) ? raw : raw.data || [];
+      }
 
-          const formatted: OutboundOrder[] = targetList.map((item: any, idx: number) => ({
-            id: String(item.id || idx),
-            orderNo: item.orderNo || item.receiptNo || (isDisposal ? `XH_${1000 + idx}` : (isRetail ? `XBL_${1000 + idx}` : `XBH_${1000 + idx}`)),
-            orderType: item.orderType,
-            customer: item.customer || item.customerName || item.customer?.name || (isDisposal ? 'Hàng hết hạn / hư hỏng' : (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ')),
-            customerId: item.customerId || item.customer?.id,
-            customerPhone: item.customerPhone || item.customer?.phone || '',
-            customerAddress: item.customerAddress || item.customer?.address || '',
-            branchCode: (!item.branchCode || item.branchCode === '4445' || item.branchCode === 'SPX001') ? (item.warehouseCode && item.warehouseCode !== '4445' ? item.warehouseCode : 'KHO-NVL') : item.branchCode,
-            employeeName: (!item.employeeName || item.employeeName === 'HUUDQtest') ? (item.creatorName && item.creatorName !== 'HUUDQtest' ? item.creatorName : currentUserName) : item.employeeName,
-            orderDate: item.orderDate || item.createdAt || new Date().toISOString(),
-            expectedDate: item.expectedDate || '',
-            status: item.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'),
-            description: item.description || (isDisposal ? 'Xuất hủy hàng hóa' : ''),
-            subtotal: Number(item.subtotal || item.totalAmount || 0),
-            discount: Number(item.discount || 0),
-            vatAmount: Number(item.vatAmount || 0),
-            totalAmount: Number(item.totalAmount || 0),
-            amountPaid: Number(item.amountPaid || item.totalAmount || 0),
-            itemsCount: item.details?.length || item.items || 1,
-            totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
-            details: item.details?.map((d: any) => ({
-              id: d.id,
-              productId: d.product?.id || d.productId,
-              productSku: d.product?.internalSku || d.productSku || d.sku || 'SKU',
-              productName: d.product?.name || d.productName || 'Sản phẩm',
-              unit: d.product?.unit || d.unit || 'Cái',
-              qty: Number(d.requiredQty || d.qty || 1),
-              price: Number(d.unitPrice || d.price || 0),
-              totalLineAmount: Number(d.totalLineAmount || (Number(d.requiredQty || d.qty || 1) * Number(d.unitPrice || d.price || 0))),
-            })) || [],
-          }));
-          setOrders(formatted);
-        } else {
-          setOrders(isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : (isRetail ? DEFAULT_FALLBACK_RETAIL_ORDERS : DEFAULT_FALLBACK_ORDERS));
+      // Merge backend orders with localOrders without duplicates
+      const combinedList: any[] = [...rawList];
+      localOrders.forEach((lo) => {
+        const loNo = lo.orderNo || lo.orderCode;
+        if (!combinedList.some((co) => (co.orderNo && co.orderNo === loNo) || (co.id && String(co.id) === String(lo.id)))) {
+          combinedList.push(lo);
         }
+      });
+
+      if (combinedList.length > 0) {
+        const targetList = isDisposal
+          ? combinedList.filter((item: any) => item.orderType === 'disposal' || (item.orderNo && item.orderNo.startsWith('XH')))
+          : isRetail
+          ? combinedList.filter((item: any) => item.orderType === 'retail' || item.orderType === 'RETAIL' || (item.orderNo && item.orderNo.startsWith('XBL')))
+          : isSalesOrder
+          ? combinedList.filter((item: any) => item.orderType === 'sales-order' || (item.orderNo && item.orderNo.startsWith('DDH')))
+          : isQuote
+          ? combinedList.filter((item: any) => item.orderType === 'quote' || (item.orderNo && item.orderNo.startsWith('BG')))
+          : combinedList.filter((item: any) => item.orderType !== 'disposal' && item.orderType !== 'retail' && item.orderType !== 'RETAIL' && item.orderType !== 'sales-order' && item.orderType !== 'quote' && (!item.orderNo || (!item.orderNo.startsWith('XH') && !item.orderNo.startsWith('XBL') && !item.orderNo.startsWith('DDH') && !item.orderNo.startsWith('BG'))));
+
+        const formatted: OutboundOrder[] = targetList.map((item: any, idx: number) => ({
+          id: String(item.id || idx),
+          orderNo: item.orderNo || item.orderCode || item.receiptNo || (isDisposal ? `XH_${1000 + idx}` : (isRetail ? `XBL_${1000 + idx}` : `XBH_${1000 + idx}`)),
+          orderType: item.orderType,
+          customer: item.customer || item.customerName || item.customer?.name || (isDisposal ? 'Hàng hết hạn / hư hỏng' : (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ')),
+          customerId: item.customerId || item.customer?.id,
+          customerPhone: item.customerPhone || item.customer?.phone || '',
+          customerAddress: item.customerAddress || item.customer?.address || '',
+          branchCode: (!item.branchCode || item.branchCode === '4445' || item.branchCode === 'SPX001') ? (item.warehouseCode && item.warehouseCode !== '4445' ? item.warehouseCode : 'KHO-NVL') : item.branchCode,
+          employeeName: (!item.employeeName || item.employeeName === 'HUUDQtest') ? (item.creatorName && item.creatorName !== 'HUUDQtest' ? item.creatorName : currentUserName) : item.employeeName,
+          orderDate: item.orderDate || item.createdAt || new Date().toISOString(),
+          expectedDate: item.expectedDate || '',
+          status: item.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'),
+          description: item.description || (isDisposal ? 'Xuất hủy hàng hóa' : ''),
+          subtotal: Number(item.subtotal || item.totalAmount || 0),
+          discount: Number(item.discount || 0),
+          vatAmount: Number(item.vatAmount || 0),
+          totalAmount: Number(item.totalAmount || 0),
+          amountPaid: Number(item.amountPaid || item.totalAmount || 0),
+          itemsCount: item.details?.length || item.items || 1,
+          totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
+          details: item.details?.map((d: any) => ({
+            id: d.id,
+            productId: d.product?.id || d.productId,
+            productSku: d.product?.internalSku || d.productSku || d.sku || 'SKU',
+            productName: d.product?.name || d.productName || 'Sản phẩm',
+            unit: d.product?.unit || d.unit || 'Cái',
+            qty: Number(d.requiredQty || d.qty || 1),
+            price: Number(d.unitPrice || d.price || 0),
+            totalLineAmount: Number(d.totalLineAmount || (Number(d.requiredQty || d.qty || 1) * Number(d.unitPrice || d.price || 0))),
+          })) || [],
+        }));
+        setOrders(formatted);
+      } else {
+        setOrders(isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : (isRetail ? DEFAULT_FALLBACK_RETAIL_ORDERS : DEFAULT_FALLBACK_ORDERS));
       }
 
       if (custRes && custRes.ok) {

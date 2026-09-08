@@ -1470,52 +1470,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     if (warehouse?.subWarehouses && warehouse.subWarehouses.length > 0) {
       return warehouse.subWarehouses;
     }
-    const code = warehouse?.code ? warehouse.code.trim().toUpperCase() : 'KHO';
-    return [
-      {
-        id: `${code}-ZA`,
-        code: 'ZA',
-        name: `Phân Khu A - Kho ${code}`,
-        length: 20,
-        width: 15,
-        height: 6,
-        racksCount: 1,
-        shelvesPerRack: 4,
-        binsPerShelf: 10,
-        racks: [
-          { id: 'R01', rackCode: 'R01', name: `Dãy Kệ R01 (${code})`, shelvesCount: 4, baysCount: 10, defaultBinMaxWeight: 500, customBins: {} } as any,
-        ],
-      },
-      {
-        id: `${code}-ZB`,
-        code: 'ZB',
-        name: `Phân Khu B - Kho ${code}`,
-        length: 20,
-        width: 15,
-        height: 6,
-        racksCount: 1,
-        shelvesPerRack: 4,
-        binsPerShelf: 10,
-        racks: [
-          { id: 'R02', rackCode: 'R02', name: `Dãy Kệ R02 (${code})`, shelvesCount: 4, baysCount: 10, defaultBinMaxWeight: 500, customBins: {} } as any,
-        ],
-      },
-      {
-        id: `${code}-ZC`,
-        code: 'ZC',
-        name: `Phân Khu C - Kho Lạnh (-18°C)`,
-        length: 20,
-        width: 15,
-        height: 6,
-        racksCount: 1,
-        shelvesPerRack: 4,
-        binsPerShelf: 10,
-        racks: [
-          { id: 'R03', rackCode: 'R03', name: `Dãy Kệ R03 (${code})`, shelvesCount: 4, baysCount: 10, defaultBinMaxWeight: 500, customBins: {} } as any,
-        ],
-      },
-    ];
-  }, [warehouse?.subWarehouses, warehouse?.code]);
+    return [];
+  }, [warehouse?.subWarehouses]);
 
   const whCode = warehouse?.code ? warehouse.code.trim().toUpperCase() : 'KHO';
 
@@ -1536,12 +1492,20 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   const racks = useMemo(() => {
     if (!activeZone) return [];
     if (activeZone.racks && activeZone.racks.length > 0) return activeZone.racks;
-    const count = activeZone.racksCount || 4;
+    const count = activeZone.racksCount || 1;
+    const vDoc = activeZone.binsPerShelf || 2;
+    const vNgang = activeZone.shelvesPerRack || 5;
+    const bays = Math.max(1, vDoc - 1);
+    const shelves = Math.max(1, vNgang - 1);
     return Array.from({ length: count }, (_, i) => ({
       id: `rack-${i + 1}`,
       rackCode: `R${String(i + 1).padStart(2, '0')}`,
-      shelvesCount: activeZone.shelvesPerRack || 4,
-      verticalPartitions: activeZone.binsPerShelf || 4,
+      shelvesCount: shelves,
+      baysCount: bays,
+      columnsCount: bays,
+      verticalPartitions: vDoc,
+      horizontalPartitions: vNgang,
+      binsPerShelf: 2,
       customBins: {},
     }));
   }, [activeZone]);
@@ -1981,8 +1945,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
       {/* RACK GRID DISPLAY */}
       {activeRack && (() => {
-        const shelvesCount = activeRack.shelvesCount || activeZone?.shelvesPerRack || 4;
-        const baysCount = Math.max(1, (activeRack.verticalPartitions || activeZone?.binsPerShelf || 4) - 1);
+        const shelvesCount = activeRack.shelvesCount || (activeZone?.shelvesPerRack ? Math.max(1, activeZone.shelvesPerRack - 1) : 4);
+        const baysCount = activeRack.baysCount || Math.max(1, (activeRack.verticalPartitions || activeZone?.binsPerShelf || 2) - 1);
         const rackCode = activeRack.rackCode || 'R01';
 
         return (
