@@ -2446,18 +2446,19 @@ export default function CreateStockInOrderPage({
             }
           }
         } else {
-          const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${targetId}`, {
+          // Khi chỉnh sửa phiếu nhập kho, ưu tiên nạp từ purchase-orders (dữ liệu phiếu nhập thực tế đã lưu)
+          const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${targetId}`, {
             headers: authHeaders(),
           }).catch(() => null);
 
-          if (stockInRes && stockInRes.ok) {
-            orderData = await stockInRes.json();
+          if (poRes && poRes.ok) {
+            orderData = await poRes.json();
           } else {
-            const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${targetId}`, {
+            const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${targetId}`, {
               headers: authHeaders(),
             }).catch(() => null);
-            if (poRes && poRes.ok) {
-              orderData = await poRes.json();
+            if (stockInRes && stockInRes.ok) {
+              orderData = await stockInRes.json();
             }
           }
         }
@@ -2468,8 +2469,8 @@ export default function CreateStockInOrderPage({
 
         const detailsList: FormDetailRow[] = (orderData.details || []).map((d: any, idx: number) => {
           const p = d.product || {};
-          let reqQty = Number(d.requestedQty || d.actualQty || d.expectedQty || d.receivedQty || 0);
-          const uPrice = Number(d.unitPrice || p.importPrice || p.purchasePrice || p.price || 0);
+          let reqQty = Number(d.requestedQty || d.actualQty || d.expectedQty || d.receivedQty || d.qty || 0);
+          const uPrice = Number(d.unitPrice || d.price || p.importPrice || p.purchasePrice || p.price || 0);
           const discP = Number(d.discountPercent || 0);
           const vatP = Number(d.vatPercent || 0);
           const sub = reqQty * uPrice;
@@ -2544,8 +2545,8 @@ export default function CreateStockInOrderPage({
           }
 
           return {
-            rowId: d.id || `row-loaded-${idx}`,
-            productId: p.id || String(d.productId || ''),
+            rowId: d.id ? `row-loaded-${d.id}` : `row-loaded-${idx}`,
+            productId: p.id ? String(p.id) : (d.productId ? String(d.productId) : ''),
             productSku: p.internalSku || d.productSku || d.sku || '',
             productName: p.name || d.productName || '',
             unit: p.unit || d.unit || 'Cái',

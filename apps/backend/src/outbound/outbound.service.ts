@@ -362,6 +362,7 @@ export class OutboundService implements OnModuleInit {
       await this.applyInventoryDeduction(order, savedDetails);
     }
 
+    delete (order as any).details;
     await this.orderRepo.save(order);
     return this.serializeOutbound(await this.findOrderEntity(id));
   }
@@ -647,6 +648,11 @@ export class OutboundService implements OnModuleInit {
       }
 
       const qty = Number(detail.requiredQty) || 0;
+      if (order.status && ['draft', 'DRAFT', 'nháp', 'Nháp', 'đơn nháp', 'Đơn nháp'].includes(order.status)) {
+        // Đơn nháp: Không trừ tồn kho thực tế và không chiếm giữ phân bổ
+        continue;
+      }
+
       const isDirectShipped =
         !order.status ||
         ['Đã giao hàng', 'shipped', 'Đã xuất hủy', 'COMPLETED', 'Đã hoàn thành'].includes(order.status) ||
@@ -672,6 +678,11 @@ export class OutboundService implements OnModuleInit {
 
   // Hoàn trả tồn kho khi hủy/xóa đơn xuất hàng
   private async revertInventoryDeduction(order: OutboundOrder) {
+    if (order.status && ['draft', 'DRAFT', 'nháp', 'Nháp', 'đơn nháp', 'Đơn nháp'].includes(order.status)) {
+      // Đơn nháp chưa từng trừ kho nên không cần hoàn kho
+      return;
+    }
+
     const details = (order.details && order.details.length)
       ? order.details
       : await this.detailRepo.find({

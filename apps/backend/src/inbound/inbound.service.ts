@@ -368,6 +368,10 @@ export class InboundService {
       receipt.status = dto.status;
     }
 
+    // Save header updates first without the stale details relation to prevent TypeORM relation cascades
+    delete (receipt as any).details;
+    await this.receiptRepo.save(receipt);
+
     const rawItems = (dto.details && dto.details.length) ? dto.details : dto.items;
     if (rawItems && rawItems.length) {
       // Revert previous inventory addition
@@ -386,7 +390,6 @@ export class InboundService {
     }
 
     await this.recalculateTotalAmount(receipt.id);
-    await this.receiptRepo.save(receipt);
 
     return this.serializeReceipt(await this.findReceiptEntity(receipt.id));
   }

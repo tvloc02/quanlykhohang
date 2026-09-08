@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Plus,
@@ -481,6 +481,7 @@ export interface CreateOutboundOrderPageProps {
   title?: string;
   codePrefix?: string;
   partnerLabel?: string;
+  orderId?: string;
 }
 
 export default function CreateOutboundOrderPage({
@@ -491,8 +492,11 @@ export default function CreateOutboundOrderPage({
   title,
   codePrefix = 'PXK',
   partnerLabel = 'Khách hàng',
+  orderId,
 }: CreateOutboundOrderPageProps) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const targetId = orderId || searchParams.get('id') || undefined;
   const isRetail = featureMode === 'retail' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/retail'));
   const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
   const isReturnSupplier = featureMode === 'return-supplier' || orderType === 'return-supplier' || partnerLabel === 'Nhà cung cấp';
@@ -827,6 +831,90 @@ export default function CreateOutboundOrderPage({
     loadMasterData();
   }, [isReturnSupplier]);
 
+  // Load existing order when targetId is present (for editing draft / order)
+  useEffect(() => {
+    if (!targetId) return;
+
+    let isMounted = true;
+    const fetchOrder = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/outbounds/${encodeURIComponent(targetId)}`, {
+          headers: authHeaders(),
+        });
+        if (!res.ok) return;
+        const ord = await res.json();
+        if (!isMounted || !ord) return;
+
+        const detailsRows: FormDetailRow[] = (ord.details || []).map((d: any, idx: number) => {
+          const reqQty = Number(d.requiredQty ?? d.qty ?? 0);
+          const uPrice = Number(d.unitPrice ?? d.price ?? 0);
+          const lineTotal = Number(d.totalLineAmount ?? (reqQty * uPrice));
+          return {
+            rowId: `row-edit-${idx}-${Date.now()}`,
+            productId: d.productId || (d.product && d.product.id) || '',
+            productSku: d.productSku || (d.product && (d.product.sku || d.product.internalSku)) || '',
+            productName: d.productName || (d.product && (d.product.name || d.product.productName)) || '',
+            warehouseCode: d.warehouseCode || ord.branchCode || 'KHO-NVL',
+            locationBin: d.locationBin || (Array.isArray(d.assignedBins) ? d.assignedBins.join(', ') : '') || '',
+            assignedBins: Array.isArray(d.assignedBins) && d.assignedBins.length > 0 ? d.assignedBins : (d.locationBin ? [d.locationBin] : []),
+            unit: d.unit || (d.product && d.product.unit) || 'Cái',
+            qty: reqQty,
+            price: uPrice,
+            lossAmount: Number(d.lossAmount || 0),
+            totalDisposalAmount: Number(d.totalDisposalAmount || lineTotal),
+            discountPercent: Number(d.discountPercent || 0),
+            discountAmount: Number(d.discountAmount || 0),
+            vatPercent: Number(d.vatPercent || 0),
+            vatAmount: Number(d.vatAmount || 0),
+            totalAmount: lineTotal,
+            note: d.note || '',
+          };
+        });
+
+        const paddedDetails = [
+          ...detailsRows,
+          ...Array.from({ length: Math.max(0, DEFAULT_ROWS_COUNT - detailsRows.length) }, (_, i) =>
+            makeEmptyRow(detailsRows.length + i, ord.branchCode || 'KHO-NVL')
+          ),
+        ];
+
+        setTabs([
+          {
+            tabId: `tab-edit-${ord.id}`,
+            title: ord.orderNo || '# 1',
+            id: ord.id,
+            orderNo: ord.orderNo || '',
+            branchCode: ord.branchCode || 'KHO-NVL',
+            employeeName: ord.employeeName || currentUserName,
+            customer: ord.customerName || ord.customer || (isDisposal ? 'Xuất hủy nội bộ' : 'Khách hàng bán lẻ'),
+            customerId: ord.customerId || (ord.customer && ord.customer.id),
+            customerPhone: ord.customerPhone || '',
+            customerAddress: ord.customerAddress || '',
+            orderDate: ord.orderDate ? (ord.orderDate.includes(':') ? ord.orderDate : `${ord.orderDate} 00:00:00`) : formatFullDateTime(),
+            expectedDate: ord.expectedDate ? (ord.expectedDate.includes(':') ? ord.expectedDate : `${ord.expectedDate} 00:00:00`) : formatFullDateTime(),
+            description: ord.description || '',
+            discount: Number(ord.discount || 0),
+            shippingFee: Number(ord.shippingFee || 0),
+            vatRate: Number(ord.vatRate || 0),
+            paymentMethod: ord.paymentMethod || 'Tiền mặt',
+            paymentAccount: ord.paymentAccount || '',
+            amountPaid: Number(ord.amountPaid || 0),
+            status: ord.status || 'draft',
+            details: paddedDetails,
+          },
+        ]);
+        setActiveTabId(`tab-edit-${ord.id}`);
+      } catch (err) {
+        console.error('Lỗi tải phiếu xuất khi chỉnh sửa:', err);
+      }
+    };
+
+    fetchOrder();
+    return () => {
+      isMounted = false;
+    };
+  }, [targetId]);
+
   const handleBackNavigation = () => {
     sessionStorage.removeItem('outbound_form_open');
     sessionStorage.removeItem('outbound_tabs_draft');
@@ -1139,7 +1227,7 @@ export default function CreateOutboundOrderPage({
     return Math.max(0, grandTotal - (activeTab.amountPaid || grandTotal));
   }, [grandTotal, activeTab]);
 
-  const handleSaveOutboundOrder = async (isPrint = false) => {
+  const handleSaveOutboundOrder = async (isPrint = false, isDraft = false) => {
     if (!activeTab) return;
     if (activeValidItems.length === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
@@ -1152,6 +1240,10 @@ export default function CreateOutboundOrderPage({
 
     const finalOrderNo = activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : defaultCode;
 
+    const finalStatus = isDraft
+      ? 'draft'
+      : (activeTab.status && activeTab.status !== 'draft' ? activeTab.status : (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'));
+
     const payload = isDisposal
       ? {
           orderNo: finalOrderNo,
@@ -1161,7 +1253,7 @@ export default function CreateOutboundOrderPage({
           customerName: 'Xuất hủy nội bộ',
           orderDate: activeTab.orderDate,
           expectedDate: activeTab.orderDate,
-          status: activeTab.status || 'Đã xuất hủy',
+          status: finalStatus,
           description: [disposalReasonSelect, activeTab.description?.trim(), disposalMethod ? `Phương án: ${disposalMethod}` : ''].filter(Boolean).join(' - '),
           subtotal,
           discount: 0,
@@ -1200,7 +1292,7 @@ export default function CreateOutboundOrderPage({
           customerAddress: activeTab.customerAddress?.trim() || undefined,
           orderDate: activeTab.orderDate,
           expectedDate: activeTab.orderDate,
-          status: activeTab.status || 'Đã giao hàng',
+          status: finalStatus,
           description: activeTab.description?.trim() || undefined,
           subtotal,
           discount: activeTab.discount || 0,
@@ -1223,90 +1315,79 @@ export default function CreateOutboundOrderPage({
         };
 
     try {
-      const res = await fetch(`${API_BASE_URL}/outbounds`, {
-        method: 'POST',
+      const url = activeTab.id ? `${API_BASE_URL}/outbounds/${encodeURIComponent(activeTab.id)}` : `${API_BASE_URL}/outbounds`;
+      const method = activeTab.id ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || `Không thể tạo ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`);
+        throw new Error(errData?.message || `Không thể lưu ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`);
       }
 
-      // Automatically update local inventory balances & bin topologies upon save
-      try {
-        const localWhs = getStoredWarehouses();
-        let changed = false;
+      // Automatically update local inventory balances & bin topologies upon save (ONLY when finalized, not draft)
+      if (!isDraft) {
+        try {
+          const localWhs = getStoredWarehouses();
+          let changed = false;
 
-        activeValidItems.forEach((r) => {
-          const binsToDeduct: string[] = Array.isArray(r.assignedBins) && r.assignedBins.length > 0
-            ? r.assignedBins
-            : (r.locationBin ? r.locationBin.split(',').map((s: string) => s.trim()) : []);
+          activeValidItems.forEach((r) => {
+            const binsToDeduct: string[] = Array.isArray(r.assignedBins) && r.assignedBins.length > 0
+              ? r.assignedBins
+              : (r.locationBin ? r.locationBin.split(',').map((s: string) => s.trim()) : []);
 
-          binsToDeduct.forEach((bCode) => {
-            const cleanCode = bCode.split('(')[0].trim();
-            const normKey = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            binsToDeduct.forEach((bCode) => {
+              const cleanCode = bCode.split('(')[0].trim();
+              const normKey = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-            localWhs.forEach((wh) => {
-              (wh.subWarehouses || []).forEach((sub) => {
-                (sub.racks || []).forEach((rk) => {
-                  const customBins = rk.customBins as Record<string, any> | undefined;
-                  if (customBins) {
-                    Object.keys(customBins).forEach((k) => {
-                      const normK = k.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                      if (normK === normKey || k === cleanCode || k.includes(cleanCode)) {
-                        const curr = customBins[k];
-                        const oldPct = Number(curr?.occupancyPct ?? 100);
-                        const oldQty = Number(curr?.totalPhysical || (r as any).stockQty || (r as any).totalQty || (r as any).stock || 0);
-                        const exportQty = Number(r.qty || 0);
+              localWhs.forEach((wh) => {
+                (wh.subWarehouses || []).forEach((sub) => {
+                  (sub.racks || []).forEach((rk) => {
+                    const customBins = rk.customBins as Record<string, any> | undefined;
+                    if (customBins) {
+                      Object.keys(customBins).forEach((k) => {
+                        const normK = k.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        if (normK === normKey || k === cleanCode || k.includes(cleanCode)) {
+                          const curr = customBins[k];
+                          const oldPct = Number(curr?.occupancyPct ?? 100);
+                          const oldQty = Number(curr?.totalPhysical || (r as any).stockQty || (r as any).totalQty || (r as any).stock || 0);
+                          const exportQty = Number(r.qty || 0);
 
-                        let deductPct = 0;
-                        const pctMatch = bCode.match(/\((\d+)%\)/);
-                        if (pctMatch) {
-                          deductPct = Number(pctMatch[1]);
-                        } else if (oldQty > 0) {
-                          deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / oldQty) * oldPct)));
-                        } else {
-                          deductPct = Math.min(oldPct, 50);
+                          let deductPct = 0;
+                          const pctMatch = bCode.match(/\((\d+)%\)/);
+                          if (pctMatch) {
+                            deductPct = Number(pctMatch[1]);
+                          } else if (oldQty > 0) {
+                            deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / oldQty) * oldPct)));
+                          } else {
+                            deductPct = Math.min(oldPct, 50);
+                          }
+
+                          const newPct = Math.max(0, oldPct - deductPct);
+                          const newQty = Math.max(0, oldQty - exportQty);
+                          customBins[k] = {
+                            ...curr,
+                            occupancyPct: newPct,
+                            totalPhysical: newQty,
+                            notes: newPct === 0 ? 'Ô Trống' : `Đã chứa: ${newPct}% (${newQty} cái)`,
+                          };
+                          changed = true;
                         }
-
-                        const newPct = Math.max(0, oldPct - deductPct);
-                        const newQty = Math.max(0, oldQty - exportQty);
-                        customBins[k] = {
-                          ...curr,
-                          occupancyPct: newPct,
-                          totalPhysical: newQty,
-                          notes: newPct === 0 ? 'Ô Trống' : `Đã chứa: ${newPct}% (${newQty} cái)`,
-                        };
-                        changed = true;
-                      }
-                    });
-                  }
+                      });
+                    }
+                  });
                 });
               });
             });
           });
-        });
 
-        if (changed) {
-          saveStoredWarehouses(localWhs);
-        }
-
-        // Store outbound order in local storage for instant sync across all views
-        try {
-          const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
-          let storedOutbound: any[] = [];
-          if (storedOutboundStr) {
-            try { storedOutbound = JSON.parse(storedOutboundStr); } catch {}
+          if (changed) {
+            saveStoredWarehouses(localWhs);
           }
-          storedOutbound.push({
-            ...payload,
-            id: payload.orderNo || `out_${Date.now()}`,
-            orderCode: payload.orderNo,
-            createdAt: new Date().toISOString(),
-          });
-          localStorage.setItem('stored_outbound_orders', JSON.stringify(storedOutbound));
 
           // Also update smart-wms-products in localStorage
           const storedProdsStr = localStorage.getItem('smart-wms-products');
@@ -1332,20 +1413,48 @@ export default function CreateOutboundOrderPage({
               localStorage.setItem('smart-wms-products', JSON.stringify(prods));
             }
           }
-        } catch (errLocal) {
-          console.warn('Lỗi lưu stored_outbound_orders vào localStorage:', errLocal);
+        } catch (e) {
+          console.error('Lỗi tự động cập nhật sơ đồ kho sau khi xuất hàng:', e);
         }
-
-        window.dispatchEvent(new Event('warehouse-goods-cleared'));
-        window.dispatchEvent(new Event('storage'));
-      } catch (e) {
-        console.error('Lỗi tự động cập nhật sơ đồ kho sau khi xuất hàng:', e);
       }
 
+      // Store outbound order in local storage for instant sync across all views
+      try {
+        const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+        let storedOutbound: any[] = [];
+        if (storedOutboundStr) {
+          try { storedOutbound = JSON.parse(storedOutboundStr); } catch {}
+        }
+        const existingIdx = storedOutbound.findIndex((o) => o.id === (activeTab.id || payload.orderNo));
+        const itemToSave = {
+          ...payload,
+          id: activeTab.id || payload.orderNo || `out_${Date.now()}`,
+          orderCode: payload.orderNo,
+          createdAt: new Date().toISOString(),
+        };
+        if (existingIdx >= 0) {
+          storedOutbound[existingIdx] = { ...storedOutbound[existingIdx], ...itemToSave };
+        } else {
+          storedOutbound.push(itemToSave);
+        }
+        localStorage.setItem('stored_outbound_orders', JSON.stringify(storedOutbound));
+      } catch (errLocal) {
+        console.warn('Lỗi lưu stored_outbound_orders vào localStorage:', errLocal);
+      }
+
+      window.dispatchEvent(new Event('warehouse-goods-cleared'));
+      window.dispatchEvent(new Event('storage'));
+
       setToast({
-        message: `Đã lưu thành công ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất kho'} ${payload.orderNo || ''}!`,
+        message: isDraft
+          ? `Đã lưu tạm thành công ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất kho'} ${payload.orderNo || ''} (Đơn nháp)!`
+          : `Đã lưu thành công ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất kho'} ${payload.orderNo || ''}!`,
         type: 'success',
       });
+
+      if (isPrint) {
+        window.print();
+      }
 
       setTimeout(() => {
         handleBackNavigation();
@@ -2451,7 +2560,7 @@ export default function CreateOutboundOrderPage({
             <div className="space-y-2.5 pt-3 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(true)}
+                onClick={() => handleSaveOutboundOrder(true, false)}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 dark:hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
@@ -2460,11 +2569,20 @@ export default function CreateOutboundOrderPage({
 
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(false)}
+                onClick={() => handleSaveOutboundOrder(false, false)}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] dark:bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 dark:hover:bg-indigo-700 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
                 <span>LƯU PHIẾU XUẤT HỦY</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveOutboundOrder(false, true)}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md transition active:scale-95 cursor-pointer"
+              >
+                <FileText size={18} strokeWidth={2.2} />
+                <span>LƯU TẠM PHIẾU HỦY</span>
               </button>
 
               <button
@@ -2650,7 +2768,7 @@ export default function CreateOutboundOrderPage({
             <div className="space-y-2.5 pt-3 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(true)}
+                onClick={() => handleSaveOutboundOrder(true, false)}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 dark:hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
@@ -2659,11 +2777,20 @@ export default function CreateOutboundOrderPage({
 
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(false)}
+                onClick={() => handleSaveOutboundOrder(false, false)}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] dark:bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 dark:hover:bg-indigo-700 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
                 <span>{isReturnSupplier ? 'LƯU PHIẾU XUẤT TRẢ NCC' : 'LƯU PHIẾU XUẤT HÀNG'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveOutboundOrder(false, true)}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md transition active:scale-95 cursor-pointer"
+              >
+                <FileText size={18} strokeWidth={2.2} />
+                <span>{isReturnSupplier ? 'LƯU TẠM PHIẾU TRẢ NCC' : 'LƯU TẠM PHIẾU XUẤT'}</span>
               </button>
 
               <button

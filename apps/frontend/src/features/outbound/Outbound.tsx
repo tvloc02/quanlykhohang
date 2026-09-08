@@ -98,11 +98,20 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   'READY_TO_SHIP': { label: 'Sẵn sàng xuất', color: 'text-cyan-700 dark:text-cyan-300', bg: 'bg-cyan-50 dark:bg-cyan-950/60', border: 'border-cyan-200 dark:border-cyan-800' },
   'Sẵn sàng xuất': { label: 'Sẵn sàng xuất', color: 'text-cyan-700 dark:text-cyan-300', bg: 'bg-cyan-50 dark:bg-cyan-950/60', border: 'border-cyan-200 dark:border-cyan-800' },
   'Đã hủy': { label: 'Đã hủy', color: 'text-red-700 dark:text-red-300', bg: 'bg-red-50 dark:bg-red-950/60', border: 'border-red-200 dark:border-red-800' },
+  'draft': { label: 'Đơn nháp', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'Draft': { label: 'Đơn nháp', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'nháp': { label: 'Đơn nháp', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'Nháp': { label: 'Đơn nháp', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'đơn nháp': { label: 'Đơn nháp', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'Đơn nháp': { label: 'Đơn nháp', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
 };
 
 function StatusBadge({ status, isDisposal }: { status?: string; isDisposal?: boolean }) {
   let normalizedStatus = status || (isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng');
-  if (isDisposal && ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed', 'đã hoàn thành'].includes(normalizedStatus.toLowerCase())) {
+  const statusLower = (status || '').toLowerCase();
+  if (['draft', 'nháp', 'đơn nháp'].includes(statusLower)) {
+    normalizedStatus = 'Đơn nháp';
+  } else if (isDisposal && ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed', 'đã hoàn thành'].includes(normalizedStatus.toLowerCase())) {
     normalizedStatus = 'Đã hoàn thành';
   }
   const config = STATUS_MAP[normalizedStatus] || (isDisposal ? STATUS_MAP['Đã hoàn thành'] : STATUS_MAP['Đã giao hàng']);
