@@ -46,9 +46,9 @@ export type BinGoodsDetail = {
   sku: string;
   quantity: number;
   allocated: number;
-  supplierName: string;
-  inboundDate: string;
-  orderCode: string;
+  supplierName?: string;
+  inboundDate?: string;
+  orderCode?: string;
   unit: string;
   occupancyPct?: number;
   isOutbound?: boolean;
@@ -101,31 +101,29 @@ export function computeActiveStoredGoods(
   totalOccupancyPct: number;
 } {
   const valid = (rawGoods || []).filter(
-    (g) => g.orderCode !== 'PNK-DRAFT' && g.orderCode !== 'PXK-DRAFT' && g.inboundDate !== 'Đang xếp' && g.inboundDate !== 'Đang chọn'
+    (g) => Number(g.quantity || 0) > 0 || Number(g.occupancyPct || 0) > 0
   );
 
   if (valid.length === 0) {
     if (storedInfo && ((storedInfo.totalPhysical || 0) > 0 || (storedInfo.allocated || 0) > 0 || (storedInfo.occupancyPct || 0) > 0)) {
-      const netPhysical = storedInfo.totalPhysical || 0;
-      const netPct = storedInfo.occupancyPct || 0;
-      if (netPhysical > 0 && netPct > 0) {
-        return {
-          activeGoods: [{
-            binCode: binFull,
-            productName: storedInfo.productName || 'Hàng tồn kho',
-            sku: storedInfo.sku || '',
-            quantity: netPhysical,
-            allocated: storedInfo.allocated || 0,
-            supplierName: storedInfo.supplierName || '',
-            inboundDate: storedInfo.inboundDate || '',
-            orderCode: storedInfo.orderCode || '',
-            unit: storedInfo.unit || 'Cái',
-            occupancyPct: netPct,
-          }],
-          totalQty: netPhysical,
-          totalOccupancyPct: netPct,
-        };
-      }
+      const netPhysical = Number(storedInfo.totalPhysical || storedInfo.allocated || 1);
+      const netPct = Number(storedInfo.occupancyPct !== undefined && storedInfo.occupancyPct > 0 ? storedInfo.occupancyPct : 100);
+      return {
+        activeGoods: [{
+          binCode: binFull,
+          productName: storedInfo.productName || 'Hàng tồn kho',
+          sku: storedInfo.sku || '',
+          quantity: netPhysical,
+          allocated: storedInfo.allocated || 0,
+          supplierName: storedInfo.supplierName || '',
+          inboundDate: storedInfo.inboundDate || 'Đã lưu',
+          orderCode: storedInfo.orderCode || 'KHO-LUU',
+          unit: storedInfo.unit || 'Cái',
+          occupancyPct: netPct,
+        }],
+        totalQty: netPhysical,
+        totalOccupancyPct: netPct,
+      };
     }
     return { activeGoods: [], totalQty: 0, totalOccupancyPct: 0 };
   }
@@ -214,8 +212,8 @@ export function computeActiveStoredGoods(
   if (storedInfo && storedInfo.occupancyPct !== undefined && storedInfo.occupancyPct >= 0) {
     if (totalQty === 0) {
       totalOccupancyPct = 0;
-    } else {
-      totalOccupancyPct = Math.min(totalOccupancyPct, storedInfo.occupancyPct || totalOccupancyPct);
+    } else if (storedInfo.occupancyPct > 0 && totalOccupancyPct === 0) {
+      totalOccupancyPct = storedInfo.occupancyPct;
     }
   }
 
@@ -239,9 +237,21 @@ interface CachedBinsEntry {
 
 const warehouseBinsCache = new Map<string, CachedBinsEntry>();
 
+export function clearWarehouseBinsCache() {
+  warehouseBinsCache.clear();
+}
+
 export function getCachedWarehouseBins(warehouseCode?: string, warehouseId?: string) {
   const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
   const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
+  const isNewWh = (!currentWhCode && !currentWhId) || currentWhId === 'temp-id' || currentWhId === 'new' || currentWhId.startsWith('wh_new') || (typeof window !== 'undefined' && window.location.pathname.includes('/warehouses/create'));
+  if (isNewWh) {
+    return {
+      occupiedMap: new Map<string, BinOccupiedInfo>(),
+      detailsMap: new Map<string, BinGoodsDetail>(),
+      goodsListMap: new Map<string, BinGoodsDetail[]>(),
+    };
+  }
   const cacheKey = `${currentWhCode}_${currentWhId}`;
   const entry = warehouseBinsCache.get(cacheKey);
   if (entry && Date.now() - entry.timestamp < 30000) {
@@ -256,36 +266,34 @@ export function getCachedWarehouseBins(warehouseCode?: string, warehouseId?: str
 
 export function findCachedBinInfo(cleanBinCode: string, warehouseCode?: string, warehouseId?: string): BinOccupiedInfo | null {
   const normKey = normalizeBinKey(cleanBinCode);
-  const shortCode = (cleanBinCode.split('-').pop() || cleanBinCode).toUpperCase();
+  const currentWhCode = warehouseCode ? warehouseCode.trim().toUpperCase() : '';
+  const currentWhId = warehouseId ? warehouseId.trim().toLowerCase() : '';
 
-  // Try targeted warehouse cache
+  const isNewWh = (!currentWhCode && !currentWhId) || currentWhId === 'temp-id' || currentWhId === 'new' || currentWhId.startsWith('wh_new') || (typeof window !== 'undefined' && window.location.pathname.includes('/warehouses/create'));
+  if (isNewWh) return null;
+
+  // Try targeted warehouse cache ONLY
   const targeted = getCachedWarehouseBins(warehouseCode, warehouseId);
   if (targeted) {
     const info = targeted.occupiedMap.get(cleanBinCode)
-      || (normKey ? targeted.occupiedMap.get(normKey) : null)
-      || (shortCode ? targeted.occupiedMap.get(shortCode) : null);
+      || (normKey ? targeted.occupiedMap.get(normKey) : null);
     if (info) return info;
   }
 
-  // Check all available cache entries across warehouses
-  for (const entry of warehouseBinsCache.values()) {
-    if (Date.now() - entry.timestamp < 60000) {
-      const info = entry.data.occupiedMap.get(cleanBinCode)
-        || (normKey ? entry.data.occupiedMap.get(normKey) : null)
-        || (shortCode ? entry.data.occupiedMap.get(shortCode) : null);
-      if (info) return info;
-    }
-  }
-
-  // Fallback check in stored warehouses customBins
+  // Fallback check in stored warehouses customBins FOR THIS WAREHOUSE ONLY
   try {
     const storedWhs = JSON.parse(localStorage.getItem('smart-wms-warehouses') || '[]');
     if (Array.isArray(storedWhs)) {
       for (const wh of storedWhs) {
+        const wCode = String(wh.code || '').trim().toUpperCase();
+        const wId = String(wh.id || '').trim().toLowerCase();
+        const isMatch = (currentWhCode && wCode === currentWhCode) || (currentWhId && wId === currentWhId);
+        if (!isMatch) continue;
+
         for (const sub of (wh.subWarehouses || [])) {
           for (const rk of (sub.racks || [])) {
             if (rk.customBins) {
-              const cfg = rk.customBins[cleanBinCode] || rk.customBins[shortCode] || (normKey ? rk.customBins[normKey] : null);
+              const cfg = rk.customBins[cleanBinCode] || (normKey ? rk.customBins[normKey] : null);
               if (cfg && (Number(cfg.occupancyPct || 0) > 0 || Number(cfg.totalPhysical || 0) > 0)) {
                 return {
                   totalPhysical: Number(cfg.totalPhysical || 1),
@@ -334,6 +342,12 @@ export async function fetchWarehouseOccupiedBins(
   try {
     const headers = { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
 
+    // If creating a new warehouse, it has 0 inventory balances
+    const isNewWh = (!currentWhCode && !currentWhId) || currentWhId === 'temp-id' || currentWhId === 'new' || currentWhId.startsWith('wh_new') || (typeof window !== 'undefined' && window.location.pathname.includes('/warehouses/create'));
+    if (isNewWh) {
+      return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
+    }
+
     // Check in-memory cache first for instant 0ms rendering
     const cacheKey = `${currentWhCode}_${currentWhId}`;
     const cached = warehouseBinsCache.get(cacheKey);
@@ -345,30 +359,53 @@ export async function fetchWarehouseOccupiedBins(
       };
     }
 
-    // If creating a new warehouse, it has 0 inventory balances
-    if (!currentWhCode && !currentWhId || currentWhId === 'temp-id' || currentWhId === 'new' || currentWhId.startsWith('wh_new')) {
-      return { occupiedMap: map, detailsMap: dMap, goodsListMap: gMap };
-    }
-
     const isWhMatch = (wCode?: string, wId?: string, binCodeStr?: string) => {
       const cCode = String(wCode || '').trim().toUpperCase();
       const cId = String(wId || '').trim().toLowerCase();
 
       if (!currentWhCode && !currentWhId) return false;
       if (!cCode && !cId) return false;
-      if (binCodeStr && currentWhCode && binCodeStr.toUpperCase().includes(currentWhCode)) return true;
-      if (currentWhCode && cCode && (cCode === currentWhCode || cCode === `KHO-${currentWhCode}`)) return true;
+
+      // Match by exact warehouse prefix in binCode
+      if (binCodeStr && currentWhCode) {
+        const binPrefix = binCodeStr.split('-')[0].trim().toUpperCase();
+        if (binPrefix === currentWhCode) return true;
+      }
+
+      // Strict matching by warehouse code or ID - NO CROSS-WAREHOUSE ALIASES
+      if (currentWhCode && cCode && cCode === currentWhCode) return true;
       if (currentWhId && cId && cId === currentWhId) return true;
-      if (currentWhCode && cId && cId === currentWhCode.toLowerCase()) return true;
-      if (currentWhId && cCode && cCode === currentWhId.toUpperCase()) return true;
-      // Match default system warehouse codes specifically for default warehouses
-      if ((currentWhCode === 'KH001' || currentWhCode === 'KHO-TONG' || currentWhId === 'wh-1' || currentWhId === 'wh_default_1') && (cCode === 'KHO-TONG' || cCode === 'KHO' || cCode === 'SPX001' || cCode === 'DEFAULT')) return true;
-      if ((currentWhCode === 'KH002' || currentWhCode === 'KHO-HN' || currentWhId === 'wh-2' || currentWhId === 'wh_default_2') && (cCode === 'KH002' || cCode === 'KHO-HN' || cCode.includes('HN'))) return true;
-      if ((currentWhCode === 'KH003' || currentWhCode === 'KHO-BD' || currentWhId === 'wh-3') && (cCode === 'KHO-NVL' || cCode === 'KHO-BD')) return true;
       return false;
     };
 
-    if (currentWhCode && localStorage.getItem(`cleared_warehouse_goods_${currentWhCode}`) === 'true') {
+    // Check if there are real goods in localStorage first
+    const hasLocalGoods = (() => {
+      try {
+        const storedOrders = JSON.parse(localStorage.getItem('stored_stock_in_orders') || '[]');
+        if (Array.isArray(storedOrders) && storedOrders.some((o: any) => isWhMatch(o.warehouseCode || o.warehouseId))) {
+          return true;
+        }
+        const storedWhs = JSON.parse(localStorage.getItem('smart-wms-warehouses') || '[]');
+        if (Array.isArray(storedWhs)) {
+          for (const wh of storedWhs) {
+            if (isWhMatch(wh.code, wh.id)) {
+              for (const sub of (wh.subWarehouses || [])) {
+                for (const rk of (sub.racks || [])) {
+                  if (rk.customBins && Object.values(rk.customBins).some((c: any) => c && (Number(c.occupancyPct || 0) > 0 || Number(c.totalPhysical || 0) > 0 || (Array.isArray(c.products) && c.products.length > 0)))) {
+                    return true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+      return false;
+    })();
+
+    if (hasLocalGoods) {
+      localStorage.removeItem(`cleared_warehouse_goods_${currentWhCode}`);
+    } else if (currentWhCode && localStorage.getItem(`cleared_warehouse_goods_${currentWhCode}`) === 'true') {
       const [testBalRes, testPoRes] = await Promise.all([
         fetch(`${API_BASE_URL}/inventory/balances`, { headers }).catch(() => null),
         fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers }).catch(() => null),
@@ -447,20 +484,27 @@ export async function fetchWarehouseOccupiedBins(
 
       map.set(cleanCode, updatedInfo);
       if (norm) map.set(norm, updatedInfo);
+      if (short) map.set(short, updatedInfo);
+      if (normShort) map.set(normShort, updatedInfo);
 
       const parts = cleanCode.split('-');
       if (parts.length >= 2) {
         const rackPart = parts[parts.length - 2].trim().toUpperCase();
         if (rackPart.startsWith('R') || rackPart.length <= 4) {
           const rackCell = `${rackPart}-${short}`;
+          const normRackCell = normalizeBinKey(rackCell);
           map.set(rackCell, updatedInfo);
-          map.set(normalizeBinKey(rackCell), updatedInfo);
-        }
-      }
+          map.set(normRackCell, updatedInfo);
 
-      if (cleanCode === short || !cleanCode.includes('-')) {
-        if (short) map.set(short, updatedInfo);
-        if (normShort) map.set(normShort, updatedInfo);
+          if (currentWhCode) {
+            const c1 = `${currentWhCode}-ZONE-A-${rackCell}`;
+            const c2 = `${currentWhCode}-ZA-${rackCell}`;
+            map.set(c1, updatedInfo);
+            map.set(normalizeBinKey(c1), updatedInfo);
+            map.set(c2, updatedInfo);
+            map.set(normalizeBinKey(c2), updatedInfo);
+          }
+        }
       }
 
       const detail: BinGoodsDetail = {
@@ -477,10 +521,8 @@ export async function fetchWarehouseOccupiedBins(
         isOutbound: updatedInfo.isOutbound,
       };
 
-      dMap.set(cleanCode, detail);
-      if (norm) dMap.set(norm, detail);
-
       const appendGoods = (key: string) => {
+        if (!key) return;
         if (!gMap.has(key)) gMap.set(key, []);
         const list = gMap.get(key)!;
         const existingIdx = list.findIndex(
@@ -499,17 +541,34 @@ export async function fetchWarehouseOccupiedBins(
           list.push(detail);
         }
       };
-      appendGoods(cleanCode);
-      if (norm) appendGoods(norm);
+
+      const registerAllKeys = (k: string) => {
+        if (!k) return;
+        dMap.set(k, detail);
+        appendGoods(k);
+      };
+
+      registerAllKeys(cleanCode);
+      if (norm) registerAllKeys(norm);
+      if (short) registerAllKeys(short);
+      if (normShort) registerAllKeys(normShort);
 
       if (parts.length >= 2) {
         const rackPart = parts[parts.length - 2].trim().toUpperCase();
         if (rackPart.startsWith('R') || rackPart.length <= 4) {
           const rackCell = `${rackPart}-${short}`;
-          dMap.set(rackCell, detail);
-          dMap.set(normalizeBinKey(rackCell), detail);
-          appendGoods(rackCell);
-          appendGoods(normalizeBinKey(rackCell));
+          const normRackCell = normalizeBinKey(rackCell);
+          registerAllKeys(rackCell);
+          registerAllKeys(normRackCell);
+
+          if (currentWhCode) {
+            const c1 = `${currentWhCode}-ZONE-A-${rackCell}`;
+            const c2 = `${currentWhCode}-ZA-${rackCell}`;
+            registerAllKeys(c1);
+            registerAllKeys(normalizeBinKey(c1));
+            registerAllKeys(c2);
+            registerAllKeys(normalizeBinKey(c2));
+          }
         }
       }
 
@@ -517,19 +576,7 @@ export async function fetchWarehouseOccupiedBins(
       if (cellMatch) {
         const cellKey = cellMatch[1].toUpperCase();
         if (cellKey) {
-          dMap.set(cellKey, detail);
-          appendGoods(cellKey);
-        }
-      }
-
-      if (cleanCode === short || !cleanCode.includes('-')) {
-        if (short) {
-          dMap.set(short, detail);
-          appendGoods(short);
-        }
-        if (normShort) {
-          dMap.set(normShort, detail);
-          appendGoods(normShort);
+          registerAllKeys(cellKey);
         }
       }
     };
@@ -614,9 +661,9 @@ export async function fetchWarehouseOccupiedBins(
           allStockInOrders.push(po);
         }
       });
-      if (Array.isArray(localStockInOrders) && (!apiOrdersRes?.ok && !poOrdersRes?.ok)) {
+      if (Array.isArray(localStockInOrders)) {
         localStockInOrders.forEach((lo: any) => {
-          if (!allStockInOrders.some((ao: any) => ao.id === lo.id || (ao.code && lo.code && ao.code === lo.code) || (ao.orderNumber && lo.orderNumber && ao.orderNumber === lo.orderNumber) || (ao.poNumber && lo.poNumber && ao.poNumber === lo.poNumber))) {
+          if (!allStockInOrders.some((ao: any) => String(ao.id) === String(lo.id) || (ao.code && lo.code && ao.code === lo.code) || (ao.orderNumber && lo.orderNumber && ao.orderNumber === lo.orderNumber) || (ao.poNumber && lo.poNumber && ao.poNumber === lo.poNumber))) {
             allStockInOrders.push(lo);
           }
         });
@@ -914,34 +961,127 @@ export async function fetchWarehouseOccupiedBins(
               (sub.racks || []).forEach((rk: any) => {
                 if (rk.customBins) {
                   Object.entries(rk.customBins).forEach(([bKey, cfg]: [string, any]) => {
-                    if (cfg && (cfg.occupancyPct !== undefined || cfg.totalPhysical !== undefined)) {
+                    if (cfg && (cfg.occupancyPct !== undefined || cfg.totalPhysical !== undefined || cfg.products !== undefined)) {
                       const cleanCode = bKey.split('(')[0].trim();
                       const normKey = normalizeBinKey(cleanCode);
-                      const existing = map.get(cleanCode) || (normKey ? map.get(normKey) : null);
-                      if (existing) {
-                        const updatedInfo = {
-                          ...existing,
-                          occupancyPct: Number(cfg.occupancyPct ?? existing.occupancyPct),
-                          totalPhysical: Number(cfg.totalPhysical ?? existing.totalPhysical),
-                        };
-                        map.set(cleanCode, updatedInfo);
-                        if (normKey) map.set(normKey, updatedInfo);
-                      } else if ((cfg.totalPhysical && Number(cfg.totalPhysical) > 0) || (cfg.occupancyPct && Number(cfg.occupancyPct) > 0)) {
-                        const newInfo: BinOccupiedInfo = {
-                          totalPhysical: Number(cfg.totalPhysical || 1),
+
+                      let goodsList: BinGoodsDetail[] = [];
+                      if (Array.isArray(cfg.products) && cfg.products.length > 0) {
+                        goodsList = cfg.products.map((p: any) => ({
+                          binCode: cleanCode,
+                          productName: p.productName || 'Hàng tồn kho',
+                          sku: p.sku || 'SKU-001',
+                          quantity: Number(p.qty || p.quantity || 0),
                           allocated: 0,
-                          productsCount: 1,
-                          productName: cfg.productName || 'Hàng trong kho',
-                          sku: cfg.sku || 'SKU-001',
+                          supplierName: 'Nhà cung cấp',
+                          inboundDate: 'Đã lưu',
+                          orderCode: 'KHO-LUU',
+                          unit: p.unit || 'cái',
+                          occupancyPct: Number(p.occupancyPct || 0),
+                          isOutbound: false,
+                        }));
+                      } else if (cfg.notes && cfg.notes.includes('[')) {
+                        const matches = [...cfg.notes.matchAll(/([^,:(]+):\s*(\d+(?:\.\d+)?)\s*(?:cái|sp)?\s*\[(\d+(?:\.\d+)?)%\]/g)];
+                        if (matches.length > 0) {
+                          goodsList = matches.map((m: any) => ({
+                            binCode: cleanCode,
+                            productName: m[1].trim(),
+                            sku: 'SKU-001',
+                            quantity: Number(m[2]),
+                            allocated: 0,
+                            supplierName: 'Nhà cung cấp',
+                            inboundDate: 'Đã lưu',
+                            orderCode: 'KHO-LUU',
+                            unit: 'cái',
+                            occupancyPct: Number(m[3]),
+                            isOutbound: false,
+                          }));
+                        }
+                      }
+
+                      const totalShelfPct = Number(cfg.occupancyPct ?? (Array.isArray(cfg.products) ? cfg.products.reduce((s: number, p: any) => s + (Number(p.occupancyPct) || 0), 0) : 100));
+                      const totalShelfQty = Number(cfg.totalPhysical ?? (Array.isArray(cfg.products) ? cfg.products.reduce((s: number, p: any) => s + (Number(p.qty) || 0), 0) : 0));
+                      const pCount = Array.isArray(cfg.products) && cfg.products.length > 0 ? cfg.products.length : 1;
+                      const pName = cfg.productName || (Array.isArray(cfg.products) ? cfg.products.map((p: any) => p.productName).join(', ') : 'Hàng trong kho');
+                      const pSku = cfg.sku || (Array.isArray(cfg.products) ? cfg.products.map((p: any) => p.sku).filter(Boolean).join(', ') : 'SKU-001');
+
+                      if (goodsList.length === 0 && (totalShelfQty > 0 || totalShelfPct > 0)) {
+                        goodsList = [{
+                          binCode: cleanCode,
+                          productName: pName,
+                          sku: pSku,
+                          quantity: totalShelfQty || 1,
+                          allocated: 0,
                           supplierName: 'Nhà cung cấp',
                           inboundDate: 'Đã lưu',
                           orderCode: 'KHO-LUU',
                           unit: cfg.unit || 'cái',
-                          occupancyPct: Number(cfg.occupancyPct || 100),
-                        };
-                        map.set(cleanCode, newInfo);
-                        if (normKey) map.set(normKey, newInfo);
+                          occupancyPct: totalShelfPct,
+                          isOutbound: false,
+                        }];
                       }
+
+                      const newInfo: BinOccupiedInfo = {
+                        totalPhysical: totalShelfQty,
+                        allocated: 0,
+                        productsCount: pCount,
+                        productName: pName,
+                        sku: pSku,
+                        supplierName: 'Nhà cung cấp',
+                        inboundDate: 'Đã lưu',
+                        orderCode: 'KHO-LUU',
+                        unit: cfg.unit || 'cái',
+                        occupancyPct: totalShelfPct,
+                      };
+
+                      const short = (cleanCode.split('-').pop() || cleanCode).trim().toUpperCase();
+                      const normShort = normalizeBinKey(short);
+                      const rackCodeUpper = String(rk.rackCode || rk.id || '').trim().toUpperCase();
+                      const rackCell = `${rackCodeUpper}-${short}`;
+                      const normRackCell = normalizeBinKey(rackCell);
+                      const subCodeUpper = String(sub.code || sub.id || 'ZONE').trim().toUpperCase();
+                      const whPrefix = String(wh.code || currentWhCode || 'KHO').trim().toUpperCase();
+                      const fullComposite = `${whPrefix}-${subCodeUpper}-${rackCodeUpper}-${short}`;
+                      const normFullComposite = normalizeBinKey(fullComposite);
+                      const altComposite1 = `${whPrefix}-ZONE-A-${rackCodeUpper}-${short}`;
+                      const altComposite2 = `${whPrefix}-ZA-${rackCodeUpper}-${short}`;
+
+                      const regKeys = [
+                        cleanCode,
+                        normKey,
+                        short,
+                        normShort,
+                        rackCell,
+                        normRackCell,
+                        fullComposite,
+                        normFullComposite,
+                        altComposite1,
+                        normalizeBinKey(altComposite1),
+                        altComposite2,
+                        normalizeBinKey(altComposite2),
+                      ].filter(Boolean);
+
+                      regKeys.forEach((k) => {
+                        map.set(k, newInfo);
+                        if (totalShelfQty > 0) {
+                          dMap.set(k, {
+                            binCode: k,
+                            productName: pName,
+                            sku: pSku,
+                            quantity: totalShelfQty,
+                            allocated: 0,
+                            supplierName: newInfo.supplierName || 'Nhà cung cấp',
+                            inboundDate: newInfo.inboundDate || 'Đã lưu',
+                            orderCode: newInfo.orderCode || 'KHO-LUU',
+                            unit: cfg.unit || 'cái',
+                            occupancyPct: totalShelfPct,
+                            isOutbound: false,
+                          });
+                        }
+                        if (goodsList.length > 0) {
+                          gMap.set(k, goodsList);
+                        }
+                      });
                     }
                   });
                 }
@@ -1054,8 +1194,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
     const rawStoredGoods = getGoodsList(fullBinCode, binShortCode, rackCode);
     const rawStoredInfo = getOccupiedInfo(fullBinCode, binShortCode, rackCode);
-    const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
-    const storedInfo = isDraftInfo ? null : (rawStoredInfo || null);
+    const storedInfo = rawStoredInfo || null;
 
     const { activeGoods: storedGoods, totalQty: realStockQty, totalOccupancyPct: realStockPct } = computeActiveStoredGoods(
       rawStoredGoods,
@@ -1128,29 +1267,31 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     } else {
       // INBOUND MODE
       // Step 1: Include currently stored stock in bin ONLY IF IT ACTUALLY EXISTS IN PHYSICAL STORAGE
-      if (hasPhysicalStoredStock && (realStockPct > 0 || realStockQty > 0)) {
-        if (storedGoods && storedGoods.length > 0) {
-          storedGoods.forEach((sg, sgIdx) => {
-            const cleanName = (sg.productName || 'Hàng tồn kho').replace(/\s*\(Tồn tại kệ\)/i, '');
-            assigned.push({
-              rowId: `existing-stock-line-${sgIdx}`,
-              productName: `${cleanName} (Tồn tại kệ)`,
-              qty: Number(sg.quantity) || 0,
-              occupancyPct: sg.occupancyPct !== undefined ? Number(sg.occupancyPct) : 0,
-              isExistingStock: true,
-            });
-          });
-        } else if (storedInfo) {
-          const storedProdName = storedInfo.productName || 'Hàng tồn kho';
-          const cleanName = storedProdName.replace(/\s*\(Tồn tại kệ\)/i, '');
+      if (storedGoods && storedGoods.length > 0) {
+        storedGoods.forEach((sg, sgIdx) => {
+          const cleanName = (sg.productName || 'Hàng tồn kho').replace(/\s*\(Tồn tại kệ\)/i, '').replace(/\s*\(Đơn hiện tại\)/i, '');
           assigned.push({
-            rowId: 'existing-stock-line',
+            rowId: `existing-stock-line-${sgIdx}`,
             productName: `${cleanName} (Tồn tại kệ)`,
-            qty: realStockQty,
-            occupancyPct: realStockPct,
+            sku: sg.sku || '',
+            unit: sg.unit || 'cái',
+            qty: Number(sg.quantity) || 0,
+            occupancyPct: sg.occupancyPct !== undefined ? Number(sg.occupancyPct) : 0,
             isExistingStock: true,
           });
-        }
+        });
+      } else if (storedInfo && (Number(storedInfo.totalPhysical || 0) > 0 || Number(storedInfo.occupancyPct || 0) > 0)) {
+        const storedProdName = storedInfo.productName || 'Hàng tồn kho';
+        const cleanName = storedProdName.replace(/\s*\(Tồn tại kệ\)/i, '');
+        assigned.push({
+          rowId: 'existing-stock-line',
+          productName: `${cleanName} (Tồn tại kệ)`,
+          sku: storedInfo.sku || '',
+          unit: storedInfo.unit || 'cái',
+          qty: Number(storedInfo.totalPhysical || realStockQty || 1),
+          occupancyPct: Number(storedInfo.occupancyPct || realStockPct || 100),
+          isExistingStock: true,
+        });
       }
 
       // Step 2: Add ONLY the active item being selected in this order tab (NOT all items in the order!)
@@ -1201,7 +1342,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
             if (m) calcPctForItem = Number(m[1]);
             else calcPctForItem = 100;
           } else {
-            calcPctForItem = 100;
+            calcPctForItem = remainingEmptyPct > 0 ? remainingEmptyPct : 100;
           }
 
           let qtyPerBinForItem: number | undefined = undefined;
@@ -1370,7 +1511,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
     reload();
 
-    const handleStorage = () => reload();
+    const handleStorage = () => {
+      clearWarehouseBinsCache();
+      reload();
+    };
     window.addEventListener('storage', handleStorage);
     window.addEventListener('warehouse-goods-cleared', handleStorage);
 
@@ -1381,92 +1525,309 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     };
   }, [warehouse?.code, warehouse?.id]);
 
-  const getGoodsList = (fullBinCode: string, binCodeShort: string, rackCode: string): BinGoodsDetail[] => {
-    if (occupiedGoodsListMap && occupiedGoodsListMap.size > 0) {
-      if (occupiedGoodsListMap.has(fullBinCode)) return occupiedGoodsListMap.get(fullBinCode)!;
-      const normKey = normalizeBinKey(fullBinCode);
-      if (normKey && occupiedGoodsListMap.has(normKey)) return occupiedGoodsListMap.get(normKey)!;
-
-      const rackCell = `${rackCode}-${binCodeShort}`;
-      if (occupiedGoodsListMap.has(rackCell)) return occupiedGoodsListMap.get(rackCell)!;
-      const normRackCell = normalizeBinKey(rackCell);
-      if (normRackCell && occupiedGoodsListMap.has(normRackCell)) return occupiedGoodsListMap.get(normRackCell)!;
-
-      const normRack = normalizeBinKey(rackCode);
-      const normCell = normalizeBinKey(binCodeShort);
-
-      for (const [key, val] of occupiedGoodsListMap.entries()) {
-        const normK = normalizeBinKey(key);
-        if (!normK) continue;
-        if (normRack && normCell && normK.includes(normRack) && normK.endsWith(normCell)) {
-          return val;
-        }
-        if (normCell && (normK === normCell || normK.endsWith(`-${normCell}`) || normK.endsWith(`_${normCell}`))) {
-          return val;
-        }
-      }
-
-      if (normCell && occupiedGoodsListMap.has(normCell)) {
-        return occupiedGoodsListMap.get(normCell)!;
-      }
-
-      if (occupiedGoodsListMap.has(binCodeShort)) {
-        return occupiedGoodsListMap.get(binCodeShort)!;
-      }
-    }
-
-    const info = getOccupiedInfo(fullBinCode, binCodeShort, rackCode);
-    if (info) {
-      return [{
-        binCode: fullBinCode,
-        productName: info.productName || 'Sản phẩm nhập kho',
-        sku: info.sku || 'SKU-001',
-        quantity: info.totalPhysical || info.allocated || 1,
-        allocated: info.allocated || 0,
-        supplierName: info.supplierName || 'Nhà cung cấp',
-        inboundDate: info.inboundDate || 'Hôm nay',
-        orderCode: info.orderCode || 'NK-ORDER',
-        unit: info.unit || 'Cái',
-        occupancyPct: info.occupancyPct,
-      }];
-    }
-
-    return [];
-  };
-
   const activeRack = useMemo(
     () => racks.find((r) => r.id === selectedRackId || r.rackCode === selectedRackId) || racks[0],
     [racks, selectedRackId]
   );
 
-  const getOccupiedInfo = (fullBinCode: string, binCodeShort: string, rackCode: string) => {
-    if (!occupiedMap || occupiedMap.size === 0) return null;
+  const isNewWarehouse = Boolean(
+    !warehouse?.id ||
+    warehouse.id === 'temp-id' ||
+    warehouse.id === 'new' ||
+    warehouse.id.startsWith('wh_new') ||
+    (typeof window !== 'undefined' && window.location.pathname.includes('/warehouses/create'))
+  );
 
-    if (occupiedMap.has(fullBinCode)) return occupiedMap.get(fullBinCode);
+  const getGoodsList = (fullBinCode: string, binCodeShort: string, rackCode: string): BinGoodsDetail[] => {
+    if (isNewWarehouse) return [];
+    if (whCode && localStorage.getItem(`cleared_warehouse_goods_${whCode}`) === 'true') return [];
 
     const normKey = normalizeBinKey(fullBinCode);
-    if (normKey && occupiedMap.has(normKey)) return occupiedMap.get(normKey);
-
     const rackCell = `${rackCode}-${binCodeShort}`;
-    if (occupiedMap.has(rackCell)) return occupiedMap.get(rackCell);
     const normRackCell = normalizeBinKey(rackCell);
-    if (normRackCell && occupiedMap.has(normRackCell)) return occupiedMap.get(normRackCell);
+    const short = (binCodeShort || '').trim().toUpperCase();
 
-    const normRack = normalizeBinKey(rackCode);
-    const normCell = normalizeBinKey(binCodeShort);
+    const resultList: BinGoodsDetail[] = [];
+    const seenProductKeys = new Set<string>();
 
-    for (const [key, val] of occupiedMap.entries()) {
-      const normK = normalizeBinKey(key);
-      if (!normK) continue;
-      if (normRack && normCell) {
-        if (normK.includes(normRack) && normK.endsWith(normCell)) {
+    const addGoodsItem = (item: BinGoodsDetail) => {
+      if (!item) return;
+      const skuStr = (item.sku || '').trim().toUpperCase();
+      const nameStr = (item.productName || '').trim().toLowerCase();
+      const dedupeKey = `${skuStr}___${nameStr}`;
+      if (seenProductKeys.has(dedupeKey)) {
+        const existing = resultList.find(x => `${(x.sku || '').trim().toUpperCase()}___${(x.productName || '').trim().toLowerCase()}` === dedupeKey);
+        if (existing) {
+          existing.quantity = (existing.quantity || 0) + (item.quantity || 0);
+          if (item.occupancyPct !== undefined && existing.occupancyPct !== undefined) {
+            existing.occupancyPct = Math.min(100, existing.occupancyPct + item.occupancyPct);
+          }
+        }
+        return;
+      }
+      seenProductKeys.add(dedupeKey);
+      resultList.push(item);
+    };
+
+    const isMatchBin = (b: string) => {
+      if (!b) return false;
+      const cleanB = b.split('(')[0].trim().toUpperCase();
+      const normB = normalizeBinKey(cleanB);
+      const upperFull = fullBinCode.toUpperCase();
+      const upperRackCell = rackCell.toUpperCase();
+      return cleanB === upperFull || cleanB === upperRackCell ||
+             normB === normKey || normB === normRackCell ||
+             (cleanB.startsWith(`${rackCode.toUpperCase()}-`) && cleanB.endsWith(`-${short}`));
+    };
+
+    // 1. Direct lookup in occupiedGoodsListMap (belonging to this warehouse)
+    if (occupiedGoodsListMap && occupiedGoodsListMap.size > 0) {
+      const keysToTry = [fullBinCode, normKey, rackCell, normRackCell].filter(Boolean);
+      for (const k of keysToTry) {
+        if (occupiedGoodsListMap.has(k)) {
+          const list = occupiedGoodsListMap.get(k)!;
+          if (Array.isArray(list) && list.length > 0) {
+            list.forEach(addGoodsItem);
+          }
+        }
+      }
+      if (resultList.length === 0) {
+        for (const [key, val] of occupiedGoodsListMap.entries()) {
+          const normK = normalizeBinKey(key);
+          if (!normK || !Array.isArray(val) || val.length === 0) continue;
+          if (normRackCell && (normK === normRackCell || normK.endsWith(normRackCell))) {
+            val.forEach(addGoodsItem);
+          }
+        }
+      }
+    }
+
+    // Helper to extract goods from a customBin config object
+    const extractFromCustomBin = (cfg: any) => {
+      if (!cfg) return;
+      if (Array.isArray(cfg.products) && cfg.products.length > 0) {
+        cfg.products.forEach((p: any) => {
+          addGoodsItem({
+            binCode: fullBinCode,
+            productName: p.productName || 'Hàng tồn kho',
+            sku: p.sku || 'SKU-001',
+            quantity: Number(p.qty || p.quantity || 0),
+            allocated: 0,
+            supplierName: 'Nhà cung cấp',
+            inboundDate: 'Đã lưu',
+            orderCode: 'KHO-LUU',
+            unit: p.unit || 'cái',
+            occupancyPct: Number(p.occupancyPct || 0),
+            isOutbound: false,
+          });
+        });
+        return;
+      }
+      if (cfg.notes && cfg.notes.includes('[')) {
+        const matches = [...cfg.notes.matchAll(/([^,:(]+):\s*(\d+(?:\.\d+)?)\s*(?:cái|sp)?\s*\[(\d+(?:\.\d+)?)%\]/g)];
+        if (matches.length > 0) {
+          matches.forEach((m: any) => {
+            addGoodsItem({
+              binCode: fullBinCode,
+              productName: m[1].trim(),
+              sku: 'SKU-001',
+              quantity: Number(m[2]),
+              allocated: 0,
+              supplierName: 'Nhà cung cấp',
+              inboundDate: 'Đã lưu',
+              orderCode: 'KHO-LUU',
+              unit: 'cái',
+              occupancyPct: Number(m[3]),
+              isOutbound: false,
+            });
+          });
+          return;
+        }
+      }
+      if (cfg.notes) {
+        const noteMatch = cfg.notes.match(/(?:Đã chọn nhập|Đã lưu|Đã chứa):\s*(\d+(?:\.\d+)?)\s*(?:cái|sp)?\s*\((\d+(?:\.\d+)?)%\)/i);
+        if (noteMatch) {
+          addGoodsItem({
+            binCode: fullBinCode,
+            productName: cfg.productName || 'Hàng đã lưu',
+            sku: cfg.sku || 'SKU-001',
+            quantity: Number(noteMatch[1]),
+            allocated: 0,
+            supplierName: 'Nhà cung cấp',
+            inboundDate: 'Đã lưu',
+            orderCode: 'KHO-LUU',
+            unit: cfg.unit || 'cái',
+            occupancyPct: Number(noteMatch[2]),
+            isOutbound: false,
+          });
+          return;
+        }
+      }
+      if ((cfg.productName || cfg.occupancyPct || cfg.totalPhysical) && (Number(cfg.totalPhysical || 0) > 0 || Number(cfg.occupancyPct || 0) > 0)) {
+        addGoodsItem({
+          binCode: fullBinCode,
+          productName: cfg.productName || 'Hàng lưu trên kệ',
+          sku: cfg.sku || 'SKU-001',
+          quantity: Number(cfg.totalPhysical || 1),
+          allocated: 0,
+          supplierName: 'Nhà cung cấp',
+          inboundDate: 'Đã lưu',
+          orderCode: 'KHO-LUU',
+          unit: cfg.unit || 'cái',
+          occupancyPct: Number(cfg.occupancyPct || 100),
+          isOutbound: false,
+        });
+      }
+    };
+
+    // 2. Direct lookup in activeRack / subWarehouses customBins belonging to THIS warehouse and THIS rack
+    const checkRackBins = (rk: any) => {
+      if (!rk?.customBins) return;
+      if (rackCode && rk.rackCode && rk.rackCode.trim().toUpperCase() !== rackCode.trim().toUpperCase()) return;
+      const keysToTry = [fullBinCode, normKey, rackCell, normRackCell].filter(Boolean);
+      for (const k of keysToTry) {
+        if ((rk.customBins as any)[k]) {
+          extractFromCustomBin((rk.customBins as any)[k]);
+        }
+      }
+    };
+
+    if (activeRack) checkRackBins(activeRack);
+    if (Array.isArray(subWarehouses)) {
+      subWarehouses.forEach((sub) => (sub.racks || []).forEach(checkRackBins));
+    }
+
+    // 3. Check stored warehouses in localStorage FOR THIS WAREHOUSE ONLY
+    try {
+      const storedWhs = JSON.parse(localStorage.getItem('smart-wms-warehouses') || '[]');
+      if (Array.isArray(storedWhs)) {
+        storedWhs.forEach((wh: any) => {
+          const wCode = String(wh.code || '').trim().toUpperCase();
+          const wId = String(wh.id || '').trim().toLowerCase();
+          const isThisWh = (whCode && wCode === whCode) || (warehouse?.id && wId === warehouse.id.trim().toLowerCase());
+          if (!isThisWh) return;
+          (wh.subWarehouses || []).forEach((sub: any) => {
+            (sub.racks || []).forEach(checkRackBins);
+          });
+        });
+      }
+    } catch {}
+
+    // 4. Check stored_stock_in_orders in localStorage FOR THIS WAREHOUSE ONLY
+    try {
+      const storedOrdersStr = localStorage.getItem('stored_stock_in_orders');
+      if (storedOrdersStr) {
+        const storedOrders = JSON.parse(storedOrdersStr);
+        if (Array.isArray(storedOrders)) {
+          for (const ord of storedOrders) {
+            const ordWhCode = String(ord.warehouseCode || ord.warehouse?.code || '').trim().toUpperCase();
+            const ordWhId = String(ord.warehouseId || ord.warehouse?.id || '').trim().toLowerCase();
+            const isThisWh = (whCode && ordWhCode === whCode) || (warehouse?.id && ordWhId === warehouse.id.trim().toLowerCase());
+            if (!isThisWh) continue;
+
+            for (const item of (ord.details || ord.items || [])) {
+              const bins: string[] = Array.isArray(item.assignedBins) ? item.assignedBins : (item.locationBin ? String(item.locationBin).split(',').map((s: string) => s.trim()) : []);
+              for (const b of bins) {
+                if (isMatchBin(b)) {
+                  const mPct = b.match(/\((\d+(?:\.\d+)?)%\)/);
+                  const pct = mPct ? Number(mPct[1]) : (item.occupancyPct || 100);
+                  const mQty = b.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+                  const qty = mQty ? Number(mQty[1]) : Math.max(1, Math.round(Number(item.qty || 1) / (bins.length || 1)));
+                  addGoodsItem({
+                    binCode: fullBinCode,
+                    productName: item.productName || 'Hàng tồn kho',
+                    sku: item.productSku || item.sku || 'SKU-001',
+                    quantity: qty,
+                    allocated: 0,
+                    supplierName: ord.supplierName || 'Nhà cung cấp',
+                    inboundDate: ord.orderDate || 'Đã lưu',
+                    orderCode: ord.poNumber || ord.orderNumber || 'KHO-LUU',
+                    unit: item.unit || 'cái',
+                    occupancyPct: pct,
+                    isOutbound: false,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // 5. Check OTHER items in the current order form (orderItems & selectedBinsMap)
+    if (orderItems && selectedBinsMap && Array.isArray(orderItems)) {
+      orderItems.forEach((it: any, itIdx: number) => {
+        if (it.rowId !== activeRowId) {
+          const bList: string[] = selectedBinsMap[it.rowId] || [];
+          for (const b of bList) {
+            if (isMatchBin(b)) {
+              const mPct = b.match(/\((\d+(?:\.\d+)?)%\)/);
+              const pct = mPct ? Number(mPct[1]) : (it.occupancyPct || 100);
+              const mQty = b.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+              const qty = mQty ? Number(mQty[1]) : Math.max(1, Math.round(Number(it.qty || 1) / (bList.length || 1)));
+              addGoodsItem({
+                binCode: fullBinCode,
+                productName: it.productName || `Mặt hàng #${itIdx + 1}`,
+                sku: it.productSku || it.sku || 'SKU-001',
+                quantity: qty,
+                allocated: 0,
+                supplierName: 'Đơn hiện tại',
+                inboundDate: 'Đang xếp',
+                orderCode: 'ĐƠN-HIỆN-TẠI',
+                unit: it.unit || 'cái',
+                occupancyPct: pct,
+                isOutbound: false,
+              });
+            }
+          }
+        }
+      });
+    }
+
+    return resultList;
+  };
+
+  const getOccupiedInfo = (fullBinCode: string, binCodeShort: string, rackCode: string): BinOccupiedInfo | null => {
+    if (isNewWarehouse) return null;
+    if (whCode && localStorage.getItem(`cleared_warehouse_goods_${whCode}`) === 'true') return null;
+
+    const normKey = normalizeBinKey(fullBinCode);
+    const rackCell = `${rackCode}-${binCodeShort}`;
+    const normRackCell = normalizeBinKey(rackCell);
+
+    // 1. Direct match in occupiedMap
+    if (occupiedMap && occupiedMap.size > 0) {
+      if (occupiedMap.has(fullBinCode)) return occupiedMap.get(fullBinCode)!;
+      if (normKey && occupiedMap.has(normKey)) return occupiedMap.get(normKey)!;
+      if (occupiedMap.has(rackCell)) return occupiedMap.get(rackCell)!;
+      if (normRackCell && occupiedMap.has(normRackCell)) return occupiedMap.get(normRackCell)!;
+
+      for (const [key, val] of occupiedMap.entries()) {
+        const normK = normalizeBinKey(key);
+        if (!normK) continue;
+        if (normRackCell && (normK === normRackCell || normK.endsWith(normRackCell))) {
           return val;
         }
       }
     }
 
-    if (!normRack && normCell && occupiedMap.has(binCodeShort)) {
-      return occupiedMap.get(binCodeShort);
+    // 2. Direct lookup from getGoodsList
+    const goods = getGoodsList(fullBinCode, binCodeShort, rackCode);
+    if (goods && goods.length > 0) {
+      const totalQty = goods.reduce((s, g) => s + (Number(g.quantity) || 0), 0);
+      const totalPct = Math.min(100, goods.reduce((s, g) => s + (Number(g.occupancyPct) || 0), 0));
+      return {
+        totalPhysical: totalQty,
+        allocated: 0,
+        productsCount: goods.length,
+        productName: goods.map(g => g.productName).join(', '),
+        sku: goods.map(g => g.sku).filter(Boolean).join(', '),
+        supplierName: goods[0]?.supplierName || 'Nhà cung cấp',
+        inboundDate: goods[0]?.inboundDate || 'Đã lưu',
+        orderCode: goods[0]?.orderCode || 'KHO-LUU',
+        unit: goods[0]?.unit || 'cái',
+        occupancyPct: totalPct > 0 ? totalPct : 100,
+      };
     }
 
     return null;
@@ -1589,10 +1950,13 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           const fullBinCode = `${whCode}-${zoneCodeStr}-${rackCode}-${binCodeShort}`;
                           const normFull = normalizeBinKey(fullBinCode);
 
-                          const rawCustomConfig =
+                          const rackCell = `${rackCode}-${binCodeShort}`;
+                          const rawCustomConfig = !isNewWarehouse ? (
                             (activeRack.customBins as any)?.[fullBinCode] ||
-                            (activeRack.customBins as any)?.[binCodeShort] ||
-                            (normFull ? (activeRack.customBins as any)?.[normFull] : null);
+                            (normFull ? (activeRack.customBins as any)?.[normFull] : null) ||
+                            (activeRack.customBins as any)?.[rackCell] ||
+                            (activeRack.customBins as any)?.[normalizeBinKey(rackCell)]
+                          ) : null;
                           const customConfig = rawCustomConfig && rawCustomConfig.occupancyPct !== undefined && rawCustomConfig.occupancyPct !== null ? rawCustomConfig : null;
 
                           const normShort = normalizeBinKey(binCodeShort);
@@ -1828,6 +2192,11 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
                                 }
                               }}
+                              title={
+                                 goodsInBin && goodsInBin.length > 0
+                                   ? `Ô ${binCodeShort} (Độ chứa: ${occupancyPct}%):\n${goodsInBin.map((g) => `• ${g.productName}: ${g.quantity} ${g.unit || 'cái'} [${g.occupancyPct || 0}%]`).join('\n')}`
+                                   : customConfig?.notes || `Ô ${binCodeShort} (${occupancyPct > 0 ? `${occupancyPct}%` : 'Trống'})`
+                               }
                               className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] cursor-pointer ${mode === 'view'
                                 ? isSelected
                                   ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] z-20 hover:ring-emerald-300'
@@ -2103,8 +2472,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                 const rackCode = editingBinConfig.rackCode || '';
                 const rawStoredGoods = getGoodsList(binFull, binShort, rackCode);
                 const rawStoredInfo = getOccupiedInfo(binFull, binShort, rackCode);
-                const isDraftInfo = rawStoredInfo?.orderCode === 'PNK-DRAFT' || rawStoredInfo?.orderCode === 'PXK-DRAFT' || rawStoredInfo?.inboundDate === 'Đang xếp' || rawStoredInfo?.inboundDate === 'Đang chọn';
-                const storedInfo = isDraftInfo ? null : (rawStoredInfo || null);
+                const storedInfo = rawStoredInfo || null;
 
                 const { activeGoods: allStoredGoods, totalQty: totalStoredQty, totalOccupancyPct: binOccupancyPct } = computeActiveStoredGoods(
                   rawStoredGoods,
@@ -2722,17 +3090,20 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           return;
                         }
 
-                        editableBinItems.forEach((item) => {
-                          if (onUpdateBinCapacity) {
-                            onUpdateBinCapacity(
-                              editingBinConfig.binCode,
-                              Number(item.occupancyPct) || 0,
-                              undefined,
-                              item.rowId,
-                              item.qty !== undefined && Number(item.qty) > 0 ? Number(item.qty) : undefined
-                            );
-                          }
-                        });
+                        const newItems = editableBinItems.filter((item) => !item.isExistingStock);
+                        if (newItems.length > 0) {
+                          newItems.forEach((item) => {
+                            if (onUpdateBinCapacity) {
+                              onUpdateBinCapacity(
+                                editingBinConfig.binCode,
+                                Number(item.occupancyPct) || 0,
+                                undefined,
+                                item.rowId,
+                                item.qty !== undefined && Number(item.qty) > 0 ? Number(item.qty) : undefined
+                              );
+                            }
+                          });
+                        }
                         setEditingBinConfig(null);
                       }}
                       className="h-9 px-5 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-black rounded-xl transition cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"

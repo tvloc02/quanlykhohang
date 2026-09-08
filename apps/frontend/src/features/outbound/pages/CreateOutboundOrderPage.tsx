@@ -40,7 +40,8 @@ import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
-import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
+import { SmartSlottingGridModal, clearSmartSlottingCache } from '../../warehouses/components/SmartSlottingGridModal';
+import { clearWarehouseBinsCache } from '../../warehouses/components/WarehouseSlottingGrid';
 
 
 
@@ -1393,29 +1394,82 @@ export default function CreateOutboundOrderPage({
                     if (customBins) {
                       Object.keys(customBins).forEach((k) => {
                         const normK = k.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                        if (normK === normKey || k === cleanCode || k.includes(cleanCode)) {
+                        const shortClean = (cleanCode.split('-').pop() || cleanCode).toUpperCase();
+                        const shortK = (k.split('-').pop() || k).toUpperCase();
+                        const isMatch = normK === normKey || k === cleanCode || k.includes(cleanCode) || cleanCode.includes(k) || (shortClean && shortK === shortClean);
+                        if (isMatch) {
                           const curr = customBins[k];
-                          const oldPct = Number(curr?.occupancyPct ?? 100);
-                          const oldQty = Number(curr?.totalPhysical || (r as any).stockQty || (r as any).totalQty || (r as any).stock || 0);
-                          const exportQty = Number(r.qty || 0);
-
-                          let deductPct = 0;
-                          const pctMatch = bCode.match(/\((\d+)%\)/);
-                          if (pctMatch) {
-                            deductPct = Number(pctMatch[1]);
-                          } else if (oldQty > 0) {
-                            deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / oldQty) * oldPct)));
-                          } else {
-                            deductPct = Math.min(oldPct, 50);
+                          let existingProds: Array<{ sku?: string; productName: string; qty: number; occupancyPct: number; unit?: string }> = [];
+                          if (curr && Array.isArray(curr.products) && curr.products.length > 0) {
+                            existingProds = curr.products.map((p: any) => ({ ...p }));
+                          } else if (curr && curr.productName && Number(curr.totalPhysical || 0) > 0) {
+                            existingProds = [{
+                              sku: curr.sku || '',
+                              productName: curr.productName,
+                              qty: Number(curr.totalPhysical || 0),
+                              occupancyPct: Number(curr.occupancyPct || 100),
+                              unit: curr.unit || 'cái',
+                            }];
                           }
 
-                          const newPct = Math.max(0, oldPct - deductPct);
-                          const newQty = Math.max(0, oldQty - exportQty);
+                          const curSku = (r.productSku || '').trim().toUpperCase();
+                          const curName = (r.productName || '').trim().toLowerCase();
+                          const exportQty = Number(r.qty || 0);
+
+                          let matchIdx = existingProds.findIndex((p) => {
+                            const pSku = (p.sku || '').trim().toUpperCase();
+                            const pName = (p.productName || '').trim().toLowerCase();
+                            return (curSku && pSku && curSku === pSku) || (curName && pName && (curName.includes(pName) || pName.includes(curName)));
+                          });
+
+                          if (matchIdx >= 0) {
+                            const matchedProd = existingProds[matchIdx];
+                            const oldItemQty = Number(matchedProd.qty || 0);
+                            const oldItemPct = Number(matchedProd.occupancyPct || 0);
+                            const newItemQty = Math.max(0, oldItemQty - exportQty);
+                            let newItemPct = 0;
+                            if (newItemQty > 0) {
+                              newItemPct = oldItemQty > 0
+                                ? Math.max(1, Math.round((newItemQty / oldItemQty) * oldItemPct))
+                                : oldItemPct;
+                            }
+                            if (newItemQty > 0) {
+                              existingProds[matchIdx] = {
+                                ...matchedProd,
+                                qty: newItemQty,
+                                occupancyPct: newItemPct,
+                              };
+                            } else {
+                              existingProds.splice(matchIdx, 1);
+                            }
+                          } else {
+                            const oldPct = Number(curr?.occupancyPct ?? 100);
+                            const oldQty = Number(curr?.totalPhysical || 0);
+                            const newQty = Math.max(0, oldQty - exportQty);
+                            const newPct = oldQty > 0 ? Math.max(0, Math.round((newQty / oldQty) * oldPct)) : Math.max(0, oldPct - 25);
+                            existingProds = newQty > 0 ? [{
+                              sku: curSku || 'SKU-001',
+                              productName: r.productName || 'Hàng tồn kho',
+                              qty: newQty,
+                              occupancyPct: newPct,
+                              unit: r.unit || 'cái',
+                            }] : [];
+                          }
+
+                          const newTotalPct = Math.min(100, existingProds.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+                          const newTotalQty = existingProds.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+                          const descNote = existingProds.length === 0 || newTotalPct === 0
+                            ? 'Ô Trống'
+                            : `Đã chứa: ${newTotalPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+
                           customBins[k] = {
                             ...curr,
-                            occupancyPct: newPct,
-                            totalPhysical: newQty,
-                            notes: newPct === 0 ? 'Ô Trống' : `Đã chứa: ${newPct}% (${newQty} cái)`,
+                            occupancyPct: newTotalPct,
+                            totalPhysical: newTotalQty,
+                            products: existingProds,
+                            notes: descNote,
+                            productName: existingProds.map((p) => p.productName).join(', ') || 'Ô Trống',
+                            sku: existingProds.map((p) => p.sku).filter(Boolean).join(', '),
                           };
                           changed = true;
                         }
@@ -1430,6 +1484,21 @@ export default function CreateOutboundOrderPage({
           if (changed) {
             saveStoredWarehouses(localWhs);
           }
+
+          try {
+            const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+            let localOutboundOrders: any[] = storedOutboundStr ? JSON.parse(storedOutboundStr) : [];
+            const savedOutboundEntry = {
+              id: activeTab.id || `PXK-${Date.now()}`,
+              orderNo: activeTab.orderNo || `PXK-${Date.now()}`,
+              warehouseCode: activeTab.branchCode || 'KHO-NVL',
+              orderDate: activeTab.orderDate,
+              status: targetStatus,
+              items: payload.details,
+            };
+            localOutboundOrders = [savedOutboundEntry, ...localOutboundOrders.filter((o: any) => o.id !== savedOutboundEntry.id)];
+            localStorage.setItem('stored_outbound_orders', JSON.stringify(localOutboundOrders));
+          } catch {}
 
           // Cập nhật smart-wms-products
           const storedProdsStr = localStorage.getItem('smart-wms-products');
@@ -1456,6 +1525,8 @@ export default function CreateOutboundOrderPage({
             }
           }
 
+          clearWarehouseBinsCache();
+          clearSmartSlottingCache();
           window.dispatchEvent(new Event('warehouse-goods-cleared'));
           window.dispatchEvent(new Event('storage'));
         } catch (e) {

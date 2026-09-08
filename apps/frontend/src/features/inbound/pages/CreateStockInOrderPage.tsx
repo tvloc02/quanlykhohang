@@ -43,7 +43,8 @@ import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, build
 import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
-import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
+import { SmartSlottingGridModal, clearSmartSlottingCache } from '../../warehouses/components/SmartSlottingGridModal';
+import { clearWarehouseBinsCache } from '../../warehouses/components/WarehouseSlottingGrid';
 
 export const isCompletedInboundStatus = (status?: string): boolean => {
   if (!status) return false;
@@ -3271,7 +3272,8 @@ export default function CreateStockInOrderPage({
                   const shortBin = (cleanCode.split('-').pop() || cleanCode).toUpperCase();
 
                   const isRackMatch = (rackCodeUpper && (codeParts.includes(rackCodeUpper) || cleanCodeUpper.includes('-' + rackCodeUpper + '-') || cleanCodeUpper.includes(rackCodeUpper))) ||
-                                      (rackIdUpper && (codeParts.includes(rackIdUpper) || cleanCodeUpper.includes(rackIdUpper)));
+                                      (rackIdUpper && (codeParts.includes(rackIdUpper) || cleanCodeUpper.includes(rackIdUpper))) ||
+                                      (!cleanCodeUpper.includes('-') && (sub.racks?.length === 1 || rk.rackCode === 'R01' || rk.id === 'R01' || Boolean((rk.customBins || {})[cleanCode]) || Boolean((rk.customBins || {})[shortBin])));
 
                   if (isRackMatch) {
                     const pctMatch = bCode.match(/\((\d+(?:\.\d+)?)%\)/);
@@ -3291,23 +3293,75 @@ export default function CreateStockInOrderPage({
                       binQty = Number(r.qty || 0);
                     }
 
+                    const existingEntry = custom[cleanCode] || custom[shortBin] || (normTarget ? custom[normTarget] : null);
+                    let existingProds: Array<{ sku?: string; productName: string; qty: number; occupancyPct: number; unit?: string }> = [];
+                    if (existingEntry && Array.isArray(existingEntry.products) && existingEntry.products.length > 0) {
+                      existingProds = [...existingEntry.products];
+                    } else if (existingEntry && existingEntry.productName && Number(existingEntry.totalPhysical || 0) > 0 && Number(existingEntry.occupancyPct || 0) > 0) {
+                      existingProds = [{
+                        sku: existingEntry.sku || '',
+                        productName: existingEntry.productName,
+                        qty: Number(existingEntry.totalPhysical || 0),
+                        occupancyPct: Number(existingEntry.occupancyPct || 0),
+                        unit: existingEntry.unit || 'cái',
+                      }];
+                    }
+
+                    const curSku = (r.productSku || '').trim().toUpperCase();
+                    const curName = (r.productName || '').trim().toLowerCase();
+                    const matchProdIdx = existingProds.findIndex((p) => {
+                      const pSku = (p.sku || '').trim().toUpperCase();
+                      const pName = (p.productName || '').trim().toLowerCase();
+                      return (curSku && pSku && curSku === pSku) || (curName && pName && curName === pName);
+                    });
+
+                    if (matchProdIdx >= 0) {
+                      existingProds[matchProdIdx] = {
+                        sku: r.productSku || existingProds[matchProdIdx].sku || '',
+                        productName: r.productName || existingProds[matchProdIdx].productName,
+                        qty: binQty,
+                        occupancyPct: binPct,
+                        unit: r.unit || existingProds[matchProdIdx].unit || 'cái',
+                      };
+                    } else {
+                      existingProds.push({
+                        sku: r.productSku || '',
+                        productName: r.productName,
+                        qty: binQty,
+                        occupancyPct: binPct,
+                        unit: r.unit || 'cái',
+                      });
+                    }
+
+                    const totalShelfPct = Math.min(100, existingProds.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+                    const totalShelfQty = existingProds.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+                    const descNote = `Đã chứa: ${totalShelfPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+
                     const updatedEntry = {
                       binCode: shortBin,
                       length: 120,
                       width: 80,
                       height: 100,
                       maxWeight: 500,
-                      occupancyPct: binPct,
-                      totalPhysical: binQty,
-                      notes: `Đã chứa: ${binPct}% (${binQty} cái)`,
-                      productName: r.productName,
-                      sku: r.productSku,
+                      occupancyPct: totalShelfPct,
+                      totalPhysical: totalShelfQty,
+                      products: existingProds,
+                      notes: descNote,
+                      productName: existingProds.map((p) => p.productName).join(', '),
+                      sku: existingProds.map((p) => p.sku).filter(Boolean).join(', '),
                       unit: r.unit || 'cái',
                     };
 
                     custom[cleanCode] = updatedEntry;
                     custom[shortBin] = updatedEntry;
                     if (normTarget) custom[normTarget] = updatedEntry;
+                    const whCodeStr = matchedWh.code || activeTab.warehouseCode || 'KH006';
+                    const fullComposite = `${whCodeStr}-${sub.code || 'ZONE'}-${rk.rackCode}-${shortBin}`;
+                    const rackKey = `${rk.rackCode}-${shortBin}`;
+                    custom[fullComposite] = updatedEntry;
+                    custom[normalizeBinKey(fullComposite)] = updatedEntry;
+                    custom[rackKey] = updatedEntry;
+                    custom[normalizeBinKey(rackKey)] = updatedEntry;
                     whChanged = true;
                   }
                 });
@@ -3322,12 +3376,63 @@ export default function CreateStockInOrderPage({
               ...matchedWh,
               subWarehouses: updatedSubs,
             };
-            saveStoredWarehouses(fullWhList.map((w) => (w.id === updatedWh.id || w.code === updatedWh.code ? updatedWh : w)));
+            const exists = fullWhList.some((w) => w.id === updatedWh.id || w.code === updatedWh.code);
+            const nextList = exists
+              ? fullWhList.map((w) => (w.id === updatedWh.id || w.code === updatedWh.code ? updatedWh : w))
+              : [...fullWhList, updatedWh];
+            saveStoredWarehouses(nextList);
             upsertWarehouseToApi(updatedWh).catch((err: any) => console.error('Lỗi lưu CSDL kho:', err));
           }
         }
       } catch (err) {
         console.error('Error persisting staged warehouse topology:', err);
+      }
+
+      // Sync stored_stock_in_orders in localStorage for instant synchronization across all screens
+      try {
+        const storedStockInStr = localStorage.getItem('stored_stock_in_orders');
+        let storedStockIn: any[] = [];
+        if (storedStockInStr) {
+          try { storedStockIn = JSON.parse(storedStockInStr); } catch {}
+        }
+        const newOrderRecord = {
+          id: savedPO.id || `po_${Date.now()}`,
+          orderNumber: savedPO.poNumber || generatedNo,
+          poNumber: savedPO.poNumber || generatedNo,
+          receiptNo: savedPO.poNumber || generatedNo,
+          code: savedPO.poNumber || generatedNo,
+          warehouseCode: activeTab.warehouseCode || 'KH006',
+          supplierName: activeTab.supplierName || 'Nhà cung cấp',
+          orderDate: activeTab.orderDate || new Date().toISOString(),
+          status: saveStatus || 'completed',
+          details: activeValidItems.map((r) => {
+            let assignedList: string[] = Array.isArray(r.assignedBins) ? r.assignedBins : [];
+            if (assignedList.length === 0 && r.locationBin) {
+              assignedList = r.locationBin.split(',').map((s: string) => s.trim());
+            }
+            return {
+              productId: r.productId,
+              productSku: r.productSku,
+              productName: r.productName,
+              unit: r.unit || 'cái',
+              qty: Number(r.qty || 1),
+              assignedBins: assignedList,
+              occupancyPct: (() => {
+                const pctMatch = assignedList.join(' ').match(/\((\d+(?:\.\d+)?)%\)/);
+                return pctMatch ? Number(pctMatch[1]) : ((r as any).occupancyPct || 100);
+              })(),
+            };
+          }),
+        };
+        const existingIdx = storedStockIn.findIndex((o) => String(o.id) === String(newOrderRecord.id) || o.poNumber === newOrderRecord.poNumber);
+        if (existingIdx >= 0) {
+          storedStockIn[existingIdx] = newOrderRecord;
+        } else {
+          storedStockIn.unshift(newOrderRecord);
+        }
+        localStorage.setItem('stored_stock_in_orders', JSON.stringify(storedStockIn));
+      } catch (errLocal) {
+        console.warn('Lỗi lưu stored_stock_in_orders vào localStorage:', errLocal);
       }
 
       if (!isEditing) {
@@ -3353,6 +3458,8 @@ export default function CreateStockInOrderPage({
         releaseActiveDraftSlotLocks(activeTab.tabId);
       }
       clearAllDraftSlotLocks();
+      clearWarehouseBinsCache();
+      clearSmartSlottingCache();
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
       window.dispatchEvent(new Event('storage'));
 

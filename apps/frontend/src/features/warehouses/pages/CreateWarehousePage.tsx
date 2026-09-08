@@ -1816,7 +1816,7 @@ export default function CreateWarehousePage() {
                       mode="view"
                       onBinClick={(fullBinCode, customConfig, occupiedInfo, goodsList) => {
                         setEditingBinCode(fullBinCode);
-                        const rawList = goodsList && goodsList.length > 0 ? goodsList : (occupiedInfo ? [occupiedInfo] : []);
+                        const rawList = isEditMode ? (goodsList && goodsList.length > 0 ? goodsList : (occupiedInfo ? [occupiedInfo] : [])) : [];
                         const normalizedList = rawList.map((item: any) => ({
                           ...item,
                           quantity: Number(item.quantity || item.totalPhysical || item.qty || 1),
@@ -1824,8 +1824,8 @@ export default function CreateWarehousePage() {
 
                         setActiveBinGoodsDetails({
                           fullBinCode,
-                          customConfig,
-                          occupiedInfo,
+                          customConfig: isEditMode ? customConfig : null,
+                          occupiedInfo: isEditMode ? occupiedInfo : null,
                           goodsList: normalizedList,
                         });
                         const binShort = fullBinCode.split('-').pop() || fullBinCode;
@@ -1862,10 +1862,12 @@ export default function CreateWarehousePage() {
           .reduce((s: number, t: any) => s + Math.abs(Number(t.quantity || 0)), 0);
         const netQty = Math.max(0, totalIn - totalOut);
         const netOccupancy = occupiedInfo?.occupancyPct !== undefined ? Number(occupiedInfo.occupancyPct) : (netQty > 0 ? 100 : 0);
-        const hasGoods = (occupiedInfo && (occupiedInfo.totalPhysical > 0 || occupiedInfo.allocated > 0)) || netQty > 0 || netOccupancy > 0;
-        const customConfig = activeBinGoodsDetails?.customConfig || (activeZone?.racks || [])
-          .flatMap((rk: any) => Object.values(rk.customBins || {}))
-          .find((cb: any) => cb.binCode === binShort || cb.binCode === editingBinCode);
+        const hasGoods = isEditMode && Boolean((occupiedInfo && ((occupiedInfo.totalPhysical || 0) > 0 || (occupiedInfo.allocated || 0) > 0)) || netQty > 0 || netOccupancy > 0);
+        const customConfig = isEditMode
+          ? (activeBinGoodsDetails?.customConfig || (activeZone?.racks || [])
+              .flatMap((rk: any) => Object.values(rk.customBins || {}))
+              .find((cb: any) => cb.binCode === binShort || cb.binCode === editingBinCode))
+          : null;
 
         return (
           <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn">
