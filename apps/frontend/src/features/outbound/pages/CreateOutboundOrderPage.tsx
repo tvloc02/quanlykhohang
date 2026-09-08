@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Plus,
@@ -481,6 +481,7 @@ export interface CreateOutboundOrderPageProps {
   title?: string;
   codePrefix?: string;
   partnerLabel?: string;
+  editOrderId?: string;
 }
 
 export default function CreateOutboundOrderPage({
@@ -491,8 +492,11 @@ export default function CreateOutboundOrderPage({
   title,
   codePrefix = 'PXK',
   partnerLabel = 'Khách hàng',
+  editOrderId,
 }: CreateOutboundOrderPageProps) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const effectiveEditId = editOrderId || searchParams.get('id') || searchParams.get('editId') || searchParams.get('orderId');
   const isRetail = featureMode === 'retail' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/retail'));
   const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
   const isReturnSupplier = featureMode === 'return-supplier' || orderType === 'return-supplier' || partnerLabel === 'Nhà cung cấp';
@@ -576,14 +580,17 @@ export default function CreateOutboundOrderPage({
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<OutboundTab[]>(() => {
     try {
-      const isCreateAction = typeof window !== 'undefined' && (
+      const isCreateOrEditAction = typeof window !== 'undefined' && (
         window.location.search.includes('action=create') ||
-        window.location.search.includes('mode=create')
+        window.location.search.includes('mode=create') ||
+        window.location.search.includes('action=edit') ||
+        window.location.search.includes('id=') ||
+        window.location.search.includes('editId=')
       );
       const savedDraft = sessionStorage.getItem('outbound_tabs_draft');
       const savedMode = sessionStorage.getItem('outbound_draft_mode');
 
-      if (savedDraft && !isCreateAction && (!savedMode || savedMode === featureMode)) {
+      if (savedDraft && !isCreateOrEditAction && (!savedMode || savedMode === featureMode)) {
         const parsed = JSON.parse(savedDraft);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((t: OutboundTab) => ({
@@ -613,6 +620,8 @@ export default function CreateOutboundOrderPage({
   const activeTab = useMemo(() => {
     return tabs.find((t) => t.tabId === activeTabId) || tabs[0];
   }, [tabs, activeTabId]);
+
+  const isEditingDraft = Boolean(activeTab?.id || effectiveEditId);
 
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;
@@ -826,6 +835,124 @@ export default function CreateOutboundOrderPage({
     }
     loadMasterData();
   }, [isReturnSupplier]);
+
+  // Hydrate draft order when effectiveEditId is provided
+  useEffect(() => {
+    if (!effectiveEditId) return;
+
+    let isMounted = true;
+    async function loadExistingDraft() {
+      try {
+        let ordData: any = null;
+        const res = await fetch(`${API_BASE_URL}/outbounds/${effectiveEditId}`, { headers: authHeaders() }).catch(() => null);
+        if (res && res.ok) {
+          ordData = await res.json();
+        } else {
+          // Fallback check stored_outbound_orders from localStorage
+          const storedStr = localStorage.getItem('stored_outbound_orders');
+          if (storedStr) {
+            try {
+              const list = JSON.parse(storedStr);
+              ordData = list.find((item: any) => String(item.id) === String(effectiveEditId) || item.orderNo === effectiveEditId);
+            } catch {}
+          }
+        }
+
+        if (!ordData || !isMounted) return;
+
+        const rawDetails = ordData.details || [];
+        const existingDetails: FormDetailRow[] = rawDetails.map((d: any, idx: number) => {
+          const reqQty = Number(d.requiredQty ?? d.qty ?? 1);
+          const uPrice = Number(d.unitPrice ?? d.price ?? 0);
+          const discP = Number(d.discountPercent || 0);
+          const discA = Number(d.discountAmount || 0);
+          const vatP = Number(d.vatPercent || 0);
+          const vatA = Number(d.vatAmount || 0);
+          const tot = Number(d.totalLineAmount || d.totalAmount || (reqQty * uPrice - discA + vatA));
+
+          const rawAssigned = Array.isArray(d.assignedBins) ? d.assignedBins : [];
+          const locBin = d.locationBin || (rawAssigned.length > 0 ? rawAssigned.join(', ') : '');
+
+          return {
+            rowId: `row-edit-${d.id || idx}-${Date.now()}`,
+            productId: d.product?.id || d.productId || '',
+            productSku: d.productSku || d.product?.internalSku || '',
+            productName: d.productName || d.product?.name || '',
+            warehouseCode: d.warehouseCode || ordData.branchCode || 'KHO-TONG',
+            locationBin: locBin,
+            assignedBins: rawAssigned.length > 0 ? rawAssigned : (locBin ? locBin.split(',').map((s: string) => s.trim()) : []),
+            unit: d.unit || d.product?.unit || 'Cái',
+            qty: reqQty,
+            price: uPrice,
+            lossAmount: Number(d.lossAmount || (reqQty * uPrice)),
+            totalDisposalAmount: Number(d.totalDisposalAmount || (uPrice + (reqQty * uPrice))),
+            discountPercent: discP,
+            discountAmount: discA,
+            vatPercent: vatP,
+            vatAmount: vatA,
+            totalAmount: tot,
+            note: d.note || '',
+          };
+        });
+
+        const paddedDetails = [
+          ...existingDetails,
+          ...Array.from({ length: Math.max(0, DEFAULT_ROWS_COUNT - existingDetails.length) }, (_, i) =>
+            makeEmptyRow(existingDetails.length + i, ordData.branchCode || 'KHO-TONG')
+          ),
+        ];
+
+        let orderDateStr = ordData.orderDate || '';
+        if (orderDateStr.includes('T')) {
+          try {
+            orderDateStr = formatFullDateTime(new Date(orderDateStr));
+          } catch {}
+        }
+        if (!orderDateStr) orderDateStr = formatFullDateTime();
+
+        setTabs((prevTabs) => {
+          const targetTabId = activeTabId || prevTabs[0]?.tabId || 'tab-edit-1';
+          return prevTabs.map((t) => {
+            if (t.tabId === targetTabId) {
+              return {
+                ...t,
+                id: String(ordData.id),
+                orderNo: ordData.orderNo, // Giữ nguyên mã phiếu
+                branchCode: ordData.branchCode || 'KHO-TONG',
+                employeeName: ordData.employeeName || currentUserName,
+                customer: ordData.customer || ordData.customerName || '',
+                customerId: ordData.customerId || ordData.customer?.id || '',
+                customerPhone: ordData.customerPhone || ordData.customer?.phone || '',
+                customerAddress: ordData.customerAddress || ordData.customer?.address || '',
+                orderDate: orderDateStr,
+                expectedDate: ordData.expectedDate || orderDateStr,
+                description: ordData.description || '',
+                discount: Number(ordData.discount || 0),
+                shippingFee: Number(ordData.shippingFee || 0),
+                vatRate: Number(ordData.vatRate || 0),
+                paymentMethod: ordData.paymentMethod || 'Tiền mặt',
+                paymentAccount: ordData.paymentAccount || '',
+                amountPaid: Number(ordData.amountPaid || 0),
+                status: ordData.status || 'DRAFT',
+                details: paddedDetails,
+              };
+            }
+            return t;
+          });
+        });
+
+        if (ordData.description && isDisposal) {
+          const matchedReason = disposalReasons.find((r) => ordData.description.includes(r));
+          if (matchedReason) setDisposalReasonSelect(matchedReason);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải chi tiết phiếu xuất để sửa:', err);
+      }
+    }
+
+    loadExistingDraft();
+    return () => { isMounted = false; };
+  }, [effectiveEditId]);
 
   const handleBackNavigation = () => {
     sessionStorage.removeItem('outbound_form_open');
@@ -1139,18 +1266,25 @@ export default function CreateOutboundOrderPage({
     return Math.max(0, grandTotal - (activeTab.amountPaid || grandTotal));
   }, [grandTotal, activeTab]);
 
-  const handleSaveOutboundOrder = async (isPrint = false) => {
+  const handleSaveOutboundOrder = async (isPrint = false, saveStatus: 'DRAFT' | 'OFFICIAL' = 'OFFICIAL') => {
     if (!activeTab) return;
     if (activeValidItems.length === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
       return;
     }
 
+    const isUpdating = Boolean(activeTab.id);
     const defaultCode = isDisposal
       ? `XH_${Date.now().toString().slice(-6)}`
       : (isRetail ? `XBL_${Date.now().toString().slice(-6)}` : `XBH_${Date.now().toString().slice(-6)}`);
 
-    const finalOrderNo = activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : defaultCode;
+    // Khi đang sửa phiếu: giữ nguyên orderNo hiện tại (CỐ ĐỊNH, không cho sửa)
+    const finalOrderNo = isUpdating
+      ? activeTab.orderNo
+      : (activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : defaultCode);
+
+    const isDraft = saveStatus === 'DRAFT';
+    const targetStatus = isDraft ? 'DRAFT' : (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng');
 
     const payload = isDisposal
       ? {
@@ -1161,7 +1295,7 @@ export default function CreateOutboundOrderPage({
           customerName: 'Xuất hủy nội bộ',
           orderDate: activeTab.orderDate,
           expectedDate: activeTab.orderDate,
-          status: activeTab.status || 'Đã xuất hủy',
+          status: targetStatus,
           description: [disposalReasonSelect, activeTab.description?.trim(), disposalMethod ? `Phương án: ${disposalMethod}` : ''].filter(Boolean).join(' - '),
           subtotal,
           discount: 0,
@@ -1200,7 +1334,7 @@ export default function CreateOutboundOrderPage({
           customerAddress: activeTab.customerAddress?.trim() || undefined,
           orderDate: activeTab.orderDate,
           expectedDate: activeTab.orderDate,
-          status: activeTab.status || 'Đã giao hàng',
+          status: targetStatus,
           description: activeTab.description?.trim() || undefined,
           subtotal,
           discount: activeTab.discount || 0,
@@ -1223,92 +1357,81 @@ export default function CreateOutboundOrderPage({
         };
 
     try {
-      const res = await fetch(`${API_BASE_URL}/outbounds`, {
-        method: 'POST',
+      const url = isUpdating ? `${API_BASE_URL}/outbounds/${activeTab.id}` : `${API_BASE_URL}/outbounds`;
+      const method = isUpdating ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || `Không thể tạo ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`);
+        throw new Error(errData?.message || `Không thể ${isUpdating ? 'cập nhật' : 'tạo'} ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`);
       }
 
-      // Automatically update local inventory balances & bin topologies upon save
-      try {
-        const localWhs = getStoredWarehouses();
-        let changed = false;
+      // Chỉ tự động cập nhật tồn kho & ô kệ khi xuất kho CHÍNH THỨC (không phải DRAFT)
+      if (!isDraft) {
+        try {
+          const localWhs = getStoredWarehouses();
+          let changed = false;
 
-        activeValidItems.forEach((r) => {
-          const binsToDeduct: string[] = Array.isArray(r.assignedBins) && r.assignedBins.length > 0
-            ? r.assignedBins
-            : (r.locationBin ? r.locationBin.split(',').map((s: string) => s.trim()) : []);
+          activeValidItems.forEach((r) => {
+            const binsToDeduct: string[] = Array.isArray(r.assignedBins) && r.assignedBins.length > 0
+              ? r.assignedBins
+              : (r.locationBin ? r.locationBin.split(',').map((s: string) => s.trim()) : []);
 
-          binsToDeduct.forEach((bCode) => {
-            const cleanCode = bCode.split('(')[0].trim();
-            const normKey = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            binsToDeduct.forEach((bCode) => {
+              const cleanCode = bCode.split('(')[0].trim();
+              const normKey = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-            localWhs.forEach((wh) => {
-              (wh.subWarehouses || []).forEach((sub) => {
-                (sub.racks || []).forEach((rk) => {
-                  const customBins = rk.customBins as Record<string, any> | undefined;
-                  if (customBins) {
-                    Object.keys(customBins).forEach((k) => {
-                      const normK = k.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                      if (normK === normKey || k === cleanCode || k.includes(cleanCode)) {
-                        const curr = customBins[k];
-                        const oldPct = Number(curr?.occupancyPct ?? 100);
-                        const oldQty = Number(curr?.totalPhysical || (r as any).stockQty || (r as any).totalQty || (r as any).stock || 0);
-                        const exportQty = Number(r.qty || 0);
+              localWhs.forEach((wh) => {
+                (wh.subWarehouses || []).forEach((sub) => {
+                  (sub.racks || []).forEach((rk) => {
+                    const customBins = rk.customBins as Record<string, any> | undefined;
+                    if (customBins) {
+                      Object.keys(customBins).forEach((k) => {
+                        const normK = k.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        if (normK === normKey || k === cleanCode || k.includes(cleanCode)) {
+                          const curr = customBins[k];
+                          const oldPct = Number(curr?.occupancyPct ?? 100);
+                          const oldQty = Number(curr?.totalPhysical || (r as any).stockQty || (r as any).totalQty || (r as any).stock || 0);
+                          const exportQty = Number(r.qty || 0);
 
-                        let deductPct = 0;
-                        const pctMatch = bCode.match(/\((\d+)%\)/);
-                        if (pctMatch) {
-                          deductPct = Number(pctMatch[1]);
-                        } else if (oldQty > 0) {
-                          deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / oldQty) * oldPct)));
-                        } else {
-                          deductPct = Math.min(oldPct, 50);
+                          let deductPct = 0;
+                          const pctMatch = bCode.match(/\((\d+)%\)/);
+                          if (pctMatch) {
+                            deductPct = Number(pctMatch[1]);
+                          } else if (oldQty > 0) {
+                            deductPct = Math.min(oldPct, Math.max(1, Math.round((exportQty / oldQty) * oldPct)));
+                          } else {
+                            deductPct = Math.min(oldPct, 50);
+                          }
+
+                          const newPct = Math.max(0, oldPct - deductPct);
+                          const newQty = Math.max(0, oldQty - exportQty);
+                          customBins[k] = {
+                            ...curr,
+                            occupancyPct: newPct,
+                            totalPhysical: newQty,
+                            notes: newPct === 0 ? 'Ô Trống' : `Đã chứa: ${newPct}% (${newQty} cái)`,
+                          };
+                          changed = true;
                         }
-
-                        const newPct = Math.max(0, oldPct - deductPct);
-                        const newQty = Math.max(0, oldQty - exportQty);
-                        customBins[k] = {
-                          ...curr,
-                          occupancyPct: newPct,
-                          totalPhysical: newQty,
-                          notes: newPct === 0 ? 'Ô Trống' : `Đã chứa: ${newPct}% (${newQty} cái)`,
-                        };
-                        changed = true;
-                      }
-                    });
-                  }
+                      });
+                    }
+                  });
                 });
               });
             });
           });
-        });
 
-        if (changed) {
-          saveStoredWarehouses(localWhs);
-        }
-
-        // Store outbound order in local storage for instant sync across all views
-        try {
-          const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
-          let storedOutbound: any[] = [];
-          if (storedOutboundStr) {
-            try { storedOutbound = JSON.parse(storedOutboundStr); } catch {}
+          if (changed) {
+            saveStoredWarehouses(localWhs);
           }
-          storedOutbound.push({
-            ...payload,
-            id: payload.orderNo || `out_${Date.now()}`,
-            orderCode: payload.orderNo,
-            createdAt: new Date().toISOString(),
-          });
-          localStorage.setItem('stored_outbound_orders', JSON.stringify(storedOutbound));
 
-          // Also update smart-wms-products in localStorage
+          // Cập nhật smart-wms-products
           const storedProdsStr = localStorage.getItem('smart-wms-products');
           if (storedProdsStr) {
             let prods = JSON.parse(storedProdsStr);
@@ -1332,24 +1455,62 @@ export default function CreateOutboundOrderPage({
               localStorage.setItem('smart-wms-products', JSON.stringify(prods));
             }
           }
-        } catch (errLocal) {
-          console.warn('Lỗi lưu stored_outbound_orders vào localStorage:', errLocal);
-        }
 
-        window.dispatchEvent(new Event('warehouse-goods-cleared'));
-        window.dispatchEvent(new Event('storage'));
-      } catch (e) {
-        console.error('Lỗi tự động cập nhật sơ đồ kho sau khi xuất hàng:', e);
+          window.dispatchEvent(new Event('warehouse-goods-cleared'));
+          window.dispatchEvent(new Event('storage'));
+        } catch (e) {
+          console.error('Lỗi tự động cập nhật sơ đồ kho sau khi xuất hàng:', e);
+        }
       }
 
-      setToast({
-        message: `Đã lưu thành công ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất kho'} ${payload.orderNo || ''}!`,
-        type: 'success',
-      });
+      // Sync stored_outbound_orders in localStorage
+      try {
+        const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+        let storedOutbound: any[] = [];
+        if (storedOutboundStr) {
+          try { storedOutbound = JSON.parse(storedOutboundStr); } catch {}
+        }
+        if (isUpdating) {
+          storedOutbound = storedOutbound.map((item: any) =>
+            String(item.id) === String(activeTab.id) || item.orderNo === finalOrderNo
+              ? { ...item, ...payload, updatedAt: new Date().toISOString() }
+              : item
+          );
+        } else {
+          storedOutbound.push({
+            ...payload,
+            id: payload.orderNo || `out_${Date.now()}`,
+            orderCode: payload.orderNo,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        localStorage.setItem('stored_outbound_orders', JSON.stringify(storedOutbound));
+      } catch (errLocal) {
+        console.warn('Lỗi lưu stored_outbound_orders vào localStorage:', errLocal);
+      }
+
+      let successMessage = '';
+      if (isDraft) {
+        successMessage = isUpdating
+          ? `Đã cập nhật thành công bản nháp phiếu xuất ${payload.orderNo}!`
+          : `Đã lưu tạm (nháp) phiếu xuất kho ${payload.orderNo}!`;
+      } else {
+        successMessage = isUpdating
+          ? `Đã xuất kho thành công từ phiếu nháp ${payload.orderNo}!`
+          : `Đã lưu thành công ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất kho'} ${payload.orderNo}!`;
+      }
+
+      setToast({ message: successMessage, type: 'success' });
+
+      if (isPrint) {
+        setTimeout(() => {
+          window.print();
+        }, 300);
+      }
 
       setTimeout(() => {
         handleBackNavigation();
-      }, 1000);
+      }, 900);
     } catch (err: any) {
       setToast({ message: err.message || `Lỗi khi lưu ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`, type: 'error' });
     }
@@ -1786,18 +1947,36 @@ export default function CreateOutboundOrderPage({
             />
           </div>
 
-          {/* Mã phiếu / Lệnh (Đã điền tự động) */}
+          {/* Mã phiếu / Lệnh (Đã điền tự động hoặc cố định khi sửa phiếu nháp) */}
           <div>
-            <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700 dark:text-slate-300">
-              <Hash className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
-              <span>{isDisposal ? 'Mã phiếu xuất hủy' : 'Mã phiếu / Lệnh'}</span>
-            </label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="flex items-center gap-1 text-xs font-black uppercase text-slate-700 dark:text-slate-300">
+                <Hash className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
+                <span>{isDisposal ? 'Mã phiếu xuất hủy' : 'Mã phiếu / Lệnh'}</span>
+              </label>
+              {isEditingDraft && (
+                <span className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-black text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                  Cố định mã
+                </span>
+              )}
+            </div>
             <input
               type="text"
+              readOnly={isEditingDraft}
+              disabled={isEditingDraft}
               value={activeTab?.orderNo || ''}
-              onChange={(e) => updateActiveTab((t) => ({ ...t, orderNo: e.target.value }))}
+              onChange={(e) => {
+                if (!isEditingDraft) {
+                  updateActiveTab((t) => ({ ...t, orderNo: e.target.value }));
+                }
+              }}
               placeholder={isDisposal ? 'XH20260822-1001' : 'PXK20260822-1001'}
-              className="h-10 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 uppercase outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
+              title={isEditingDraft ? 'Mã phiếu xuất kho được cố định, không thể chỉnh sửa!' : 'Mã phiếu xuất kho'}
+              className={`h-10 w-full rounded-xl border-2 px-3 text-xs sm:text-sm font-black uppercase outline-none transition shadow-xs ${
+                isEditingDraft
+                  ? 'border-slate-300 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none'
+                  : 'border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20'
+              }`}
             />
           </div>
 
@@ -2199,35 +2378,31 @@ export default function CreateOutboundOrderPage({
                         </td>
 
                         {/* KỆ XUẤT HÀNG / KỆ XUẤT HỦY */}
-                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 text-center w-32">
-                          {row.assignedBins && row.assignedBins.length > 0 ? (
+                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 text-center w-36">
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={row.locationBin || (row.assignedBins && row.assignedBins.join(', ')) || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateRow(row.rowId, {
+                                  locationBin: val,
+                                  assignedBins: val ? val.split(',').map((s) => s.trim()).filter(Boolean) : [],
+                                });
+                              }}
+                              placeholder="Kệ..."
+                              className="w-full h-9 px-2 rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 text-xs shadow-2xs text-center"
+                              title="Nhập tên kệ hoặc bấm nút bên cạnh để chọn trên sơ đồ kho"
+                            />
                             <button
                               type="button"
                               onClick={() => openPickBinModal(row.rowId)}
-                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white border border-cyan-600 dark:border-indigo-500 font-extrabold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
-                              title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
+                              className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg bg-cyan-50 dark:bg-indigo-950 border border-cyan-300 dark:border-indigo-700 text-cyan-700 dark:text-indigo-300 hover:bg-cyan-600 hover:text-white dark:hover:bg-indigo-600 transition shadow-2xs cursor-pointer"
+                              title="Mở sơ đồ chọn vị trí kệ trực quan"
                             >
-                              <span className="truncate max-w-[100px]">{row.assignedBins.join(', ')}</span>
+                              <MapPin size={14} />
                             </button>
-                          ) : row.locationBin ? (
-                            <button
-                              type="button"
-                              onClick={() => openPickBinModal(row.rowId)}
-                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-600 dark:bg-indigo-600 hover:bg-cyan-700 dark:hover:bg-indigo-700 text-white border border-cyan-600 dark:border-indigo-500 font-extrabold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
-                              title="Bấm để mở sơ đồ chọn vị trí kệ lấy hàng"
-                            >
-                              <span className="truncate max-w-[100px]">{row.locationBin}</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => openPickBinModal(row.rowId)}
-                              className="h-9 w-full inline-flex items-center justify-center bg-cyan-50 dark:bg-indigo-950 hover:bg-cyan-600 dark:hover:bg-indigo-600 text-cyan-700 dark:text-indigo-300 hover:text-white border-2 border-cyan-400 dark:border-indigo-500 hover:border-cyan-600 dark:hover:border-indigo-600 font-bold px-2.5 rounded-lg text-xs shadow-2xs transition cursor-pointer"
-                              title="Bấm mở sơ đồ chọn vị trí kệ lấy hàng"
-                            >
-                              <span>Chọn Kệ</span>
-                            </button>
-                          )}
+                          </div>
                         </td>
 
                         {/* ĐVT */}
@@ -2451,20 +2626,29 @@ export default function CreateOutboundOrderPage({
             <div className="space-y-2.5 pt-3 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(true)}
+                onClick={() => handleSaveOutboundOrder(true, 'OFFICIAL')}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 dark:hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
-                <span>LƯU & IN BIÊN BẢN HỦY</span>
+                <span>{isEditingDraft ? 'XUẤT HỦY & IN BIÊN BẢN' : 'LƯU & IN BIÊN BẢN HỦY'}</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(false)}
+                onClick={() => handleSaveOutboundOrder(false, 'OFFICIAL')}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] dark:bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 dark:hover:bg-indigo-700 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
-                <span>LƯU PHIẾU XUẤT HỦY</span>
+                <span>{isEditingDraft ? 'XUẤT HỦY CHÍNH THỨC' : 'LƯU PHIẾU XUẤT HỦY'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveOutboundOrder(false, 'DRAFT')}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md transition active:scale-95 cursor-pointer"
+              >
+                <FileText size={18} strokeWidth={2.2} />
+                <span>{isEditingDraft ? 'CẬP NHẬT LƯU NHÁP' : 'LƯU TẠM (NHÁP)'}</span>
               </button>
 
               <button
@@ -2650,20 +2834,29 @@ export default function CreateOutboundOrderPage({
             <div className="space-y-2.5 pt-3 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(true)}
+                onClick={() => handleSaveOutboundOrder(true, 'OFFICIAL')}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 dark:hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
-                <span>{isReturnSupplier ? 'LƯU & IN PHIẾU XUẤT TRẢ' : 'LƯU & IN PHIẾU XUẤT'}</span>
+                <span>{isEditingDraft ? 'XUẤT KHO & IN PHIẾU' : (isReturnSupplier ? 'LƯU & IN PHIẾU XUẤT TRẢ' : 'LƯU & IN PHIẾU XUẤT')}</span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(false)}
+                onClick={() => handleSaveOutboundOrder(false, 'OFFICIAL')}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] dark:bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 dark:hover:bg-indigo-700 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
-                <span>{isReturnSupplier ? 'LƯU PHIẾU XUẤT TRẢ NCC' : 'LƯU PHIẾU XUẤT HÀNG'}</span>
+                <span>{isEditingDraft ? 'XUẤT KHO CHÍNH THỨC' : (isReturnSupplier ? 'LƯU PHIẾU XUẤT TRẢ NCC' : 'LƯU PHIẾU XUẤT HÀNG')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSaveOutboundOrder(false, 'DRAFT')}
+                className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md transition active:scale-95 cursor-pointer"
+              >
+                <FileText size={18} strokeWidth={2.2} />
+                <span>{isEditingDraft ? 'CẬP NHẬT LƯU NHÁP' : 'LƯU TẠM (NHÁP)'}</span>
               </button>
 
               <button

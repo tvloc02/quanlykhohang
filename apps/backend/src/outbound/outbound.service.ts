@@ -236,8 +236,11 @@ export class OutboundService implements OnModuleInit {
     // Persist detail items if provided
     if (dto.details?.length) {
       const savedDetails = await this.persistDetails(savedOrder.id, dto.details, savedOrder.branchCode);
-      // Deduct inventory for outbound sales order
-      await this.applyInventoryDeduction(savedOrder, savedDetails);
+      // Deduct inventory ONLY for finalized outbound orders, NEVER for drafts
+      const isDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(savedOrder.status || '');
+      if (!isDraft) {
+        await this.applyInventoryDeduction(savedOrder, savedDetails);
+      }
     }
 
     try {
@@ -259,15 +262,14 @@ export class OutboundService implements OnModuleInit {
   async updateOutbound(id: string, dto: CreateOutboundOrderDto) {
     const order = await this.findOrderEntity(id);
 
-    // Update orderNo if provided and different
-    if (dto.orderNo && dto.orderNo !== order.orderNo) {
-      const nextNo = dto.orderNo.trim().toUpperCase();
-      const dup = await this.orderRepo.findOne({ where: { orderNo: nextNo } });
-      if (dup && dup.id !== order.id) {
-        throw new BadRequestException('Mã đơn xuất đã tồn tại');
-      }
-      order.orderNo = nextNo;
+    // Kiểm tra quyền sửa: Chỉ phiếu ở trạng thái Lưu nháp (DRAFT / Lưu tạm) mới được phép sửa
+    const isCurrentDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(order.status || '');
+    if (!isCurrentDraft) {
+      throw new BadRequestException('Chỉ phiếu xuất ở trạng thái Lưu nháp mới được phép chỉnh sửa. Phiếu đã xuất kho/tạo mới chính thức không thể sửa!');
     }
+
+    // Tuyệt đối không cho phép sửa mã phiếu: giữ nguyên order.orderNo
+    // Bỏ qua dto.orderNo nếu có truyền lên
 
     if (dto.branchCode !== undefined) order.branchCode = dto.branchCode.trim() || 'KHO-NVL';
     if (dto.employeeName !== undefined) order.employeeName = dto.employeeName.trim() || 'Quản trị viên hệ thống';
@@ -349,7 +351,9 @@ export class OutboundService implements OnModuleInit {
 
     // Replace details if provided
     if (dto.details?.length) {
-      await this.revertInventoryDeduction(order);
+      if (!isCurrentDraft) {
+        await this.revertInventoryDeduction(order);
+      }
 
       const existing = await this.detailRepo.find({
         where: { outboundOrder: { id } as any },
@@ -359,7 +363,16 @@ export class OutboundService implements OnModuleInit {
         await this.detailRepo.remove(existing);
       }
       const savedDetails = await this.persistDetails(id, dto.details, order.branchCode);
-      await this.applyInventoryDeduction(order, savedDetails);
+
+      const isNowDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(dto.status || order.status || '');
+      if (!isNowDraft) {
+        await this.applyInventoryDeduction(order, savedDetails);
+      }
+    } else if (dto.status && !['DRAFT', 'Lưu tạm', 'draft'].includes(dto.status || '') && isCurrentDraft) {
+      // Chuyển từ DRAFT sang xuất chính thức mà không đổi details
+      if (order.details?.length) {
+        await this.applyInventoryDeduction(order, order.details);
+      }
     }
 
     await this.orderRepo.save(order);
@@ -369,8 +382,11 @@ export class OutboundService implements OnModuleInit {
   async removeOutbound(id: string) {
     const order = await this.findOrderEntity(id);
 
-    // Revert inventory before deleting
-    await this.revertInventoryDeduction(order);
+    // Revert inventory before deleting ONLY if order was officially deducted (not draft)
+    const isDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(order.status || '');
+    if (!isDraft) {
+      await this.revertInventoryDeduction(order);
+    }
 
     // Delete details first
     const details = await this.detailRepo.find({
