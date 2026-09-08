@@ -287,7 +287,27 @@ export function readStoredReceiptVouchers(): ReceiptVoucher[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        // Tự động loại bỏ bất kỳ phiếu thu rác nào từng lưu nhầm từ phiếu xuất hủy
+        const cleaned = parsed.filter((v: ReceiptVoucher) => {
+          const note = (v.note || '').toUpperCase();
+          const target = (v.targetName || '').toLowerCase();
+          if (
+            note.includes('XH2') ||
+            note.includes('XUẤT HỦY') ||
+            note.includes('XUAT HUY') ||
+            target.includes('xuất hủy') ||
+            target.includes('xuat huy')
+          ) {
+            return false;
+          }
+          return true;
+        });
+        if (cleaned.length !== parsed.length) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+        }
+        return cleaned;
+      }
     }
   } catch {
     // fallback
