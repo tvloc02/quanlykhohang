@@ -152,7 +152,7 @@ export const SYSTEM_MENU_TREE: MenuPermissionItem[] = [
   { id: 'report-sales-by-staff', label: 'Hàng bán ra theo Nhân viên', parentId: 'bao-cao-tong-hop' },
   { id: 'report-business-summary', label: 'Tổng hợp Kinh doanh', parentId: 'bao-cao-tong-hop' },
   { id: 'report-below-min-stock', label: 'Hàng tồn dưới định mức', parentId: 'bao-cao-tong-hop' },
-  { id: 'report-revenue-huu', label: 'Báo cáo doanh thu - Huu', parentId: 'bao-cao-tong-hop' },
+  { id: 'report-stale-inventory', label: 'Báo cáo hàng hóa tồn đọng', parentId: 'bao-cao-tong-hop' },
 
   // 5. Báo cáo Phân tích
   { id: 'bao-cao-phan-tich', label: 'Báo cáo Phân tích', isHeader: true },

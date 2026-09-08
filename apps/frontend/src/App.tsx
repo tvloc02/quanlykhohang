@@ -26,6 +26,7 @@ import CashflowReportPage from './features/reports/pages/CashflowReportPage';
 import FundBalanceReportPage from './features/reports/pages/FundBalanceReportPage';
 import BusinessSummaryReportPage from './features/reports/pages/BusinessSummaryReportPage';
 import BelowMinStockReportPage from './features/reports/pages/BelowMinStockReportPage';
+import ShelfInventoryReportPage from './features/reports/pages/ShelfInventoryReportPage';
 import InventoryReportPage from './features/reports/pages/InventoryReportPage';
 import InventoryBaseUnitReportPage from './features/reports/pages/InventoryBaseUnitReportPage';
 import InventorySummaryReportPage from './features/reports/pages/InventorySummaryReportPage';
@@ -1034,15 +1035,16 @@ function App() {
           }
         />
         <Route
-          path="/reports/revenue-huu"
+          path="/reports/stale-inventory"
           element={
-            <RoleRoute menuId="report-revenue-huu">
+            <RoleRoute menuId="report-stale-inventory">
               <MainLayout>
-                <GenericReportPage title="Báo cáo doanh thu - Huu" description="Báo cáo doanh thu phân tích chuyên sâu" />
+                <ShelfInventoryReportPage title="BÁO CÁO HÀNG HÓA TỒN ĐỌNG" defaultStaleFilter={true} />
               </MainLayout>
             </RoleRoute>
           }
         />
+        <Route path="/reports/shelf-inventory" element={<Navigate to="/reports/stale-inventory" replace />} />
         <Route
           path="/reports-summary"
           element={

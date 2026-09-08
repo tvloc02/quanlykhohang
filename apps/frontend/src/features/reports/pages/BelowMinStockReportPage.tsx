@@ -16,7 +16,11 @@ import {
   AlertTriangle,
   ChevronDown,
   Check,
+  Save,
+  Filter,
 } from 'lucide-react';
+import { ReportPrintHeader } from '../components/ReportPrintHeader';
+import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
 const fmt = (v: number) => {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(v || 0);
@@ -29,6 +33,39 @@ const getCategoryName = (cat: any): string => {
     return cat.name || cat.categoryName || cat.title || cat.code || 'Mặc định';
   }
   return String(cat);
+};
+
+const getProductStockInWarehouse = (product: any, whCode: string): number => {
+  if (!product.stockBalances || !Array.isArray(product.stockBalances)) {
+    return 0;
+  }
+  const targetCode = String(whCode || '').trim().toUpperCase();
+
+  // 1. Check exact locationCode === whCode (e.g. 'KH006')
+  const mainBalance = product.stockBalances.find((b: any) => {
+    const loc = String(b.locationCode || '').trim().toUpperCase();
+    return loc === targetCode;
+  });
+
+  if (mainBalance && mainBalance.totalPhysical !== undefined && Number(mainBalance.totalPhysical) > 0) {
+    return Number(mainBalance.totalPhysical);
+  }
+
+  // 2. Check sub-locations / shelf bins (e.g. 'KH006-ZONE-A-R01-D7')
+  const binBalances = product.stockBalances.filter((b: any) => {
+    const loc = String(b.locationCode || '').trim().toUpperCase();
+    return loc.startsWith(targetCode + '-') || loc.startsWith(targetCode + ' ');
+  });
+
+  if (binBalances.length > 0) {
+    return binBalances.reduce((sum: number, b: any) => sum + Number(b.totalPhysical || b.available || 0), 0);
+  }
+
+  if (mainBalance && mainBalance.totalPhysical !== undefined) {
+    return Number(mainBalance.totalPhysical);
+  }
+
+  return 0;
 };
 
 interface BelowMinStockItem {
@@ -117,6 +154,18 @@ export default function BelowMinStockReportPage() {
     actions: true,
   });
 
+  // Editing minimum stock threshold state
+  const [defaultMinStock, setDefaultMinStock] = useState<number>(() => {
+    const saved = localStorage.getItem('report_below_min_stock_threshold');
+    if (saved !== null && !isNaN(Number(saved))) {
+      return Math.max(0, Number(saved));
+    }
+    return 10;
+  });
+  const [editingMinStock, setEditingMinStock] = useState<Record<string, number>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+
   // Product detail popup modal state
   const [selectedItemForModal, setSelectedItemForModal] = useState<{
     item: BelowMinStockItem;
@@ -163,10 +212,13 @@ export default function BelowMinStockReportPage() {
 
       if (whList.length === 0) {
         whList = [
-          { id: 'KH001', name: 'Kho tổng (KH001)', code: 'KH001' },
-          { id: 'KH002', name: 'Kho Cầu Giấy (KH002)', code: 'KH002' },
+          { id: 'KH006', name: 'Kho Thanh Trì', code: 'KH006' },
+          { id: 'KH001', name: 'Kho Hà Đông', code: 'KH001' },
+          { id: 'KH002', name: 'Kho Chi Nhánh HCM', code: 'KH002' },
+          { id: 'KH007', name: 'Kho Nghệ An', code: 'KH007' },
         ];
       }
+      whList.sort((a, b) => a.code.localeCompare(b.code));
       setWarehouses(whList);
 
       // 2. Fetch Products from Real API
@@ -179,59 +231,94 @@ export default function BelowMinStockReportPage() {
         }
       } catch {}
 
-      // 3. Fetch Stock Balances from Real API
-      let stockMap: Record<string, number> = {};
-      try {
-        const stockRes = await fetch(`${API_BASE_URL}/reports/stock`, { headers: authHeaders() });
-        if (stockRes.ok) {
-          const stockData = await stockRes.json();
-          if (Array.isArray(stockData)) {
-            stockData.forEach((s: any) => {
-              const whKey = s.locationCode || s.warehouseId || s.branchCode;
-              const pKey = s.sku || s.productCode || s.productId;
-              if (whKey && pKey) {
-                stockMap[`${whKey}_${pKey}`] = Number(s.available !== undefined ? s.available : (s.totalPhysical || 0));
-              }
-            });
-          }
-        }
-      } catch {}
+      // Retrieve default minimum stock threshold (e.g. 10)
+      const defaultThreshold = (() => {
+        const saved = localStorage.getItem('report_below_min_stock_threshold');
+        return saved !== null && !isNaN(Number(saved)) ? Math.max(0, Number(saved)) : 10;
+      })();
 
-      // Build Branch Stock Groups
-      const groups: BranchStockGroup[] = whList.map((wh) => {
-        let globalStt = 1;
-        let totalAct = 0;
-        let totalD = 0;
+      // 3.1. Build Group: TỔNG HỢP TOÀN BỘ KHO HÀNG (TẤT CẢ CHI NHÁNH)
+      let allStt = 1;
+      let allTotalAct = 0;
+      let allTotalDiff = 0;
+
+      const allItems: BelowMinStockItem[] = productsList.map((p) => {
+        const pCode = String(p.internalSku || p.sku || p.code || p.id);
+        const pName = String(p.name || '');
+        const catName = getCategoryName(p.category || p.categoryName);
+        const importPrice = Number(p.importPrice || p.costPrice || p.price || 0);
+
+        const storedMin = localStorage.getItem(`product_min_stock_${p.id}`);
+        let minStock = defaultThreshold;
+        if (storedMin !== null && !isNaN(Number(storedMin))) {
+          minStock = Number(storedMin);
+        } else if (p.minimumStock !== undefined && p.minimumStock !== null && Number(p.minimumStock) > 0) {
+          minStock = Number(p.minimumStock);
+        } else {
+          minStock = defaultThreshold;
+        }
+
+        // Thực tồn toàn hệ thống: lấy p.totalStock
+        let actualStock = Number(p.totalStock !== undefined ? p.totalStock : (p.stock || 0));
+        if (actualStock < 0) actualStock = 0;
+
+        const diff = Math.max(0, minStock - actualStock);
+        allTotalAct += actualStock;
+        allTotalDiff += diff;
+
+        return {
+          stt: allStt++,
+          productId: String(p.id || pCode),
+          category: catName,
+          code: pCode,
+          name: pName,
+          importPrice,
+          minStock,
+          actualStock,
+          diff,
+        };
+      });
+
+      const allGroup: BranchStockGroup = {
+        branchId: 'ALL',
+        branchName: 'TỔNG HỢP TOÀN BỘ KHO HÀNG (TẤT CẢ CHI NHÁNH)',
+        items: allItems,
+        totalActualStock: allTotalAct,
+        totalDiff: allTotalDiff,
+      };
+
+      // 3.2. Build Groups: TỪNG CHI NHÁNH KHO CỤ THỂ
+      const warehouseGroups: BranchStockGroup[] = whList.map((wh) => {
+        let whStt = 1;
+        let whTotalAct = 0;
+        let whTotalDiff = 0;
 
         const items: BelowMinStockItem[] = productsList.map((p) => {
           const pCode = String(p.internalSku || p.sku || p.code || p.id);
           const pName = String(p.name || '');
           const catName = getCategoryName(p.category || p.categoryName);
           const importPrice = Number(p.importPrice || p.costPrice || p.price || 0);
-          const minStock = Number(p.minStockThreshold || p.minStock || p.minQuantity || 0);
 
-          const key = `${wh.code}_${pCode}`;
-          const keyId = `${wh.code}_${p.id}`;
-          let actualStock = 0;
-
-          if (stockMap[key] !== undefined) {
-            actualStock = stockMap[key];
-          } else if (stockMap[keyId] !== undefined) {
-            actualStock = stockMap[keyId];
-          } else if (p.stockBalances && Array.isArray(p.stockBalances)) {
-            const match = p.stockBalances.find((sb: any) => sb.locationCode === wh.code || sb.warehouseId === wh.id);
-            if (match) actualStock = Number(match.totalPhysical !== undefined ? match.totalPhysical : (match.available || 0));
+          const storedMin = localStorage.getItem(`product_min_stock_${p.id}`);
+          let minStock = defaultThreshold;
+          if (storedMin !== null && !isNaN(Number(storedMin))) {
+            minStock = Number(storedMin);
+          } else if (p.minimumStock !== undefined && p.minimumStock !== null && Number(p.minimumStock) > 0) {
+            minStock = Number(p.minimumStock);
           } else {
-            actualStock = Number(p.stock || 0);
+            minStock = defaultThreshold;
           }
 
-          const diff = actualStock - minStock;
+          // Thực tồn tại kho này
+          let actualStock = getProductStockInWarehouse(p, wh.code);
+          if (actualStock < 0) actualStock = 0;
 
-          totalAct += actualStock;
-          totalD += diff;
+          const diff = Math.max(0, minStock - actualStock);
+          whTotalAct += actualStock;
+          whTotalDiff += diff;
 
           return {
-            stt: globalStt++,
+            stt: whStt++,
             productId: String(p.id || pCode),
             category: catName,
             code: pCode,
@@ -244,15 +331,15 @@ export default function BelowMinStockReportPage() {
         });
 
         return {
-          branchId: wh.id,
-          branchName: wh.name,
+          branchId: wh.code,
+          branchName: `${wh.name} (${wh.code})`,
           items,
-          totalActualStock: totalAct,
-          totalDiff: totalD,
+          totalActualStock: whTotalAct,
+          totalDiff: whTotalDiff,
         };
       });
 
-      setBranchGroups(groups);
+      setBranchGroups([allGroup, ...warehouseGroups]);
     } catch (err: any) {
       setError(err?.message || 'Không thể tải báo cáo từ hệ thống API');
     } finally {
@@ -264,12 +351,186 @@ export default function BelowMinStockReportPage() {
     loadData();
   }, []);
 
+  // Lưu định mức tồn cho một sản phẩm vào Database & LocalStorage
+  const handleSaveMinStock = async (productId: string, newMin: number, productName: string) => {
+    setSavingId(productId);
+    try {
+      await fetch(`${API_BASE_URL}/products/${productId}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ minimumStock: newMin }),
+      });
+
+      localStorage.setItem(`product_min_stock_${productId}`, String(newMin));
+
+      setBranchGroups((prevGroups) =>
+        prevGroups.map((g) => {
+          const updatedItems = g.items.map((it) => {
+            if (it.productId === productId) {
+              const actual = it.actualStock;
+              const diff = Math.max(0, newMin - actual);
+              return {
+                ...it,
+                minStock: newMin,
+                diff,
+              };
+            }
+            return it;
+          });
+          return {
+            ...g,
+            items: updatedItems,
+            totalActualStock: updatedItems.reduce((s, i) => s + i.actualStock, 0),
+            totalDiff: updatedItems.reduce((s, i) => s + i.diff, 0),
+          };
+        })
+      );
+
+      setEditingMinStock((prev) => {
+        const next = { ...prev };
+        delete next[productId];
+        return next;
+      });
+
+      setSaveToast(`Đã lưu định mức tồn "${productName}": ${newMin}`);
+      setTimeout(() => setSaveToast(null), 3000);
+    } catch (err) {
+      console.error('Lỗi khi lưu định mức:', err);
+      localStorage.setItem(`product_min_stock_${productId}`, String(newMin));
+      setSaveToast(`Đã lưu định mức tồn vào bộ nhớ máy`);
+      setTimeout(() => setSaveToast(null), 3000);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  // Lưu tất cả định mức đã chỉnh sửa
+  const handleSaveAllMinStock = async () => {
+    const entries = Object.entries(editingMinStock);
+    if (entries.length === 0) return;
+    setSavingId('ALL');
+    for (const [pId, val] of entries) {
+      try {
+        await fetch(`${API_BASE_URL}/products/${pId}`, {
+          method: 'PUT',
+          headers: authHeaders(),
+          body: JSON.stringify({ minimumStock: val }),
+        });
+      } catch {}
+      localStorage.setItem(`product_min_stock_${pId}`, String(val));
+    }
+
+    setBranchGroups((prevGroups) =>
+      prevGroups.map((g) => {
+        const updatedItems = g.items.map((it) => {
+          if (editingMinStock[it.productId] !== undefined) {
+            const newMin = editingMinStock[it.productId];
+            return {
+              ...it,
+              minStock: newMin,
+              diff: Math.max(0, newMin - it.actualStock),
+            };
+          }
+          return it;
+        });
+        return {
+          ...g,
+          items: updatedItems,
+          totalActualStock: updatedItems.reduce((s, i) => s + i.actualStock, 0),
+          totalDiff: updatedItems.reduce((s, i) => s + i.diff, 0),
+        };
+      })
+    );
+
+    setEditingMinStock({});
+    setSavingId(null);
+    setSaveToast(`Đã lưu định mức tồn cho ${entries.length} sản phẩm thành công!`);
+    setTimeout(() => setSaveToast(null), 3000);
+  };
+
+  // Cập nhật định mức tồn mặc định khi người dùng thay đổi số lượng ở bộ lọc
+  const handleDefaultMinStockChange = (newVal: number) => {
+    setDefaultMinStock(newVal);
+    localStorage.setItem('report_below_min_stock_threshold', String(newVal));
+
+    // Cập nhật ngay lập tức các sản phẩm chưa có định mức riêng biệt
+    setBranchGroups((prevGroups) =>
+      prevGroups.map((g) => {
+        const updatedItems = g.items.map((it) => {
+          const hasIndividual = localStorage.getItem(`product_min_stock_${it.productId}`);
+          if (!hasIndividual) {
+            const diff = Math.max(0, newVal - it.actualStock);
+            return {
+              ...it,
+              minStock: newVal,
+              diff,
+            };
+          }
+          return it;
+        });
+        return {
+          ...g,
+          items: updatedItems,
+          totalActualStock: updatedItems.reduce((s, i) => s + i.actualStock, 0),
+          totalDiff: updatedItems.reduce((s, i) => s + i.diff, 0),
+        };
+      })
+    );
+  };
+
+  // Lưu định mức mặc định và hiển thị toast
+  const handleSaveDefaultMinStock = () => {
+    localStorage.setItem('report_below_min_stock_threshold', String(defaultMinStock));
+    setSaveToast(`Đã lưu định mức tồn: ${defaultMinStock} sản phẩm`);
+    setTimeout(() => setSaveToast(null), 3000);
+  };
+
+  // Áp dụng định mức này cho tất cả sản phẩm vào CSDL
+  const handleApplyDefaultToAll = async () => {
+    setSavingId('APPLY_ALL');
+    let count = 0;
+    for (const g of branchGroups) {
+      for (const it of g.items) {
+        try {
+          await fetch(`${API_BASE_URL}/products/${it.productId}`, {
+            method: 'PUT',
+            headers: authHeaders(),
+            body: JSON.stringify({ minimumStock: defaultMinStock }),
+          });
+        } catch {}
+        localStorage.setItem(`product_min_stock_${it.productId}`, String(defaultMinStock));
+        count++;
+      }
+    }
+
+    setBranchGroups((prevGroups) =>
+      prevGroups.map((g) => {
+        const updatedItems = g.items.map((it) => ({
+          ...it,
+          minStock: defaultMinStock,
+          diff: Math.max(0, defaultMinStock - it.actualStock),
+        }));
+        return {
+          ...g,
+          items: updatedItems,
+          totalActualStock: updatedItems.reduce((s, i) => s + i.actualStock, 0),
+          totalDiff: updatedItems.reduce((s, i) => s + i.diff, 0),
+        };
+      })
+    );
+
+    setEditingMinStock({});
+    setSavingId(null);
+    setSaveToast(`Đã áp dụng định mức ${defaultMinStock} cho tất cả ${count} sản phẩm vào CSDL!`);
+    setTimeout(() => setSaveToast(null), 3500);
+  };
+
   // Filtered branch groups
   const filteredGroups = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
     return branchGroups
-      .filter((g) => selectedWarehouse === 'ALL' || g.branchId === selectedWarehouse || g.branchName.includes(selectedWarehouse))
+      .filter((g) => (selectedWarehouse === 'ALL' ? g.branchId === 'ALL' : (g.branchId === selectedWarehouse || g.branchName.includes(selectedWarehouse))))
       .map((g) => {
         const filteredItems = g.items.filter((item) => {
           const matchTerm =
@@ -278,7 +539,7 @@ export default function BelowMinStockReportPage() {
             item.code.toLowerCase().includes(term) ||
             item.category.toLowerCase().includes(term);
 
-          const matchBelow = !filterBelowOnly || item.diff < 0;
+          const matchBelow = !filterBelowOnly || (item.minStock > 0 && item.actualStock < item.minStock);
 
           return matchTerm && matchBelow;
         });
@@ -389,10 +650,10 @@ export default function BelowMinStockReportPage() {
           fmt(it.importPrice),
           it.minStock,
           it.actualStock,
-          it.diff,
+          it.diff > 0 ? `Thiếu ${it.diff}` : '0',
         ]);
       });
-      rows.push(['Tổng:', '', '', '', '', '', g.totalActualStock, g.totalDiff]);
+      rows.push(['Tổng:', '', '', '', '', '', g.totalActualStock, g.totalDiff > 0 ? `Thiếu ${g.totalDiff}` : '0']);
     });
 
     const headers = ['STT', 'Nhóm hàng hóa', 'Mã', 'Tên hàng hóa', 'Giá nhập', 'Định mức tồn', 'Thực tồn', 'Lệch'];
@@ -408,262 +669,436 @@ export default function BelowMinStockReportPage() {
     URL.revokeObjectURL(url);
   };
 
+  const hasUnsavedChanges = Object.keys(editingMinStock).length > 0;
+
   return (
-    <div className={`space-y-4 pb-12 animate-in fade-in duration-200 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
-      {/* ═══ TOP HEADER SECTION matching Gold Revenue Standard ═══ */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
-            <TrendingDown className="h-5 w-5" />
-            <h1 className="text-xl font-extrabold tracking-tight uppercase">BÁO CÁO HÀNG TỒN DƯỚI ĐỊNH MỨC</h1>
-          </div>
-        </div>
+    <>
+      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
+      <ReportPrintHeader
+        title="BÁO CÁO HÀNG TỒN DƯỚI ĐỊNH MỨC"
+        subtitle={`Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
+        subInfo={`Kho hàng: ${selectedWarehouse === 'ALL' ? 'Tất cả chi nhánh' : warehouses.find((w) => w.id === selectedWarehouse)?.name || selectedWarehouse}`}
+      />
 
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={loadData}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
-            Làm mới
-          </button>
-
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <Printer className="h-4.5 w-4.5 text-cyan-700" />
-            In báo cáo
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
-            Export Excel
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowColumnSettings(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-            title="Cấu hình hiển thị cột"
-          >
-            <Settings className="h-4.5 w-4.5 text-cyan-700" />
-            <span>Hiển thị</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleBrowserFullscreen}
-            className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-            title="Toàn màn hình"
-          >
-            {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
-          </button>
-        </div>
-      </div>
-
-      {/* ═══ FILTER & SEARCH PANEL ═══ */}
-      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative flex-1 min-w-[260px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs placeholder:text-slate-400"
-              placeholder="Tìm kiếm theo mã, tên sản phẩm, nhóm..."
-            />
+      <div className={`space-y-4 pb-12 animate-in fade-in duration-200 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+        {/* ═══ TOP HEADER SECTION matching Gold Revenue Standard ═══ */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
+              <TrendingDown className="h-5 w-5" />
+              <h1 className="text-xl font-extrabold tracking-tight uppercase">BÁO CÁO HÀNG TỒN DƯỚI ĐỊNH MỨC</h1>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Filter Kho hàng (Custom Styled Popover Dropdown) */}
-            <div ref={warehouseDropdownRef} className="relative inline-block">
+            {hasUnsavedChanges && (
               <button
                 type="button"
-                onClick={() => setIsWarehouseDropdownOpen(!isWarehouseDropdownOpen)}
-                className="inline-flex h-12 items-center gap-2.5 rounded-xl border-2 border-cyan-600/40 bg-slate-50 px-4 py-2 shadow-2xs transition hover:bg-slate-100 hover:border-cyan-600 active:scale-95 cursor-pointer"
+                onClick={handleSaveAllMinStock}
+                disabled={savingId === 'ALL'}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-600 bg-emerald-600 px-5 py-2.5 text-sm font-extrabold text-white shadow-md transition hover:bg-emerald-700 active:scale-95 cursor-pointer animate-pulse"
+                title="Lưu tất cả các định mức tồn vừa chỉnh sửa vào CSDL"
               >
-                <Building2 className="h-5 w-5 text-cyan-600 shrink-0" />
-                <span className="text-xs sm:text-sm font-extrabold uppercase text-cyan-950 tracking-wide">KHO HÀNG:</span>
-                <div className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-bold text-slate-800 shadow-2xs hover:border-cyan-600 min-w-[220px] justify-between">
-                  <span className="truncate max-w-[190px]">
-                    {selectedWarehouse === 'ALL' ? 'Tất cả chi nhánh' : warehouses.find((w) => w.id === selectedWarehouse)?.name || 'Tất cả chi nhánh'}
-                  </span>
-                  <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform duration-200 ${isWarehouseDropdownOpen ? 'rotate-180' : ''}`} />
-                </div>
+                {savingId === 'ALL' ? (
+                  <RefreshCw className="h-4.5 w-4.5 animate-spin" />
+                ) : (
+                  <Save className="h-4.5 w-4.5" />
+                )}
+                <span>Lưu thay đổi ({Object.keys(editingMinStock).length})</span>
               </button>
+            )}
 
-              {/* Custom Styled Menu với Bo góc tròn Rounded-2xl và Đổ bóng mượt */}
-              {isWarehouseDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 w-full min-w-[280px] rounded-2xl border-2 border-cyan-500 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedWarehouse('ALL');
-                      setIsWarehouseDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
-                      selectedWarehouse === 'ALL'
-                        ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
-                        : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
-                    }`}
-                  >
-                    <span>Tất cả chi nhánh</span>
-                    {selectedWarehouse === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
-                  </button>
-                  {warehouses.map((w) => {
-                    const isSelected = selectedWarehouse === w.id;
-                    return (
-                      <button
-                        key={w.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedWarehouse(w.id);
-                          setIsWarehouseDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 last:mb-0 ${
-                          isSelected
-                            ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
-                            : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
-                        }`}
-                      >
-                        <span className="truncate">{w.name}</span>
-                        {isSelected && <Check className="h-4 w-4 text-white shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Filter Toggle Below Min Only */}
             <button
               type="button"
-              onClick={() => setFilterBelowOnly(!filterBelowOnly)}
-              className={`inline-flex h-12 items-center gap-2 rounded-xl border-2 px-4 text-xs sm:text-sm font-extrabold transition cursor-pointer shadow-2xs ${
-                filterBelowOnly
-                  ? 'border-rose-500 bg-rose-50 text-rose-700 shadow-sm'
-                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
+              onClick={loadData}
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
             >
-              <AlertTriangle className={`h-4.5 w-4.5 ${filterBelowOnly ? 'text-rose-600' : 'text-slate-500'}`} />
-              <span>Chỉ xem hàng dưới định mức (Lệch &lt; 0)</span>
+              <RefreshCw className={`h-4.5 w-4.5 text-cyan-700 ${loading ? 'animate-spin' : ''}`} />
+              Làm mới
+            </button>
+
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Printer className="h-4.5 w-4.5 text-cyan-700" />
+              In báo cáo
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet className="h-4.5 w-4.5 text-cyan-700" />
+              Export Excel
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowColumnSettings(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Cấu hình hiển thị cột"
+            >
+              <Settings className="h-4.5 w-4.5 text-cyan-700" />
+              <span>Hiển thị</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleBrowserFullscreen}
+              className="inline-flex items-center justify-center h-10 w-10 rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Toàn màn hình"
+            >
+              {isFullScreen ? <Minimize2 className="h-4.5 w-4.5 text-cyan-700" /> : <Maximize2 className="h-4.5 w-4.5 text-cyan-700" />}
             </button>
           </div>
         </div>
+
+        {/* ═══ FILTER & SEARCH PANEL ═══ */}
+        <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3 print:hidden">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative flex-1 min-w-[260px]">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs placeholder:text-slate-400"
+                placeholder="Tìm kiếm theo mã, tên sản phẩm, nhóm..."
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Filter Kho hàng (Custom Styled Popover Dropdown) */}
+              <div ref={warehouseDropdownRef} className="relative inline-block">
+                <button
+                  type="button"
+                  onClick={() => setIsWarehouseDropdownOpen(!isWarehouseDropdownOpen)}
+                  className="inline-flex h-12 items-center gap-2.5 rounded-xl border-2 border-cyan-600/40 bg-slate-50 px-4 py-2 shadow-2xs transition hover:bg-slate-100 hover:border-cyan-600 active:scale-95 cursor-pointer"
+                >
+                  <Building2 className="h-5 w-5 text-cyan-600 shrink-0" />
+                  <span className="text-xs sm:text-sm font-extrabold uppercase text-cyan-950 tracking-wide">KHO HÀNG:</span>
+                  <div className="flex items-center gap-2 rounded-xl border-2 border-slate-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-bold text-slate-800 shadow-2xs hover:border-cyan-600 min-w-[220px] justify-between">
+                    <span className="truncate max-w-[190px]">
+                      {selectedWarehouse === 'ALL'
+                        ? 'Tất cả chi nhánh (Tổng kho)'
+                        : warehouses.find((w) => w.code === selectedWarehouse || w.id === selectedWarehouse)?.name
+                        ? `${warehouses.find((w) => w.code === selectedWarehouse || w.id === selectedWarehouse)!.name} (${warehouses.find((w) => w.code === selectedWarehouse || w.id === selectedWarehouse)!.code})`
+                        : selectedWarehouse}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-cyan-600 transition-transform duration-200 ${isWarehouseDropdownOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </button>
+
+                {/* Custom Styled Menu với Bo góc tròn Rounded-2xl và Đổ bóng mượt */}
+                {isWarehouseDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-2 w-full min-w-[280px] rounded-2xl border-2 border-cyan-500 bg-white p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedWarehouse('ALL');
+                        setIsWarehouseDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
+                        selectedWarehouse === 'ALL'
+                          ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                          : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                      }`}
+                    >
+                      <span>Tất cả chi nhánh (Tổng kho)</span>
+                      {selectedWarehouse === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
+                    </button>
+                    {warehouses.map((w) => {
+                      const isSelected = selectedWarehouse === w.code || selectedWarehouse === w.id;
+                      return (
+                        <button
+                          key={w.code}
+                          type="button"
+                          onClick={() => {
+                            setSelectedWarehouse(w.code);
+                            setIsWarehouseDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 last:mb-0 ${
+                            isSelected
+                              ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
+                              : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
+                          }`}
+                        >
+                          <span className="truncate">{w.name} ({w.code})</span>
+                          {isSelected && <Check className="h-4 w-4 text-white shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Filter Định mức tồn & Chỉ xem hàng dưới định mức */}
+              <div
+                className={`inline-flex items-center rounded-xl border-2 transition shadow-2xs overflow-hidden ${
+                  filterBelowOnly
+                    ? 'border-rose-500 bg-rose-50/90 ring-2 ring-rose-400/20'
+                    : 'border-slate-300 bg-white hover:border-slate-400'
+                }`}
+              >
+                {/* Nút bật / tắt lọc */}
+                <button
+                  type="button"
+                  onClick={() => setFilterBelowOnly(!filterBelowOnly)}
+                  className={`inline-flex h-12 items-center gap-2 px-4 text-xs sm:text-sm font-extrabold transition cursor-pointer ${
+                    filterBelowOnly ? 'text-rose-700 font-black' : 'text-slate-700 hover:text-cyan-700'
+                  }`}
+                  title={filterBelowOnly ? 'Đang lọc hàng dưới định mức (Bấm để xem tất cả)' : 'Bấm để lọc chỉ xem hàng dưới định mức'}
+                >
+                  <AlertTriangle className={`h-5 w-5 ${filterBelowOnly ? 'text-rose-600 animate-pulse' : 'text-slate-400'}`} />
+                  <span>Chỉ xem hàng dưới định mức</span>
+                </button>
+
+                {/* Ô nhập số lượng định mức tồn (Thực tồn < [ X ]) */}
+                <div className="flex h-12 items-center gap-1.5 border-l-2 border-slate-200 bg-slate-50/90 px-3 py-1">
+                  <span className="text-xs font-black uppercase text-slate-700 whitespace-nowrap">
+                    (Thực tồn &lt;
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={defaultMinStock}
+                    onChange={(e) => {
+                      const val = Math.max(0, parseInt(e.target.value) || 0);
+                      handleDefaultMinStockChange(val);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSaveDefaultMinStock();
+                      }
+                    }}
+                    className="h-8 w-16 sm:w-20 rounded-lg border-2 border-cyan-600 bg-white px-2 text-center text-xs sm:text-sm font-black text-cyan-900 outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-500/20 shadow-2xs"
+                    title="Nhập số lượng định mức tồn và nhấn Lưu hoặc Enter"
+                  />
+                  <span className="text-xs font-black uppercase text-slate-700">)</span>
+
+                  {/* Nút Lưu */}
+                  <button
+                    type="button"
+                    onClick={handleSaveDefaultMinStock}
+                    className="inline-flex h-8 items-center gap-1 rounded-lg bg-cyan-700 px-2.5 text-xs font-extrabold text-white shadow-xs hover:bg-cyan-800 transition active:scale-95 cursor-pointer ml-1"
+                    title="Lưu định mức này vĩnh viễn (nếu không thay đổi sẽ luôn hiển thị số này)"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    <span>Lưu</span>
+                  </button>
+
+                  {/* Nút Áp dụng cho tất cả */}
+                  <button
+                    type="button"
+                    onClick={handleApplyDefaultToAll}
+                    disabled={savingId === 'APPLY_ALL'}
+                    className="inline-flex h-8 items-center gap-1 rounded-lg border border-cyan-600 bg-white px-2.5 text-xs font-extrabold text-cyan-700 shadow-xs hover:bg-cyan-50 transition active:scale-95 cursor-pointer ml-1 disabled:opacity-50"
+                    title="Lưu và áp dụng định mức này cho tất cả sản phẩm vào CSDL"
+                  >
+                    {savingId === 'APPLY_ALL' ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden sm:inline">Áp dụng tất cả</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-4 text-xs font-extrabold text-rose-700">
+            {error}
+          </div>
+        )}
+
+        {/* ═══ DATA TABLE - FIXED NON-WRAPPING HEADERS & BALANCED SIZING ═══ */}
+        <div className="overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full min-w-[1050px] border-collapse text-left text-xs sm:text-sm">
+              <thead className="bg-cyan-600 text-white font-extrabold uppercase border-b-2 border-cyan-700 sticky top-0 z-20 shadow-xs">
+                <tr className="font-extrabold uppercase text-xs sm:text-sm tracking-wider text-white whitespace-nowrap">
+                  {columnVis.stt && <th className="w-14 border-r border-cyan-500/50 px-3 py-3 text-center whitespace-nowrap">TT</th>}
+                  {columnVis.category && <th className="w-44 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">NHÓM HÀNG HÓA</th>}
+                  {columnVis.code && <th className="w-36 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">MÃ</th>}
+                  {columnVis.name && <th className="min-w-[260px] border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">TÊN HÀNG HÓA</th>}
+                  {columnVis.importPrice && <th className="w-36 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">GIÁ NHẬP</th>}
+                  {columnVis.minStock && <th className="w-44 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">ĐỊNH MỨC TỒN</th>}
+                  {columnVis.actualStock && <th className="w-32 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">THỰC TỒN</th>}
+                  {columnVis.diff && <th className="w-36 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">LỆCH</th>}
+                  {columnVis.actions && <th className="w-24 px-4 py-3 text-center whitespace-nowrap print:hidden">THAO TÁC</th>}
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-200 bg-white text-xs sm:text-sm font-medium text-slate-800">
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center text-slate-400 font-bold text-sm">
+                      <RefreshCw size={20} className="animate-spin inline-block mr-2 text-cyan-600" />
+                      Đang tải báo cáo hàng tồn từ CSDL...
+                    </td>
+                  </tr>
+                ) : filteredGroups.length > 0 ? (
+                  filteredGroups.map((g) => (
+                    <React.Fragment key={g.branchId}>
+                      {/* LEVEL 1: KHO HÀNG / CHI NHÁNH HEADER */}
+                      <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
+                        <td colSpan={9} className="py-2.5 px-4 text-left font-black text-sm uppercase tracking-wide text-slate-900 bg-slate-100">
+                          {g.branchName}
+                        </td>
+                      </tr>
+
+                      {/* PRODUCT ROWS */}
+                      {g.items.map((item) => {
+                        const currentVal = editingMinStock[item.productId] !== undefined ? editingMinStock[item.productId] : item.minStock;
+                        const isModified = editingMinStock[item.productId] !== undefined && editingMinStock[item.productId] !== item.minStock;
+                        const isSavingThis = savingId === item.productId || savingId === 'ALL';
+
+                        return (
+                          <tr key={g.branchId + '_' + item.stt} className="hover:bg-slate-50 transition">
+                            {columnVis.stt && <td className="py-2.5 px-3 text-center border-r border-slate-200 font-bold text-slate-600">{item.stt}</td>}
+                            {columnVis.category && <td className="py-2.5 px-4 text-center border-r border-slate-200 font-semibold text-slate-700">{item.category}</td>}
+                            {columnVis.code && <td className="py-2.5 px-4 text-center border-r border-slate-200 font-bold text-cyan-800">{item.code}</td>}
+                            {columnVis.name && <td className="py-2.5 px-4 border-r border-slate-200 font-semibold text-slate-900">{item.name}</td>}
+                            {columnVis.importPrice && <td className="py-2.5 px-4 text-right border-r border-slate-200 font-bold text-slate-800">{fmt(item.importPrice)}</td>}
+                            {columnVis.minStock && (
+                              <td className="py-2 px-3 text-right border-r border-slate-200">
+                                <div className="flex items-center justify-end gap-1.5 print:hidden">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={currentVal}
+                                    onChange={(e) => {
+                                      const val = Math.max(0, parseInt(e.target.value) || 0);
+                                      setEditingMinStock((prev) => ({ ...prev, [item.productId]: val }));
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        handleSaveMinStock(item.productId, currentVal, item.name);
+                                      }
+                                    }}
+                                    className={`w-20 rounded-lg border px-2 py-1 text-right text-xs sm:text-sm font-bold transition outline-none focus:ring-2 focus:ring-cyan-500 ${
+                                      isModified
+                                        ? 'border-amber-500 bg-amber-50/70 text-amber-950 font-black ring-2 ring-amber-400/30'
+                                        : 'border-slate-300 bg-white text-slate-800 hover:border-slate-400'
+                                    }`}
+                                    title="Nhập định mức tồn tối thiểu rồi nhấn Enter hoặc nút Lưu"
+                                  />
+                                  {isModified && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveMinStock(item.productId, currentVal, item.name)}
+                                      disabled={isSavingThis}
+                                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition cursor-pointer disabled:opacity-50"
+                                      title="Lưu định mức mới vào hệ thống"
+                                    >
+                                      {isSavingThis ? (
+                                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Check className="h-3.5 w-3.5 stroke-[3]" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                                <span className="hidden print:inline font-bold text-slate-800">
+                                  {item.minStock}
+                                </span>
+                              </td>
+                            )}
+                            {columnVis.actualStock && (
+                              <td className="py-2.5 px-4 text-right border-r border-slate-200 font-extrabold text-slate-900">
+                                {fmt(item.actualStock)}
+                              </td>
+                            )}
+                            {columnVis.diff && (
+                              <td className="py-2.5 px-4 text-right border-r border-slate-200">
+                                {item.diff > 0 ? (
+                                  <span className="inline-flex items-center gap-1 font-extrabold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
+                                    Thiếu {fmt(item.diff)}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                    Đủ
+                                  </span>
+                                )}
+                              </td>
+                            )}
+                            {columnVis.actions && (
+                              <td className="py-2.5 px-3 text-center print:hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenDetailModal(item, g.branchName)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 active:scale-95 cursor-pointer"
+                                  title="Xem báo cáo chi tiết"
+                                >
+                                  <Eye size={16} strokeWidth={2.5} />
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+
+                      {/* BRANCH SUMMARY ROW */}
+                      <tr className="bg-slate-200/90 font-black text-slate-900 border-t-2 border-b-2 border-slate-400">
+                        <td colSpan={6} className="py-3 px-4 text-right font-black text-xs sm:text-sm uppercase tracking-wide text-slate-900">
+                          Tổng:
+                        </td>
+                        {columnVis.actualStock && <td className="py-3 px-4 text-right font-black text-slate-950 text-xs sm:text-sm">{fmt(g.totalActualStock)}</td>}
+                        {columnVis.diff && (
+                          <td className="py-3 px-4 text-right font-black text-xs sm:text-sm">
+                            {g.totalDiff > 0 ? (
+                              <span className="font-extrabold text-rose-700">Thiếu {fmt(g.totalDiff)}</span>
+                            ) : (
+                              <span className="font-bold text-emerald-700">Đủ</span>
+                            )}
+                          </td>
+                        )}
+                        {columnVis.actions && <td className="py-3 px-4 print:hidden"></td>}
+                      </tr>
+                    </React.Fragment>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={9} className="py-12 text-center text-slate-400 font-bold text-sm">
+                      Không tìm thấy sản phẩm tồn kho trong CSDL
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <ReportPrintFooter />
+        </div>
       </div>
 
-      {error && (
-        <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-4 text-xs font-extrabold text-rose-700">
-          {error}
+      {/* ═══ SAVE TOAST NOTIFICATION ═══ */}
+      {saveToast && (
+        <div className="fixed bottom-6 right-6 z-[100000] flex items-center gap-2.5 rounded-2xl border-2 border-emerald-500 bg-slate-900/95 text-white px-5 py-3.5 shadow-2xl text-xs sm:text-sm font-extrabold backdrop-blur-md animate-in fade-in slide-in-from-bottom-5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white shrink-0">
+            <Check className="h-4 w-4 stroke-[3]" />
+          </div>
+          <span>{saveToast}</span>
         </div>
       )}
 
-      {/* ═══ DATA TABLE - FIXED NON-WRAPPING HEADERS & BALANCED SIZING ═══ */}
-      <div className="overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-sm">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full min-w-[1050px] border-collapse text-left text-xs sm:text-sm">
-            <thead className="bg-cyan-600 text-white font-extrabold uppercase border-b-2 border-cyan-700 sticky top-0 z-20 shadow-xs">
-              <tr className="font-extrabold uppercase text-xs sm:text-sm tracking-wider text-white whitespace-nowrap">
-                {columnVis.stt && <th className="w-14 border-r border-cyan-500/50 px-3 py-3 text-center whitespace-nowrap">TT</th>}
-                {columnVis.category && <th className="w-44 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">NHÓM HÀNG HÓA</th>}
-                {columnVis.code && <th className="w-36 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">MÃ</th>}
-                {columnVis.name && <th className="min-w-[260px] border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">TÊN HÀNG HÓA</th>}
-                {columnVis.importPrice && <th className="w-36 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">GIÁ NHẬP</th>}
-                {columnVis.minStock && <th className="w-36 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">ĐỊNH MỨC TỒN</th>}
-                {columnVis.actualStock && <th className="w-32 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">THỰC TỒN</th>}
-                {columnVis.diff && <th className="w-32 border-r border-cyan-500/50 px-4 py-3 text-center whitespace-nowrap">LỆCH</th>}
-                {columnVis.actions && <th className="w-24 px-4 py-3 text-center whitespace-nowrap">THAO TÁC</th>}
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-200 bg-white text-xs sm:text-sm font-medium text-slate-800">
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400 font-bold text-sm">
-                    <RefreshCw size={20} className="animate-spin inline-block mr-2 text-cyan-600" />
-                    Đang tải báo cáo hàng tồn từ CSDL...
-                  </td>
-                </tr>
-              ) : filteredGroups.length > 0 ? (
-                filteredGroups.map((g) => (
-                  <React.Fragment key={g.branchId}>
-                    {/* LEVEL 1: KHO HÀNG / CHI NHÁNH HEADER */}
-                    <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
-                      <td colSpan={9} className="py-2.5 px-4 text-left font-black text-sm uppercase tracking-wide text-slate-900 bg-slate-100">
-                        {g.branchName}
-                      </td>
-                    </tr>
-
-                    {/* PRODUCT ROWS */}
-                    {g.items.map((item) => (
-                      <tr key={g.branchId + '_' + item.stt} className="hover:bg-slate-50 transition">
-                        {columnVis.stt && <td className="py-2.5 px-3 text-center border-r border-slate-200 font-bold text-slate-600">{item.stt}</td>}
-                        {columnVis.category && <td className="py-2.5 px-4 text-center border-r border-slate-200 font-semibold text-slate-700">{item.category}</td>}
-                        {columnVis.code && <td className="py-2.5 px-4 text-center border-r border-slate-200 font-bold text-cyan-800">{item.code}</td>}
-                        {columnVis.name && <td className="py-2.5 px-4 border-r border-slate-200 font-semibold text-slate-900">{item.name}</td>}
-                        {columnVis.importPrice && <td className="py-2.5 px-4 text-right border-r border-slate-200 font-bold text-slate-800">{fmt(item.importPrice)}</td>}
-                        {columnVis.minStock && <td className="py-2.5 px-4 text-right border-r border-slate-200 font-bold text-slate-800">{item.minStock}</td>}
-                        {columnVis.actualStock && (
-                          <td className={`py-2.5 px-4 text-right border-r border-slate-200 font-extrabold ${item.actualStock < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-                            {item.actualStock}
-                          </td>
-                        )}
-                        {columnVis.diff && (
-                          <td className={`py-2.5 px-4 text-right border-r border-slate-200 font-extrabold ${item.diff < 0 ? 'text-rose-600 font-black' : 'text-slate-800'}`}>
-                            {item.diff}
-                          </td>
-                        )}
-                        {columnVis.actions && (
-                          <td className="py-2.5 px-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDetailModal(item, g.branchName)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 active:scale-95 cursor-pointer"
-                              title="Xem báo cáo chi tiết"
-                            >
-                              <Eye size={16} strokeWidth={2.5} />
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-
-                    {/* BRANCH SUMMARY ROW */}
-                    <tr className="bg-slate-200/90 font-black text-slate-900 border-t-2 border-b-2 border-slate-400">
-                      <td colSpan={6} className="py-3 px-4 text-right font-black text-xs sm:text-sm uppercase tracking-wide text-slate-900">
-                        Tổng:
-                      </td>
-                      {columnVis.actualStock && <td className="py-3 px-4 text-right font-black text-slate-950 text-xs sm:text-sm">{g.totalActualStock}</td>}
-                      {columnVis.diff && <td className="py-3 px-4 text-right font-black text-rose-700 text-xs sm:text-sm">{g.totalDiff}</td>}
-                      {columnVis.actions && <td className="py-3 px-4"></td>}
-                    </tr>
-                  </React.Fragment>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400 font-bold text-sm">
-                    Không tìm thấy sản phẩm tồn kho trong CSDL
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       {/* ═══ DETAIL POPUP MODAL (PORTALIZED OVERLAY 100% COVERAGE & FULL WIDTH) ═══ */}
       {selectedItemForModal && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-2 sm:p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-[98vw] 2xl:max-w-[1700px] rounded-2xl border-2 border-cyan-600 bg-white shadow-2xl overflow-hidden flex flex-col max-h-[96vh]">
+        <div
+          onClick={() => setSelectedItemForModal(null)}
+          className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-2 sm:p-4 backdrop-blur-sm animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-[98vw] 2xl:max-w-[1700px] rounded-2xl border-2 border-cyan-600 bg-white shadow-2xl overflow-hidden flex flex-col max-h-[96vh]"
+          >
             {/* Modal Header: Cyan Tươi Sáng */}
             <div className="flex items-center justify-between border-b-2 border-cyan-700 bg-cyan-600 px-6 py-4 text-white">
               <h3 className="font-extrabold text-white text-base sm:text-lg uppercase tracking-wide flex flex-wrap items-center gap-2">
@@ -714,11 +1149,11 @@ export default function BelowMinStockReportPage() {
                           <td className="py-2.5 px-3.5 text-center border-r border-slate-200 font-bold text-cyan-800">{d.code}</td>
                           <td className="py-2.5 px-3.5 text-center border-r border-slate-200 text-slate-600">{d.date}</td>
                           <td className="py-2.5 px-3.5 border-r border-slate-200 font-semibold">{d.targetName}</td>
-                          <td className="py-2.5 px-3.5 text-right border-r border-slate-200 font-bold text-emerald-700">{d.inQty !== 0 ? d.inQty : ''}</td>
-                          <td className="py-2.5 px-3.5 text-right border-r border-slate-200 font-bold text-rose-700">{d.outQty !== 0 ? d.outQty : ''}</td>
+                          <td className="py-2.5 px-3.5 text-right border-r border-slate-200 font-bold text-emerald-700">{d.inQty !== 0 ? fmt(d.inQty) : ''}</td>
+                          <td className="py-2.5 px-3.5 text-right border-r border-slate-200 font-bold text-rose-700">{d.outQty !== 0 ? fmt(d.outQty) : ''}</td>
                           <td className="py-2.5 px-3.5 text-right border-r border-slate-200 font-semibold">{d.price !== 0 ? fmt(d.price) : ''}</td>
                           <td className="py-2.5 px-3.5 text-right border-r border-slate-200 font-bold">{d.totalAmount !== 0 ? fmt(d.totalAmount) : ''}</td>
-                          <td className="py-2.5 px-3.5 text-right border-r border-slate-200 font-extrabold text-slate-900">{d.balance}</td>
+                          <td className="py-2.5 px-3.5 text-right border-r border-slate-200 font-extrabold text-slate-900">{fmt(d.balance)}</td>
                           <td className="py-2.5 px-3.5 text-slate-600 font-medium">{d.note}</td>
                         </tr>
                       ))
@@ -765,8 +1200,14 @@ export default function BelowMinStockReportPage() {
 
       {/* ═══ COLUMN VISIBILITY MODAL ═══ */}
       {showColumnSettings && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-2xl space-y-4">
+        <div
+          onClick={() => setShowColumnSettings(false)}
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border-2 border-cyan-500 bg-white p-5 shadow-2xl space-y-4"
+          >
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <h3 className="font-extrabold text-cyan-900 text-sm flex items-center gap-2 uppercase">
                 <SlidersHorizontal size={16} /> Cấu hình hiển thị cột
@@ -814,6 +1255,6 @@ export default function BelowMinStockReportPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

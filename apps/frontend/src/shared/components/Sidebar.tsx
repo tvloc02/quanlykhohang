@@ -9,6 +9,8 @@ import {
   FileText,
   Home,
   Layers,
+  Boxes,
+  Clock,
   Package,
   Search,
   Settings,
@@ -152,7 +154,7 @@ const menuItems: MenuItem[] = [
       { id: 'report-sales-by-staff', icon: Users, label: 'Hàng bán ra theo Nhân viên', path: '/reports/sales-by-staff' },
       { id: 'report-business-summary', icon: BarChart3, label: 'Tổng hợp Kinh doanh', path: '/reports/business-summary' },
       { id: 'report-below-min-stock', icon: TrendingDown, label: 'Hàng tồn dưới định mức', path: '/reports/below-min-stock' },
-      { id: 'report-revenue-huu', icon: BarChart3, label: 'Báo cáo doanh thu - Huu', path: '/reports/revenue-huu' },
+      { id: 'report-stale-inventory', icon: Clock, label: 'Báo cáo hàng hóa tồn đọng', path: '/reports/stale-inventory' },
     ],
   },
   // 5. Báo cáo Phân tích
@@ -343,7 +345,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             <div
               className={`transition-all duration-300 ease-in-out overflow-hidden ${
                 isExpanded
-                  ? 'max-h-[600px] opacity-100 my-1 pointer-events-auto'
+                  ? 'max-h-[2500px] opacity-100 my-1 pointer-events-auto'
                   : 'max-h-0 opacity-0 my-0 pointer-events-none'
               }`}
             >

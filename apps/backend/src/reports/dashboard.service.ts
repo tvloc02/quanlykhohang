@@ -935,4 +935,199 @@ export class DashboardService {
       netRevenue: stat.revenue - stat.discount,
     }));
   }
+
+  /** BÁO CÁO HÀNG TỒN TRÊN KỆ THEO PHÂN KHU VÀ THỜI GIAN NHẬP */
+  async getShelfInventoryReport(query: {
+    warehouseCode?: string;
+    zoneCode?: string;
+    rackCode?: string;
+    beforeDate?: string;
+    onlyWithStock?: boolean | string;
+    search?: string;
+  }) {
+    const rawWarehouses = await this.warehouseRepo.find().catch(() => []);
+    const allWarehouses = rawWarehouses.filter((w) => w.status !== 'inactive');
+
+    const stockQuery = this.stockRepo.createQueryBuilder('sb')
+      .leftJoinAndSelect('sb.product', 'p')
+      .leftJoinAndSelect('p.category', 'c')
+      .where('sb.locationCode LIKE :zonePattern', { zonePattern: '%-ZONE-%' });
+
+    if (query.onlyWithStock === undefined || query.onlyWithStock === true || query.onlyWithStock === 'true') {
+      stockQuery.andWhere('sb.totalPhysical > 0');
+    }
+
+    const stockBalances = await stockQuery.getMany().catch(() => []);
+
+    // Lấy thông tin phiếu nhập để xác định ngày nhập và mã phiếu đưa hàng vào kệ
+    const inbounds: any[] = await this.inboundRepo.manager.query(`
+      SELECT 
+        ir.poNumber,
+        COALESCE(ir.orderDate, ir.expectedDate) as orderDate,
+        id.productId,
+        id.receivedQty,
+        id.warehouseCode,
+        id.note
+      FROM inbound_details id
+      JOIN inbound_receipts ir ON ir.id = id.inboundReceiptId
+      ORDER BY COALESCE(ir.orderDate, ir.expectedDate) DESC
+    `).catch(() => []);
+
+    const extractCleanLoc = (str: string) => {
+      if (!str) return '';
+      const m = str.match(/([A-Z0-9]+-ZONE-[A-Z0-9]+-R\d+-[A-Z0-9]+)/i);
+      return m ? m[1].toUpperCase() : '';
+    };
+
+    const parseLocComponents = (locStr: string) => {
+      const clean = extractCleanLoc(locStr);
+      if (!clean) return null;
+      const parts = clean.split('-');
+      return {
+        warehouseCode: parts[0] || '',
+        zoneCode: parts.length >= 3 ? `${parts[1]}-${parts[2]}` : '',
+        rackCode: parts.length >= 4 ? parts[3] : '',
+        binCode: parts.length >= 5 ? parts[4] : '',
+        cleanLocation: clean,
+      };
+    };
+
+    const items: any[] = [];
+    const now = new Date();
+
+    for (const sb of stockBalances) {
+      const comp = parseLocComponents(sb.locationCode);
+      if (!comp) continue;
+
+      if (query.warehouseCode && query.warehouseCode !== 'ALL' && query.warehouseCode !== 'all') {
+        if (comp.warehouseCode !== query.warehouseCode) continue;
+      }
+
+      if (query.zoneCode && query.zoneCode !== 'ALL' && query.zoneCode !== 'all') {
+        if (comp.zoneCode !== query.zoneCode) continue;
+      }
+
+      if (query.rackCode && query.rackCode !== 'ALL' && query.rackCode !== 'all') {
+        if (comp.rackCode !== query.rackCode) continue;
+      }
+
+      const wh = allWarehouses.find((w) => w.code === comp.warehouseCode) || {
+        code: comp.warehouseCode,
+        name: `Kho ${comp.warehouseCode}`,
+      };
+
+      const product = sb.product;
+      const prodId = product?.id || (sb as any).productId;
+      const productName = product?.name || 'Sản phẩm';
+      const productSku = product?.internalSku || product?.supplierBarcode || `SP${prodId}`;
+      const unit = product?.unit || 'Cái';
+      const categoryName = product?.category?.name || 'Mặc định';
+      const importPrice = Number(product?.importPrice || product?.price || 0);
+      const qty = Number(sb.totalPhysical || 0);
+      const available = Number(sb.available !== undefined ? sb.available : qty);
+      const totalValue = Math.round(qty * importPrice);
+
+      if (query.search) {
+        const s = query.search.trim().toLowerCase();
+        const matchName = productName.toLowerCase().includes(s);
+        const matchSku = productSku.toLowerCase().includes(s);
+        const matchLoc = sb.locationCode.toLowerCase().includes(s);
+        const matchWh = (wh.name || '').toLowerCase().includes(s);
+        if (!matchName && !matchSku && !matchLoc && !matchWh) continue;
+      }
+
+      // Khớp phiếu nhập theo vị trí ô kệ và productId (ưu tiên khớp chính xác ô kệ, fallback theo kho hoặc productId)
+      const matchIb = inbounds.find((ib: any) => {
+        if (Number(ib.productId) !== Number(prodId)) return false;
+        const note = String(ib.note || '');
+        return note.includes(comp.cleanLocation) || note.includes(comp.binCode);
+      }) || inbounds.find((ib: any) => {
+        return Number(ib.productId) === Number(prodId) && (!ib.warehouseCode || ib.warehouseCode === comp.warehouseCode);
+      }) || inbounds.find((ib: any) => Number(ib.productId) === Number(prodId));
+
+      const inboundDate = matchIb?.orderDate ? new Date(matchIb.orderDate) : null;
+      const poNumber = matchIb?.poNumber || null;
+
+      const daysInStock = inboundDate
+        ? Math.max(0, Math.floor((now.getTime() - inboundDate.getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+
+      // Lọc theo mốc thời gian: Hàng được nhập trước ngày X mà hiện tại vẫn nằm trên kệ
+      if (query.beforeDate) {
+        const bDate = new Date(query.beforeDate);
+        if (!isNaN(bDate.getTime())) {
+          bDate.setHours(23, 59, 59, 999);
+          if (!inboundDate || inboundDate.getTime() > bDate.getTime()) {
+            continue;
+          }
+        }
+      }
+
+      let occupancyPct = 0;
+      let notes = '';
+      const parenMatch = sb.locationCode.match(/\((.*?)\)/);
+      if (parenMatch) {
+        notes = parenMatch[1];
+        const pctMatch = notes.match(/(\d+)%/);
+        if (pctMatch) occupancyPct = parseInt(pctMatch[1], 10);
+      }
+
+      items.push({
+        id: `shelf_${sb.id}`,
+        balanceId: sb.id,
+        warehouseCode: comp.warehouseCode,
+        warehouseName: wh.name,
+        zoneCode: comp.zoneCode,
+        zoneName: `Phân khu ${comp.zoneCode.replace('ZONE-', '')}`,
+        rackCode: comp.rackCode,
+        rackName: `Kệ ${comp.rackCode}`,
+        binCode: comp.binCode,
+        fullLocationCode: sb.locationCode,
+        cleanLocationCode: comp.cleanLocation,
+        productId: prodId,
+        productSku,
+        productName,
+        unit,
+        categoryName,
+        quantity: qty,
+        available,
+        importPrice,
+        totalValue,
+        inboundDate: inboundDate ? inboundDate.toISOString() : null,
+        poNumber,
+        daysInStock,
+        occupancyPct: occupancyPct || (qty > 0 ? 100 : 0),
+        notes: notes || (qty > 0 ? `Chứa: ${qty} ${unit}` : 'Kệ trống'),
+      });
+    }
+
+    items.sort((a, b) => {
+      if (a.warehouseCode !== b.warehouseCode) return a.warehouseCode.localeCompare(b.warehouseCode);
+      if (a.zoneCode !== b.zoneCode) return a.zoneCode.localeCompare(b.zoneCode);
+      if (a.rackCode !== b.rackCode) return a.rackCode.localeCompare(b.rackCode);
+      return a.binCode.localeCompare(b.binCode);
+    });
+
+    const distinctWhs = new Set(items.map((i) => i.warehouseCode));
+    const distinctZones = new Set(items.map((i) => `${i.warehouseCode}_${i.zoneCode}`));
+    const distinctRacks = new Set(items.map((i) => `${i.warehouseCode}_${i.zoneCode}_${i.rackCode}`));
+    const distinctBins = new Set(items.map((i) => i.cleanLocationCode));
+    const totalQty = items.reduce((s, i) => s + i.quantity, 0);
+    const totalVal = items.reduce((s, i) => s + i.totalValue, 0);
+    const staleCount = items.filter((i) => i.daysInStock >= 15).length;
+
+    return {
+      summary: {
+        totalWarehouses: distinctWhs.size,
+        totalZones: distinctZones.size,
+        totalRacks: distinctRacks.size,
+        totalBins: distinctBins.size,
+        totalProductsCount: items.length,
+        totalQuantity: totalQty,
+        totalValue: totalVal,
+        staleStockCount: staleCount,
+      },
+      items,
+    };
+  }
 }
