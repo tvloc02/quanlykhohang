@@ -1629,6 +1629,23 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       const calcQty = isCustomQty ? newQty : 0;
       const entry = { qty: calcQty, pct: calcPct, isManual: true, isCustomQty };
 
+      const isKnownOrderItem = items.some((i) => i.rowId === rId);
+      if (!isKnownOrderItem) {
+        const isRemoving = pct <= 0 && (!newQty || newQty <= 0);
+        if (isRemoving) {
+          batchUpdateSubWarehousesTopology([], [{ targetBinCode: cleanBinCode, targetShortCode: shortCode }]);
+        } else {
+          batchUpdateSubWarehousesTopology([{
+            targetBinCode: cleanBinCode,
+            targetShortCode: shortCode,
+            pct: calcPct,
+            qty: calcQty,
+            notes: notes || `Đã lưu: ${calcQty} cái (${calcPct}%)`,
+          }]);
+        }
+        return;
+      }
+
       setManualBinAllocations((prevManual) => {
         const rowManual = { ...(prevManual[rId] || {}) };
         if (pct <= 0 && (!newQty || newQty <= 0)) {

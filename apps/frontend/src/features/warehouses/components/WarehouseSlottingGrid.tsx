@@ -14,6 +14,7 @@ import {
   X,
   Sliders,
   Eye,
+  Trash2,
 } from 'lucide-react';
 import {
   SubWarehouse,
@@ -1183,6 +1184,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     stockPct?: number;
     matchedSku?: string;
     isCustomQty?: boolean;
+    isOtherOrderItem?: boolean;
   }>>([]);
 
   useEffect(() => {
@@ -1215,6 +1217,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       stockPct?: number;
       matchedSku?: string;
       isCustomQty?: boolean;
+      isOtherOrderItem?: boolean;
     }> = [];
 
     if (isOutbound) {
@@ -1266,129 +1269,184 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       });
     } else {
       // INBOUND MODE
-      // Step 1: Include currently stored stock in bin ONLY IF IT ACTUALLY EXISTS IN PHYSICAL STORAGE
+      const activeItem = (orderItems && orderItems.length > 0)
+        ? ((activeRowId && orderItems.find((it: any) => it.rowId === activeRowId)) || orderItems[0])
+        : null;
+      const activeSku = (activeItem?.productSku || activeItem?.sku || activeItem?.product?.sku || '').trim().toUpperCase();
+      const activeName = (activeItem?.productName || '').trim().toLowerCase();
+
+      // Step 1: Process goods already on shelf (either pre-existing stock or from other order items)
+      let activeItemFoundInStored: BinGoodsDetail | null = null;
+
       if (storedGoods && storedGoods.length > 0) {
         storedGoods.forEach((sg, sgIdx) => {
-          const cleanName = (sg.productName || 'Hàng tồn kho').replace(/\s*\(Tồn tại kệ\)/i, '').replace(/\s*\(Đơn hiện tại\)/i, '');
-          assigned.push({
-            rowId: `existing-stock-line-${sgIdx}`,
-            productName: `${cleanName} (Tồn tại kệ)`,
-            sku: sg.sku || '',
-            unit: sg.unit || 'cái',
-            qty: Number(sg.quantity) || 0,
-            occupancyPct: sg.occupancyPct !== undefined ? Number(sg.occupancyPct) : 0,
-            isExistingStock: true,
-          });
-        });
-      } else if (storedInfo && (Number(storedInfo.totalPhysical || 0) > 0 || Number(storedInfo.occupancyPct || 0) > 0)) {
-        const storedProdName = storedInfo.productName || 'Hàng tồn kho';
-        const cleanName = storedProdName.replace(/\s*\(Tồn tại kệ\)/i, '');
-        assigned.push({
-          rowId: 'existing-stock-line',
-          productName: `${cleanName} (Tồn tại kệ)`,
-          sku: storedInfo.sku || '',
-          unit: storedInfo.unit || 'cái',
-          qty: Number(storedInfo.totalPhysical || realStockQty || 1),
-          occupancyPct: Number(storedInfo.occupancyPct || realStockPct || 100),
-          isExistingStock: true,
-        });
-      }
+          const cleanName = (sg.productName || 'Hàng tồn kho')
+            .replace(/\s*\(Tồn tại kệ\)/i, '')
+            .replace(/\s*\(Đơn hiện tại\)/i, '')
+            .replace(/\s*\(Lô nhập mới\)/i, '')
+            .replace(/\s*\(Đơn nhập\)/i, '')
+            .trim();
+          const sgSku = (sg.sku || '').trim().toUpperCase();
+          const sgNameLower = cleanName.toLowerCase();
 
-      // Step 2: Add ONLY the active item being selected in this order tab (NOT all items in the order!)
-      const existingStoredPct = assigned.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
-      const remainingEmptyPct = Math.max(0, 100 - existingStoredPct);
-
-      let targetItems: any[] = [];
-      if (orderItems && orderItems.length > 0) {
-        if (activeRowId) {
-          const found = orderItems.find((it: any) => it.rowId === activeRowId);
-          if (found) targetItems.push(found);
-        }
-        if (targetItems.length === 0 && selectedBinsMap) {
-          targetItems = orderItems.filter((it: any) => {
-            const bList = selectedBinsMap[it.rowId] || [];
-            return bList.some((b: string) => normalizeBinKey(b) === normTarget || b.includes(fullBinCode));
-          });
-        }
-        if (targetItems.length === 0) {
-          targetItems.push(orderItems[0]); // Only fallback to the first active product
-        }
-      }
-
-      if (targetItems.length > 0) {
-        targetItems.forEach((it: any, idx: number) => {
-          const rowId = it.rowId || String(idx);
-          const rawName = it.productName || `Mặt hàng nhập mới`;
-          const cleanName = rawName.replace(/\s*\(Lô nhập mới\)/i, '');
-          const totalItemQty = it.qty && Number(it.qty) > 0 ? Number(it.qty) : 100;
-
-          const bList = selectedBinsMap?.[rowId] || [];
-          const strippedTarget = fullBinCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
-          const matchBinEntry = bList.find((b: string) => {
-            const clean = b.split('(')[0].trim();
-            const normClean = normalizeBinKey(clean);
-            return (
-              normClean === normTarget ||
-              clean === fullBinCode ||
-              b.includes(fullBinCode) ||
-              clean.endsWith(`-${binShortCode}`) ||
-              clean === binShortCode ||
-              clean.toUpperCase().replace(/[^A-Z0-9]/g, '') === strippedTarget
-            );
-          });
-          let calcPctForItem = 100;
-          if (matchBinEntry) {
-            const m = matchBinEntry.match(/\((\d+(?:\.\d+)?)%\)/);
-            if (m) calcPctForItem = Number(m[1]);
-            else calcPctForItem = 100;
-          } else {
-            calcPctForItem = remainingEmptyPct > 0 ? remainingEmptyPct : 100;
-          }
-
-          let qtyPerBinForItem: number | undefined = undefined;
-          if (binQtyMap) {
-            qtyPerBinForItem =
-              binQtyMap[fullBinCode] ??
-              binQtyMap[binShortCode] ??
-              binQtyMap[normTarget] ??
-              binQtyMap[strippedTarget] ??
-              binQtyMap[fullBinCode.toUpperCase().replace(/_/g, '-')] ??
-              binQtyMap[binShortCode.toUpperCase()];
-          }
-          if (matchBinEntry) {
-            const mQty = matchBinEntry.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
-            if (mQty && Number(mQty[1]) > 0) {
-              qtyPerBinForItem = Number(mQty[1]);
-            }
-          }
-          if (qtyPerBinForItem === undefined || qtyPerBinForItem <= 0) {
-            qtyPerBinForItem = Math.max(1, Math.round(totalItemQty / (bList.length || 1)));
-          }
-
-          const isAlreadyCustom = Boolean(
-            customQtyBinsMap?.[fullBinCode] ||
-            customQtyBinsMap?.[binShortCode] ||
-            customQtyBinsMap?.[normTarget] ||
-            customQtyBinsMap?.[strippedTarget]
+          // Check if this good matches the current active order item being slotted
+          const isMatchActive = Boolean(
+            activeItem && (
+              (activeSku && sgSku && activeSku === sgSku) ||
+              (activeName && sgNameLower && (activeName.includes(sgNameLower) || sgNameLower.includes(activeName)))
+            )
           );
 
-          assigned.push({
-            rowId,
-            productName: `${cleanName} (Lô nhập mới)`,
-            sku: it.productSku || it.sku || it.product?.sku || it.product?.internalSku || '',
-            unit: it.unit || it.product?.unit || 'Cái',
-            qty: qtyPerBinForItem,
-            occupancyPct: calcPctForItem,
-            isExistingStock: false,
-            isCustomQty: isAlreadyCustom,
+          if (isMatchActive) {
+            activeItemFoundInStored = sg;
+            return; // Do NOT duplicate active item into Step 1; will be added in Step 2 with full control
+          }
+
+          // Check if this good matches another item in the current order
+          const otherOrderItem = orderItems?.find((it: any) => {
+            if (it.rowId === activeRowId) return false;
+            const itSku = (it.productSku || it.sku || '').trim().toUpperCase();
+            const itName = (it.productName || '').trim().toLowerCase();
+            return (itSku && sgSku && itSku === sgSku) || (itName && sgNameLower && (itName.includes(sgNameLower) || sgNameLower.includes(itName)));
           });
+
+          if (otherOrderItem) {
+            assigned.push({
+              rowId: otherOrderItem.rowId,
+              productName: `${cleanName} (Đơn nhập)`,
+              sku: otherOrderItem.productSku || otherOrderItem.sku || sg.sku || '',
+              unit: otherOrderItem.unit || sg.unit || 'cái',
+              qty: Number(sg.quantity) || 0,
+              occupancyPct: sg.occupancyPct !== undefined ? Number(sg.occupancyPct) : 50,
+              isExistingStock: false,
+              isOtherOrderItem: true,
+            });
+          } else {
+            assigned.push({
+              rowId: `existing-stock-line-${sgIdx}`,
+              productName: `${cleanName} (Tồn tại kệ)`,
+              sku: sg.sku || '',
+              unit: sg.unit || 'cái',
+              qty: Number(sg.quantity) || 0,
+              occupancyPct: sg.occupancyPct !== undefined ? Number(sg.occupancyPct) : 50,
+              isExistingStock: true,
+            });
+          }
+        });
+      } else if (storedInfo && (Number(storedInfo.totalPhysical || 0) > 0 || Number(storedInfo.occupancyPct || 0) > 0)) {
+        const storedProdName = (storedInfo.productName || 'Hàng tồn kho')
+          .replace(/\s*\(Tồn tại kệ\)/i, '')
+          .replace(/\s*\(Đơn hiện tại\)/i, '')
+          .trim();
+        const storedSku = (storedInfo.sku || '').trim().toUpperCase();
+        const isMatchActive = Boolean(
+          activeItem && (
+            (activeSku && storedSku && activeSku === storedSku) ||
+            (activeName && storedProdName.toLowerCase().includes(activeName))
+          )
+        );
+        if (!isMatchActive) {
+          assigned.push({
+            rowId: 'existing-stock-line',
+            productName: `${storedProdName} (Tồn tại kệ)`,
+            sku: storedInfo.sku || '',
+            unit: storedInfo.unit || 'cái',
+            qty: Number(storedInfo.totalPhysical || realStockQty || 1),
+            occupancyPct: Number(storedInfo.occupancyPct || realStockPct || 50),
+            isExistingStock: true,
+          });
+        }
+      }
+
+      // Step 2: Add the active item being selected in this order tab
+      const otherOccupiedPct = assigned.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+      const remainingEmptyPct = Math.max(0, Number((100 - otherOccupiedPct).toFixed(1)));
+
+      if (activeItem) {
+        const rowId = activeItem.rowId || 'row-active';
+        const cleanName = (activeItem.productName || 'Mặt hàng nhập mới')
+          .replace(/\s*\(Lô nhập mới\)/i, '')
+          .replace(/\s*\(Đơn nhập\)/i, '')
+          .trim();
+        const totalItemQty = activeItem.qty && Number(activeItem.qty) > 0 ? Number(activeItem.qty) : 100;
+
+        const bList = selectedBinsMap?.[rowId] || [];
+        const strippedTarget = fullBinCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const matchBinEntry = bList.find((b: string) => {
+          const clean = b.split('(')[0].trim();
+          const normClean = normalizeBinKey(clean);
+          return (
+            normClean === normTarget ||
+            clean === fullBinCode ||
+            b.includes(fullBinCode) ||
+            clean.endsWith(`-${binShortCode}`) ||
+            clean === binShortCode ||
+            clean.toUpperCase().replace(/[^A-Z0-9]/g, '') === strippedTarget
+          );
+        });
+
+        let calcPctForItem = 100;
+        if (matchBinEntry) {
+          const m = matchBinEntry.match(/\((\d+(?:\.\d+)?)%\)/);
+          if (m) calcPctForItem = Number(m[1]);
+          else calcPctForItem = remainingEmptyPct > 0 ? remainingEmptyPct : 100;
+        } else if (activeItemFoundInStored && (activeItemFoundInStored as any).occupancyPct !== undefined) {
+          calcPctForItem = Number((activeItemFoundInStored as any).occupancyPct);
+        } else {
+          calcPctForItem = remainingEmptyPct > 0 ? remainingEmptyPct : 100;
+        }
+
+        // Auto-cap to remaining space if other items exist on the bin and no explicit match
+        if (!matchBinEntry && !activeItemFoundInStored && otherOccupiedPct > 0) {
+          calcPctForItem = Math.min(calcPctForItem, remainingEmptyPct);
+        }
+
+        let qtyPerBinForItem: number | undefined = undefined;
+        if (binQtyMap) {
+          qtyPerBinForItem =
+            binQtyMap[fullBinCode] ??
+            binQtyMap[binShortCode] ??
+            binQtyMap[normTarget] ??
+            binQtyMap[strippedTarget] ??
+            binQtyMap[fullBinCode.toUpperCase().replace(/_/g, '-')] ??
+            binQtyMap[binShortCode.toUpperCase()];
+        }
+        if (matchBinEntry) {
+          const mQty = matchBinEntry.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+          if (mQty && Number(mQty[1]) > 0) {
+            qtyPerBinForItem = Number(mQty[1]);
+          }
+        }
+        if (qtyPerBinForItem === undefined && activeItemFoundInStored && Number((activeItemFoundInStored as any).quantity) > 0) {
+          qtyPerBinForItem = Number((activeItemFoundInStored as any).quantity);
+        }
+        if (qtyPerBinForItem === undefined || qtyPerBinForItem <= 0) {
+          qtyPerBinForItem = Math.max(1, Math.round(totalItemQty / (bList.length || 1)));
+        }
+
+        const isAlreadyCustom = Boolean(
+          customQtyBinsMap?.[fullBinCode] ||
+          customQtyBinsMap?.[binShortCode] ||
+          customQtyBinsMap?.[normTarget] ||
+          customQtyBinsMap?.[strippedTarget]
+        );
+
+        assigned.push({
+          rowId,
+          productName: `${cleanName} (Lô nhập mới)`,
+          sku: activeItem.productSku || activeItem.sku || activeItem.product?.sku || activeItem.product?.internalSku || '',
+          unit: activeItem.unit || activeItem.product?.unit || 'Cái',
+          qty: qtyPerBinForItem,
+          occupancyPct: calcPctForItem,
+          isExistingStock: false,
+          isCustomQty: isAlreadyCustom,
         });
       } else {
         assigned.push({
           rowId: 'row-new-0',
           productName: 'Mặt hàng nhập mới (Lô nhập mới)',
           qty: 100,
-          occupancyPct: remainingEmptyPct > 0 ? remainingEmptyPct : (assigned.length > 0 ? 25 : 100),
+          occupancyPct: remainingEmptyPct > 0 ? remainingEmptyPct : 100,
           isExistingStock: false,
           isCustomQty: false,
         });
@@ -1558,15 +1616,22 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       if (seenProductKeys.has(dedupeKey)) {
         const existing = resultList.find(x => `${(x.sku || '').trim().toUpperCase()}___${(x.productName || '').trim().toLowerCase()}` === dedupeKey);
         if (existing) {
-          existing.quantity = (existing.quantity || 0) + (item.quantity || 0);
-          if (item.occupancyPct !== undefined && existing.occupancyPct !== undefined) {
-            existing.occupancyPct = Math.min(100, existing.occupancyPct + item.occupancyPct);
+          if (item.orderCode && existing.orderCode && (item.orderCode === existing.orderCode || item.orderCode === 'KHO-LUU' || existing.orderCode === 'KHO-LUU')) {
+            existing.quantity = Math.max(existing.quantity || 0, item.quantity || 0);
+            if (item.occupancyPct !== undefined) {
+              existing.occupancyPct = item.occupancyPct;
+            }
+          } else {
+            existing.quantity = (existing.quantity || 0) + (item.quantity || 0);
+            if (item.occupancyPct !== undefined && existing.occupancyPct !== undefined) {
+              existing.occupancyPct = Math.min(100, existing.occupancyPct + item.occupancyPct);
+            }
           }
         }
         return;
       }
       seenProductKeys.add(dedupeKey);
-      resultList.push(item);
+      resultList.push({ ...item });
     };
 
     const isMatchBin = (b: string) => {
@@ -1588,6 +1653,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
           const list = occupiedGoodsListMap.get(k)!;
           if (Array.isArray(list) && list.length > 0) {
             list.forEach(addGoodsItem);
+            break;
           }
         }
       }
@@ -1597,6 +1663,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
           if (!normK || !Array.isArray(val) || val.length === 0) continue;
           if (normRackCell && (normK === normRackCell || normK.endsWith(normRackCell))) {
             val.forEach(addGoodsItem);
+            break;
           }
         }
       }
@@ -1688,30 +1755,42 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       for (const k of keysToTry) {
         if ((rk.customBins as any)[k]) {
           extractFromCustomBin((rk.customBins as any)[k]);
+          break;
         }
       }
     };
 
-    if (activeRack) checkRackBins(activeRack);
+    const checkedRackIds = new Set<string>();
+    const safeCheckRack = (rk: any) => {
+      if (!rk) return;
+      const rId = String(rk.id || rk.rackCode || '').trim().toUpperCase();
+      if (rId && checkedRackIds.has(rId)) return;
+      if (rId) checkedRackIds.add(rId);
+      checkRackBins(rk);
+    };
+
+    if (activeRack) safeCheckRack(activeRack);
     if (Array.isArray(subWarehouses)) {
-      subWarehouses.forEach((sub) => (sub.racks || []).forEach(checkRackBins));
+      subWarehouses.forEach((sub) => (sub.racks || []).forEach(safeCheckRack));
     }
 
-    // 3. Check stored warehouses in localStorage FOR THIS WAREHOUSE ONLY
-    try {
-      const storedWhs = JSON.parse(localStorage.getItem('smart-wms-warehouses') || '[]');
-      if (Array.isArray(storedWhs)) {
-        storedWhs.forEach((wh: any) => {
-          const wCode = String(wh.code || '').trim().toUpperCase();
-          const wId = String(wh.id || '').trim().toLowerCase();
-          const isThisWh = (whCode && wCode === whCode) || (warehouse?.id && wId === warehouse.id.trim().toLowerCase());
-          if (!isThisWh) return;
-          (wh.subWarehouses || []).forEach((sub: any) => {
-            (sub.racks || []).forEach(checkRackBins);
+    // 3. Check stored warehouses in localStorage FOR THIS WAREHOUSE ONLY (if not yet found in active memory)
+    if (resultList.length === 0) {
+      try {
+        const storedWhs = JSON.parse(localStorage.getItem('smart-wms-warehouses') || '[]');
+        if (Array.isArray(storedWhs)) {
+          storedWhs.forEach((wh: any) => {
+            const wCode = String(wh.code || '').trim().toUpperCase();
+            const wId = String(wh.id || '').trim().toLowerCase();
+            const isThisWh = (whCode && wCode === whCode) || (warehouse?.id && wId === warehouse.id.trim().toLowerCase());
+            if (!isThisWh) return;
+            (wh.subWarehouses || []).forEach((sub: any) => {
+              (sub.racks || []).forEach(safeCheckRack);
+            });
           });
-        });
-      }
-    } catch {}
+        }
+      } catch {}
+    }
 
     // 4. Check stored_stock_in_orders in localStorage FOR THIS WAREHOUSE ONLY
     try {
@@ -1746,6 +1825,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                     occupancyPct: pct,
                     isOutbound: false,
                   });
+                  break;
                 }
               }
             }
@@ -1778,6 +1858,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                 occupancyPct: pct,
                 isOutbound: false,
               });
+              break;
             }
           }
         }
@@ -2864,14 +2945,25 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                 <tr>
                                   <th className="p-2.5">Mặt hàng & SKU nhập vào ô</th>
                                   <th className="p-2.5 text-right w-44">Số lượng nhập</th>
-                                  <th className="p-2.5 text-right w-40">Độ chứa (% ô)</th>
+                                  <th className="p-2.5 text-right w-36">Độ chứa (% ô)</th>
+                                  <th className="p-2.5 text-center w-12">Xóa</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-cyan-200/60 dark:divide-cyan-900/40 bg-white dark:bg-slate-900 font-medium">
                                 {editableBinItems.map((item, idx) => {
                                   const isExisting = Boolean(item.isExistingStock);
+                                  const isOtherOrder = Boolean(item.isOtherOrderItem);
                                   return (
-                                    <tr key={`inbound-row-${idx}`} className={isExisting ? "bg-cyan-50/40 dark:bg-slate-800/40 hover:bg-cyan-50/70 border-l-4 border-cyan-500" : "hover:bg-emerald-50/40 dark:hover:bg-slate-800/50 transition border-l-4 border-emerald-500"}>
+                                    <tr
+                                      key={`inbound-row-${idx}`}
+                                      className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition border-l-4 ${
+                                        isExisting
+                                          ? 'bg-amber-50/30 dark:bg-amber-950/20 border-amber-500'
+                                          : isOtherOrder
+                                          ? 'bg-purple-50/30 dark:bg-purple-950/20 border-purple-500'
+                                          : 'bg-cyan-50/30 dark:bg-cyan-950/20 border-cyan-500'
+                                      }`}
+                                    >
                                       <td className="p-2.5">
                                         <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 flex-wrap">
                                           <span>{item.productName}</span>
@@ -2881,12 +2973,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                             </span>
                                           )}
                                           {isExisting ? (
-                                            <span className="text-[10px] font-black bg-cyan-200 text-cyan-900 dark:bg-cyan-900 dark:text-cyan-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
-                                              TỒN TẠI KỆ
+                                            <span className="text-[10px] font-black bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                              TỒN TẠI KỆ (ĐƯỢC SỬA)
+                                            </span>
+                                          ) : isOtherOrder ? (
+                                            <span className="text-[10px] font-black bg-purple-100 text-purple-900 dark:bg-purple-900/60 dark:text-purple-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                              ĐƠN ĐANG NHẬP (ĐƯỢC SỬA)
                                             </span>
                                           ) : (
                                             <div className="flex items-center gap-1.5 flex-wrap">
-                                              <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                              <span className="text-[10px] font-black bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
                                                 LÔ NHẬP MỚI
                                               </span>
                                               {item.isCustomQty ? (
@@ -2903,69 +2999,72 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                         </div>
                                       </td>
                                       <td className="p-2.5 text-right">
-                                        {isExisting ? (
-                                          <span className="text-xs font-black text-cyan-900 dark:text-cyan-200 px-2 py-1 inline-block">
-                                            {item.qty.toLocaleString('vi-VN')} {item.unit || 'cái'}
-                                          </span>
-                                        ) : (
-                                          <div className="flex items-center justify-end gap-1.5">
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              value={item.qty > 0 ? item.qty : ''}
-                                              placeholder="0"
-                                              onChange={(e) => {
-                                                const val = Number(e.target.value) || 0;
-                                                setEditableBinItems((prev) =>
-                                                  prev.map((it, i) => (i === idx ? { ...it, qty: val, isCustomQty: val > 0 } : it))
-                                                );
-                                              }}
-                                              className="w-24 px-2.5 py-1.5 text-right text-xs font-black text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 border-2 border-emerald-300 dark:border-emerald-800 rounded-xl focus:border-emerald-600 focus:ring-2 focus:ring-emerald-400/30 outline-none shadow-xs"
-                                            />
-                                            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">{item.unit || 'cái'}</span>
-                                          </div>
-                                        )}
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            value={item.qty > 0 ? item.qty : (item.qty === 0 ? 0 : '')}
+                                            placeholder="0"
+                                            onChange={(e) => {
+                                              const val = e.target.value === '' ? 0 : (Number(e.target.value) || 0);
+                                              setEditableBinItems((prev) =>
+                                                prev.map((it, i) => (i === idx ? { ...it, qty: val, isCustomQty: val > 0 } : it))
+                                              );
+                                            }}
+                                            className="w-24 px-2.5 py-1.5 text-right text-xs font-black text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-700 rounded-xl focus:border-cyan-600 focus:ring-2 focus:ring-cyan-400/30 outline-none shadow-xs"
+                                          />
+                                          <span className="text-xs font-black text-slate-600 dark:text-slate-400">{item.unit || 'cái'}</span>
+                                        </div>
                                       </td>
                                       <td className="p-2.5 text-right">
-                                        {isExisting ? (
-                                          <span className="text-xs font-black text-cyan-900 dark:text-cyan-200 px-2 py-1 inline-block">
-                                            {item.occupancyPct}%
-                                          </span>
-                                        ) : (
-                                          <div className="relative inline-flex items-center justify-end w-28">
-                                            <input
-                                              type="number"
-                                              min={0}
-                                              max={100}
-                                              step="0.1"
-                                              value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
-                                              placeholder="0"
-                                              onChange={(e) => {
-                                                const raw = e.target.value;
-                                                if (raw === '') {
-                                                  setEditableBinItems((prev) =>
-                                                    prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
-                                                  );
-                                                  return;
-                                                }
-                                                const parsed = parseFloat(raw);
-                                                const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
+                                        <div className="relative inline-flex items-center justify-end w-28">
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            max={100}
+                                            step="0.1"
+                                            value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
+                                            placeholder="0"
+                                            onChange={(e) => {
+                                              const raw = e.target.value;
+                                              if (raw === '') {
                                                 setEditableBinItems((prev) =>
-                                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val } : it))
+                                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
                                                 );
-                                              }}
-                                              onBlur={() => {
-                                                if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined) {
-                                                  setEditableBinItems((prev) =>
-                                                    prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
-                                                  );
-                                                }
-                                              }}
-                                              className="w-full px-2.5 py-1.5 pr-6 text-right text-xs font-black text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 border-2 border-emerald-300 dark:border-emerald-800 rounded-xl focus:border-emerald-600 focus:ring-2 focus:ring-emerald-400/30 outline-none shadow-xs"
-                                            />
-                                            <span className="absolute right-2 top-2 text-xs font-black text-emerald-500">%</span>
-                                          </div>
-                                        )}
+                                                return;
+                                              }
+                                              const parsed = parseFloat(raw);
+                                              const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
+                                              setEditableBinItems((prev) =>
+                                                prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val } : it))
+                                              );
+                                            }}
+                                            onBlur={() => {
+                                              if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined) {
+                                                setEditableBinItems((prev) =>
+                                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
+                                                );
+                                              }
+                                            }}
+                                            className="w-full px-2.5 py-1.5 pr-6 text-right text-xs font-black text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-700 rounded-xl focus:border-cyan-600 focus:ring-2 focus:ring-cyan-400/30 outline-none shadow-xs"
+                                          />
+                                          <span className="absolute right-2 top-2 text-xs font-black text-slate-500">%</span>
+                                        </div>
+                                      </td>
+                                      <td className="p-2.5 text-center">
+                                        <button
+                                          type="button"
+                                          title="Xóa hàng này khỏi ô"
+                                          onClick={() => {
+                                            setEditableBinItems((prev) => prev.filter((_, i) => i !== idx));
+                                            if (item.rowId && onUpdateBinCapacity) {
+                                              onUpdateBinCapacity(editingBinConfig.binCode, 0, undefined, item.rowId, 0);
+                                            }
+                                          }}
+                                          className="p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition cursor-pointer"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
                                       </td>
                                     </tr>
                                   );
@@ -3084,22 +3183,21 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           return;
                         }
 
-                        const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+                        const sumPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
                         if (sumPct > 100) {
                           alert(`Tổng % độ chứa (${sumPct}%) vượt quá 100%! Vui lòng điều chỉnh lại cho tổng các sản phẩm <= 100%.`);
                           return;
                         }
 
-                        const newItems = editableBinItems.filter((item) => !item.isExistingStock);
-                        if (newItems.length > 0) {
-                          newItems.forEach((item) => {
+                        if (editableBinItems.length > 0) {
+                          editableBinItems.forEach((item) => {
                             if (onUpdateBinCapacity) {
                               onUpdateBinCapacity(
                                 editingBinConfig.binCode,
                                 Number(item.occupancyPct) || 0,
                                 undefined,
                                 item.rowId,
-                                item.qty !== undefined && Number(item.qty) > 0 ? Number(item.qty) : undefined
+                                item.qty !== undefined && Number(item.qty) >= 0 ? Number(item.qty) : undefined
                               );
                             }
                           });
