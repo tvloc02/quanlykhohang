@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Printer, X, Plus, Trash2 } from 'lucide-react';
 import type { OutboundOrder } from '../Outbound';
 import { numberToWordsVietnamese } from '../../../shared/utils/numberToWords';
+import { parseAnyDate, getVietnamDateParts } from '../../../shared/utils/dateUtils';
 
 interface WarehouseOption {
   id: string;
@@ -117,11 +118,12 @@ export default function OutboundPrintModal({
     if (featureMode === 'quote') defaultTitle = 'BẢNG BÁO GIÁ HÀNG HÓA';
     setVoucherTitle(defaultTitle);
 
-    // Date
-    const orderDateObj = order.orderDate ? new Date(order.orderDate) : new Date();
-    setDateDay(String(orderDateObj.getDate()).padStart(2, '0'));
-    setDateMonth(String(orderDateObj.getMonth() + 1).padStart(2, '0'));
-    setDateYear(String(orderDateObj.getFullYear()));
+    // Date (GMT+7)
+    const orderDateObj = parseAnyDate(order.orderDate) || new Date();
+    const vnParts = getVietnamDateParts(orderDateObj);
+    setDateDay(vnParts.day);
+    setDateMonth(vnParts.month);
+    setDateYear(vnParts.year);
 
     setOrderNo(order.orderNo || '');
     setDebitAccount(s.debitAccount || '632');
@@ -172,7 +174,7 @@ export default function OutboundPrintModal({
     }
 
     // 5. Attached Docs
-    const dateFormatted = `ngày ${String(orderDateObj.getDate()).padStart(2, '0')}/${String(orderDateObj.getMonth() + 1).padStart(2, '0')}/${orderDateObj.getFullYear()}`;
+    const dateFormatted = `ngày ${vnParts.day}/${vnParts.month}/${vnParts.year}`;
     setAttachedDocs(
       `01 Hóa đơn GTGT số ${order.orderNo?.slice(-7) || '0000025'} ${dateFormatted}`
     );

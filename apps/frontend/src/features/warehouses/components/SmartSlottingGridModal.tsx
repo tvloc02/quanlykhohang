@@ -307,6 +307,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   const [manualBinAllocations, setManualBinAllocations] = useState<Record<string, Record<string, { qty: number; pct: number; isManual?: boolean; isCustomQty?: boolean }>>>({});
   const [allocatedQtyMap, setAllocatedQtyMap] = useState<Record<string, Record<string, number>>>({});
 
+  // Filter out empty rows (rows that do NOT have a product assigned)
+  const validItems = useMemo(() => {
+    return (items || []).filter((it) => {
+      const hasProdId = Boolean(it.productId && String(it.productId).trim() !== '');
+      const hasProdName = Boolean(it.productName && String(it.productName).trim() !== '');
+      const hasSku = Boolean((it as any).sku || (it as any).productSku);
+      return hasProdId || hasProdName || hasSku;
+    });
+  }, [items]);
+
   // Helper to extract physical weight & volume dimensions for any item/product
   const getProductMetricsForItem = useCallback((item: any) => {
     if (!item) return { weight: 1, volume: 0.005, length: 20, width: 15, height: 10 };
@@ -1092,9 +1102,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   useEffect(() => {
     if (!isOpen || !items || items.length === 0) return;
 
-    const initialTargetId = targetRowId && items.some((i) => i.rowId === targetRowId)
+    const candidateList = validItems.length > 0 ? validItems : items;
+    const initialTargetId = targetRowId && candidateList.some((i) => i.rowId === targetRowId)
       ? targetRowId
-      : items[0].rowId;
+      : candidateList[0].rowId;
 
     setActiveRowId(initialTargetId);
 
@@ -1113,7 +1124,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     }> = [];
 
     // Preserve existing assigned bins from order rows ONLY (no forced auto-allocation for all items)
-    items.forEach((item) => {
+    candidateList.forEach((item) => {
       let rawBinsList: string[] = [];
       if (Array.isArray(item.assignedBins) && item.assignedBins.length > 0) {
         rawBinsList = item.assignedBins;
@@ -1254,7 +1265,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     setMessages((prev) => {
       if (prev.length > 0) return prev; // Keep existing chat history!
 
-      const activeItem = items.find((i) => i.rowId === initialTargetId) || items[0];
+      const activeItem = candidateList.find((i) => i.rowId === initialTargetId) || candidateList[0];
       let itemQty = activeItem?.qty || 0;
       if (itemQty <= 0) {
         const itemBins = initialMap[activeItem?.rowId || ''] || activeItem?.assignedBins || [];
@@ -1294,7 +1305,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
 
   if (!isOpen) return null;
 
-  if (!items || items.length === 0) {
+  if (!items || items.length === 0 || (validItems.length === 0 && items.every((i) => !i.productId && !i.productName))) {
     return createPortal(
       <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-4">
         <div className="bg-white rounded-3xl p-6 shadow-xl text-center space-y-4 max-w-md border-2 border-cyan-500">
@@ -1314,7 +1325,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     );
   }
 
-  const currentItem = (items && items.length > 0) ? (items.find((i) => i.rowId === activeRowId) || items[0]) : null;
+  const currentItem = (validItems && validItems.length > 0)
+    ? (validItems.find((i) => i.rowId === activeRowId) || validItems[0])
+    : ((items && items.length > 0) ? (items.find((i) => i.rowId === activeRowId) || items[0]) : null);
   const currentMetrics = getProductMetricsForItem(currentItem);
   const curMaxPerBinByVol = Math.floor(0.96 / Math.max(0.0001, currentMetrics.volume));
   const curMaxPerBinByWeight = Math.floor(500 / Math.max(0.1, currentMetrics.weight));
@@ -1554,7 +1567,11 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     const shortCode = (cleanBinCode.split('-').pop() || cleanBinCode).toUpperCase();
     const normKey = normalizeBinKey(cleanBinCode);
     const strippedKey = cleanBinCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
+    const activeItem = validItems.find((i) => i.rowId === activeRowId) || items.find((i) => i.rowId === activeRowId) || validItems[0] || items[0];
+    if (!activeItem || (!activeItem.productId && !activeItem.productName)) {
+      setWarningMessage('⚠️ Vui lòng chọn một dòng có sản phẩm trước khi phân bổ ô kệ!');
+      return;
+    }
     const targetQty = Number(activeItem?.qty || 1);
 
     const isMatch = (b: string) => {
@@ -1776,6 +1793,10 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     }
     const updatedSubs = dbSubWarehouses && dbSubWarehouses.length > 0 ? dbSubWarehouses : currentWarehouseObj?.subWarehouses || [];
     const updatedRows = items.map((r) => {
+      const hasProd = Boolean((r.productId || r.productName) && String(r.productId || r.productName).trim() !== '');
+      if (!hasProd) {
+        return r; // Không gán vị trí ô kệ cho dòng trống chưa có sản phẩm
+      }
       const chosenBins = selectedBinsMap[r.rowId] || [];
       if (chosenBins.length > 0) {
         const cleanNote = stripAssignedBinsFromNote(r.note);
@@ -1987,7 +2008,21 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   };
 
   const autoSlotAllItems = (customAiPrompt?: string, isDirectButtonClick = false) => {
-    if (readOnly || !items || items.length === 0) return;
+    const slotItems = validItems.length > 0 ? validItems : items.filter((it) => Boolean(it.productId || it.productName));
+    if (readOnly || !slotItems || slotItems.length === 0) {
+      if (isDirectButtonClick) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `sys-${Date.now()}`,
+            sender: 'ai',
+            text: '⚠️ Không có dòng sản phẩm hợp lệ nào trong đơn hàng để thực hiện phân bổ vị trí.',
+            time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
+      }
+      return;
+    }
 
     const allCellsList: BinCell[] = [];
     racksTopology.forEach((rk) => {
@@ -2026,12 +2061,12 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     if (!isOutbound) {
       // INBOUND / STOCKIN: AUTO ALLOCATE ALL PRODUCTS TO OPTIMAL EMPTY BINS
       summaryLines.push(`[AI TỰ ĐỘNG PHÂN BỔ TẤT CẢ SẢN PHẨM VÀO KHO]:`);
-      summaryLines.push(`Tổng cộng: ${items.length} mặt hàng cần nhập.`);
+      summaryLines.push(`Tổng cộng: ${slotItems.length} mặt hàng có sản phẩm cần nhập.`);
       summaryLines.push(``);
 
       let successCount = 0;
 
-      items.forEach((it, idx) => {
+      slotItems.forEach((it, idx) => {
         const pMetrics = getProductMetricsForItem(it);
         const targetQty = Number(it.qty || 1);
         const maxPerBinByVol = Math.floor(0.96 / Math.max(0.0001, pMetrics.volume));
@@ -2113,16 +2148,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       });
 
       summaryLines.push(``);
-      summaryLines.push(`-> Hoàn tất phân bổ ${successCount}/${items.length} mặt hàng lên sơ đồ 2D kệ kho.`);
+      summaryLines.push(`-> Hoàn tất phân bổ ${successCount}/${slotItems.length} mặt hàng có sản phẩm lên sơ đồ 2D kệ kho.`);
     } else {
       // OUTBOUND / TRANSFER MODE: AUTO-SELECT BINS WITH EXISTING STOCK FOR ALL PRODUCTS
       summaryLines.push(`[AI TỰ ĐỘNG CHỌN Ô LẤY HÀNG CHO TẤT CẢ SẢN PHẨM]:`);
-      summaryLines.push(`Tổng cộng: ${items.length} mặt hàng cần xuất/lấy.`);
+      summaryLines.push(`Tổng cộng: ${slotItems.length} mặt hàng có sản phẩm cần xuất/lấy.`);
       summaryLines.push(``);
 
       let successCount = 0;
 
-      items.forEach((it, idx) => {
+      slotItems.forEach((it, idx) => {
         const reqQty = Number(it.qty || 1);
         const matchingCells = allCellsList.filter((cl) => {
           const cleanCode = cl.binCode.split('(')[0].trim();
@@ -2166,7 +2201,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
       });
 
       summaryLines.push(``);
-      summaryLines.push(`-> Hoàn tất quét và chọn ô lấy hàng cho ${successCount}/${items.length} mặt hàng.`);
+      summaryLines.push(`-> Hoàn tất quét và chọn ô lấy hàng cho ${successCount}/${slotItems.length} mặt hàng có sản phẩm.`);
     }
 
     // Apply state updates
@@ -2260,7 +2295,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         });
       });
 
-      const activeItem = items.find((i) => i.rowId === activeRowId) || items[0];
+      const activeItem = (validItems.find((i) => i.rowId === activeRowId) || validItems[0] || items.find((i) => i.rowId === activeRowId) || items[0]);
 
       const setCandidateBinsForActiveItem = (candidateBins: string[]) => {
         if (!activeRowId) return;
@@ -3183,7 +3218,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                   onClick={() => autoSlotAllItems(undefined, true)}
                   className="text-[10px] bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-2.5 py-1 rounded-lg font-black transition cursor-pointer shadow-2xs flex items-center gap-1 shrink-0"
                 >
-                  ⚡ Tự động tất cả ({items.length} SP)
+                  ⚡ Tự động tất cả ({validItems.length} SP)
                 </button>
                 <button
                   type="button"
@@ -3241,7 +3276,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                 <span className="text-xs font-black uppercase text-cyan-950 dark:text-indigo-200 flex items-center gap-1.5 shrink-0">
                   <Layers className="h-4 w-4 text-cyan-600 dark:text-indigo-400" /> Đơn hàng:
                 </span>
-                {items.map((it, idx) => {
+                {(validItems.length > 0 ? validItems : items).map((it, idx) => {
                   const isActive = it.rowId === activeRowId;
                   const countReq = Math.max(1, Math.ceil((it.qty || 1) / 100));
                   const selectedCount = (selectedBinsMap[it.rowId] || []).length;
@@ -3279,7 +3314,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                     title="AI Tự động xếp tất cả sản phẩm vào các ô kệ tối ưu"
                   >
                     <Sparkles className="h-3.5 w-3.5 text-yellow-200" />
-                    <span>Tự động tất cả ({items.length} SP)</span>
+                    <span>Tự động tất cả ({validItems.length} SP)</span>
                   </button>
                 )}
                 {currentSelectedBins.length > 0 ? (
@@ -3402,9 +3437,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
                   });
                   return map;
                 })()}
-                orderItems={items}
+                orderItems={validItems.length > 0 ? validItems : items}
                 selectedBinsMap={selectedBinsMap}
-                activeRowId={activeRowId || items[0]?.rowId || ''}
+                activeRowId={activeRowId || (validItems[0] || items[0])?.rowId || ''}
                 onSelectBin={(fullBinCode, cellMeta) => {
                   if (readOnly) return;
                   toggleBinSelection({

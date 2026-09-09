@@ -47,6 +47,7 @@ import BarcodeScanner, { type ScannedProduct } from '../../shared/components/Bar
 import CreateOutboundOrderPage from './pages/CreateOutboundOrderPage';
 import OutboundPrintModal from './components/OutboundPrintModal';
 import { usePermissions } from '../../shared/hooks/usePermissions';
+import { parseAnyDate, toDatetimeLocalValue, formatFullDateTimeDisplay, getLocalDateString } from '../../shared/utils/dateUtils';
 
 const getOutboundMenuId = (mode?: string) => {
   if (mode === 'sales-order') return 'outbound-sales-orders';
@@ -242,62 +243,15 @@ function authHeaders() {
   };
 }
 
-function getLocalDateString(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 function toDateOnlyString(dateStr?: string | Date | null): string {
   if (!dateStr) return '';
-  const str = String(dateStr).trim();
-  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-  if (ymdMatch) {
-    const year = ymdMatch[1];
-    const month = ymdMatch[2].padStart(2, '0');
-    const day = ymdMatch[3].padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (dmyMatch) {
-    const day = dmyMatch[1].padStart(2, '0');
-    const month = dmyMatch[2].padStart(2, '0');
-    const year = dmyMatch[3];
-    return `${year}-${month}-${day}`;
-  }
-  const d = new Date(dateStr);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const d = parseAnyDate(dateStr);
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return getLocalDateString(d);
 }
 
 function formatDateDisplay(dateVal?: string | Date | null): string {
-  if (!dateVal) return '-';
-  const str = String(dateVal).trim();
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s*,?\s*(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
-  if (dmyMatch) {
-    const day = dmyMatch[1].padStart(2, '0');
-    const month = dmyMatch[2].padStart(2, '0');
-    const year = dmyMatch[3];
-    const hh = (dmyMatch[4] || '08').padStart(2, '0');
-    const mm = (dmyMatch[5] || '30').padStart(2, '0');
-    const ss = (dmyMatch[6] || '00').padStart(2, '0');
-    return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
-  }
-  const d = new Date(dateVal);
-  if (!Number.isNaN(d.getTime())) {
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mm = String(d.getMinutes()).padStart(2, '0');
-    const ss = String(d.getSeconds()).padStart(2, '0');
-    return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
-  }
-  return String(dateVal);
+  return formatFullDateTimeDisplay(dateVal);
 }
 
 // ─── MASTER DATA MẪU CHUẨN XUẤT KHO ───────────────────────────
@@ -373,8 +327,7 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT): FormDetailRow[] {
 }
 
 function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', isDisposal = false): OutboundTab {
-  const d = new Date();
-  const dateFormatted = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+  const dateFormatted = toDatetimeLocalValue(new Date());
 
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
@@ -1336,7 +1289,7 @@ export default function Outbound({
         formatWarehouseDisplay(o.branchCode || o.warehouseCode, warehouses),
         o.employeeName || currentUserName,
         o.orderNo,
-        o.orderDate,
+        formatDateDisplay(o.orderDate),
         o.customer,
         o.totalQty || 1,
         o.totalAmount,

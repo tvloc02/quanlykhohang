@@ -73,22 +73,46 @@ function parseNumber(value: unknown) {
 
 function parseCustomDate(dateStr?: string | Date | null): Date {
   if (!dateStr) return new Date();
-  if (dateStr instanceof Date) return dateStr;
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? new Date() : dateStr;
   const str = String(dateStr).trim();
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (!str) return new Date();
+
+  // 1. ISO strings with timezone (ends with Z or +/-offset)
+  if (str.includes('Z') || /[+-]\d{2}(?::?\d{2})?$/.test(str)) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // 2. DD/MM/YYYY [HH:mm[:ss]]
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
   if (dmyMatch) {
-    const day = parseInt(dmyMatch[1], 10);
-    const month = parseInt(dmyMatch[2], 10) - 1;
-    const year = parseInt(dmyMatch[3], 10);
-    return new Date(year, month, day, 12, 0, 0);
+    const day = String(dmyMatch[1]).padStart(2, '0');
+    const month = String(dmyMatch[2]).padStart(2, '0');
+    const year = dmyMatch[3];
+    const now = new Date();
+    const hours = dmyMatch[4] !== undefined ? String(dmyMatch[4]).padStart(2, '0') : String(now.getHours()).padStart(2, '0');
+    const minutes = dmyMatch[5] !== undefined ? String(dmyMatch[5]).padStart(2, '0') : String(now.getMinutes()).padStart(2, '0');
+    const seconds = dmyMatch[6] !== undefined ? String(dmyMatch[6]).padStart(2, '0') : String(now.getSeconds()).padStart(2, '0');
+    const d = new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}+07:00`);
+    if (!isNaN(d.getTime())) return d;
+    return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hours, 10), parseInt(minutes, 10), parseInt(seconds, 10));
   }
-  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+
+  // 3. YYYY-MM-DD [T| ] [HH:mm[:ss]] (without Z or offset -> GMT+7)
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
   if (ymdMatch) {
-    const year = parseInt(ymdMatch[1], 10);
-    const month = parseInt(ymdMatch[2], 10) - 1;
-    const day = parseInt(ymdMatch[3], 10);
-    return new Date(year, month, day, 12, 0, 0);
+    const year = ymdMatch[1];
+    const month = String(ymdMatch[2]).padStart(2, '0');
+    const day = String(ymdMatch[3]).padStart(2, '0');
+    const now = new Date();
+    const hours = ymdMatch[4] !== undefined ? String(ymdMatch[4]).padStart(2, '0') : String(now.getHours()).padStart(2, '0');
+    const minutes = ymdMatch[5] !== undefined ? String(ymdMatch[5]).padStart(2, '0') : String(now.getMinutes()).padStart(2, '0');
+    const seconds = ymdMatch[6] !== undefined ? String(ymdMatch[6]).padStart(2, '0') : String(now.getSeconds()).padStart(2, '0');
+    const d = new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}+07:00`);
+    if (!isNaN(d.getTime())) return d;
+    return new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10), parseInt(hours, 10), parseInt(minutes, 10), parseInt(seconds, 10));
   }
+
   const parsed = new Date(str);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }

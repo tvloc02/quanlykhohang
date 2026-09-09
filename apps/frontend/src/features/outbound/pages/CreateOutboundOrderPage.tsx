@@ -43,6 +43,7 @@ import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
 import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
 import { SmartSlottingGridModal, clearSmartSlottingCache } from '../../warehouses/components/SmartSlottingGridModal';
 import { clearWarehouseBinsCache } from '../../warehouses/components/WarehouseSlottingGrid';
+import { toDatetimeLocalValue, parseAnyDate } from '../../../shared/utils/dateUtils';
 
 
 
@@ -448,7 +449,7 @@ function generateOutboundCode(prefix = 'PXK'): string {
 }
 
 function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administrator', isDisposal = false, isReturnSupplier = false, codePrefix = 'PXK'): OutboundTab {
-  const dateFormatted = formatFullDateTime();
+  const dateFormatted = toDatetimeLocalValue(new Date());
   const defaultPrefix = isDisposal ? 'XH' : (isReturnSupplier ? 'XTR' : (codePrefix || 'PXK'));
   const defaultOrderNo = generateOutboundCode(defaultPrefix);
 
@@ -674,8 +675,8 @@ export default function CreateOutboundOrderPage({
         updated = true;
       }
 
-      if (!newOrderDate || !newOrderDate.includes(':')) {
-        newOrderDate = formatFullDateTime();
+      if (!newOrderDate) {
+        newOrderDate = toDatetimeLocalValue(new Date());
         updated = true;
       }
 
@@ -910,13 +911,7 @@ export default function CreateOutboundOrderPage({
           ),
         ];
 
-        let orderDateStr = ordData.orderDate || '';
-        if (orderDateStr.includes('T')) {
-          try {
-            orderDateStr = formatFullDateTime(new Date(orderDateStr));
-          } catch {}
-        }
-        if (!orderDateStr) orderDateStr = formatFullDateTime();
+        let orderDateStr = ordData.orderDate ? toDatetimeLocalValue(ordData.orderDate) : toDatetimeLocalValue(new Date());
 
         setTabs((prevTabs) => {
           const targetTabId = activeTabId || prevTabs[0]?.tabId || 'tab-edit-1';
@@ -2110,18 +2105,17 @@ export default function CreateOutboundOrderPage({
       {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (Horizontal bar spanning full width across page) ═══ */}
       <div className="w-full rounded-2xl border-2 border-cyan-500/30 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-4 shadow-md flex-shrink-0">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 items-center">
-          {/* Ngày xuất hàng / Ngày xuất hủy (Kèm Giờ Phút Giây) */}
+          {/* Ngày xuất hàng / Ngày xuất hủy */}
           <div>
             <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700 dark:text-slate-300">
               <Calendar className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
               <span>{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất hàng'}</span>
             </label>
             <input
-              type="text"
-              value={activeTab?.orderDate || formatFullDateTime()}
+              type="datetime-local"
+              value={toDatetimeLocalValue(activeTab?.orderDate)}
               onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
-              placeholder="DD/MM/YYYY HH:mm:ss"
-              className="h-10 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
+              className="h-10 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 shadow-xs cursor-pointer"
             />
           </div>
 

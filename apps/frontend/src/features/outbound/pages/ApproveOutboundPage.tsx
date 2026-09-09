@@ -12,6 +12,7 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import { outboundApi, type OutboundOrder } from '../api/outboundApi';
+import { formatDisplayDate } from '../../../shared/utils/dateUtils';
 
 function statusLabel(status?: string) {
   switch (status) {
@@ -28,10 +29,7 @@ const formatMoney = (amount: number | string) => {
 };
 
 const formatDate = (dateStr?: string) => {
-  if (!dateStr) return '-';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '-';
-  return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+  return formatDisplayDate(dateStr || '') || '-';
 };
 
 export default function ApproveOutboundPage() {
