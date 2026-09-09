@@ -250,7 +250,7 @@ export default function MainLayout({ children }: LayoutProps) {
       {/* Mobile Backdrop Overlay when Sidebar is Open */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-30 lg:hidden transition-opacity duration-300"
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 lg:hidden transition-opacity duration-300"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -268,7 +268,7 @@ export default function MainLayout({ children }: LayoutProps) {
         </div>
 
         {/* Header matching dem.cmcu.edu.vn sample */}
-        <header className="relative bg-white dark:bg-[#090d16] border-b-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between px-3 sm:px-6 z-20 transition-all duration-300 h-16 sm:h-20 box-border shadow-xs print:hidden">
+        <header className="relative bg-white dark:bg-[#090d16] border-b-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between px-3 sm:px-6 z-40 transition-all duration-300 h-16 sm:h-20 box-border shadow-xs print:hidden">
           {/* Left Section: Toggle & Clock */}
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             <button
@@ -332,7 +332,7 @@ export default function MainLayout({ children }: LayoutProps) {
           <div className="flex items-center space-x-3 flex-shrink-0">
 
             {/* Notifications Dropdown */}
-            <div className="relative dropdown-container">
+            <div className="relative dropdown-container z-50">
               <div className="relative">
                 {unreadCount > 0 && <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-pink-500 rounded-xl blur-md opacity-50 animate-pulse"></div>}
                 <button
@@ -354,7 +354,7 @@ export default function MainLayout({ children }: LayoutProps) {
               </div>
 
               {notificationDropdownOpen && (
-                <div className="fixed left-3 right-3 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[30rem] bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl border-2 border-slate-200 dark:border-slate-800 z-50 max-h-[calc(100vh-96px)] sm:max-h-[36rem] overflow-hidden">
+                <div className="fixed left-3 right-3 top-[84px] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[30rem] bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl border-2 border-slate-200 dark:border-slate-800 z-[60] max-h-[calc(100vh-96px)] sm:max-h-[36rem] overflow-hidden">
                   <div className="px-4 py-3 border-b-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#090d16]">
                     <div className="flex items-center justify-between">
                       <div>
@@ -446,7 +446,7 @@ export default function MainLayout({ children }: LayoutProps) {
             </div>
 
             {/* User Profile Dropdown */}
-            <div className="relative dropdown-container">
+            <div className="relative dropdown-container z-50">
               <button
                 onClick={() => {
                   setNotificationDropdownOpen(false);
@@ -465,7 +465,7 @@ export default function MainLayout({ children }: LayoutProps) {
               </button>
 
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl py-2 z-50 border-2 border-slate-200 dark:border-slate-800">
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl py-2 z-[60] border-2 border-slate-200 dark:border-slate-800">
                   <div className="px-4 pb-2 mb-2 border-b-2 border-slate-200 dark:border-slate-800">
                     <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{userName}</p>
                     <p className="text-xs text-slate-500 dark:text-indigo-300 truncate">{userEmail}</p>

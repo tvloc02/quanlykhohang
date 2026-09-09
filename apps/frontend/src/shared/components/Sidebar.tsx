@@ -414,7 +414,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         isOpen
           ? 'w-80 translate-x-0'
           : 'w-80 -translate-x-full lg:w-20 lg:translate-x-0'
-      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen shrink-0 shadow-2xl lg:shadow-none`}
+      } fixed lg:relative z-50 lg:z-auto bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen shrink-0 shadow-2xl lg:shadow-none`}
     >
       <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex items-center justify-between box-border">
         <div className={`flex items-center gap-3 ${!isOpen ? 'lg:justify-center w-full' : 'flex-1 overflow-hidden'}`}>

@@ -2116,19 +2116,42 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           }
 
                           // In Outbound or Transfer, evaluate matching product directly from bin storage & order items:
-                          const curItem = (orderItems && activeRowId) ? orderItems.find((i: any) => i.rowId === activeRowId) : null;
+                          const curItem = (orderItems && activeRowId)
+                            ? (orderItems.find((i: any) => i.rowId === activeRowId) || orderItems[0])
+                            : (orderItems && orderItems.length > 0 ? orderItems[0] : null);
                           const curName = (curItem?.productName || '').trim().toLowerCase();
-                          const curSku = (curItem?.productSku || curItem?.sku || '').trim().toLowerCase();
+                          const curSku = (curItem?.productSku || (curItem as any)?.sku || '').trim().toLowerCase();
+                          const curPId = String(curItem?.productId || (curItem as any)?.id || '').trim().toLowerCase();
+
                           const occName = (occupiedInfo?.productName || '').trim().toLowerCase();
                           const occSku = (occupiedInfo?.sku || '').trim().toLowerCase();
+                          const occPId = String((occupiedInfo as any)?.productId || (occupiedInfo as any)?.id || '').trim().toLowerCase();
 
                           const goodsInBin = getGoodsList(fullBinCode, binCodeShort, rackCode);
                           const matchesGoodsInBin = goodsInBin.some((g) => {
                             const gName = (g.productName || '').trim().toLowerCase();
                             const gSku = (g.sku || '').trim().toLowerCase();
+                            const gId = String((g as any).productId || (g as any).id || '').trim().toLowerCase();
                             return (curSku && gSku && curSku === gSku) ||
+                                   (curPId && gId && curPId === gId) ||
                                    (curName && gName && (curName.includes(gName) || gName.includes(curName)));
                           });
+
+                          // Also check customConfig products / details
+                          const customProdName = (customConfig?.productName || '').trim().toLowerCase();
+                          const customSku = (customConfig?.sku || '').trim().toLowerCase();
+                          const matchesCustomConfig = Boolean(
+                            (curSku && customSku && curSku === customSku) ||
+                            (curName && customProdName && (curName.includes(customProdName) || customProdName.includes(curName))) ||
+                            (Array.isArray(customConfig?.products) && customConfig.products.some((p: any) => {
+                              const pSku = (p.sku || '').trim().toLowerCase();
+                              const pName = (p.productName || p.name || '').trim().toLowerCase();
+                              const pId = String(p.productId || p.id || '').trim().toLowerCase();
+                              return (curSku && pSku && curSku === pSku) ||
+                                     (curName && pName && (curName.includes(pName) || pName.includes(curName))) ||
+                                     (curPId && pId && curPId === pId);
+                            }))
+                          );
 
                           // Check if bin stored goods are generic placeholder records (e.g. "Hàng trong kho", "Sản phẩm tồn kho", "Hàng hóa", "KHO-LUU")
                           const isGenericGoods = !occName ||
@@ -2145,7 +2168,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             (Boolean(normShort) && suggestedSet.has(normShort)) ||
                             (Boolean(normRackShort) && suggestedSet.has(normRackShort)) ||
                             matchesGoodsInBin ||
+                            matchesCustomConfig ||
                             (curSku && occSku && curSku === occSku) ||
+                            (curPId && occPId && curPId === occPId) ||
                             (curName && occName && (curName.includes(occName) || occName.includes(curName))) ||
                             (curItem && (
                               (Array.isArray(curItem.assignedBins) && curItem.assignedBins.some((b: string) => normalizeBinKey(b) === normFull || b.includes(binCodeShort))) ||
@@ -2155,10 +2180,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           );
 
                           if (isOutbound) {
-                            if (hasGoods && occupancyPct > 0 && (isMatchingProduct || isGenericGoods)) {
+                            if (suggestedSet.has(normFull) || (Boolean(normShort) && suggestedSet.has(normShort)) || (Boolean(normRackShort) && suggestedSet.has(normRackShort))) {
                               isSuggested = true;
-                            } else {
-                              isSuggested = false;
+                            } else if (hasGoods && occupancyPct > 0 && (isMatchingProduct || isGenericGoods)) {
+                              isSuggested = true;
                             }
                           }
 
@@ -2173,21 +2198,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           if (mode === 'select') {
                             if (isOutbound) {
                               // LOGIC XUẤT KHO / ĐIỀU CHUYỂN NỘI BỘ:
-                              // 1. Ô KỆ KHÔNG CÓ HÀNG HÓA HOẶC ĐÃ HẾT HÀNG (0%) -> Khóa chọn & In chìm!
-                              const isBinEmpty = occupancyPct <= 0 || !hasGoods || (occupiedInfo && (occupiedInfo.totalPhysical || 0) <= 0);
-                              if (isBinEmpty && !isSelected) {
-                                isBinDisabled = true;
-                              }
-
+                              // 1. Ô KỆ THỰC SỰ TRỐNG (0% và không có hàng) -> Khóa chọn & In chìm!
+                              const isBinEmpty = occupancyPct <= 0 && !hasGoods && (!goodsInBin || goodsInBin.length === 0);
+                              
                               // 2. Ô KỆ ĐANG CHỨA MẶT HÀNG KHÁC CỤ THỂ (KHÔNG PHẢI HÀNG ĐANG XUẤT VÀ KHÔNG PHẢI HÀNG TỒN CHUNG) -> Khóa chọn
-                              const isOtherDistinctProduct = hasGoods && occupancyPct > 0 && occName && !isGenericGoods && !isMatchingProduct;
-                              if (isOtherDistinctProduct && !isSelected) {
+                              const isOtherDistinctProduct = hasGoods && occupancyPct > 0 && occName && !isGenericGoods && !isMatchingProduct && !matchesCustomConfig;
+                              
+                              if ((isBinEmpty || isOtherDistinctProduct) && !isSelected) {
                                 isBinDisabled = true;
-                              }
-
-                              // 3. Khi đã chọn đủ số lượng/số kệ cần xuất (isQuotaReached) thì các kệ chưa chọn khác sẽ in chìm.
-                              if (isQuotaReached && !isSelected) {
-                                isBinDisabled = true;
+                              } else {
+                                isBinDisabled = false; // Ô chứa hàng phù hợp hoặc đang được chọn thì TUYỆT ĐỐI KHÔNG KHÓA!
                               }
                             } else {
                               // LOGIC NHẬP KHO:
@@ -2220,7 +2240,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   return;
                                 }
                                 if (isBinDisabled) return;
-                                if (isOutbound && (occupancyPct <= 0 || !hasGoods)) return;
+                                if (isOutbound && (occupancyPct <= 0 && !hasGoods && (!goodsInBin || goodsInBin.length === 0))) return;
                                 if (mode === 'select') {
                                   if (onSelectBin) {
                                     onSelectBin(fullBinCode, {

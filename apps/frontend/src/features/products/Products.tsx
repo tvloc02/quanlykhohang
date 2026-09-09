@@ -278,6 +278,14 @@ type RawProduct = {
   stock?: number;
   totalStock?: number;
   isVisible?: boolean;
+  weight?: number;
+  length?: number;
+  width?: number;
+  height?: number;
+  volume?: number;
+  volumetricWeight?: number;
+  tempRequirement?: string;
+  turnoverClass?: string;
 };
 
 type Product = {
@@ -303,6 +311,14 @@ type Product = {
   webTitle?: string;
   webDescription?: string;
   comboItems?: ComboProductItem[];
+  weight: number;
+  length: number;
+  width: number;
+  height: number;
+  volume: number;
+  volumetricWeight: number;
+  tempRequirement: string;
+  turnoverClass: string;
 };
 
 type ConversionUnitItem = {
@@ -358,6 +374,15 @@ type ProductForm = {
   managementType: string;
   supplier: string;
   price: number | '';
+
+  weight: number | '';
+  length: number | '';
+  width: number | '';
+  height: number | '';
+  volume: number | '';
+  volumetricWeight: number | '';
+  tempRequirement: string;
+  turnoverClass: string;
 };
 
 type ModalMode = 'create' | 'view' | 'edit' | 'delete' | null;
@@ -369,6 +394,8 @@ type ColumnKey =
   | 'name'
   | 'category'
   | 'unit'
+  | 'weight'
+  | 'volume'
   | 'retailPrice'
   | 'wholesalePrice'
   | 'importPrice'
@@ -489,6 +516,15 @@ function buildEmptyForm(warehousesList: any[] = []): ProductForm {
     managementType: '',
     supplier: '',
     price: '',
+
+    weight: 1.0,
+    length: 20,
+    width: 15,
+    height: 10,
+    volume: 0.003,
+    volumetricWeight: 0.5,
+    tempRequirement: 'AMBIENT',
+    turnoverClass: 'B',
   };
 }
 
@@ -713,6 +749,14 @@ function normalizeProduct(product: RawProduct & Record<string, any>): Product {
     warehouseStocks: (product as any).warehouseStocks || {},
     images: (product as any).images || [],
     isVisible: !!product.isVisible,
+    weight: Number(product.weight !== undefined && product.weight !== null ? product.weight : 1.0),
+    length: Number(product.length !== undefined && product.length !== null ? product.length : 20.0),
+    width: Number(product.width !== undefined && product.width !== null ? product.width : 15.0),
+    height: Number(product.height !== undefined && product.height !== null ? product.height : 10.0),
+    volume: Number(product.volume !== undefined && product.volume !== null ? product.volume : 0.003),
+    volumetricWeight: Number(product.volumetricWeight !== undefined && product.volumetricWeight !== null ? product.volumetricWeight : 0.5),
+    tempRequirement: product.tempRequirement || 'AMBIENT',
+    turnoverClass: product.turnoverClass || 'B',
   };
 }
 
@@ -779,6 +823,8 @@ export default function Products() {
     { key: 'name', label: 'Tên hàng hóa', visible: true },
     { key: 'category', label: 'Danh mục', visible: true },
     { key: 'unit', label: 'ĐV Tính', visible: true },
+    { key: 'weight', label: 'Khối lượng (kg)', visible: true },
+    { key: 'volume', label: 'Thể tích (m³)', visible: true },
     { key: 'retailPrice', label: 'Giá bán lẻ', visible: true },
     { key: 'wholesalePrice', label: 'Giá bán buôn', visible: true },
     { key: 'importPrice', label: 'Giá nhập', visible: true },
@@ -1388,6 +1434,14 @@ export default function Products() {
       managementType: product.managementType || '',
       supplier: product.supplier || '',
       price: product.price || 0,
+      weight: product.weight !== undefined && product.weight !== null ? product.weight : 1.0,
+      length: product.length !== undefined && product.length !== null ? product.length : 20,
+      width: product.width !== undefined && product.width !== null ? product.width : 15,
+      height: product.height !== undefined && product.height !== null ? product.height : 10,
+      volume: product.volume !== undefined && product.volume !== null ? product.volume : 0.003,
+      volumetricWeight: product.volumetricWeight !== undefined && product.volumetricWeight !== null ? product.volumetricWeight : 0.5,
+      tempRequirement: product.tempRequirement || 'AMBIENT',
+      turnoverClass: product.turnoverClass || 'B',
     });
     setModalMode(mode);
   };
@@ -1492,6 +1546,14 @@ export default function Products() {
         isVisible: form.isVisible,
         webTitle: form.webTitle,
         comboItems: form.comboItems,
+        weight: form.weight !== '' ? Number(form.weight) : 1.0,
+        length: form.length !== '' ? Number(form.length) : 20,
+        width: form.width !== '' ? Number(form.width) : 15,
+        height: form.height !== '' ? Number(form.height) : 10,
+        volume: form.volume !== '' ? Number(form.volume) : undefined,
+        volumetricWeight: form.volumetricWeight !== '' ? Number(form.volumetricWeight) : undefined,
+        tempRequirement: form.tempRequirement || 'AMBIENT',
+        turnoverClass: form.turnoverClass || 'B',
       };
 
       const response = await fetch(url, {
@@ -2176,6 +2238,12 @@ export default function Products() {
                 {isColVisible('unit') && (
                   <th className="min-w-[100px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">ĐV Tính</th>
                 )}
+                {isColVisible('weight') && (
+                  <th className="min-w-[120px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Khối lượng</th>
+                )}
+                {isColVisible('volume') && (
+                  <th className="min-w-[120px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Thể tích</th>
+                )}
                 {isColVisible('retailPrice') && (
                   <th className="min-w-[140px] border-x border-slate-200 px-3 py-4 text-center text-sm font-extrabold uppercase text-slate-800 whitespace-nowrap">Giá bán lẻ</th>
                 )}
@@ -2265,6 +2333,22 @@ export default function Products() {
                     {isColVisible('unit') && (
                       <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
                         {product.unit || '-'}
+                      </td>
+                    )}
+
+                    {isColVisible('weight') && (
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700">
+                          {Number(product.weight || 1).toLocaleString('vi-VN')} kg
+                        </span>
+                      </td>
+                    )}
+
+                    {isColVisible('volume') && (
+                      <td className="border-x border-slate-200 px-3 py-3 text-center text-sm font-semibold text-slate-700 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-cyan-50 px-2 py-0.5 text-xs font-bold text-cyan-800 border border-cyan-200">
+                          {Number(product.volume || 0.003).toFixed(4)} m³
+                        </span>
                       </td>
                     )}
 
@@ -3168,6 +3252,202 @@ export default function Products() {
                                 </div>
                               )}
                             </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Middle Card: Logistics Parameters & AI Slotting Calculations */}
+                      <div className="rounded-2xl border-2 border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                        <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3 text-slate-800 font-bold text-xs uppercase tracking-wider">
+                          <div className="flex items-center gap-2 text-cyan-700">
+                            <Boxes className="h-4 w-4 text-cyan-600" />
+                            <span>THÔNG SỐ KHO VẬN & TÍNH TOÁN AI SLOTTING</span>
+                          </div>
+                          <span className="text-[11px] font-semibold text-cyan-600 bg-cyan-50 px-2.5 py-0.5 rounded-full border border-cyan-200">
+                            Chuẩn hóa theo ô kệ tiêu chuẩn (120x80x100cm - 0.96m³ / 500kg)
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {/* Khối lượng tịnh (kg) */}
+                          <div>
+                            <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                              Khối lượng tịnh (kg) <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={form.weight}
+                              onChange={(e) => setForm((c) => ({ ...c, weight: e.target.value !== '' ? Number(e.target.value) : '' }))}
+                              readOnly={modalMode === 'view'}
+                              placeholder="1.0"
+                              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                              required
+                            />
+                            <p className="mt-1 text-[11px] text-slate-500">Trọng lượng 1 đơn vị hàng hóa</p>
+                          </div>
+
+                          {/* Kích thước: Dài x Rộng x Cao (cm) */}
+                          <div className="lg:col-span-2">
+                            <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                              Kích thước đóng gói: Dài × Rộng × Cao (cm)
+                            </label>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={form.length}
+                                  onChange={(e) => {
+                                    const l = e.target.value !== '' ? Number(e.target.value) : '';
+                                    setForm((c) => {
+                                      const len = l !== '' ? Number(l) : 0;
+                                      const wid = c.width !== '' ? Number(c.width) : 0;
+                                      const hei = c.height !== '' ? Number(c.height) : 0;
+                                      const vol = (len > 0 && wid > 0 && hei > 0) ? Number(((len * wid * hei) / 1000000).toFixed(4)) : c.volume;
+                                      const vw = (len > 0 && wid > 0 && hei > 0) ? Number(((len * wid * hei) / 6000).toFixed(3)) : c.volumetricWeight;
+                                      return { ...c, length: l, volume: vol, volumetricWeight: vw };
+                                    });
+                                  }}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="Dài (cm)"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+                              <div>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={form.width}
+                                  onChange={(e) => {
+                                    const w = e.target.value !== '' ? Number(e.target.value) : '';
+                                    setForm((c) => {
+                                      const len = c.length !== '' ? Number(c.length) : 0;
+                                      const wid = w !== '' ? Number(w) : 0;
+                                      const hei = c.height !== '' ? Number(c.height) : 0;
+                                      const vol = (len > 0 && wid > 0 && hei > 0) ? Number(((len * wid * hei) / 1000000).toFixed(4)) : c.volume;
+                                      const vw = (len > 0 && wid > 0 && hei > 0) ? Number(((len * wid * hei) / 6000).toFixed(3)) : c.volumetricWeight;
+                                      return { ...c, width: w, volume: vol, volumetricWeight: vw };
+                                    });
+                                  }}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="Rộng (cm)"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+                              <div>
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  min="0"
+                                  value={form.height}
+                                  onChange={(e) => {
+                                    const h = e.target.value !== '' ? Number(e.target.value) : '';
+                                    setForm((c) => {
+                                      const len = c.length !== '' ? Number(c.length) : 0;
+                                      const wid = c.width !== '' ? Number(c.width) : 0;
+                                      const hei = h !== '' ? Number(h) : 0;
+                                      const vol = (len > 0 && wid > 0 && hei > 0) ? Number(((len * wid * hei) / 1000000).toFixed(4)) : c.volume;
+                                      const vw = (len > 0 && wid > 0 && hei > 0) ? Number(((len * wid * hei) / 6000).toFixed(3)) : c.volumetricWeight;
+                                      return { ...c, height: h, volume: vol, volumetricWeight: vw };
+                                    });
+                                  }}
+                                  readOnly={modalMode === 'view'}
+                                  placeholder="Cao (cm)"
+                                  className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                                />
+                              </div>
+                            </div>
+                            <p className="mt-1 text-[11px] text-slate-500">Tự động tính thể tích m³ và khối lượng quy đổi</p>
+                          </div>
+
+                          {/* Thể tích kiện (m³ / CBM) */}
+                          <div>
+                            <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                              Thể tích kiện (m³ - CBM)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.0001"
+                              min="0"
+                              value={form.volume}
+                              onChange={(e) => setForm((c) => ({ ...c, volume: e.target.value !== '' ? Number(e.target.value) : '' }))}
+                              readOnly={modalMode === 'view'}
+                              placeholder="0.0030"
+                              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-cyan-50/50 px-3 text-xs font-black text-cyan-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 read-only:bg-slate-50"
+                            />
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Quy đổi: {((Number(form.volume) || 0) * 1000000).toLocaleString('vi-VN')} cm³
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Additional Logistics Parameters: Temp & Turnover Class */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-slate-100">
+                          {/* Yêu cầu nhiệt độ lưu kho */}
+                          <div>
+                            <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                              Điều kiện bảo quản / Nhiệt độ kho
+                            </label>
+                            <select
+                              value={form.tempRequirement}
+                              onChange={(e) => setForm((c) => ({ ...c, tempRequirement: e.target.value }))}
+                              disabled={modalMode === 'view'}
+                              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 disabled:bg-slate-50 cursor-pointer"
+                            >
+                              <option value="AMBIENT">Kho Thường (Nhiệt độ phòng 15°C - 30°C)</option>
+                              <option value="COLD">Kho Lạnh (0°C - 8°C)</option>
+                              <option value="THERMAL">Kiểm soát nhiệt độ / Kho Mát (10°C - 18°C)</option>
+                            </select>
+                            <p className="mt-1 text-[11px] text-slate-500">Hệ thống AI chỉ gợi ý phân bổ vào kho và dãy kệ có điều kiện phù hợp</p>
+                          </div>
+
+                          {/* Phân nhóm luân chuyển ABC */}
+                          <div>
+                            <label className="mb-1.5 block text-xs font-bold text-slate-700 uppercase">
+                              Phân nhóm luân chuyển (ABC Analysis)
+                            </label>
+                            <select
+                              value={form.turnoverClass}
+                              onChange={(e) => setForm((c) => ({ ...c, turnoverClass: e.target.value }))}
+                              disabled={modalMode === 'view'}
+                              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 disabled:bg-slate-50 cursor-pointer"
+                            >
+                              <option value="A">Nhóm A: Luân chuyển nhanh (Gần cửa xuất kho / đầu dãy kệ)</option>
+                              <option value="B">Nhóm B: Luân chuyển trung bình (Khu vực giữa kho)</option>
+                              <option value="C">Nhóm C: Hàng chậm luân chuyển / Cồng kềnh (Tầng cao hoặc cuối kho)</option>
+                            </select>
+                            <p className="mt-1 text-[11px] text-slate-500">Giúp thuật toán AI Slotting tối ưu quãng đường di chuyển của nhân viên lấy hàng</p>
+                          </div>
+                        </div>
+
+                        {/* Live AI Simulation Info Box */}
+                        <div className="rounded-xl border border-cyan-200 bg-gradient-to-r from-cyan-50/70 to-blue-50/70 p-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-cyan-800 uppercase">Ước tính tải trọng ô kệ (Bin Capacity):</span>
+                            <span className="text-slate-700">
+                              Ô tiêu chuẩn (0.96 m³ / 500kg) chứa tối đa:{' '}
+                              <strong className="text-cyan-800">
+                                {Math.min(
+                                  Math.floor(0.96 / Math.max(0.0001, Number(form.volume) || 0.003)),
+                                  Math.floor(500 / Math.max(0.1, Number(form.weight) || 1))
+                                ).toLocaleString('vi-VN')} {form.unit || 'đơn vị'}
+                              </strong>
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-semibold text-slate-500">
+                            {Number(form.weight) >= 50 ? (
+                              <span className="text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-md">
+                                ⚠ Hàng nặng (≥50kg): AI tự động ưu tiên phân tầng 1-2 (sát sàn)
+                              </span>
+                            ) : (
+                              <span className="text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-md">
+                                ✓ Trọng lượng tiêu chuẩn: Phân bổ linh hoạt các tầng
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
