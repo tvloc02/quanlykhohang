@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -90,7 +90,8 @@ function generateDefaultRacks(
   defaultBinsPerShelf = 2,
   rackLength?: number,
   rackWidth?: number,
-  rackHeight?: number
+  rackHeight?: number,
+  zonePrefix?: string
 ): RackConfig[] {
   const racks: RackConfig[] = [];
   const rackL = rackLength !== undefined && rackLength > 0 ? rackLength : Math.max(zoneLength - 2, 4);
@@ -107,10 +108,12 @@ function generateDefaultRacks(
   const autoBinW = Math.round(rackW * 100);
   const autoBinH = Math.round((rackH * 100) / (calcShelves || 1));
 
+  const prefix = zonePrefix ? `${zonePrefix}-` : '';
+
   for (let r = 1; r <= racksCount; r++) {
     const rCode = `R${String(r).padStart(2, '0')}`;
     racks.push({
-      id: `rack-${r}`,
+      id: `rack-${prefix}${r}`,
       rackCode: rCode,
       name: `Dãy Kệ Dọc ${rCode}`,
       length: rackL,
@@ -663,14 +666,8 @@ export default function CreateWarehousePage() {
   };
 
   const [occupiedBinsCount, setOccupiedBinsCount] = useState<number>(0);
-
-  // A warehouse is ONLY locked if in edit mode AND actually has physical goods assigned
-  const hasWarehouseGoods = Boolean(
-    isEditMode &&
-    occupiedBinsCount > 0 &&
-    code &&
-    localStorage.getItem(`cleared_warehouse_goods_${code.trim().toUpperCase()}`) !== 'true'
-  );
+  const [occupiedBinsMap, setOccupiedBinsMap] = useState<Map<string, any>>(new Map());
+  const [forceUnlockZone, setForceUnlockZone] = useState<boolean>(false);
 
   const resetCreateForm = useCallback(() => {
     const stored = getStoredWarehouses();
@@ -818,6 +815,7 @@ export default function CreateWarehousePage() {
       fetchWarehouseOccupiedBins(localTarget?.code || targetId, targetId).then(({ occupiedMap }) => {
         if (isMounted) {
           setOccupiedBinsCount(occupiedMap.size);
+          setOccupiedBinsMap(occupiedMap);
         }
       }).catch(() => {});
     } else {
@@ -830,6 +828,65 @@ export default function CreateWarehousePage() {
 
   // Active Zone reference
   const activeZone = subWarehouses.find((z) => z.id === activeZoneId) || subWarehouses[0];
+
+  // Active zone occupied bins checking (only lock zone if THAT specific zone has goods)
+  const activeZoneOccupiedBinsCount = useMemo(() => {
+    if (!activeZone) return 0;
+    let count = 0;
+
+    // 1. Check customBins inside racks of activeZone
+    (activeZone.racks || []).forEach((rk) => {
+      if (rk.customBins) {
+        Object.values(rk.customBins).forEach((c: any) => {
+          if (
+            c &&
+            (Number(c.occupancyPct || 0) > 0 ||
+              Number(c.totalPhysical || 0) > 0 ||
+              (Array.isArray(c.goods) && c.goods.length > 0) ||
+              (Array.isArray(c.products) && c.products.length > 0) ||
+              c.productName)
+          ) {
+            count++;
+          }
+        });
+      }
+    });
+
+    // 2. Check occupiedBinsMap from API/balances for this zone's code
+    if (occupiedBinsMap && occupiedBinsMap.size > 0 && activeZone.code) {
+      const zoneClean = activeZone.code.replace(/[^A-Z0-9]/g, '').toUpperCase();
+      const zoneRaw = activeZone.code.trim().toUpperCase();
+
+      for (const [key, val] of occupiedBinsMap.entries()) {
+        const strKey = String(key || '').toUpperCase();
+        const normKey = strKey.replace(/[^A-Z0-9]/g, '');
+
+        const isThisZone = normKey.includes(zoneClean) || strKey.includes(zoneRaw);
+        if (isThisZone) {
+          if (
+            val &&
+            (Number(val.totalPhysical || 0) > 0 ||
+              Number(val.occupancyPct || 0) > 0 ||
+              Number(val.allocated || 0) > 0)
+          ) {
+            count++;
+          }
+        }
+      }
+    }
+
+    return count;
+  }, [activeZone, occupiedBinsMap]);
+
+  // A zone is ONLY locked if in edit mode AND that specific zone actually has goods AND user hasn't forced unlock
+  const hasActiveZoneGoods = Boolean(
+    isEditMode &&
+    !forceUnlockZone &&
+    activeZoneOccupiedBinsCount > 0 &&
+    code &&
+    localStorage.getItem(`cleared_warehouse_goods_${code.trim().toUpperCase()}`) !== 'true'
+  );
+  const hasWarehouseGoods = hasActiveZoneGoods;
 
   // Helper to parse numeric inputs safely allowing 0 and backspacing
   const parseNumInput = (valStr: string): number => {
@@ -876,13 +933,18 @@ export default function CreateWarehousePage() {
           2,
           nextRackLength,
           nextRackWidth,
-          nextRackHeight
+          nextRackHeight,
+          z.id
         ).map((r, idx) => {
           const existing = z.racks?.[idx];
           return {
             ...r,
+            id: existing?.id || r.id,
+            rackCode: existing?.rackCode || r.rackCode,
+            name: existing?.name || r.name,
             defaultBinMaxWeight: existing?.defaultBinMaxWeight ?? nextMaxWeight,
             maxRackLoad: existing?.maxRackLoad ?? r.maxRackLoad,
+            customBins: existing?.customBins || {},
           };
         });
 
@@ -1003,14 +1065,33 @@ export default function CreateWarehousePage() {
 
   // Add Zone Handler
   const handleAddZone = (type: 'AMBIENT' | 'COLD' | 'THERMAL') => {
+    // Pick next unused letter (ZONE-A, ZONE-B, ZONE-C, ...)
+    const usedLetters = new Set<string>();
+    subWarehouses.forEach((z) => {
+      const m = (z.code || '').match(/ZONE-([A-Z])/i);
+      if (m) usedLetters.add(m[1].toUpperCase());
+    });
+
+    let nextLetter = 'A';
+    for (let i = 0; i < 26; i++) {
+      const ch = String.fromCharCode(65 + i);
+      if (!usedLetters.has(ch)) {
+        nextLetter = ch;
+        break;
+      }
+    }
+
     const nextIdx = subWarehouses.length + 1;
     const typeLabel = type === 'COLD' ? 'Kho Lạnh' : type === 'THERMAL' ? 'Kho Nhiệt' : 'Kho Thường';
     const defaultRL = 18;
     const defaultRW = 1.2;
     const defaultRH = 5;
+    const zoneUniqueId = `sub-${Date.now()}`;
+    const initialRacks = generateDefaultRacks(1, 20, 6, 2, 5, 2, defaultRL, defaultRW, defaultRH, zoneUniqueId);
+
     const newZone: SubWarehouse = {
-      id: `sub-${Date.now()}`,
-      code: `ZONE-${String.fromCharCode(64 + nextIdx)}`,
+      id: zoneUniqueId,
+      code: `ZONE-${nextLetter}`,
       name: `Phân Khu ${typeLabel} ${nextIdx}`,
       zoneType: type,
       status: 'active',
@@ -1023,14 +1104,80 @@ export default function CreateWarehousePage() {
       racksCount: 1,
       shelvesPerRack: 5,
       binsPerShelf: 2,
-      racks: generateDefaultRacks(1, 20, 6, 2, 5, 2, defaultRL, defaultRW, defaultRH),
+      maxWeightPerBin: 500,
+      racks: initialRacks,
     };
-    setSubWarehouses([...subWarehouses, newZone]);
+
+    setSubWarehouses((prev) => [...prev, newZone]);
     setActiveZoneId(newZone.id);
     if (newZone.racks && newZone.racks.length > 0) {
       setActiveRackId(newZone.racks[0].id);
     }
-    setSuccess(`Đã tạo phân khu mới: ${newZone.name}`);
+    setForceUnlockZone(false);
+    setSelectedRackCodes([]);
+    setSuccess(`Đã tạo phân khu mới: ${newZone.name} (${newZone.code}). Đã sẵn sàng cấu hình kích thước và số dãy kệ!`);
+  };
+
+  // Delete Zone Handler
+  const handleDeleteZone = (zoneId: string) => {
+    if (subWarehouses.length <= 1) {
+      setError('Kho hàng cần có ít nhất 1 phân khu. Không thể xóa phân khu duy nhất!');
+      return;
+    }
+    const zoneToDelete = subWarehouses.find((z) => z.id === zoneId);
+    if (!zoneToDelete) return;
+
+    // Safety check: ensure zone doesn't have goods
+    let hasGoods = false;
+    (zoneToDelete.racks || []).forEach((rk) => {
+      if (rk.customBins) {
+        Object.values(rk.customBins).forEach((c: any) => {
+          if (
+            c &&
+            (Number(c.occupancyPct || 0) > 0 ||
+              Number(c.totalPhysical || 0) > 0 ||
+              (Array.isArray(c.goods) && c.goods.length > 0) ||
+              (Array.isArray(c.products) && c.products.length > 0) ||
+              c.productName)
+          ) {
+            hasGoods = true;
+          }
+        });
+      }
+    });
+
+    if (occupiedBinsMap && occupiedBinsMap.size > 0 && zoneToDelete.code) {
+      const zoneClean = zoneToDelete.code.replace(/[^A-Z0-9]/g, '').toUpperCase();
+      const zoneRaw = zoneToDelete.code.trim().toUpperCase();
+      for (const [key, val] of occupiedBinsMap.entries()) {
+        const strKey = String(key || '').toUpperCase();
+        const normKey = strKey.replace(/[^A-Z0-9]/g, '');
+        if (normKey.includes(zoneClean) || strKey.includes(zoneRaw)) {
+          if (val && (Number(val.totalPhysical || 0) > 0 || Number(val.occupancyPct || 0) > 0)) {
+            hasGoods = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (hasGoods) {
+      setError(`Không thể xóa [${zoneToDelete.name} (${zoneToDelete.code})] vì phân khu này đang chứa hàng hóa!`);
+      return;
+    }
+
+    if (window.confirm(`Bạn có chắc chắn muốn xóa phân khu [${zoneToDelete.name} (${zoneToDelete.code})]?`)) {
+      const remaining = subWarehouses.filter((z) => z.id !== zoneId);
+      setSubWarehouses(remaining);
+      if (activeZoneId === zoneId && remaining.length > 0) {
+        setActiveZoneId(remaining[0].id);
+        if (remaining[0].racks && remaining[0].racks.length > 0) {
+          setActiveRackId(remaining[0].racks[0].id);
+        }
+      }
+      setForceUnlockZone(false);
+      setSuccess(`Đã xóa phân khu [${zoneToDelete.name}] thành công!`);
+    }
   };
 
   // Save warehouse form handler
@@ -1353,6 +1500,7 @@ export default function CreateWarehousePage() {
                       type="button"
                       onClick={() => {
                         setActiveZoneId(z.id);
+                        setForceUnlockZone(false);
                         if (z.racks && z.racks.length > 0) setActiveRackId(z.racks[0].id);
                         setSelectedRackCodes([]);
                       }}
@@ -1367,18 +1515,69 @@ export default function CreateWarehousePage() {
                 </div>
               </div>
 
-              {hasWarehouseGoods && (
-                <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/60 px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 shadow-2xs flex items-center gap-2">
-                  <ShieldCheck className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <p className="font-black text-amber-950 dark:text-amber-100 uppercase tracking-wide">
-                    ĐÃ KHÓA THÔNG SỐ KỆ (ĐANG CHỨA HÀNG)
-                  </p>
+              {hasActiveZoneGoods && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/60 p-3 text-xs font-bold text-amber-900 dark:text-amber-200 shadow-2xs flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div>
+                      <p className="font-black text-amber-950 dark:text-amber-100 uppercase tracking-wide">
+                        ĐÃ KHÓA THÔNG SỐ KỆ (PHÂN KHU CÓ HÀNG)
+                      </p>
+                      <p className="text-[11px] text-amber-800 dark:text-amber-300 font-normal">
+                        Phân khu {activeZone?.code} có ô kệ đang chứa hàng. Bạn có thể mở khóa nếu cần cấu hình lại.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForceUnlockZone(true)}
+                    className="px-2.5 py-1 text-[11px] font-black bg-amber-200 hover:bg-amber-300 text-amber-950 dark:bg-amber-800 dark:hover:bg-amber-700 dark:text-amber-100 rounded-lg transition shrink-0 cursor-pointer shadow-xs"
+                  >
+                    Mở khóa cấu hình
+                  </button>
+                </div>
+              )}
+
+              {forceUnlockZone && activeZoneOccupiedBinsCount > 0 && (
+                <div className="rounded-xl border border-blue-300 bg-blue-50 dark:bg-blue-950/60 p-2.5 text-xs font-bold text-blue-900 dark:text-blue-200 shadow-2xs flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                    <p className="font-semibold">
+                      Đã mở khóa cấu hình cho phân khu [{activeZone?.code}].
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setForceUnlockZone(false)}
+                    className="px-2.5 py-1 text-[11px] font-black bg-blue-200 hover:bg-blue-300 text-blue-950 dark:bg-blue-800 dark:text-blue-100 rounded-lg transition shrink-0 cursor-pointer shadow-xs"
+                  >
+                    Khóa lại
+                  </button>
                 </div>
               )}
 
               {activeZone && (
                 <div className="space-y-4 text-xs">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center justify-between gap-2 pb-1 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">Đang cấu hình:</span>
+                      <span className="px-2 py-0.5 rounded text-xs font-black bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-200 border border-cyan-300 dark:border-cyan-800">
+                        {activeZone.code} - {activeZone.name}
+                      </span>
+                    </div>
+                    {subWarehouses.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteZone(activeZone.id)}
+                        className="px-2.5 py-1 text-xs font-black text-rose-600 hover:text-white hover:bg-rose-600 rounded-lg border border-rose-300 hover:border-rose-600 transition flex items-center gap-1 cursor-pointer"
+                        title="Xóa phân khu này"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Xóa phân khu này
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Mã Phân Khu</label>
                       <input
@@ -1397,6 +1596,18 @@ export default function CreateWarehousePage() {
                         className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900"
                       />
                     </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">Loại Phân Khu</label>
+                      <select
+                        value={activeZone.zoneType || 'AMBIENT'}
+                        onChange={(e) => updateActiveZone({ zoneType: e.target.value as any })}
+                        className="w-full px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900"
+                      >
+                        <option value="AMBIENT">Kho Thường (Ambient)</option>
+                        <option value="COLD">Kho Lạnh (Cold)</option>
+                        <option value="THERMAL">Kho Nhiệt (Thermal)</option>
+                      </select>
+                    </div>
                   </div>
 
                   {/* KÍCH THƯỚC PHÂN KHU & KÍCH THƯỚC KỆ & VÁCH NGĂN */}
@@ -1412,7 +1623,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.length}
                             onChange={(e) => updateActiveZone({ length: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1423,7 +1634,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.width}
                             onChange={(e) => updateActiveZone({ width: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1434,7 +1645,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.height}
                             onChange={(e) => updateActiveZone({ height: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1454,7 +1665,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.rackLength ?? activeZone.racks?.[0]?.length ?? Math.max(activeZone.length - 2, 4)}
                             onChange={(e) => updateActiveZone({ rackLength: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1466,7 +1677,7 @@ export default function CreateWarehousePage() {
                             type="number"
                             min={0}
                             step={0.1}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.rackWidth ?? activeZone.racks?.[0]?.width ?? 1.2}
                             onChange={(e) => updateActiveZone({ rackWidth: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1477,7 +1688,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.rackHeight ?? activeZone.racks?.[0]?.height ?? Math.max(activeZone.height - 1, 3)}
                             onChange={(e) => updateActiveZone({ rackHeight: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-cyan-300 dark:border-cyan-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-700 dark:text-cyan-300 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1497,7 +1708,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.racksCount ?? 4}
                             onChange={(e) => updateActiveZone({ racksCount: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-cyan-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1508,7 +1719,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.shelvesPerRack ?? 5}
                             onChange={(e) => updateActiveZone({ shelvesPerRack: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-indigo-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1519,7 +1730,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.binsPerShelf ?? 2}
                             onChange={(e) => updateActiveZone({ binsPerShelf: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-amber-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1530,7 +1741,7 @@ export default function CreateWarehousePage() {
                           <input
                             type="number"
                             min={0}
-                            disabled={hasWarehouseGoods}
+                            disabled={hasActiveZoneGoods}
                             value={activeZone.maxWeightPerBin ?? 500}
                             onChange={(e) => updateActiveZone({ maxWeightPerBin: parseNumInput(e.target.value) })}
                             className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-black bg-white dark:bg-slate-900 text-center text-emerald-600 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1608,7 +1819,7 @@ export default function CreateWarehousePage() {
                             <input
                               type="number"
                               min={0}
-                              disabled={hasWarehouseGoods}
+                              disabled={hasActiveZoneGoods}
                               value={r.length}
                               onChange={(e) => updateRackById(r.id, { length: parseNumInput(e.target.value) })}
                               className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1620,7 +1831,7 @@ export default function CreateWarehousePage() {
                               type="number"
                               min={0}
                               step={0.1}
-                              disabled={hasWarehouseGoods}
+                              disabled={hasActiveZoneGoods}
                               value={r.width}
                               onChange={(e) => updateRackById(r.id, { width: parseNumInput(e.target.value) })}
                               className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1631,7 +1842,7 @@ export default function CreateWarehousePage() {
                             <input
                               type="number"
                               min={0}
-                              disabled={hasWarehouseGoods}
+                              disabled={hasActiveZoneGoods}
                               value={r.height}
                               onChange={(e) => updateRackById(r.id, { height: parseNumInput(e.target.value) })}
                               className="w-full px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-center text-cyan-800 dark:text-cyan-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1647,7 +1858,7 @@ export default function CreateWarehousePage() {
                             <input
                               type="number"
                               min={0}
-                              disabled={hasWarehouseGoods}
+                              disabled={hasActiveZoneGoods}
                               value={currentBinWeight}
                               onChange={(e) => updateRackWeightById(r.id, parseNumInput(e.target.value), currentRackLoad)}
                               className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-cyan-700 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1660,7 +1871,7 @@ export default function CreateWarehousePage() {
                             <input
                               type="number"
                               min={0}
-                              disabled={hasWarehouseGoods}
+                              disabled={hasActiveZoneGoods}
                               value={currentRackLoad}
                               onChange={(e) => updateRackWeightById(r.id, currentBinWeight, parseNumInput(e.target.value))}
                               className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 font-bold bg-white dark:bg-slate-900 text-xs text-emerald-700 text-center disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
@@ -1799,6 +2010,14 @@ export default function CreateWarehousePage() {
                       }}
                       activeZoneId={activeZoneId}
                       activeRackId={activeRackId}
+                      onSelectZone={(zId) => {
+                        setActiveZoneId(zId);
+                        setForceUnlockZone(false);
+                        const targetZ = subWarehouses.find((z) => z.id === zId);
+                        if (targetZ && targetZ.racks && targetZ.racks.length > 0) {
+                          setActiveRackId(targetZ.racks[0].id);
+                        }
+                      }}
                       mode="view"
                       onBinClick={(fullBinCode, customConfig, occupiedInfo, goodsList) => {
                         setEditingBinCode(fullBinCode);

@@ -120,7 +120,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
       if (rawInbound) {
         ordersList = JSON.parse(rawInbound);
       }
-    } catch {}
+    } catch { }
   }
 
   if (Array.isArray(ordersList) && ordersList.length > 0) {
@@ -180,7 +180,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
         });
       }
     }
-  } catch {}
+  } catch { }
 
   if (foundInWh) {
     return Math.max(0, whInboundSum - whOutboundSum);
@@ -287,7 +287,7 @@ export function findStockBinForProduct(
         });
       }
     }
-  } catch {}
+  } catch { }
 
   // 2. Check stored warehouses customBins
   try {
@@ -318,16 +318,17 @@ export function findStockBinForProduct(
         });
       }
     }
-  } catch {}
+  } catch { }
 
   const binsList = Array.from(foundBinsSet);
-  if (binsList.length > 0) {
+  if (binsList.length === 1) {
     return {
-      locationBin: binsList.join(', '),
-      assignedBins: binsList,
+      locationBin: binsList[0],
+      assignedBins: [binsList[0]],
     };
   }
 
+  // Khi có nhiều kệ ứng viên chứa hàng trong kho, không tự động gom tất cả vào mà để người dùng tự do chọn trên sơ đồ
   return { locationBin: '', assignedBins: [] };
 }
 
@@ -538,7 +539,7 @@ export default function CreateOutboundOrderPage({
           });
         }
       }
-    } catch {}
+    } catch { }
     return list;
   }, [inboundOrders]);
 
@@ -690,6 +691,8 @@ export default function CreateOutboundOrderPage({
     }
   }, [activeTabId, isDisposal, isReturnSupplier, codePrefix, activeTab?.orderNo, activeTab?.orderDate]);
 
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [savedOrderForPrint, setSavedOrderForPrint] = useState<any>(null);
   const [showWarehouseDropdown, setShowWarehouseDropdown] = useState(false);
   const [warehouseSearch, setWarehouseSearch] = useState('');
 
@@ -855,23 +858,36 @@ export default function CreateOutboundOrderPage({
         let ordData: any = null;
         const res = await fetch(`${API_BASE_URL}/outbounds/${effectiveEditId}`, { headers: authHeaders() }).catch(() => null);
         if (res && res.ok) {
-          ordData = await res.json();
-        } else {
-          // Fallback check stored_outbound_orders from localStorage
+          const json = await res.json();
+          ordData = json?.data || json;
+        }
+
+        // Fallback check stored_outbound_orders from localStorage if API missing or details empty
+        if (!ordData || !ordData.id || ((!ordData.details || ordData.details.length === 0) && (!ordData.items || ordData.items.length === 0))) {
           const storedStr = localStorage.getItem('stored_outbound_orders');
           if (storedStr) {
             try {
               const list = JSON.parse(storedStr);
-              ordData = list.find((item: any) => String(item.id) === String(effectiveEditId) || item.orderNo === effectiveEditId);
-            } catch {}
+              const localMatch = list.find((item: any) =>
+                String(item.id) === String(effectiveEditId) ||
+                Number(item.id) === Number(effectiveEditId) ||
+                item.orderNo === effectiveEditId ||
+                item.orderCode === effectiveEditId
+              );
+              if (localMatch && ((localMatch.details && localMatch.details.length > 0) || (localMatch.items && localMatch.items.length > 0))) {
+                ordData = localMatch;
+              } else if (!ordData) {
+                ordData = localMatch;
+              }
+            } catch { }
           }
         }
 
         if (!ordData || !isMounted) return;
 
-        const rawDetails = ordData.details || [];
+        const rawDetails = (ordData.details && ordData.details.length > 0) ? ordData.details : (ordData.items || []);
         const existingDetails: FormDetailRow[] = rawDetails.map((d: any, idx: number) => {
-          const reqQty = Number(d.requiredQty ?? d.qty ?? 1);
+          const reqQty = Number(d.requiredQty ?? d.qty ?? d.quantity ?? 1);
           const uPrice = Number(d.unitPrice ?? d.price ?? 0);
           const discP = Number(d.discountPercent || 0);
           const discA = Number(d.discountAmount || 0);
@@ -883,9 +899,9 @@ export default function CreateOutboundOrderPage({
           const locBin = d.locationBin || (rawAssigned.length > 0 ? rawAssigned.join(', ') : '');
 
           return {
-            rowId: `row-edit-${d.id || idx}-${Date.now()}`,
+            rowId: `row-edit-${d.id || idx}-${Date.now()}-${idx}`,
             productId: d.product?.id || d.productId || '',
-            productSku: d.productSku || d.product?.internalSku || '',
+            productSku: d.productSku || d.product?.internalSku || d.sku || '',
             productName: d.productName || d.product?.name || '',
             warehouseCode: d.warehouseCode || ordData.branchCode || 'KHO-TONG',
             locationBin: locBin,
@@ -914,35 +930,40 @@ export default function CreateOutboundOrderPage({
         let orderDateStr = ordData.orderDate ? toDatetimeLocalValue(ordData.orderDate) : toDatetimeLocalValue(new Date());
 
         setTabs((prevTabs) => {
-          const targetTabId = activeTabId || prevTabs[0]?.tabId || 'tab-edit-1';
-          return prevTabs.map((t) => {
-            if (t.tabId === targetTabId) {
-              return {
-                ...t,
-                id: String(ordData.id),
-                orderNo: ordData.orderNo, // Giữ nguyên mã phiếu
-                branchCode: ordData.branchCode || 'KHO-TONG',
-                employeeName: ordData.employeeName || currentUserName,
-                customer: ordData.customer || ordData.customerName || '',
-                customerId: ordData.customerId || ordData.customer?.id || '',
-                customerPhone: ordData.customerPhone || ordData.customer?.phone || '',
-                customerAddress: ordData.customerAddress || ordData.customer?.address || '',
-                orderDate: orderDateStr,
-                expectedDate: ordData.expectedDate || orderDateStr,
-                description: ordData.description || '',
-                discount: Number(ordData.discount || 0),
-                shippingFee: Number(ordData.shippingFee || 0),
-                vatRate: Number(ordData.vatRate || 0),
-                paymentMethod: ordData.paymentMethod || 'Tiền mặt',
-                paymentAccount: ordData.paymentAccount || '',
-                amountPaid: Number(ordData.amountPaid || 0),
-                status: ordData.status || 'DRAFT',
-                details: paddedDetails,
-              };
-            }
-            return t;
-          });
+          targetTabId = (prevTabs && prevTabs.length > 0)
+            ? (prevTabs.find((t) => t.tabId === activeTabId)?.tabId || prevTabs[0].tabId)
+            : 'tab-edit-1';
+
+          const mappedTab: OutboundTab = {
+            id: String(ordData.id),
+            orderNo: ordData.orderNo || ordData.orderCode || '', // Giữ nguyên mã phiếu
+            tabId: targetTabId,
+            title: ordData.orderNo ? `# ${ordData.orderNo}` : '# 1',
+            branchCode: ordData.branchCode || 'KHO-TONG',
+            employeeName: ordData.employeeName || currentUserName,
+            customer: ordData.customer || ordData.customerName || '',
+            customerId: ordData.customerId || ordData.customer?.id || '',
+            customerPhone: ordData.customerPhone || ordData.customer?.phone || '',
+            customerAddress: ordData.customerAddress || ordData.customer?.address || '',
+            orderDate: orderDateStr,
+            expectedDate: ordData.expectedDate || orderDateStr,
+            description: ordData.description || '',
+            discount: Number(ordData.discount || 0),
+            shippingFee: Number(ordData.shippingFee || 0),
+            vatRate: Number(ordData.vatRate || 0),
+            paymentMethod: ordData.paymentMethod || 'Tiền mặt',
+            paymentAccount: ordData.paymentAccount || '',
+            amountPaid: Number(ordData.amountPaid || 0),
+            status: ordData.status || 'DRAFT',
+            details: paddedDetails,
+          };
+
+          if (!prevTabs || prevTabs.length === 0) {
+            return [mappedTab];
+          }
+          return prevTabs.map((t) => (t.tabId === targetTabId ? { ...t, ...mappedTab } : t));
         });
+        setActiveTabId(targetTabId);
 
         if (ordData.description && isDisposal) {
           const matchedReason = disposalReasons.find((r) => ordData.description.includes(r));
@@ -1322,78 +1343,79 @@ export default function CreateOutboundOrderPage({
 
     const payload = isDisposal
       ? {
-          orderNo: finalOrderNo,
-          orderType: 'disposal',
-          branchCode: activeTab.branchCode || 'KHO-TONG',
-          employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
-          customerName: 'Xuất hủy nội bộ',
-          orderDate: activeTab.orderDate,
-          expectedDate: activeTab.orderDate,
-          status: targetStatus,
-          description: [disposalReasonSelect, activeTab.description?.trim(), disposalMethod ? `Phương án: ${disposalMethod}` : ''].filter(Boolean).join(' - '),
-          subtotal,
-          discount: 0,
-          vatRate: 0,
-          vatAmount: 0,
-          totalAmount: subtotal,
-          amountPaid: 0,
-          details: activeValidItems.map((r) => {
-            const lineLoss = r.lossAmount !== undefined && r.lossAmount !== null ? Number(r.lossAmount) : (Number(r.qty) * Number(r.price));
-            const lineTotal = Number(r.price) + lineLoss;
-            return {
-              productId: r.productId,
-              productSku: r.productSku,
-              productName: r.productName,
-              warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
-              locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
-              assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
-              unit: r.unit,
-              qty: Number(r.qty),
-              price: Number(r.price),
-              lossAmount: lineLoss,
-              totalDisposalAmount: lineTotal,
-              totalLineAmount: lineTotal,
-              note: r.note,
-            };
-          }),
-        }
-      : {
-          orderNo: finalOrderNo,
-          orderType: isRetail ? 'retail' : 'orders',
-          branchCode: activeTab.branchCode || 'KHO-NVL',
-          employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
-          customerId: activeTab.customerId,
-          customerName: activeTab.customer?.trim() || (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ'),
-          customerPhone: activeTab.customerPhone?.trim() || undefined,
-          customerAddress: activeTab.customerAddress?.trim() || undefined,
-          orderDate: activeTab.orderDate,
-          expectedDate: activeTab.orderDate,
-          status: targetStatus,
-          description: activeTab.description?.trim() || undefined,
-          subtotal,
-          discount: activeTab.discount || 0,
-          vatRate: activeTab.vatRate || 0,
-          vatAmount,
-          totalAmount: grandTotal,
-          amountPaid: activeTab.amountPaid || grandTotal,
-          details: activeValidItems.map((r) => ({
+        orderNo: finalOrderNo,
+        orderType: 'disposal',
+        branchCode: activeTab.branchCode || 'KHO-TONG',
+        employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
+        customerName: 'Xuất hủy nội bộ',
+        orderDate: activeTab.orderDate,
+        expectedDate: activeTab.orderDate,
+        status: targetStatus,
+        description: [disposalReasonSelect, activeTab.description?.trim(), disposalMethod ? `Phương án: ${disposalMethod}` : ''].filter(Boolean).join(' - '),
+        subtotal,
+        discount: 0,
+        vatRate: 0,
+        vatAmount: 0,
+        totalAmount: subtotal,
+        amountPaid: 0,
+        details: activeValidItems.map((r) => {
+          const lineLoss = r.lossAmount !== undefined && r.lossAmount !== null ? Number(r.lossAmount) : (Number(r.qty) * Number(r.price));
+          const lineTotal = Number(r.price) + lineLoss;
+          return {
             productId: r.productId,
             productSku: r.productSku,
             productName: r.productName,
-            warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-NVL',
+            warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
             locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
             assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
             unit: r.unit,
             qty: Number(r.qty),
             price: Number(r.price),
+            lossAmount: lineLoss,
+            totalDisposalAmount: lineTotal,
+            totalLineAmount: lineTotal,
             note: r.note,
-          })),
-        };
+          };
+        }),
+      }
+      : {
+        orderNo: finalOrderNo,
+        orderType: isRetail ? 'retail' : 'orders',
+        branchCode: activeTab.branchCode || 'KHO-NVL',
+        employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
+        customerId: activeTab.customerId,
+        customerName: activeTab.customer?.trim() || (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ'),
+        customerPhone: activeTab.customerPhone?.trim() || undefined,
+        customerAddress: activeTab.customerAddress?.trim() || undefined,
+        orderDate: activeTab.orderDate,
+        expectedDate: activeTab.orderDate,
+        status: targetStatus,
+        description: activeTab.description?.trim() || undefined,
+        subtotal,
+        discount: activeTab.discount || 0,
+        vatRate: activeTab.vatRate || 0,
+        vatAmount,
+        totalAmount: grandTotal,
+        amountPaid: activeTab.amountPaid || grandTotal,
+        details: activeValidItems.map((r) => ({
+          productId: r.productId,
+          productSku: r.productSku,
+          productName: r.productName,
+          warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-NVL',
+          locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
+          assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
+          unit: r.unit,
+          qty: Number(r.qty),
+          price: Number(r.price),
+          note: r.note,
+        })),
+      };
 
     try {
       const url = isUpdating ? `${API_BASE_URL}/outbounds/${activeTab.id}` : `${API_BASE_URL}/outbounds`;
       const method = isUpdating ? 'PUT' : 'POST';
 
+      let savedServerOrder: any = null;
       const res = await fetch(url, {
         method,
         headers: authHeaders(),
@@ -1403,6 +1425,8 @@ export default function CreateOutboundOrderPage({
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
         throw new Error(errData?.message || `Không thể ${isUpdating ? 'cập nhật' : 'tạo'} ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`);
+      } else {
+        savedServerOrder = await res.json().catch(() => null);
       }
 
       // Chỉ tự động cập nhật tồn kho & ô kệ khi xuất kho CHÍNH THỨC (không phải DRAFT)
@@ -1531,7 +1555,7 @@ export default function CreateOutboundOrderPage({
             };
             localOutboundOrders = [savedOutboundEntry, ...localOutboundOrders.filter((o: any) => o.id !== savedOutboundEntry.id)];
             localStorage.setItem('stored_outbound_orders', JSON.stringify(localOutboundOrders));
-          } catch {}
+          } catch { }
 
           // Cập nhật smart-wms-products
           const storedProdsStr = localStorage.getItem('smart-wms-products');
@@ -1567,23 +1591,31 @@ export default function CreateOutboundOrderPage({
         }
       }
 
+      const effectiveSavedId = (savedServerOrder && (savedServerOrder.id || savedServerOrder.data?.id))
+        ? String(savedServerOrder.id || savedServerOrder.data?.id)
+        : (activeTab.id || payload.orderNo || `out_${Date.now()}`);
+
+      if (effectiveSavedId) {
+        activeTab.id = effectiveSavedId;
+      }
+
       // Sync stored_outbound_orders in localStorage
       try {
         const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
         let storedOutbound: any[] = [];
         if (storedOutboundStr) {
-          try { storedOutbound = JSON.parse(storedOutboundStr); } catch {}
+          try { storedOutbound = JSON.parse(storedOutboundStr); } catch { }
         }
         if (isUpdating) {
           storedOutbound = storedOutbound.map((item: any) =>
-            String(item.id) === String(activeTab.id) || item.orderNo === finalOrderNo
-              ? { ...item, ...payload, updatedAt: new Date().toISOString() }
+            String(item.id) === String(activeTab.id) || String(item.id) === String(effectiveSavedId) || item.orderNo === finalOrderNo || item.orderCode === finalOrderNo
+              ? { ...item, ...payload, id: effectiveSavedId, updatedAt: new Date().toISOString() }
               : item
           );
         } else {
           storedOutbound.push({
             ...payload,
-            id: payload.orderNo || `out_${Date.now()}`,
+            id: effectiveSavedId,
             orderCode: payload.orderNo,
             createdAt: new Date().toISOString(),
           });
@@ -1609,14 +1641,33 @@ export default function CreateOutboundOrderPage({
       setToast({ message: successMessage, type: 'success' });
 
       if (isPrint) {
+        const orderForPrint = {
+          id: effectiveSavedId,
+          orderNo: payload.orderNo,
+          orderType: payload.orderType,
+          customer: payload.customerName,
+          customerName: payload.customerName,
+          customerPhone: payload.customerPhone,
+          customerAddress: payload.customerAddress,
+          employeeName: payload.employeeName,
+          branchCode: payload.branchCode,
+          orderDate: payload.orderDate,
+          description: payload.description,
+          subtotal: payload.subtotal,
+          discount: payload.discount,
+          vatAmount: payload.vatAmount,
+          totalAmount: payload.totalAmount,
+          amountPaid: payload.amountPaid,
+          status: payload.status,
+          details: payload.details,
+        };
+        setSavedOrderForPrint(orderForPrint);
+        setShowPrintModal(true);
+      } else {
         setTimeout(() => {
-          window.print();
-        }, 300);
+          handleBackNavigation();
+        }, 900);
       }
-
-      setTimeout(() => {
-        handleBackNavigation();
-      }, 900);
     } catch (err: any) {
       setToast({ message: err.message || `Lỗi khi lưu ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`, type: 'error' });
     }
@@ -2144,11 +2195,10 @@ export default function CreateOutboundOrderPage({
               }}
               placeholder={isDisposal ? 'XH20260822-1001' : 'PXK20260822-1001'}
               title={isEditingDraft ? 'Mã phiếu xuất kho được cố định, không thể chỉnh sửa!' : 'Mã phiếu xuất kho'}
-              className={`h-10 w-full rounded-xl border-2 px-3 text-xs sm:text-sm font-black uppercase outline-none transition shadow-xs ${
-                isEditingDraft
+              className={`h-10 w-full rounded-xl border-2 px-3 text-xs sm:text-sm font-black uppercase outline-none transition shadow-xs ${isEditingDraft
                   ? 'border-slate-300 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none'
                   : 'border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20'
-              }`}
+                }`}
             />
           </div>
 
@@ -2285,11 +2335,10 @@ export default function CreateOutboundOrderPage({
                 }
                 setShowWarehouseDropdown(!showWarehouseDropdown);
               }}
-              className={`h-10 w-full rounded-xl border-2 px-3 flex items-center justify-between text-xs sm:text-sm font-bold shadow-xs transition ${
-                hasAssignedBins
+              className={`h-10 w-full rounded-xl border-2 px-3 flex items-center justify-between text-xs sm:text-sm font-bold shadow-xs transition ${hasAssignedBins
                   ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
                   : 'bg-white border-slate-300 text-slate-800 outline-none hover:border-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer'
-              }`}
+                }`}
               title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
               <span className="font-bold text-xs sm:text-sm truncate flex items-center gap-1.5">
@@ -2352,11 +2401,10 @@ export default function CreateOutboundOrderPage({
                             }));
                             setShowWarehouseDropdown(false);
                           }}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${
-                            isSelected
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${isSelected
                               ? 'bg-cyan-50 text-cyan-950 font-black'
                               : 'hover:bg-slate-100 text-slate-800 font-bold'
-                          }`}
+                            }`}
                         >
                           <span className="truncate pr-2">
                             [{wh.code}] {wh.name}
@@ -2900,11 +2948,10 @@ export default function CreateOutboundOrderPage({
                             updateActiveTab((t) => ({ ...t, employeeName: emp.name }));
                             setShowEmployeeDropdown(false);
                           }}
-                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                            (activeTab?.employeeName || currentUserName) === emp.name
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${(activeTab?.employeeName || currentUserName) === emp.name
                               ? 'bg-cyan-600 dark:bg-indigo-600 text-white'
                               : 'text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-900 dark:hover:text-indigo-300'
-                          }`}
+                            }`}
                         >
                           <span>{emp.name}</span>
                         </div>
@@ -3160,6 +3207,20 @@ export default function CreateOutboundOrderPage({
           </div>
         </div>
       )}
+
+      {/* ─── MODAL PRINT PHIẾU XUẤT KHO (MẪU 02-VT) ────────────────── */}
+      <OutboundPrintModal
+        isOpen={showPrintModal}
+        onClose={() => {
+          setShowPrintModal(false);
+          handleBackNavigation();
+        }}
+        order={savedOrderForPrint}
+        warehouses={warehouses}
+        isDisposal={isDisposal}
+        featureMode={featureMode}
+        title={isDisposal ? 'PHIẾU XUẤT HỦY KHO' : (isReturnSupplier ? 'PHIẾU XUẤT TRẢ NHÀ CUNG CẤP' : 'PHIẾU XUẤT KHO')}
+      />
     </div>
   );
 

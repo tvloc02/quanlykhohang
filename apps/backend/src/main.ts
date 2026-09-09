@@ -66,6 +66,8 @@ async function bootstrap() {
       'Accept',
       'Origin',
       'X-Requested-With',
+      'Cache-Control',
+      'Pragma',
     ],
     credentials: true,
   });

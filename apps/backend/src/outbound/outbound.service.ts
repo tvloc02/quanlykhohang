@@ -373,6 +373,14 @@ export class OutboundService implements OnModuleInit {
     if (dto.pointsUsed !== undefined) order.pointsUsed = dto.pointsUsed;
     if (dto.pointsAvailable !== undefined) order.pointsAvailable = dto.pointsAvailable;
 
+    // Update item count if details provided
+    if (dto.details?.length) {
+      order.items = dto.details.length;
+    }
+
+    // Save order fields first
+    await this.orderRepo.save(order);
+
     // Replace details if provided
     if (dto.details?.length) {
       if (!isCurrentDraft) {
@@ -399,7 +407,6 @@ export class OutboundService implements OnModuleInit {
       }
     }
 
-    await this.orderRepo.save(order);
     return this.serializeOutbound(await this.findOrderEntity(id));
   }
 

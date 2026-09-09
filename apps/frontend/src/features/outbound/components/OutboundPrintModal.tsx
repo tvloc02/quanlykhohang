@@ -27,6 +27,7 @@ interface PrintItem {
   productName: string;
   productSku: string;
   unit: string;
+  locationBin?: string;
   qtyReq: number;
   qtyActual: number;
   price: number;
@@ -47,9 +48,18 @@ export default function OutboundPrintModal({
   // Settings from backend
   const [settings, setSettings] = useState<any>(null);
 
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
+  const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
+
   // 1. Company & Header State
-  const [companyName, setCompanyName] = useState('Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng');
-  const [department, setDepartment] = useState('Bộ phận: Bán hàng');
+  const [companyName, setCompanyName] = useState('CÔNG TY CỔ PHẦN SMART WMS');
+  const [department, setDepartment] = useState('Bộ phận: Quản lý Kho');
   const [taxCode, setTaxCode] = useState('0101234567');
   const [templateCode, setTemplateCode] = useState('Mẫu số 02-VT');
   const [templateStandard, setTemplateStandard] = useState(
@@ -103,8 +113,8 @@ export default function OutboundPrintModal({
     const s = settings || {};
 
     // 1. Company
-    setCompanyName(s.companyName || 'Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng');
-    setDepartment(s.department || 'Bộ phận: Bán hàng');
+    setCompanyName(s.companyName || 'CÔNG TY CỔ PHẦN SMART WMS');
+    setDepartment(order.branchCode ? `Kho: ${order.branchCode}` : (s.department || 'Bộ phận: Bán hàng'));
     setTaxCode(s.taxCode || '0101234567');
     setTemplateCode('Mẫu số 02-VT');
     setTemplateStandard(
@@ -130,62 +140,76 @@ export default function OutboundPrintModal({
     setCreditAccount(s.creditAccount || '156');
 
     // 3. Receiver & Warehouse
-    setReceiverName(order.customer || s.receiverName || 'Phạm Thị Duyên');
-    setReceiverAddress(order.customerAddress || 'Công ty TNHH Thương mại Toàn Phát');
+    setReceiverName(order.customer || (order as any).customerName || s.receiverName || 'Khách hàng');
+    setReceiverAddress(order.customerAddress || 'Tại kho');
     setReason(
       order.description ||
         (isDisposal ? 'Xuất hủy hàng hỏng / hết hạn sử dụng' : 'Xuất bán hàng hóa theo đơn')
     );
 
-    const whCode = order.branchCode || order.warehouseCode;
+    const whCode = order.branchCode || (order as any).warehouseCode;
     const foundWh = warehouses.find(
       (w) => w.code === whCode || w.name === whCode || w.id === whCode
     );
-    setWarehouseName(foundWh ? `[${foundWh.code}] ${foundWh.name}` : whCode || 'Kho Thanh Trì');
+    setWarehouseName(foundWh ? `[${foundWh.code}] ${foundWh.name}` : whCode || 'Kho Tổng');
     setWarehouseLocation(foundWh?.address || s.address || 'Hà Nội, Việt Nam');
 
     // 4. Items
-    if (order.details && order.details.length > 0) {
-      const mapped: PrintItem[] = order.details.map((d: any, i: number) => ({
-        id: String(d.id || i + 1),
-        productName: d.productName || `Sản phẩm ${i + 1}`,
-        productSku: d.productSku || '-',
-        unit: d.unit || 'Bộ',
-        qtyReq: Number(d.qty || d.requestedQty || 1),
-        qtyActual: Number(d.actualQty || d.qty || 1),
-        price: Number(d.price || d.unitPrice || 0),
-        lossAmount: (d as any).lossAmount !== undefined ? Number((d as any).lossAmount) : undefined,
-        totalDisposalAmount:
-          (d as any).totalDisposalAmount !== undefined ? Number((d as any).totalDisposalAmount) : undefined,
-      }));
+    const rawDetails = (order.details && order.details.length > 0)
+      ? order.details
+      : (Array.isArray((order as any).items) && (order as any).items.length > 0
+        ? (order as any).items
+        : []);
+
+    const populateDetails = (detailsList: any[]) => {
+      const mapped: PrintItem[] = detailsList.map((d: any, i: number) => {
+        const rawAssigned = Array.isArray(d.assignedBins) ? d.assignedBins : [];
+        const locBin = d.locationBin || (rawAssigned.length > 0 ? rawAssigned.join(', ') : '');
+        return {
+          id: String(d.id || i + 1),
+          productName: d.productName || d.product?.name || `Sản phẩm ${i + 1}`,
+          productSku: d.productSku || d.product?.internalSku || d.sku || '-',
+          unit: d.unit || d.product?.unit || 'Cái',
+          locationBin: locBin,
+          qtyReq: Number(d.qty || d.requiredQty || d.quantity || 1),
+          qtyActual: Number(d.actualQty || d.pickedQty || d.qty || 1),
+          price: Number(d.price || d.unitPrice || 0),
+          lossAmount: (d as any).lossAmount !== undefined ? Number((d as any).lossAmount) : undefined,
+          totalDisposalAmount:
+            (d as any).totalDisposalAmount !== undefined ? Number((d as any).totalDisposalAmount) : undefined,
+        };
+      });
       setItems(mapped);
-    } else {
-      setItems([
-        {
-          id: '1',
-          productName: 'Hàng hóa mẫu',
-          productSku: 'SP001',
-          unit: 'Cái',
-          qtyReq: 1,
-          qtyActual: 1,
-          price: 100000,
-        },
-      ]);
+    };
+
+    if (rawDetails.length > 0) {
+      populateDetails(rawDetails);
+    } else if (order.id) {
+      // If order had empty details in memory, fetch fresh from backend
+      fetch(`${API_BASE_URL}/outbounds/${order.id}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          const freshDetails = data?.details || data?.data?.details || [];
+          if (Array.isArray(freshDetails) && freshDetails.length > 0) {
+            populateDetails(freshDetails);
+          }
+        })
+        .catch(() => {});
     }
 
     // 5. Attached Docs
     const dateFormatted = `ngày ${vnParts.day}/${vnParts.month}/${vnParts.year}`;
     setAttachedDocs(
-      `01 Hóa đơn GTGT số ${order.orderNo?.slice(-7) || '0000025'} ${dateFormatted}`
+      `01 Hóa đơn số ${order.orderNo?.slice(-7) || '0000025'} ${dateFormatted}`
     );
 
     // 6. Signatures
-    setCreatorSign(order.employeeName || s.creatorName || 'Vũ Hữu Dũng');
-    setReceiverSign(order.customer || s.receiverName || 'Phạm Thị Duyên');
-    setStorekeeperSign(s.storekeeperName || 'Nguyễn Thị Thúy');
-    setChiefAccountantSign(s.chiefAccountantName || 'Trần Thị Hồng Mơ');
-    setDirectorSign(s.directorName || 'Nguyễn Thị Thanh Xuyên');
-  }, [isOpen, order, settings, isDisposal, featureMode, warehouses]);
+    setCreatorSign(order.employeeName || currentUserName);
+    setReceiverSign(order.customer || (order as any).customerName || 'Người nhận');
+    setStorekeeperSign(s.storekeeperName || 'Thủ kho');
+    setChiefAccountantSign(s.chiefAccountantName || 'Kế toán trưởng');
+    setDirectorSign(s.directorName || 'Giám đốc');
+  }, [isOpen, order, settings, isDisposal, featureMode, warehouses, currentUserName]);
 
   // Set body class for print isolation
   useEffect(() => {
@@ -227,6 +251,7 @@ export default function OutboundPrintModal({
         productName: 'Hàng hóa mới',
         productSku: 'SKU-NEW',
         unit: 'Cái',
+        locationBin: '',
         qtyReq: 1,
         qtyActual: 1,
         price: 0,
@@ -719,7 +744,7 @@ export default function OutboundPrintModal({
                         <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center font-medium">
                           {idx + 1}
                         </td>
-                        {/* Tên hàng */}
+                        {/* Tên hàng & Vị trí kệ */}
                         <td style={{ border: '1px solid #000000', padding: '4px' }}>
                           <span className="print-hide-input">
                             <input
@@ -730,6 +755,19 @@ export default function OutboundPrintModal({
                             />
                           </span>
                           <span className="print-show-val font-bold">{it.productName}</span>
+                          <div className={`flex items-baseline gap-1 text-[10px] text-slate-600 print:text-black mt-0.5 ${!it.locationBin ? 'print:hidden' : ''}`}>
+                            <span className="italic shrink-0">Vị trí kệ:</span>
+                            <span className="print-hide-input">
+                              <input
+                                type="text"
+                                value={it.locationBin || ''}
+                                onChange={(e) => handleItemChange(idx, 'locationBin', e.target.value)}
+                                placeholder="Chưa gán kệ"
+                                className="font-semibold text-slate-700 print:text-black border-b border-dotted border-slate-300 bg-transparent px-0.5 focus:border-black outline-none text-[10px]"
+                              />
+                            </span>
+                            <span className="print-show-val font-semibold">{it.locationBin || ''}</span>
+                          </div>
                         </td>
                         {/* Mã SKU */}
                         <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center">
