@@ -51,6 +51,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { WarehouseSlottingGrid, fetchWarehouseOccupiedBins } from '../components/WarehouseSlottingGrid';
+import WarehouseGoodsPrintModal from '../components/WarehouseGoodsPrintModal';
 import Toast from '../../../shared/components/Toast';
 import MainLayout from '../../../shared/components/MainLayout';
 import {
@@ -169,6 +170,7 @@ export default function CreateWarehousePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   // Bin Edit Inspector Modal State
   const [editingBinCode, setEditingBinCode] = useState<string | null>(null);
@@ -1097,16 +1099,6 @@ export default function CreateWarehousePage() {
         {/* PAGE HEADER & TOP NAVIGATION BAR (Exact Products/Main UI Style) */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate('/warehouses')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-sm font-extrabold text-slate-700 dark:text-slate-200 shadow-xs transition hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 cursor-pointer"
-              title="Quay lại danh sách kho hàng"
-            >
-              <ArrowLeft className="h-4.5 w-4.5 text-slate-600 dark:text-slate-300" />
-              <span>Quay lại</span>
-            </button>
-
             <div className="inline-flex items-center gap-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-600 px-4 py-2 text-white shadow-md">
               <Store className="h-5 w-5 text-cyan-100" />
               <h1 className="text-lg font-bold tracking-tight text-white">
@@ -1123,34 +1115,7 @@ export default function CreateWarehousePage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer disabled:opacity-50"
             >
               <Save className="h-4.5 w-4.5 text-cyan-700" />
-              {isEditMode ? 'Lưu thay đổi' : 'Lưu kho hàng'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (isEditMode) {
-                  navigate('/warehouses/create');
-                } else {
-                  resetCreateForm();
-                  setSuccess('Đã làm mới biểu mẫu tạo kho hàng!');
-                }
-              }}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              title="Tạo mới kho hàng sạch hoàn toàn"
-            >
-              <Plus className="h-4.5 w-4.5 text-cyan-700" />
-              Thêm mới
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCopyWarehouseConfig}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-              title="Sao chép cấu hình kho"
-            >
-              <Copy className="h-4.5 w-4.5 text-cyan-700" />
-              Copy
+              Lưu
             </button>
 
             <button
@@ -1165,8 +1130,9 @@ export default function CreateWarehousePage() {
 
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={() => setIsPrintModalOpen(true)}
               className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="In báo cáo chi tiết vị trí hàng hóa trên các kệ kho"
             >
               <Printer className="h-4.5 w-4.5 text-cyan-700" />
               In báo cáo
@@ -1189,6 +1155,16 @@ export default function CreateWarehousePage() {
             >
               <Settings className="h-4.5 w-4.5 text-cyan-700" />
               <span>Hiển thị</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/warehouses')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+              title="Quay lại danh sách kho hàng"
+            >
+              <ArrowLeft className="h-4.5 w-4.5 text-cyan-700" />
+              <span>Quay lại</span>
             </button>
 
             <button
@@ -2269,6 +2245,19 @@ export default function CreateWarehousePage() {
           </div>
         );
       })()}
+
+      {isPrintModalOpen && (
+        <WarehouseGoodsPrintModal
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          warehouseCode={code}
+          warehouseName={name}
+          warehouseAddress={`${detailAddress ? detailAddress + ', ' : ''}${ward}, ${province}`}
+          subWarehouses={subWarehouses}
+          activeZoneId={activeZoneId}
+          activeRackId={activeRackId}
+        />
+      )}
     </MainLayout>
   );
 }
