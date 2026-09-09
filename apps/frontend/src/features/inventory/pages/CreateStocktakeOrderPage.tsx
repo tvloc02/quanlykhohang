@@ -402,10 +402,11 @@ export function findProductStockAndBinsByZone(
 
   return Array.from(resultsMap.values()).map((res) => {
     const binsArray = Array.from(res.binsSet);
+    const effectiveSysQty = res.systemQty > 0 ? res.systemQty : getProductWarehouseStock(p, whCode);
     return {
       zoneCode: res.zoneCode,
       zoneName: res.zoneName,
-      systemQty: res.systemQty,
+      systemQty: effectiveSysQty,
       locationBin: binsArray.join(', '),
       assignedBins: binsArray,
     };
@@ -1394,12 +1395,6 @@ export default function CreateStocktakeOrderPage({
                   <th className="p-2.5 w-28 text-center bg-slate-100 border-r border-slate-200">
                     SỐ TỒN KHO
                   </th>
-                  <th className="p-2.5 w-28 text-center bg-slate-100 border-r border-slate-200">
-                    THỰC TỒN
-                  </th>
-                  <th className="p-2.5 w-24 text-center bg-slate-100 border-r border-slate-200">
-                    LỆCH
-                  </th>
                   <th className="p-2.5 min-w-[140px] text-center bg-slate-100 border-r border-slate-200">GHI CHÚ</th>
                   <th className="p-2.5 w-20 text-center bg-slate-100">THAO TÁC</th>
                 </tr>
@@ -1407,7 +1402,7 @@ export default function CreateStocktakeOrderPage({
               <tbody className="divide-y divide-slate-200">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-20 text-center text-xs text-slate-400 font-semibold italic">
+                    <td colSpan={8} className="px-6 py-20 text-center text-xs text-slate-400 font-semibold italic">
                       Chưa có hàng hóa nào được chọn để kiểm kê.
                       <br />
                       Vui lòng gõ mã hoặc tên hàng hóa vào ô tìm kiếm ở trên để chọn sản phẩm.
@@ -1524,33 +1519,6 @@ export default function CreateStocktakeOrderPage({
                             </div>
                           </td>
 
-                          {/* ══ CELL 7: THỰC TỒN ══ */}
-                          <td className="p-1.5 border-r border-slate-200">
-                            <input
-                              type="number"
-                              min="0"
-                              value={zone.countedQty}
-                              onChange={(e) =>
-                                handleUpdateZoneCounted(pIdx, zIdx, Number(e.target.value))
-                              }
-                              className="h-9 w-full text-center rounded-xl border-2 border-emerald-400 bg-white font-black text-emerald-900 outline-none focus:border-emerald-600 text-xs shadow-2xs"
-                            />
-                          </td>
-
-                          {/* ══ CELL 8: LỆCH ══ */}
-                          <td className="p-1.5 border-r border-slate-200">
-                            <div
-                              className={`h-9 w-full flex items-center justify-center rounded-xl border font-black font-mono text-xs shadow-2xs ${
-                                zDiff > 0
-                                  ? 'border-emerald-300 bg-emerald-50/70 text-emerald-700'
-                                  : zDiff < 0
-                                  ? 'border-rose-300 bg-rose-50/70 text-rose-700'
-                                  : 'border-slate-200 bg-slate-50 text-slate-500'
-                              }`}
-                            >
-                              {zDiff > 0 ? `+${zDiff}` : zDiff}
-                            </div>
-                          </td>
 
                           {/* ══ CELL 9: GHI CHÚ ══ */}
                           <td className="p-1.5 border-r border-slate-200">
@@ -1591,24 +1559,6 @@ export default function CreateStocktakeOrderPage({
                     <td className="p-1.5 text-center border-r border-slate-200">
                       <div className="h-9 w-full flex items-center justify-center rounded-xl border border-cyan-300 bg-cyan-100/60 font-black text-cyan-900 font-mono text-xs shadow-2xs">
                         {totalSystemQty.toLocaleString('vi-VN')}
-                      </div>
-                    </td>
-                    <td className="p-1.5 text-center border-r border-slate-200">
-                      <div className="h-9 w-full flex items-center justify-center rounded-xl border border-emerald-300 bg-emerald-100/60 font-black text-emerald-900 font-mono text-xs shadow-2xs">
-                        {totalCountedQty.toLocaleString('vi-VN')}
-                      </div>
-                    </td>
-                    <td className="p-1.5 text-center border-r border-slate-200">
-                      <div
-                        className={`h-9 w-full flex items-center justify-center rounded-xl border font-black font-mono text-xs shadow-2xs ${
-                          totalDifference > 0
-                            ? 'border-emerald-300 bg-emerald-100/70 text-emerald-700'
-                            : totalDifference < 0
-                            ? 'border-rose-300 bg-rose-100/70 text-rose-700'
-                            : 'border-slate-200 bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {totalDifference > 0 ? `+${totalDifference}` : totalDifference}
                       </div>
                     </td>
                     <td className="p-2 border-r border-slate-200 text-slate-400 font-medium italic text-center">—</td>
@@ -1660,27 +1610,9 @@ export default function CreateStocktakeOrderPage({
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                <span>Tổng thực đếm:</span>
-                <span className="font-extrabold text-emerald-700 font-mono">
-                  {totalCountedQty.toLocaleString('vi-VN')}
-                </span>
-              </div>
-
               <div className="border-t border-slate-300/80 pt-2 flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-900">
-                  TỔNG CHÊNH LỆCH:
-                </span>
-                <span
-                  className={`text-base font-black font-mono tracking-tight ${
-                    totalDifference > 0
-                      ? 'text-emerald-600'
-                      : totalDifference < 0
-                      ? 'text-red-600'
-                      : 'text-cyan-800'
-                  }`}
-                >
-                  {totalDifference > 0 ? `+${totalDifference}` : totalDifference}
+                <span className="text-xs font-bold text-slate-500 italic">
+                  Nhập số lượng thực tế sẽ thực hiện khi duyệt kiểm kê
                 </span>
               </div>
             </div>

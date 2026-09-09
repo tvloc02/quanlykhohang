@@ -56,7 +56,13 @@ function authHeaders() {
 export interface ShelfAllocation {
   id: string;
   binCode: string;
+  currentSystemQty?: number;
   qty: number;
+  occupancyPct?: number;
+  newOccupancyPct?: number;
+  keepOccupancy?: boolean;
+  zoneName?: string;
+  rackCode?: string;
 }
 
 export interface ProductApprovalItem {
@@ -68,6 +74,7 @@ export interface ProductApprovalItem {
   systemQty: number;
   originalCountedQty: number;
   zonePrefix: string;
+  warehouseName: string;
   shelves: ShelfAllocation[];
 }
 
@@ -102,8 +109,16 @@ function parseShelvesFromNote(note: string, defaultQty: number, pId: string, pSk
         const qtyMatch = t.match(/^([^(:\\[]+)(?:[:(\[]\s*(\d+))?/);
         if (qtyMatch) {
           const rawCode = qtyMatch[1].trim();
-          // Clean code: remove long warehouse prefixes if duplicate like KH009-ZONE-A-R01-D4 -> D4
-          const cleanCode = (rawCode.split('-').pop() || rawCode).trim().toUpperCase();
+          // Clean code: remove long warehouse prefixes
+          // Handle both KH009-ZONE-A-R01-D4 (split by -) and KH009ZONEAR01D4 (regex extract)
+          let cleanCode = rawCode;
+          if (rawCode.includes('-')) {
+            cleanCode = (rawCode.split('-').pop() || rawCode).trim().toUpperCase();
+          } else {
+            // Try to extract last shelf-like segment (e.g. D4, H1, A1)
+            const shelfSegment = rawCode.match(/([A-Za-z]\d+)$/);
+            cleanCode = shelfSegment ? shelfSegment[1].toUpperCase() : rawCode.toUpperCase();
+          }
           const parsedQty = qtyMatch[2] ? parseInt(qtyMatch[2], 10) : undefined;
           if (cleanCode && !foundBinCodes.some((b) => b.code === cleanCode)) {
             foundBinCodes.push({ code: cleanCode, qty: parsedQty });
@@ -203,56 +218,129 @@ export default function StocktakeApproveShelfModal({
         systemQty: sysQty,
         originalCountedQty: counted,
         zonePrefix: parsed.zonePrefix,
+        warehouseName: '',
         shelves: parsed.shelves,
       };
     });
   });
 
-  // Auto-preload existing shelf balances from database if product has no shelves in note
+  // Auto-preload shelves from warehouse customBins — the real source of truth
   React.useEffect(() => {
     let cancelled = false;
 
-    const preloadDbShelves = async () => {
+    const preloadFromWarehouse = async () => {
       try {
         const whCode = stocktake.locationCode || '';
         if (!whCode) return;
 
-        const res = await fetch(`${API_BASE}/reports/shelf-inventory?warehouseCode=${encodeURIComponent(whCode)}`, {
+        // Fetch full warehouse list to find matching warehouse by code
+        const res = await fetch(`${API_BASE}/warehouses`, {
           headers: authHeaders(),
         });
         if (!res.ok) return;
 
-        const data = await res.json();
-        const shelfRecords: any[] = data.items || [];
-        if (shelfRecords.length === 0) return;
+        const warehouses = await res.json();
+        const arr = Array.isArray(warehouses) ? warehouses : (warehouses.data || warehouses.items || []);
+        const wh = arr.find((w: any) => w.code === whCode);
+        if (!wh || !wh.subWarehouses) return;
+
+        if (cancelled) return;
+
+        // Build a map: productSku -> [{binCode, qty, zoneName, rackCode, occupancyPct}]
+        // IMPORTANT: Dedup globally by binCode to avoid counting the same shelf multiple times
+        type BinInfo = { binCode: string; qty: number; zoneName: string; zoneCode: string; rackCode: string; occupancyPct: number };
+        const productBinMap: Record<string, BinInfo[]> = {};
+
+        // Only take the FIRST sub-warehouse (zone) that has each product's bins
+        // to avoid cross-zone duplication
+        wh.subWarehouses.forEach((zone: any) => {
+          const zoneName = zone.name || zone.code || '';
+          const zoneCode = zone.code || '';
+          (zone.racks || []).forEach((rack: any) => {
+            const rackCode = rack.rackCode || '';
+            const bins = rack.customBins || {};
+            // Deduplicate bins by binCode within this rack
+            const seenBins = new Set<string>();
+            Object.values(bins).forEach((bin: any) => {
+              const binCode = bin.binCode;
+              if (!binCode || seenBins.has(binCode)) return;
+              seenBins.add(binCode);
+
+              (bin.products || []).forEach((prod: any) => {
+                const sku = prod.sku || '';
+                if (!sku || !prod.qty || prod.qty <= 0) return;
+                if (!productBinMap[sku]) productBinMap[sku] = [];
+                // Global dedup by binCode — skip if we already have this bin for this product
+                if (productBinMap[sku].some(b => b.binCode === binCode)) return;
+                productBinMap[sku].push({
+                  binCode,
+                  qty: Number(prod.qty),
+                  zoneName,
+                  zoneCode,
+                  rackCode,
+                  occupancyPct: Number(prod.occupancyPct || 0),
+                });
+              });
+            });
+          });
+        });
 
         if (cancelled) return;
 
         setItems((prevItems) =>
           prevItems.map((item) => {
-            // Only replace if shelves are default/generic 'Kệ 1'
-            const isGenericShelf =
-              item.shelves.length === 1 &&
-              (item.shelves[0].binCode.toLowerCase() === 'kệ 1' || item.shelves[0].binCode === 'KỆ 1');
+            const binsForProduct = productBinMap[item.productSku] || [];
+            if (binsForProduct.length === 0) {
+              // No bins found — keep existing shelves from note
+              return { ...item, warehouseName: wh.name || whCode };
+            }
 
-            if (!isGenericShelf) return item;
+            // Use stocktake's systemQty as truth (NOT warehouse bin totals which may be duplicated)
+            const stocktakeSystemQty = item.systemQty;
+            const rawBinTotal = binsForProduct.reduce((sum, b) => sum + b.qty, 0);
 
-            const matching = shelfRecords.filter((s: any) => String(s.productId) === String(item.productId));
-            if (matching.length === 0) return item;
+            // Build shelves from actual warehouse bin data
+            // Scale quantities proportionally if raw total differs from stocktake systemQty
+            const newShelves: ShelfAllocation[] = binsForProduct.map((b, sIdx) => {
+              const proportion = rawBinTotal > 0 ? b.qty / rawBinTotal : 1 / binsForProduct.length;
+              const scaledQty = Math.round(stocktakeSystemQty * proportion);
+              return {
+                id: `shelf-${sIdx}-${Date.now()}`,
+                binCode: b.binCode,
+                currentSystemQty: scaledQty,
+                qty: 0, // User enters actual count
+                occupancyPct: b.occupancyPct,
+                newOccupancyPct: b.occupancyPct,
+                keepOccupancy: true,
+                zoneName: b.zoneName,
+                rackCode: b.rackCode,
+              };
+            });
 
-            const newShelves: ShelfAllocation[] = matching.map((s, sIdx) => ({
-              id: `shelf-${sIdx}-${Date.now()}`,
-              binCode: s.binCode || (s.fullLocationCode?.split('-').pop()) || `Kệ ${sIdx + 1}`,
-              qty: Number(s.quantity || 0),
-            }));
+            // Adjust rounding: ensure shelf qtys sum to exactly stocktakeSystemQty
+            const shelfSum = newShelves.reduce((s, sh) => s + (sh.currentSystemQty || 0), 0);
+            if (shelfSum !== stocktakeSystemQty && newShelves.length > 0) {
+              newShelves[0].currentSystemQty = (newShelves[0].currentSystemQty || 0) + (stocktakeSystemQty - shelfSum);
+            }
 
-            return { ...item, shelves: newShelves };
+            // Update zonePrefix if we have zone info
+            const zonePrefix = binsForProduct[0]?.zoneName || item.zonePrefix;
+
+            return {
+              ...item,
+              zonePrefix,
+              warehouseName: wh.name || whCode,
+              // DO NOT override systemQty — keep the stocktake's value
+              shelves: newShelves,
+            };
           })
         );
-      } catch {}
+      } catch (err) {
+        console.error('Failed to preload warehouse bins:', err);
+      }
     };
 
-    preloadDbShelves();
+    preloadFromWarehouse();
     return () => {
       cancelled = true;
     };
@@ -285,6 +373,37 @@ export default function StocktakeApproveShelfModal({
     });
   };
 
+  // Toggle keepOccupancy for a shelf
+  const handleToggleKeepOccupancy = (pIdx: number, sIdx: number) => {
+    setItems((prev) => {
+      const next = [...prev];
+      const pItem = { ...next[pIdx] };
+      const nextShelves = [...pItem.shelves];
+      const current = nextShelves[sIdx];
+      nextShelves[sIdx] = {
+        ...current,
+        keepOccupancy: !current.keepOccupancy,
+        newOccupancyPct: !current.keepOccupancy ? current.occupancyPct : current.newOccupancyPct,
+      };
+      pItem.shelves = nextShelves;
+      next[pIdx] = pItem;
+      return next;
+    });
+  };
+
+  // Update shelf new occupancy pct
+  const handleUpdateOccupancyPct = (pIdx: number, sIdx: number, val: number) => {
+    setItems((prev) => {
+      const next = [...prev];
+      const pItem = { ...next[pIdx] };
+      const nextShelves = [...pItem.shelves];
+      nextShelves[sIdx] = { ...nextShelves[sIdx], newOccupancyPct: Math.max(0, Math.min(100, val)) };
+      pItem.shelves = nextShelves;
+      next[pIdx] = pItem;
+      return next;
+    });
+  };
+
   // Add another shelf row to a product
   const handleAddShelf = (pIdx: number) => {
     setItems((prev) => {
@@ -296,6 +415,9 @@ export default function StocktakeApproveShelfModal({
           id: `shelf-${pItem.shelves.length}-${Date.now()}`,
           binCode: `Kệ ${pItem.shelves.length + 1}`,
           qty: 0,
+          occupancyPct: 0,
+          newOccupancyPct: 0,
+          keepOccupancy: true,
         },
       ];
       pItem.shelves = nextShelves;
@@ -427,11 +549,22 @@ export default function StocktakeApproveShelfModal({
     }
   };
 
+  // Group shelves by zone for display
+  const getShelvesGroupedByZone = (shelves: ShelfAllocation[]) => {
+    const groups: Record<string, ShelfAllocation[]> = {};
+    shelves.forEach((sh) => {
+      const zone = sh.zoneName || 'Chung';
+      if (!groups[zone]) groups[zone] = [];
+      groups[zone].push(sh);
+    });
+    return groups;
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="flex flex-col w-full max-w-5xl max-h-[92vh] rounded-2xl bg-white shadow-2xl border-2 border-slate-200 overflow-hidden">
-        {/* Modal Header */}
-        <div className="flex items-center justify-between bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 px-6 py-4 text-white shadow-md">
+      <div className="flex flex-col w-full max-w-6xl max-h-[94vh] rounded-2xl bg-white shadow-2xl border-2 border-slate-200 overflow-hidden">
+        {/* Modal Header — Cyan gradient */}
+        <div className="flex items-center justify-between bg-gradient-to-r from-cyan-600 via-cyan-700 to-cyan-800 px-6 py-4 text-white shadow-md">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 backdrop-blur-xs shadow-inner">
               <ShieldCheck className="h-6 w-6 text-white" />
@@ -439,14 +572,15 @@ export default function StocktakeApproveShelfModal({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-black tracking-wide uppercase">
-                  Duyệt Phiếu Kiểm Kê & Phân Bổ Kệ Hàng
+                  Duyệt Kiểm Kê Kho
                 </h2>
                 <span className="rounded-lg bg-white/25 px-2.5 py-0.5 text-xs font-black tracking-wider text-white">
                   {stocktake.stocktakeNo}
                 </span>
               </div>
-              <p className="text-xs font-medium text-emerald-100 flex items-center gap-2 mt-0.5">
-                <span>Kho: <strong className="text-white">{stocktake.locationCode}</strong></span>
+              <p className="text-xs font-medium text-cyan-100 flex items-center gap-2 mt-0.5">
+                <Warehouse size={13} className="text-cyan-200" />
+                <span>Kho: <strong className="text-white">{items[0]?.warehouseName || stocktake.locationCode}</strong> ({stocktake.locationCode})</span>
                 <span>•</span>
                 <span>Người tạo: <strong className="text-white">{stocktake.assignee || stocktake.createdBy || 'Hệ thống'}</strong></span>
               </p>
@@ -462,141 +596,207 @@ export default function StocktakeApproveShelfModal({
           </button>
         </div>
 
-        {/* Info Banner */}
-        <div className="bg-amber-50/90 border-b border-amber-200/80 px-6 py-2.5 flex items-center gap-2.5 text-xs font-bold text-amber-900">
-          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-          <span>
-            Vui lòng nhập chính xác số lượng kiểm đếm thực tế của từng kệ lưu trữ. Khi bấm <strong>"Xác nhận duyệt"</strong>, hệ thống sẽ tự động cập nhật số lượng thực tồn này vào kho và mở khóa xuất/nhập.
-          </span>
-        </div>
-
         {/* Products & Shelves List */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar bg-slate-50/50">
           {items.map((item, pIdx) => {
             const productTotalActual = item.shelves.reduce((s, sh) => s + sh.qty, 0);
             const diff = productTotalActual - item.systemQty;
+            const zoneGroups = getShelvesGroupedByZone(item.shelves);
 
             return (
               <div
                 key={item.detailId || pIdx}
-                className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-xs transition hover:border-cyan-400/60"
+                className="rounded-2xl border-2 border-slate-200 bg-white shadow-xs overflow-hidden"
               >
-                {/* Product Header Row */}
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-800 font-black text-xs">
-                      #{pIdx + 1}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-cyan-700 font-mono text-sm">
-                          [{item.productSku}]
-                        </span>
-                        <h3 className="text-sm font-black text-slate-800">{item.productName}</h3>
+                {/* Product Header */}
+                <div className="bg-gradient-to-r from-cyan-50 to-slate-50 px-5 py-3 border-b border-slate-200">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-600 text-white font-black text-sm shadow">
+                        #{pIdx + 1}
                       </div>
-                      <span className="text-xs font-bold text-slate-500">Đơn vị: {item.unit}</span>
-                    </div>
-                  </div>
-
-                  {/* Summary Badges for this Product */}
-                  <div className="flex flex-wrap items-center gap-2.5 text-xs">
-                    <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 font-bold text-slate-700">
-                      <span>Tồn hệ thống:</span>
-                      <strong className="font-black text-slate-900">{item.systemQty}</strong>
-                      <span className="text-slate-500">{item.unit}</span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-cyan-700 font-mono text-sm">[{item.productSku}]</span>
+                          <h3 className="text-sm font-black text-slate-800">{item.productName}</h3>
+                        </div>
+                        <div className="text-xs font-semibold text-slate-500 mt-0.5">Đơn vị: {item.unit}</div>
+                      </div>
                     </div>
 
-                    <ArrowRight size={14} className="text-slate-400" />
+                    {/* Summary Badges */}
+                    <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                      <div className="flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-1.5 font-bold text-cyan-800">
+                        <Package size={13} />
+                        <span>Tổng tồn kho:</span>
+                        <strong className="font-black text-cyan-900 text-sm">{item.systemQty}</strong>
+                        <span>{item.unit}</span>
+                      </div>
 
-                    <div className="flex items-center gap-1.5 rounded-xl border-2 border-cyan-400 bg-cyan-50 px-3 py-1.5 font-bold text-cyan-900">
-                      <span>Tổng thực tế:</span>
-                      <strong className="font-black text-cyan-800 text-sm">{productTotalActual}</strong>
-                      <span className="text-cyan-700">{item.unit}</span>
-                    </div>
+                      <ArrowRight size={14} className="text-slate-400" />
 
-                    <div
-                      className={`flex items-center gap-1 rounded-xl px-3 py-1.5 font-black text-xs border ${
-                        diff === 0
-                          ? 'border-slate-300 bg-slate-100 text-slate-600'
-                          : diff > 0
-                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                          : 'border-red-300 bg-red-50 text-red-600'
-                      }`}
-                    >
-                      <span>Lệch:</span>
-                      <span>
-                        {diff > 0 ? `+${diff}` : diff} {item.unit}
-                      </span>
+                      <div className="flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-cyan-100 px-3 py-1.5 font-bold text-cyan-900">
+                        <span>Sau kiểm kê:</span>
+                        <strong className="font-black text-cyan-950 text-sm">{productTotalActual}</strong>
+                        <span>{item.unit}</span>
+                      </div>
+
+                      <div
+                        className={`flex items-center gap-1 rounded-xl px-3 py-1.5 font-black text-xs border ${
+                          diff === 0
+                            ? 'border-slate-300 bg-slate-100 text-slate-600'
+                            : diff > 0
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                            : 'border-red-300 bg-red-50 text-red-600'
+                        }`}
+                      >
+                        Lệch: {diff > 0 ? `+${diff}` : diff} {item.unit}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Shelves Breakdown Table / List */}
-                <div className="mt-3.5 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-extrabold text-slate-600 uppercase tracking-wide">
-                    <div className="flex items-center gap-1.5">
-                      <Layers size={14} className="text-cyan-600" />
-                      <span>Chi tiết số lượng thực tế từng kệ lưu trữ:</span>
-                    </div>
+                {/* Shelves Table grouped by Zone */}
+                <div className="px-5 py-4">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
+                    <table className="w-full text-left text-xs border-collapse min-w-[800px]">
+                      <thead className="bg-cyan-700 text-white font-black uppercase text-[11px]">
+                        <tr>
+                          <th className="p-2.5 w-12 text-center border-r border-cyan-600">STT</th>
+                          <th className="p-2.5 min-w-[160px] border-r border-cyan-600">Tên Kệ / Phân Khu</th>
+                          <th className="p-2.5 w-28 text-center border-r border-cyan-600">Số lượng</th>
+                          <th className="p-2.5 w-24 text-center border-r border-cyan-600">% Chứa</th>
+                          <th className="p-2.5 w-36 text-center border-r border-cyan-600 bg-cyan-800">SL Sau Kiểm Kê</th>
+                          <th className="p-2.5 w-48 text-center">% Lưu Trữ Mới</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          let globalIdx = 0;
+                          return Object.entries(zoneGroups).map(([zoneName, zoneShelves]) => (
+                            <React.Fragment key={zoneName}>
+                              {/* Zone Header Row — spans full width */}
+                              <tr className="bg-cyan-50 border-y border-cyan-200">
+                                <td colSpan={6} className="p-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <Layers size={15} className="text-cyan-700" />
+                                    <span className="font-black text-cyan-800 uppercase text-xs tracking-wide">
+                                      {zoneName}
+                                    </span>
+                                    <span className="text-[11px] font-semibold text-cyan-600">
+                                      ({zoneShelves.length} kệ • {zoneShelves.reduce((s, sh) => s + (sh.currentSystemQty || 0), 0)} {item.unit})
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                              {/* Shelf rows within this zone */}
+                              {zoneShelves.map((shelf, sIdx) => {
+                                globalIdx++;
+                                const originalShelfIdx = item.shelves.findIndex((s) => s.id === shelf.id);
+                                return (
+                                  <tr key={shelf.id} className="hover:bg-slate-50/80 transition border-b border-slate-100">
+                                    {/* STT */}
+                                    <td className="p-2.5 text-center font-extrabold text-slate-500 border-r border-slate-200">
+                                      {globalIdx}
+                                    </td>
+                                    {/* Tên Kệ */}
+                                    <td className="p-2 border-r border-slate-200">
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-8 w-8 rounded-lg bg-cyan-100 flex items-center justify-center text-cyan-700 font-black text-[11px] shrink-0">
+                                          {shelf.rackCode || ''}-{shelf.binCode}
+                                        </div>
+                                        <div>
+                                          <div className="font-black text-slate-800 text-xs">{shelf.rackCode ? `${shelf.rackCode}-` : ''}{shelf.binCode}</div>
+                                          <div className="text-[10px] text-slate-400 font-medium">{shelf.rackCode || 'Dãy kệ'}</div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    {/* Số lượng hiện tại */}
+                                    <td className="p-2 text-center border-r border-slate-200 font-black font-mono text-slate-700 text-xs bg-slate-50/50">
+                                      {shelf.currentSystemQty ?? 0} <span className="text-slate-400 font-medium">{item.unit}</span>
+                                    </td>
+                                    {/* % Chứa hiện tại */}
+                                    <td className="p-2 text-center border-r border-slate-200">
+                                      <div className="flex flex-col items-center gap-1">
+                                        <span className="font-black text-sm" style={{ color: (shelf.occupancyPct || 0) >= 80 ? '#dc2626' : (shelf.occupancyPct || 0) >= 50 ? '#d97706' : '#059669' }}>
+                                          {shelf.occupancyPct ?? 0}%
+                                        </span>
+                                        <div className="w-full h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                                          <div
+                                            className="h-full rounded-full transition-all"
+                                            style={{
+                                              width: `${Math.min(100, shelf.occupancyPct || 0)}%`,
+                                              backgroundColor: (shelf.occupancyPct || 0) >= 80 ? '#dc2626' : (shelf.occupancyPct || 0) >= 50 ? '#d97706' : '#059669',
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+                                    </td>
+                                    {/* SL Sau Kiểm Kê */}
+                                    <td className="p-2 border-r border-slate-200 bg-cyan-50/30">
+                                      <div className="flex items-center gap-1.5 max-w-[160px] mx-auto">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          value={shelf.qty}
+                                          onChange={(e) => handleUpdateShelfQty(pIdx, originalShelfIdx, Number(e.target.value))}
+                                          className="h-9 w-full text-center rounded-lg border-2 border-cyan-400 bg-white font-black text-cyan-900 text-sm outline-none focus:border-cyan-600 shadow-2xs"
+                                        />
+                                        <span className="text-[11px] font-bold text-slate-500 shrink-0">{item.unit}</span>
+                                      </div>
+                                    </td>
+                                    {/* % Lưu Trữ Mới */}
+                                    <td className="p-2 text-center">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleKeepOccupancy(pIdx, originalShelfIdx)}
+                                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                                            shelf.keepOccupancy
+                                              ? 'bg-cyan-100 border-cyan-300 text-cyan-800'
+                                              : 'bg-slate-100 border-slate-300 text-slate-600'
+                                          }`}
+                                          title={shelf.keepOccupancy ? 'Đang giữ nguyên — bấm để tự nhập' : 'Đang tự nhập — bấm để giữ nguyên'}
+                                        >
+                                          {shelf.keepOccupancy ? 'Giữ nguyên' : 'Tự nhập'}
+                                        </button>
+                                        {shelf.keepOccupancy ? (
+                                          <span className="font-black text-sm text-cyan-700">{shelf.occupancyPct ?? 0}%</span>
+                                        ) : (
+                                          <div className="flex items-center gap-1">
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              max={100}
+                                              value={shelf.newOccupancyPct ?? 0}
+                                              onChange={(e) => handleUpdateOccupancyPct(pIdx, originalShelfIdx, Number(e.target.value))}
+                                              className="h-8 w-16 text-center rounded-lg border-2 border-cyan-400 bg-white font-black text-cyan-900 text-xs outline-none focus:border-cyan-600 shadow-2xs"
+                                            />
+                                            <span className="text-xs font-bold text-slate-500">%</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </React.Fragment>
+                          ));
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Add shelf button */}
+                  <div className="mt-2 flex justify-end">
                     <button
                       type="button"
                       onClick={() => handleAddShelf(pIdx)}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-cyan-700 hover:text-cyan-900 hover:underline cursor-pointer"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-cyan-700 hover:text-cyan-900 cursor-pointer bg-cyan-50 px-3 py-1.5 rounded-lg border border-cyan-200 hover:bg-cyan-100 transition"
                     >
                       <Plus size={14} />
-                      Thêm vị trí kệ
+                      Thêm kệ mới
                     </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                    {item.shelves.map((shelf, sIdx) => (
-                      <div
-                        key={shelf.id}
-                        className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 hover:bg-slate-50 transition shadow-2xs"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
-                            Mã Kệ / Ô
-                          </label>
-                          <input
-                            type="text"
-                            value={shelf.binCode}
-                            onChange={(e) => handleUpdateBinCode(pIdx, sIdx, e.target.value)}
-                            placeholder="VD: H1, D4"
-                            className="w-full h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-black text-slate-800 uppercase focus:border-cyan-600 outline-none"
-                          />
-                        </div>
-
-                        <div className="w-28 shrink-0">
-                          <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
-                            SL Thực Tồn
-                          </label>
-                          <div className="flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden focus-within:border-cyan-600">
-                            <input
-                              type="number"
-                              min={0}
-                              value={shelf.qty}
-                              onChange={(e) => handleUpdateShelfQty(pIdx, sIdx, Number(e.target.value))}
-                              className="w-full h-8 px-2 text-xs font-black text-slate-800 text-center outline-none"
-                            />
-                            <span className="text-[10px] font-bold text-slate-400 pr-1.5 shrink-0 select-none">
-                              {item.unit}
-                            </span>
-                          </div>
-                        </div>
-
-                        {item.shelves.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveShelf(pIdx, sIdx)}
-                            className="mt-3.5 h-8 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer shrink-0"
-                            title="Xóa kệ này"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
                   </div>
                 </div>
               </div>
@@ -604,7 +804,7 @@ export default function StocktakeApproveShelfModal({
           })}
         </div>
 
-        {/* Modal Footer Summary & Confirm Action */}
+        {/* Modal Footer */}
         <div className="border-t-2 border-slate-200 bg-slate-50 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-700">
             <div>
@@ -648,7 +848,7 @@ export default function StocktakeApproveShelfModal({
               type="button"
               onClick={handleConfirmApproval}
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 px-6 py-2.5 text-xs font-black text-white shadow-md transition cursor-pointer active:scale-95 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-700 hover:to-cyan-800 px-6 py-2.5 text-xs font-black text-white shadow-md transition cursor-pointer active:scale-95 disabled:opacity-50"
             >
               {submitting ? (
                 <>
