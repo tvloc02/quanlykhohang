@@ -994,18 +994,6 @@ export default function CreateOutboundOrderPage({
           }
         }
 
-        if (!isDisposal && (patch.productId || patch.productName || patch.productSku) && !patch.locationBin && (!patch.assignedBins || patch.assignedBins.length === 0)) {
-          const autoBin = findStockBinForProduct(
-            newRow.productId || '',
-            newRow.productSku || '',
-            newRow.productName || '',
-            newRow.warehouseCode || tab.branchCode
-          );
-          if (autoBin.locationBin) {
-            newRow.locationBin = autoBin.locationBin;
-            newRow.assignedBins = autoBin.assignedBins;
-          }
-        }
 
         const qty = Number(newRow.qty) || 0;
         const price = Number(newRow.price) || 0;
