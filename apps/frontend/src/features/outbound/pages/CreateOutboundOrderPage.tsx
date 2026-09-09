@@ -120,7 +120,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
       if (rawInbound) {
         ordersList = JSON.parse(rawInbound);
       }
-    } catch {}
+    } catch { }
   }
 
   if (Array.isArray(ordersList) && ordersList.length > 0) {
@@ -180,7 +180,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
         });
       }
     }
-  } catch {}
+  } catch { }
 
   if (foundInWh) {
     return Math.max(0, whInboundSum - whOutboundSum);
@@ -287,7 +287,7 @@ export function findStockBinForProduct(
         });
       }
     }
-  } catch {}
+  } catch { }
 
   // 2. Check stored warehouses customBins
   try {
@@ -318,7 +318,7 @@ export function findStockBinForProduct(
         });
       }
     }
-  } catch {}
+  } catch { }
 
   const binsList = Array.from(foundBinsSet);
   if (binsList.length > 0) {
@@ -538,7 +538,7 @@ export default function CreateOutboundOrderPage({
           });
         }
       }
-    } catch {}
+    } catch { }
     return list;
   }, [inboundOrders]);
 
@@ -863,7 +863,7 @@ export default function CreateOutboundOrderPage({
             try {
               const list = JSON.parse(storedStr);
               ordData = list.find((item: any) => String(item.id) === String(effectiveEditId) || item.orderNo === effectiveEditId);
-            } catch {}
+            } catch { }
           }
         }
 
@@ -994,7 +994,7 @@ export default function CreateOutboundOrderPage({
           }
         }
 
-        if ((patch.productId || patch.productName || patch.productSku) && !patch.locationBin && (!patch.assignedBins || patch.assignedBins.length === 0)) {
+        if (!isDisposal && (patch.productId || patch.productName || patch.productSku) && !patch.locationBin && (!patch.assignedBins || patch.assignedBins.length === 0)) {
           const autoBin = findStockBinForProduct(
             newRow.productId || '',
             newRow.productSku || '',
@@ -1322,73 +1322,73 @@ export default function CreateOutboundOrderPage({
 
     const payload = isDisposal
       ? {
-          orderNo: finalOrderNo,
-          orderType: 'disposal',
-          branchCode: activeTab.branchCode || 'KHO-TONG',
-          employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
-          customerName: 'Xuất hủy nội bộ',
-          orderDate: activeTab.orderDate,
-          expectedDate: activeTab.orderDate,
-          status: targetStatus,
-          description: [disposalReasonSelect, activeTab.description?.trim(), disposalMethod ? `Phương án: ${disposalMethod}` : ''].filter(Boolean).join(' - '),
-          subtotal,
-          discount: 0,
-          vatRate: 0,
-          vatAmount: 0,
-          totalAmount: subtotal,
-          amountPaid: 0,
-          details: activeValidItems.map((r) => {
-            const lineLoss = r.lossAmount !== undefined && r.lossAmount !== null ? Number(r.lossAmount) : (Number(r.qty) * Number(r.price));
-            const lineTotal = Number(r.price) + lineLoss;
-            return {
-              productId: r.productId,
-              productSku: r.productSku,
-              productName: r.productName,
-              warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
-              locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
-              assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
-              unit: r.unit,
-              qty: Number(r.qty),
-              price: Number(r.price),
-              lossAmount: lineLoss,
-              totalDisposalAmount: lineTotal,
-              totalLineAmount: lineTotal,
-              note: r.note,
-            };
-          }),
-        }
-      : {
-          orderNo: finalOrderNo,
-          orderType: isRetail ? 'retail' : 'orders',
-          branchCode: activeTab.branchCode || 'KHO-NVL',
-          employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
-          customerId: activeTab.customerId,
-          customerName: activeTab.customer?.trim() || (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ'),
-          customerPhone: activeTab.customerPhone?.trim() || undefined,
-          customerAddress: activeTab.customerAddress?.trim() || undefined,
-          orderDate: activeTab.orderDate,
-          expectedDate: activeTab.orderDate,
-          status: targetStatus,
-          description: activeTab.description?.trim() || undefined,
-          subtotal,
-          discount: activeTab.discount || 0,
-          vatRate: activeTab.vatRate || 0,
-          vatAmount,
-          totalAmount: grandTotal,
-          amountPaid: activeTab.amountPaid || grandTotal,
-          details: activeValidItems.map((r) => ({
+        orderNo: finalOrderNo,
+        orderType: 'disposal',
+        branchCode: activeTab.branchCode || 'KHO-TONG',
+        employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
+        customerName: 'Xuất hủy nội bộ',
+        orderDate: activeTab.orderDate,
+        expectedDate: activeTab.orderDate,
+        status: targetStatus,
+        description: [disposalReasonSelect, activeTab.description?.trim(), disposalMethod ? `Phương án: ${disposalMethod}` : ''].filter(Boolean).join(' - '),
+        subtotal,
+        discount: 0,
+        vatRate: 0,
+        vatAmount: 0,
+        totalAmount: subtotal,
+        amountPaid: 0,
+        details: activeValidItems.map((r) => {
+          const lineLoss = r.lossAmount !== undefined && r.lossAmount !== null ? Number(r.lossAmount) : (Number(r.qty) * Number(r.price));
+          const lineTotal = Number(r.price) + lineLoss;
+          return {
             productId: r.productId,
             productSku: r.productSku,
             productName: r.productName,
-            warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-NVL',
+            warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
             locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
             assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
             unit: r.unit,
             qty: Number(r.qty),
             price: Number(r.price),
+            lossAmount: lineLoss,
+            totalDisposalAmount: lineTotal,
+            totalLineAmount: lineTotal,
             note: r.note,
-          })),
-        };
+          };
+        }),
+      }
+      : {
+        orderNo: finalOrderNo,
+        orderType: isRetail ? 'retail' : 'orders',
+        branchCode: activeTab.branchCode || 'KHO-NVL',
+        employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
+        customerId: activeTab.customerId,
+        customerName: activeTab.customer?.trim() || (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ'),
+        customerPhone: activeTab.customerPhone?.trim() || undefined,
+        customerAddress: activeTab.customerAddress?.trim() || undefined,
+        orderDate: activeTab.orderDate,
+        expectedDate: activeTab.orderDate,
+        status: targetStatus,
+        description: activeTab.description?.trim() || undefined,
+        subtotal,
+        discount: activeTab.discount || 0,
+        vatRate: activeTab.vatRate || 0,
+        vatAmount,
+        totalAmount: grandTotal,
+        amountPaid: activeTab.amountPaid || grandTotal,
+        details: activeValidItems.map((r) => ({
+          productId: r.productId,
+          productSku: r.productSku,
+          productName: r.productName,
+          warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-NVL',
+          locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
+          assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
+          unit: r.unit,
+          qty: Number(r.qty),
+          price: Number(r.price),
+          note: r.note,
+        })),
+      };
 
     try {
       const url = isUpdating ? `${API_BASE_URL}/outbounds/${activeTab.id}` : `${API_BASE_URL}/outbounds`;
@@ -1531,7 +1531,7 @@ export default function CreateOutboundOrderPage({
             };
             localOutboundOrders = [savedOutboundEntry, ...localOutboundOrders.filter((o: any) => o.id !== savedOutboundEntry.id)];
             localStorage.setItem('stored_outbound_orders', JSON.stringify(localOutboundOrders));
-          } catch {}
+          } catch { }
 
           // Cập nhật smart-wms-products
           const storedProdsStr = localStorage.getItem('smart-wms-products');
@@ -1572,7 +1572,7 @@ export default function CreateOutboundOrderPage({
         const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
         let storedOutbound: any[] = [];
         if (storedOutboundStr) {
-          try { storedOutbound = JSON.parse(storedOutboundStr); } catch {}
+          try { storedOutbound = JSON.parse(storedOutboundStr); } catch { }
         }
         if (isUpdating) {
           storedOutbound = storedOutbound.map((item: any) =>
@@ -2144,11 +2144,10 @@ export default function CreateOutboundOrderPage({
               }}
               placeholder={isDisposal ? 'XH20260822-1001' : 'PXK20260822-1001'}
               title={isEditingDraft ? 'Mã phiếu xuất kho được cố định, không thể chỉnh sửa!' : 'Mã phiếu xuất kho'}
-              className={`h-10 w-full rounded-xl border-2 px-3 text-xs sm:text-sm font-black uppercase outline-none transition shadow-xs ${
-                isEditingDraft
+              className={`h-10 w-full rounded-xl border-2 px-3 text-xs sm:text-sm font-black uppercase outline-none transition shadow-xs ${isEditingDraft
                   ? 'border-slate-300 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none'
                   : 'border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20'
-              }`}
+                }`}
             />
           </div>
 
@@ -2285,11 +2284,10 @@ export default function CreateOutboundOrderPage({
                 }
                 setShowWarehouseDropdown(!showWarehouseDropdown);
               }}
-              className={`h-10 w-full rounded-xl border-2 px-3 flex items-center justify-between text-xs sm:text-sm font-bold shadow-xs transition ${
-                hasAssignedBins
+              className={`h-10 w-full rounded-xl border-2 px-3 flex items-center justify-between text-xs sm:text-sm font-bold shadow-xs transition ${hasAssignedBins
                   ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
                   : 'bg-white border-slate-300 text-slate-800 outline-none hover:border-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer'
-              }`}
+                }`}
               title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
               <span className="font-bold text-xs sm:text-sm truncate flex items-center gap-1.5">
@@ -2352,11 +2350,10 @@ export default function CreateOutboundOrderPage({
                             }));
                             setShowWarehouseDropdown(false);
                           }}
-                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${
-                            isSelected
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${isSelected
                               ? 'bg-cyan-50 text-cyan-950 font-black'
                               : 'hover:bg-slate-100 text-slate-800 font-bold'
-                          }`}
+                            }`}
                         >
                           <span className="truncate pr-2">
                             [{wh.code}] {wh.name}
@@ -2900,11 +2897,10 @@ export default function CreateOutboundOrderPage({
                             updateActiveTab((t) => ({ ...t, employeeName: emp.name }));
                             setShowEmployeeDropdown(false);
                           }}
-                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                            (activeTab?.employeeName || currentUserName) === emp.name
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${(activeTab?.employeeName || currentUserName) === emp.name
                               ? 'bg-cyan-600 dark:bg-indigo-600 text-white'
                               : 'text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-900 dark:hover:text-indigo-300'
-                          }`}
+                            }`}
                         >
                           <span>{emp.name}</span>
                         </div>
@@ -3073,6 +3069,7 @@ export default function CreateOutboundOrderPage({
         isOpen={pickBinModalOpen}
         onClose={() => setPickBinModalOpen(false)}
         mode="OUTBOUND_TRANSFER"
+        isDisposal={isDisposal}
         warehouseCode={activeTab?.branchCode || 'KHO-TONG'}
         items={activeTab?.details || []}
         targetRowId={activePickBinRowId}

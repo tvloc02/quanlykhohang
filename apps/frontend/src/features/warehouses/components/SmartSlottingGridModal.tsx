@@ -64,6 +64,7 @@ export interface SmartSlottingGridModalProps<T extends SlottingItemRow = Slottin
   isOpen: boolean;
   onClose: () => void;
   mode?: 'INBOUND' | 'INBOUND_STOCKIN' | 'OUTBOUND_TRANSFER' | 'STOCKTAKE';
+  isDisposal?: boolean;
   warehouseCode: string;
   items: T[];
   targetRowId?: string | null;
@@ -278,6 +279,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
   isOpen,
   onClose,
   mode,
+  isDisposal = false,
   warehouseCode,
   items,
   targetRowId,
@@ -1294,6 +1296,8 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           sender: 'ai',
           text: readOnly
             ? `SƠ ĐỒ VỊ TRÍ Ô KỆ ĐÃ LƯU KHO (CHẾ ĐỘ XEM)\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng số lượng: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nTrạng thái: Phiếu nhập kho đã được lưu vào hệ thống.\nVị trí các ô kệ đang lưu trữ hàng hóa:\n${binListStr}\n\nℹ️ Bạn đang ở Chế độ xem chi tiết. Vị trí các ô kệ đã lưu hiển thị màu xanh trên sơ đồ.`
+            : isDisposal
+            ? `CHỈ DẪN XUẤT HỦY HÀNG HÓA (AI SMART WMS)\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất hủy: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nQUY TẮC XUẤT HỦY HÀNG:\n- Chọn kệ chứa hàng: Nhấp vào ô kệ đang chứa mặt hàng "${activeItem?.productName || 'này'}" để chọn ô lấy hủy.\n- Nhập số lượng: Nhập hoặc điều chỉnh số lượng xuất hủy cụ thể cho từng kệ.\n- Hệ thống không tự động chọn kệ sẵn để bạn hoàn toàn chủ động theo thực tế.\n\n💡 Bạn có thể hỏi AI:\n• "Lấy hàng ở đâu?" / "Kệ nào có hàng?"\n• "Tự động chọn ô cho tất cả sản phẩm" (khi cần AI hỗ trợ chọn tự động)`
             : isOutbound
             ? `CHỈ DẪN XUẤT CHUYỂN KHO & LẤY HÀNG (AI SMART WMS)\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng xuất: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\nQUY TẮC AN TOÀN LẤY HÀNG:\n- Chỉ được chọn các ô kệ đang lưu trữ đúng mặt hàng "${activeItem?.productName || 'này'}".\n- Các ô kệ trống hoặc chứa hàng khác tự động khóa để tránh xuất nhầm hàng.\n\n💡 Bạn có thể hỏi AI:\n• "Tự động chọn ô cho tất cả sản phẩm" (hoặc bấm nút ⚡ Tự động tất cả)\n• "Lấy hàng ở đâu?" / "Kệ nào có hàng?"\n• "Hàng nặng lấy ở tầng nào?" (Ưu tiên tầng sàn A/B)\n• "Kiểm tra có đủ hàng không?"`
             : `CHỈ DẪN NHẬP KHO & LẤY HÀNG (AI SMART WMS)\n\nMặt hàng: ${activeItem?.productName || 'Hàng hóa'} (Tổng nhập: ${itemQty.toLocaleString('vi-VN')} ${activeItem?.unit || 'Cái'})\n\n💡 AI HỖ TRỢ ĐẦY ĐỦ CẢ ĐƠN HÀNG:\n• Tự động tất cả: Bấm nút "⚡ Tự động tất cả (${items.length} SP)" hoặc gõ "Tự động phân bổ tất cả sản phẩm vào kho"\n• Nhập hàng: Hỏi "Nhập vào đâu?", "Kệ trống", "Hàng nặng xếp tầng nào?" (Ưu tiên Tầng A/B)\n• Lấy hàng: Hỏi "Lấy hàng ở đâu?", "Kệ nào có hàng?", "Còn bao nhiêu hàng?"\n• Tự do ra lệnh: "Chọn ô A1", "1 kệ thôi", "Tự động chọn đủ ô"...`,
