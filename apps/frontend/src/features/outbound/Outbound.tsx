@@ -658,9 +658,9 @@ export default function Outbound({
           vatAmount: Number(item.vatAmount || 0),
           totalAmount: Number(item.totalAmount || 0),
           amountPaid: Number(item.amountPaid || item.totalAmount || 0),
-          itemsCount: item.details?.length || item.items || 1,
-          totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
-          details: item.details?.map((d: any) => ({
+          itemsCount: (item.details || item.items)?.length || 1,
+          totalQty: (item.details || item.items)?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
+          details: (item.details || item.items)?.map((d: any) => ({
             id: d.id,
             productId: d.product?.id || d.productId,
             productSku: d.product?.internalSku || d.productSku || d.sku || 'SKU',
@@ -669,6 +669,11 @@ export default function Outbound({
             qty: Number(d.requiredQty || d.qty || 1),
             price: Number(d.unitPrice || d.price || 0),
             totalLineAmount: Number(d.totalLineAmount || (Number(d.requiredQty || d.qty || 1) * Number(d.unitPrice || d.price || 0))),
+            locationBin: d.locationBin || (d.assignedBins && d.assignedBins.join(', ')) || '',
+            assignedBins: Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []),
+            lossAmount: d.lossAmount !== undefined ? Number(d.lossAmount) : undefined,
+            totalDisposalAmount: d.totalDisposalAmount !== undefined ? Number(d.totalDisposalAmount) : undefined,
+            note: d.note,
           })) || [],
         }));
         setOrders(formatted);

@@ -36,7 +36,7 @@ import {
 import { deliveryApi, type TransferOrder, type TransferOrderItem } from '../api/deliveryApi';
 import InternalShippingNoteModal from '../components/InternalShippingNoteModal';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, upsertWarehouseToApi, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, stripAssignedBinsFromNote, upsertWarehouseToApi, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
 
 
 type Toast = {
@@ -226,20 +226,17 @@ export default function TransferRequestsPage() {
   const openReceiveModal = (order: TransferOrder) => {
     setReceiveModalOrder(order);
     setReceiveDateVal(order.receiveDate ? new Date(order.receiveDate).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16));
-    setReceiveNote(order.note || '');
-    const destWhCode = (order.destinationWarehouse || '').trim().toUpperCase();
+    setReceiveNote(order.note ? stripAssignedBinsFromNote(order.note) : '');
     const isCompleted = order.status === 'DELIVERED' || order.status === 'COMPLETED';
 
     const preparedItems = (order.items || []).map((it, idx) => {
-      const rawBins = Array.isArray((it as any).assignedBins)
-        ? (it as any).assignedBins
-        : (it as any).locationBin
-        ? String((it as any).locationBin).split(',').map((b: string) => b.trim()).filter(Boolean)
-        : [];
-      // If completed, keep assigned destination bins; if receiving, only keep bins already tagged for destination warehouse
+      // Khi đang nhận hàng (chưa hoàn tất), TUYỆT ĐỐI không lấy ô kệ xuất của kho gửi (nơi chuyển)
+      // Ô kệ phải để trống để thủ kho chọn ô kệ nhập của kho nhận (nơi cất)
       const destBins = isCompleted 
-        ? rawBins 
-        : rawBins.filter((b: string) => b.toUpperCase().startsWith(destWhCode));
+        ? (Array.isArray((it as any).assignedBins)
+            ? (it as any).assignedBins
+            : ((it as any).locationBin ? String((it as any).locationBin).split(',').map((b: string) => b.trim()).filter(Boolean) : []))
+        : [];
 
       return {
         rowId: `rec-row-${it.id || idx}`,
@@ -252,7 +249,7 @@ export default function TransferRequestsPage() {
         price: Number((it as any).price || 0),
         locationBin: destBins.join(', '),
         assignedBins: destBins,
-        note: (it as any).note || '',
+        note: (it as any).note ? stripAssignedBinsFromNote((it as any).note) : '',
       };
     });
     setReceiveItems(preparedItems);
@@ -647,9 +644,9 @@ export default function TransferRequestsPage() {
           </div>
         </div>
 
-        {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (Grid of Details) ═══ */}
+        {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (TẬP TRUNG VÀO KHO NHẬN & CẤT KỆ) ═══ */}
         <div className="w-full rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md flex-shrink-0 space-y-3">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 items-center">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 items-center">
             {/* Ngày nhận hàng */}
             <div>
               <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
@@ -678,22 +675,14 @@ export default function TransferRequestsPage() {
               />
             </div>
 
-            {/* Kho chuyển (Nơi gửi) */}
+            {/* Kho nhận (Nơi cất hàng vào kệ) */}
             <div>
-              <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
-                <Building2 className="h-4 w-4 text-cyan-600" />
-                <span>Kho gửi (Nơi chuyển)</span>
-              </label>
-              <div className="h-10 w-full rounded-xl border-2 border-slate-300 bg-slate-100 px-3 text-xs sm:text-sm font-bold text-slate-700 flex items-center truncate shadow-2xs">
-                <span className="truncate">{sourceWhName}</span>
-              </div>
-            </div>
-
-            {/* Kho nhận (Nơi cất hàng) */}
-            <div>
-              <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-cyan-800">
-                <Building2 className="h-4 w-4 text-cyan-600" />
-                <span>Kho nhận (Cất vào kệ)</span>
+              <label className="mb-1.5 flex items-center justify-between text-xs font-black uppercase text-cyan-800">
+                <span className="flex items-center gap-1">
+                  <Building2 className="h-4 w-4 text-cyan-600" />
+                  <span>Kho nhận (Cất vào kệ)</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium lowercase italic">Từ: {sourceWhName}</span>
               </label>
               <div className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-xs sm:text-sm font-black text-cyan-950 flex items-center truncate shadow-2xs">
                 <span className="truncate">{destWhName}</span>
@@ -847,16 +836,12 @@ export default function TransferRequestsPage() {
                 <span>THÔNG TIN NHẬP CHUYỂN NỘI BỘ</span>
               </h3>
 
-              {/* Thông tin kho gửi & nhận */}
+              {/* Thông tin kho nhận cất hàng */}
               <div className="space-y-2 text-xs">
-                <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80">
-                  <span className="text-slate-500 font-semibold block text-[11px]">Kho gửi (Nơi xuất):</span>
-                  <span className="font-extrabold text-slate-900 block text-xs">{sourceWhName}</span>
-                </div>
-
-                <div className="p-2.5 rounded-xl border-2 border-cyan-400/80 bg-cyan-50/70">
-                  <span className="text-cyan-800 font-extrabold block text-[11px]">Kho nhận (Nơi cất hàng):</span>
-                  <span className="font-black text-cyan-950 block text-xs">{destWhName}</span>
+                <div className="p-3 rounded-xl border-2 border-cyan-400/80 bg-cyan-50/70">
+                  <span className="text-cyan-800 font-extrabold block text-[11px] uppercase">Kho nhận (Cất vào kệ):</span>
+                  <span className="font-black text-cyan-950 block text-sm mt-0.5">{destWhName}</span>
+                  <span className="text-slate-500 text-[11px] block mt-1">Xuất phát từ: {sourceWhName}</span>
                 </div>
 
                 <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 space-y-1">

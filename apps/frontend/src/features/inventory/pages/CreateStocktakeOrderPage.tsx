@@ -419,7 +419,7 @@ export default function CreateStocktakeOrderPage({
   onBack,
 }: {
   standalone?: boolean;
-  onBack?: () => void;
+  onBack?: (created?: any) => void;
 }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -838,11 +838,17 @@ export default function CreateStocktakeOrderPage({
     });
   };
 
-  const handleClose = () => {
+  const handleClose = (createdData?: any) => {
     if (onBack) {
-      onBack();
+      onBack(createdData);
     } else {
-      navigate('/inventory/stocktake');
+      navigate('/inventory/stocktake', {
+        state: {
+          newCreatedStocktake: createdData || true,
+          refreshTime: Date.now(),
+        },
+        replace: true,
+      });
     }
   };
 
@@ -928,9 +934,20 @@ export default function CreateStocktakeOrderPage({
         window.print();
       }
 
+      localStorage.setItem(
+        'recent_stocktake_created',
+        JSON.stringify({
+          id: created.id,
+          stocktakeNo: created.stocktakeNo,
+          createdAt: created.createdAt || new Date().toISOString(),
+          plannedDate: created.plannedDate,
+          timestamp: Date.now(),
+        }),
+      );
+
       setTimeout(() => {
-        handleClose();
-      }, 1000);
+        handleClose(created);
+      }, 600);
     } catch (err: any) {
       showError(err.message || 'Lỗi khi lưu phiếu kiểm kê');
     } finally {

@@ -1,6 +1,7 @@
 import React from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import CreateStocktakeOrderPage from './CreateStocktakeOrderPage';
+import StocktakeApproveShelfModal from '../components/StocktakeApproveShelfModal';
 import {
   Search,
   Plus,
@@ -181,6 +182,41 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function toLocalDateStr(val?: string | Date | null): string {
+  if (!val) return '';
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getStartOfMonthStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}-01`;
+}
+
+function getEndOfMonthStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const lastDay = new Date(y, m, 0).getDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
+function getTodayLocalDateStr(): string {
+  return toLocalDateStr(new Date());
+}
+
+function getDaysAgoStr(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return toLocalDateStr(d);
+}
+
 // ─── MAIN PAGE ─────────────────────────────────────────────────
 
 export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: 'requests' | 'create' | 'stocktake' | 'my-tasks' | 'request-new' }) {
@@ -209,14 +245,12 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   // Modals
   const [showCreateModal, setShowCreateModal] = React.useState(false);
   const [showDetailModal, setShowDetailModal] = React.useState(false);
+  const [approveModalStocktake, setApproveModalStocktake] = React.useState<StocktakeItem | null>(null);
 
   // RIC-style: date range filter
-  const [dateFrom, setDateFrom] = React.useState(() => {
-    const d = new Date(); return d.toISOString().slice(0, 10);
-  });
-  const [dateTo, setDateTo] = React.useState(() => {
-    const d = new Date(); return d.toISOString().slice(0, 10);
-  });
+  const [datePreset, setDatePreset] = React.useState<'this-month' | 'today' | '7days' | '30days' | 'all' | 'custom'>('this-month');
+  const [dateFrom, setDateFrom] = React.useState(() => getStartOfMonthStr());
+  const [dateTo, setDateTo] = React.useState(() => getEndOfMonthStr());
   // RIC-style: show detail toggle
   const [showDetail, setShowDetail] = React.useState(false);
   // Selected rows for bulk actions
@@ -308,14 +342,17 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   const loadData = React.useCallback(async () => {
     setLoading(true);
     try {
-      // Choose API endpoint based on view mode
-      let url = `${API_BASE}/inventory/stocktakes`;
+      // Choose API endpoint based on view mode with anti-cache timestamp
+      const ts = Date.now();
+      let url = `${API_BASE}/inventory/stocktakes?_t=${ts}`;
       if (isMyTasksView || isRequestNewView) {
-        url = `${API_BASE}/inventory/stocktakes/my-tasks`;
+        url = `${API_BASE}/inventory/stocktakes/my-tasks?_t=${ts}`;
       } else if (isRequestsView) {
-        url = `${API_BASE}/inventory/stocktakes/requests`;
+        url = `${API_BASE}/inventory/stocktakes/requests?_t=${ts}`;
       }
-      const res = await fetch(url, { headers: authHeaders() });
+      const res = await fetch(url, {
+        headers: authHeaders(),
+      });
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
         throw new Error(errData?.message || 'Không tải được dữ liệu kiểm kê');
@@ -351,12 +388,13 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
       s.stocktakeNo.toLowerCase().includes(kw) ||
       s.locationCode.toLowerCase().includes(kw) ||
       (s.createdBy || '').toLowerCase().includes(kw) ||
+      (s.assignee || '').toLowerCase().includes(kw) ||
       (STATUS_MAP[s.status]?.label || '').toLowerCase().includes(kw);
 
     // Date range filter
     if (dateFrom || dateTo) {
-      const itemDate = s.plannedDate ? new Date(s.plannedDate).toISOString().slice(0, 10)
-        : s.createdAt ? new Date(s.createdAt).toISOString().slice(0, 10) : '';
+      const itemDate = s.plannedDate ? toLocalDateStr(s.plannedDate)
+        : s.createdAt ? toLocalDateStr(s.createdAt) : '';
       if (dateFrom && itemDate && itemDate < dateFrom) return false;
       if (dateTo && itemDate && itemDate > dateTo) return false;
     }
@@ -452,26 +490,23 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   };
 
   const handleApprove = async (id: string) => {
+    // 1. Kiểm tra nếu đã có sẵn trong danh sách và có details thì mở ngay popup
+    const found = stocktakes.find((s) => String(s.id) === String(id));
+    if (found && found.details && found.details.length > 0) {
+      setApproveModalStocktake(found);
+      return;
+    }
+    // 2. Nếu chưa có chi tiết, fetch đầy đủ rồi mở popup duyệt điều chỉnh từng kệ
     try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const res = await fetch(`${API_BASE}/inventory/stocktakes/${id}/approve`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ approvedBy: user.fullName || user.email || '' }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.message || 'Không thể duyệt');
+      const res = await fetch(`${API_BASE}/inventory/stocktakes/${id}`, { headers: authHeaders() });
+      if (res.ok) {
+        const fullData = await res.json();
+        setApproveModalStocktake(fullData);
+      } else {
+        throw new Error('Không tải được chi tiết phiếu kiểm kê');
       }
-      showSuccess('Đã duyệt phiên kiểm kê và cập nhật tồn kho');
-      loadData();
-      if (selectedStocktake?.id === id) {
-        const updated = await res.json().catch(() => null);
-        if (updated) setSelectedStocktake(updated);
-        else handleViewDetail(id);
-      }
-    } catch (err) {
-      showError(err instanceof Error ? err.message : 'Lỗi');
+    } catch (err: any) {
+      showError(err.message || 'Lỗi');
     }
   };
 
@@ -572,12 +607,66 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
 
   const baseColCount = 3 + visibleMainCount + visibleDetailCount;
 
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const action = searchParams.get('action');
   const showCreateForm = action === 'create' || isCreateView || showCreateModal;
 
+  React.useEffect(() => {
+    if (!showCreateForm) {
+      loadData();
+    }
+  }, [showCreateForm, location.search, location.pathname, loadData]);
+
+  // Tự động nạp dữ liệu tức thì khi tạo phiếu kiểm kê xong mà không cần F5
+  React.useEffect(() => {
+    const locState = location.state as any;
+    if (locState?.newCreatedStocktake || locState?.refreshTime) {
+      setDatePreset('all');
+      setDateFrom('');
+      setDateTo('');
+      loadData();
+    }
+  }, [location.state, loadData]);
+
+  React.useEffect(() => {
+    const recentStr = localStorage.getItem('recent_stocktake_created');
+    if (recentStr) {
+      try {
+        const recent = JSON.parse(recentStr);
+        if (recent?.timestamp && Date.now() - recent.timestamp < 30000) {
+          setDatePreset('all');
+          setDateFrom('');
+          setDateTo('');
+          loadData();
+        }
+      } catch {}
+      localStorage.removeItem('recent_stocktake_created');
+    }
+  }, [loadData]);
+
   if (showCreateForm) {
-    return <CreateStocktakeOrderPage standalone={false} />;
+    return (
+      <CreateStocktakeOrderPage
+        standalone={false}
+        onBack={(createdData) => {
+          setSearchParams({});
+          setShowCreateModal(false);
+          if (createdData) {
+            setDatePreset('all');
+            setDateFrom('');
+            setDateTo('');
+            setStocktakes((prev) => {
+              const exists = prev.some(
+                (s) => String(s.id) === String(createdData.id) || s.stocktakeNo === createdData.stocktakeNo
+              );
+              return exists ? prev : [createdData, ...prev];
+            });
+          }
+          loadData();
+        }}
+      />
+    );
   }
 
   return (
@@ -730,29 +819,87 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
             {/* Date Filters Container & Show detail toggle */}
             <div className="flex flex-wrap items-center gap-3">
               {/* Date Filter Box (h-12) */}
-              <div className="inline-flex h-12 items-center gap-3 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3.5 shadow-2xs">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4.5 w-4.5 text-cyan-600 shrink-0" />
+              <div className="inline-flex h-12 items-center gap-2 rounded-xl border-2 border-cyan-600/30 bg-slate-50/80 px-3 shadow-2xs">
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="h-4 w-4 text-cyan-600 shrink-0" />
                   <span className="text-xs font-extrabold uppercase text-cyan-950 tracking-wide">Thời gian:</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-slate-600">Từ</span>
+
+                <select
+                  value={datePreset}
+                  onChange={(e) => {
+                    const preset = e.target.value as any;
+                    setDatePreset(preset);
+                    setCurrentPage(1);
+                    if (preset === 'this-month') {
+                      setDateFrom(getStartOfMonthStr());
+                      setDateTo(getEndOfMonthStr());
+                    } else if (preset === 'today') {
+                      setDateFrom(getTodayLocalDateStr());
+                      setDateTo(getTodayLocalDateStr());
+                    } else if (preset === '7days') {
+                      setDateFrom(getDaysAgoStr(7));
+                      setDateTo(getTodayLocalDateStr());
+                    } else if (preset === '30days') {
+                      setDateFrom(getDaysAgoStr(30));
+                      setDateTo(getTodayLocalDateStr());
+                    } else if (preset === 'all') {
+                      setDateFrom('');
+                      setDateTo('');
+                    }
+                  }}
+                  className="h-8.5 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-pointer shadow-2xs"
+                >
+                  <option value="this-month">Tháng này</option>
+                  <option value="today">Hôm nay</option>
+                  <option value="7days">7 ngày qua</option>
+                  <option value="30days">30 ngày qua</option>
+                  <option value="all">Tất cả</option>
+                  <option value="custom">Tùy chọn</option>
+                </select>
+
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-bold text-slate-500">Từ</span>
                   <input
                     type="date"
                     value={dateFrom}
-                    onChange={(e) => { setDateFrom(e.target.value); setCurrentPage(1); }}
-                    className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                    onChange={(e) => {
+                      setDateFrom(e.target.value);
+                      setDatePreset('custom');
+                      setCurrentPage(1);
+                    }}
+                    className="h-8.5 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-pointer"
                   />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-slate-600">Đến</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-bold text-slate-500">Đến</span>
                   <input
                     type="date"
                     value={dateTo}
-                    onChange={(e) => { setDateTo(e.target.value); setCurrentPage(1); }}
-                    className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
+                    onChange={(e) => {
+                      setDateTo(e.target.value);
+                      setDatePreset('custom');
+                      setCurrentPage(1);
+                    }}
+                    className="h-8.5 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-pointer"
                   />
                 </div>
+
+                {(dateFrom || dateTo) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDateFrom('');
+                      setDateTo('');
+                      setDatePreset('all');
+                      setCurrentPage(1);
+                    }}
+                    className="ml-1 rounded-lg bg-cyan-100 hover:bg-cyan-200 text-cyan-800 px-2 py-1 text-xs font-bold transition cursor-pointer"
+                    title="Xem tất cả các ngày"
+                  >
+                    Xem tất cả
+                  </button>
+                )}
               </div>
 
               {/* Detail toggle box (h-12) */}
@@ -1275,7 +1422,25 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
             await loadData();
             handleViewDetail(selectedStocktake.id);
           }}
+          onApproveClick={(st) => {
+            setApproveModalStocktake(st);
+          }}
           onSuccess={showSuccess}
+          onError={showError}
+        />
+      )}
+      {approveModalStocktake && (
+        <StocktakeApproveShelfModal
+          stocktake={approveModalStocktake}
+          onClose={() => setApproveModalStocktake(null)}
+          onApproved={(updated) => {
+            setApproveModalStocktake(null);
+            showSuccess(`Đã duyệt thành công phiếu kiểm kê ${updated?.stocktakeNo || approveModalStocktake.stocktakeNo} và cập nhật tồn kho từng kệ!`);
+            loadData();
+            if (selectedStocktake?.id === updated?.id) {
+              setSelectedStocktake(updated);
+            }
+          }}
           onError={showError}
         />
       )}
@@ -1922,6 +2087,7 @@ function StocktakeDetailModal({
   stocktake,
   onClose,
   onRefresh,
+  onApproveClick,
   onSuccess,
   onError,
   isManager = false,
@@ -1930,6 +2096,7 @@ function StocktakeDetailModal({
   stocktake: StocktakeItem;
   onClose: () => void;
   onRefresh: () => void;
+  onApproveClick?: (st: StocktakeItem) => void;
   onSuccess: (msg: string) => void;
   onError: (msg: string) => void;
   isManager?: boolean;
@@ -2266,8 +2433,14 @@ function StocktakeDetailModal({
 
           {canApprove && (
             <button
-              onClick={handleApprove}
-              className="flex h-8 items-center gap-1 rounded bg-orange-500 px-4 text-xs font-bold text-white shadow hover:bg-orange-600 transition"
+              onClick={() => {
+                if (onApproveClick) {
+                  onApproveClick(stocktake);
+                } else {
+                  handleApprove();
+                }
+              }}
+              className="flex h-8 items-center gap-1 rounded bg-orange-500 px-4 text-xs font-bold text-white shadow hover:bg-orange-600 transition cursor-pointer"
             >
               🛡 DUYỆT PHIẾU
             </button>

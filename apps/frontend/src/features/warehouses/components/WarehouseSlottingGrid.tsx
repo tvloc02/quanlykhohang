@@ -59,6 +59,7 @@ export interface WarehouseSlottingGridProps {
   warehouse: WarehouseRecord | null;
   activeZoneId?: string;
   activeRackId?: string;
+  onSelectZone?: (zoneId: string) => void;
   selectedBinCodes?: string[];
   suggestedBinCodes?: string[];
   otherItemsBinsMap?: Record<string, string | { label: string; occupancyPct?: number }>;
@@ -83,10 +84,39 @@ export interface WarehouseSlottingGridProps {
 
 export function normalizeBinKey(code: string): string {
   if (!code) return '';
-  const cleanCode = code.toString().split('(')[0].trim();
+  const cleanCode = code.toString().split('(')[0].split('[')[0].trim();
   return cleanCode
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
+}
+
+export function isSameBin(codeA?: string | null, codeB?: string | null): boolean {
+  if (!codeA || !codeB) return false;
+  const cleanA = codeA.toString().split('(')[0].split('[')[0].trim().toUpperCase();
+  const cleanB = codeB.toString().split('(')[0].split('[')[0].trim().toUpperCase();
+  if (cleanA === cleanB) return true;
+
+  const normA = cleanA.replace(/[^A-Z0-9]/g, '');
+  const normB = cleanB.replace(/[^A-Z0-9]/g, '');
+  if (normA && normB && normA === normB) return true;
+
+  const shortA = (cleanA.split('-').pop() || cleanA).replace(/[^A-Z0-9]/g, '');
+  const shortB = (cleanB.split('-').pop() || cleanB).replace(/[^A-Z0-9]/g, '');
+  if (shortA && shortB && shortA === shortB) {
+    const partsA = cleanA.split('-');
+    const partsB = cleanB.split('-');
+    if (partsA.length >= 2 && partsB.length >= 2) {
+      const rackA = partsA[partsA.length - 2].replace(/[^A-Z0-9]/g, '');
+      const rackB = partsB[partsB.length - 2].replace(/[^A-Z0-9]/g, '');
+      if (rackA && rackB && rackA !== rackB) return false;
+    }
+    return true;
+  }
+
+  if (shortA && normB && (normB.endsWith(shortA) || normB === shortA)) return true;
+  if (shortB && normA && (normA.endsWith(shortB) || normA === shortB)) return true;
+
+  return false;
 }
 
 /**
@@ -1142,6 +1172,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
   warehouse,
   activeZoneId: propZoneId,
   activeRackId: propRackId,
+  onSelectZone,
   selectedBinCodes = [],
   suggestedBinCodes = [],
   otherItemsBinsMap = {},
@@ -1169,6 +1200,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
     shortCode: string;
     rackCode?: string;
     currentPct: number;
+    allocatedQty?: number;
   } | null>(null);
   const [inputPctVal, setInputPctVal] = useState<number>(0);
   const [isAddMode, setIsAddMode] = useState<boolean>(true);
@@ -1248,7 +1280,86 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       const itemStockPct = matchedStored && matchedStored.occupancyPct !== undefined ? Number(matchedStored.occupancyPct) : (realStockPct || editingBinConfig.currentPct || 100);
 
       const requestedQty = activeItem?.qty && Number(activeItem.qty) > 0 ? Number(activeItem.qty) : 10;
-      const exportQty = Math.min(itemStockQty > 0 ? itemStockQty : requestedQty, requestedQty);
+
+      // Prioritize explicit or sequential allocated quantity for this specific shelf
+      const normShort = normalizeBinKey(binShortCode);
+      const cleanFull = fullBinCode.split('(')[0].split('[')[0].trim();
+      const normFull = normalizeBinKey(cleanFull);
+
+      let allocatedThisBin: number | undefined = editingBinConfig.allocatedQty;
+
+      if (allocatedThisBin === undefined && binQtyMap) {
+        allocatedThisBin = binQtyMap[binShortCode] ?? binQtyMap[cleanFull] ?? (normShort ? binQtyMap[normShort] : undefined) ?? (normFull ? binQtyMap[normFull] : undefined);
+      }
+
+      if (allocatedThisBin === undefined && selectedBinCodes) {
+        const matchingCode = selectedBinCodes.find((s) => isSameBin(s, fullBinCode) || isSameBin(s, binShortCode));
+        if (matchingCode) {
+          const m = matchingCode.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+          if (m) allocatedThisBin = Number(m[1]);
+        }
+      }
+
+      // Sequential allocation if this bin is selected among selectedBinCodes
+      if (allocatedThisBin === undefined && selectedBinCodes && selectedBinCodes.length > 0) {
+        const isThisSelected = selectedBinCodes.some((s) => isSameBin(s, fullBinCode) || isSameBin(s, binShortCode));
+        if (isThisSelected) {
+          let rem = requestedQty;
+          for (const sel of selectedBinCodes) {
+            const sClean = sel.split('(')[0].split('[')[0].trim();
+            const sShort = (sClean.split('-').pop() || sClean).toUpperCase();
+            let sStock = 0;
+            if (binQtyMap && (binQtyMap[sShort] !== undefined || binQtyMap[sClean] !== undefined)) {
+              sStock = Number(binQtyMap[sShort] ?? binQtyMap[sClean]);
+            } else {
+              const occ = getOccupiedInfo(sClean, sShort, rackCode);
+              sStock = Number(occ?.totalPhysical || 0);
+              if (sStock <= 0) {
+                const m = sel.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+                if (m) sStock = Number(m[1]);
+                else sStock = 1;
+              }
+            }
+            const take = Math.min(Math.max(0, rem), sStock);
+            if (isSameBin(sel, fullBinCode) || isSameBin(sel, binShortCode)) {
+              allocatedThisBin = take;
+              break;
+            }
+            rem -= take;
+          }
+        }
+      }
+
+      // Fallback: if not yet selected, calculate remaining needed from order
+      let effectiveExportQty = 0;
+      if (allocatedThisBin !== undefined && allocatedThisBin > 0) {
+        effectiveExportQty = allocatedThisBin;
+      } else {
+        let remainingNeeded = requestedQty;
+        if (selectedBinCodes && selectedBinCodes.length > 0) {
+          selectedBinCodes.forEach((sel) => {
+            if (!isSameBin(sel, fullBinCode) && !isSameBin(sel, binShortCode)) {
+              const sClean = sel.split('(')[0].split('[')[0].trim();
+              const sShort = (sClean.split('-').pop() || sClean).toUpperCase();
+              let take = 0;
+              if (binQtyMap && (binQtyMap[sShort] !== undefined || binQtyMap[sClean] !== undefined)) {
+                take = Number(binQtyMap[sShort] ?? binQtyMap[sClean]);
+              } else {
+                const m = sel.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+                if (m) take = Number(m[1]);
+              }
+              remainingNeeded = Math.max(0, remainingNeeded - take);
+            }
+          });
+        }
+        if (remainingNeeded > 0) {
+          effectiveExportQty = Math.min(itemStockQty > 0 ? itemStockQty : remainingNeeded, remainingNeeded);
+        } else {
+          effectiveExportQty = Math.min(itemStockQty > 0 ? itemStockQty : requestedQty, requestedQty);
+        }
+      }
+
+      const exportQty = Math.min(itemStockQty > 0 ? itemStockQty : effectiveExportQty, effectiveExportQty);
       let exportPct = 0;
       if (itemStockQty > 0 && itemStockPct > 0) {
         exportPct = Number(((exportQty / itemStockQty) * itemStockPct).toFixed(1));
@@ -1907,7 +2018,10 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
               <button
                 key={z.id}
                 type="button"
-                onClick={() => setSelectedZoneId(z.id)}
+                onClick={() => {
+                  setSelectedZoneId(z.id);
+                  onSelectZone?.(z.id);
+                }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${isActive
                   ? 'bg-cyan-600 text-white shadow-md'
                   : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-cyan-50 dark:hover:bg-slate-700'
@@ -1948,6 +2062,67 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
         const shelvesCount = activeRack.shelvesCount || (activeZone?.shelvesPerRack ? Math.max(1, activeZone.shelvesPerRack - 1) : 4);
         const baysCount = activeRack.baysCount || Math.max(1, (activeRack.verticalPartitions || activeZone?.binsPerShelf || 2) - 1);
         const rackCode = activeRack.rackCode || 'R01';
+
+        // Outbound quantity checking
+        const curActiveItem = (orderItems && activeRowId) ? orderItems.find((i: any) => i.rowId === activeRowId) : null;
+        const targetOrderQty = Math.max(1, Number(curActiveItem?.qty || (curActiveItem as any)?.quantity || 1));
+
+        let totalSelectedStock = 0;
+        let remainingToTake = targetOrderQty;
+        const binAllocatedQty: Record<string, number> = {};
+
+        if (isOutbound && selectedBinCodes && selectedBinCodes.length > 0) {
+          selectedBinCodes.forEach((sel) => {
+            const cleanSel = sel.split('(')[0].split('[')[0].trim();
+            const normSel = normalizeBinKey(cleanSel);
+            const shortSel = (cleanSel.split('-').pop() || cleanSel).toUpperCase();
+
+            // 1. Bin quantity map if explicit quantity set
+            let shelfStock: number | undefined = undefined;
+            if (binQtyMap && (binQtyMap[cleanSel] !== undefined || (normSel && binQtyMap[normSel] !== undefined) || (shortSel && binQtyMap[shortSel] !== undefined))) {
+              const q = Number(binQtyMap[cleanSel] ?? binQtyMap[normSel] ?? binQtyMap[shortSel] ?? 0);
+              if (q > 0) {
+                shelfStock = q;
+              }
+            }
+
+            // 2. Extracted from string [X cái]
+            if (shelfStock === undefined) {
+              const matchQty = sel.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+              if (matchQty) {
+                shelfStock = Number(matchQty[1]);
+              }
+            }
+
+            // 3. Occupied info stock
+            if (shelfStock === undefined) {
+              const occInfo = getOccupiedInfo(cleanSel, shortSel, rackCode);
+              if (occInfo && Number(occInfo.totalPhysical || 0) > 0) {
+                shelfStock = Number(occInfo.totalPhysical);
+              }
+            }
+
+            if (shelfStock === undefined || shelfStock <= 0) {
+              shelfStock = 1;
+            }
+
+            const explicitQty = binQtyMap ? (binQtyMap[cleanSel] ?? binQtyMap[normSel] ?? binQtyMap[shortSel]) : undefined;
+            const take = explicitQty !== undefined && explicitQty > 0
+              ? explicitQty
+              : Math.min(Math.max(0, remainingToTake), shelfStock);
+
+            binAllocatedQty[cleanSel] = take;
+            binAllocatedQty[shortSel] = take;
+            if (normSel) binAllocatedQty[normSel] = take;
+
+            totalSelectedStock += take;
+            remainingToTake = Math.max(0, remainingToTake - take);
+          });
+        }
+
+        const isQuotaReached = isOutbound
+          ? (totalSelectedStock >= targetOrderQty && targetOrderQty > 0)
+          : (maxBinsAllowed !== undefined && maxBinsAllowed > 0 && selectedBinCodes.length >= maxBinsAllowed);
 
         return (
           <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-4 shadow-sm">
@@ -2006,8 +2181,8 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                           const normShort = normalizeBinKey(binCodeShort);
                           const normRackShort = normalizeBinKey(`${rackCode}-${binCodeShort}`);
-                          const isSelected = selectedSet.has(normFull) || (Boolean(normShort) && selectedSet.has(normShort)) || (Boolean(normRackShort) && selectedSet.has(normRackShort));
-                          let isSuggested = suggestedSet.has(normFull) || (Boolean(normShort) && suggestedSet.has(normShort)) || (Boolean(normRackShort) && suggestedSet.has(normRackShort));
+                          const isSelected = selectedSet.has(normFull) || (Boolean(normShort) && selectedSet.has(normShort)) || (Boolean(normRackShort) && selectedSet.has(normRackShort)) || selectedBinCodes.some((s) => isSameBin(s, fullBinCode) || isSameBin(s, binCodeShort) || isSameBin(s, rackCell));
+                          let isSuggested = suggestedSet.has(normFull) || (Boolean(normShort) && suggestedSet.has(normShort)) || (Boolean(normRackShort) && suggestedSet.has(normRackShort)) || suggestedBinCodes.some((s) => isSameBin(s, fullBinCode) || isSameBin(s, binCodeShort) || isSameBin(s, rackCell));
                           const rawOtherEntry = otherItemsBinsMap
                             ? (otherItemsBinsMap[fullBinCode] ||
                               otherItemsBinsMap[binCodeShort] ||
@@ -2051,7 +2226,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             hasCustomGoods
                           );
 
-                          const matchingSelectedCode = selectedBinCodes.find((s) => normalizeBinKey(s) === normFull);
+                          const matchingSelectedCode = selectedBinCodes.find((s) => isSameBin(s, fullBinCode) || isSameBin(s, binCodeShort) || isSameBin(s, rackCell));
                           let embeddedPct: number | undefined;
                           let embeddedQty: number | undefined;
                           if (matchingSelectedCode) {
@@ -2061,14 +2236,16 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             if (matchQty) embeddedQty = Number(matchQty[1]);
                           }
 
-                          const assignedBinQty: number | undefined = embeddedQty !== undefined
-                            ? embeddedQty
-                            : (binQtyMap ? (
-                                binQtyMap[fullBinCode] ??
-                                binQtyMap[binCodeShort] ??
-                                binQtyMap[normFull] ??
-                                binQtyMap[normShort]
-                              ) : undefined);
+                          const assignedBinQty: number | undefined = (binAllocatedQty[binCodeShort] ?? binAllocatedQty[fullBinCode] ?? binAllocatedQty[normShort] ?? binAllocatedQty[normFull]) !== undefined
+                            ? (binAllocatedQty[binCodeShort] ?? binAllocatedQty[fullBinCode] ?? binAllocatedQty[normShort] ?? binAllocatedQty[normFull])
+                            : (embeddedQty !== undefined
+                                ? embeddedQty
+                                : (binQtyMap ? (
+                                    binQtyMap[fullBinCode] ??
+                                    binQtyMap[binCodeShort] ??
+                                    binQtyMap[normFull] ??
+                                    binQtyMap[normShort]
+                                  ) : undefined));
 
                           const customPct = (customConfig?.occupancyPct !== undefined && customConfig?.occupancyPct !== null && !isStagingUnselected && !isEmptyNote)
                             ? Number(customConfig.occupancyPct)
@@ -2140,22 +2317,25 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                             occName.includes('đã chứa') ||
                             occName.includes('tồn kho');
 
+                          // KỆ CHỈ ĐƯỢC COI LÀ KHỚP KHI CHỨA ĐÚNG MẶT HÀNG ĐANG CHỌN (KHÔNG CHẤP NHẬN HÀNG GENERIC / KHÁC):
                           const isMatchingProduct = Boolean(
-                            suggestedSet.has(normFull) ||
-                            (Boolean(normShort) && suggestedSet.has(normShort)) ||
-                            (Boolean(normRackShort) && suggestedSet.has(normRackShort)) ||
                             matchesGoodsInBin ||
                             (curSku && occSku && curSku === occSku) ||
                             (curName && occName && (curName.includes(occName) || occName.includes(curName))) ||
                             (curItem && (
-                              (Array.isArray(curItem.assignedBins) && curItem.assignedBins.some((b: string) => normalizeBinKey(b) === normFull || b.includes(binCodeShort))) ||
-                              (curItem.locationBin && String(curItem.locationBin).includes(binCodeShort))
+                              (Array.isArray(curItem.assignedBins) && curItem.assignedBins.some((b: string) => isSameBin(b, fullBinCode) || isSameBin(b, binCodeShort) || isSameBin(b, rackCell))) ||
+                              (curItem.locationBin && String(curItem.locationBin).split(',').some((b: string) => isSameBin(b.trim(), fullBinCode) || isSameBin(b.trim(), binCodeShort) || isSameBin(b.trim(), rackCell)))
                             )) ||
-                            (hasGoods && occupancyPct > 0 && isGenericGoods)
+                            suggestedSet.has(normFull) ||
+                            (Boolean(normShort) && suggestedSet.has(normShort)) ||
+                            (Boolean(normRackShort) && suggestedSet.has(normRackShort)) ||
+                            suggestedBinCodes.some((s) => isSameBin(s, fullBinCode) || isSameBin(s, binCodeShort) || isSameBin(s, rackCell))
                           );
 
+                          const isEligibleCandidate = Boolean(isOutbound && hasGoods && occupancyPct > 0 && isMatchingProduct);
+
                           if (isOutbound) {
-                            if (hasGoods && occupancyPct > 0 && (isMatchingProduct || isGenericGoods)) {
+                            if (isEligibleCandidate) {
                               isSuggested = true;
                             } else {
                               isSuggested = false;
@@ -2165,29 +2345,20 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                           const isFull = (hasGoods && occupancyPct >= 100) || isOtherItemFull || (isSelected && occupancyPct >= 100);
                           const isPartiallyOccupied = hasGoods && occupancyPct > 0 && occupancyPct < 100;
 
-                          const countReq = maxBinsAllowed || 1;
-                          const isQuotaReached = selectedBinCodes.length >= countReq;
+                          // Qualified shelf that is dimmed because quota is already reached
+                          const isQualifiedButDimmed = Boolean(isOutbound && isEligibleCandidate && isQuotaReached && !isSelected);
 
                           let isBinDisabled = isOutbound ? false : isOtherItemFull;
 
                           if (mode === 'select') {
                             if (isOutbound) {
-                              // LOGIC XUẤT KHO / ĐIỀU CHUYỂN NỘI BỘ:
-                              // 1. Ô KỆ KHÔNG CÓ HÀNG HÓA HOẶC ĐÃ HẾT HÀNG (0%) -> Khóa chọn & In chìm!
-                              const isBinEmpty = occupancyPct <= 0 || !hasGoods || (occupiedInfo && (occupiedInfo.totalPhysical || 0) <= 0);
-                              if (isBinEmpty && !isSelected) {
-                                isBinDisabled = true;
-                              }
-
-                              // 2. Ô KỆ ĐANG CHỨA MẶT HÀNG KHÁC CỤ THỂ (KHÔNG PHẢI HÀNG ĐANG XUẤT VÀ KHÔNG PHẢI HÀNG TỒN CHUNG) -> Khóa chọn
-                              const isOtherDistinctProduct = hasGoods && occupancyPct > 0 && occName && !isGenericGoods && !isMatchingProduct;
-                              if (isOtherDistinctProduct && !isSelected) {
-                                isBinDisabled = true;
-                              }
-
-                              // 3. Khi đã chọn đủ số lượng/số kệ cần xuất (isQuotaReached) thì các kệ chưa chọn khác sẽ in chìm.
-                              if (isQuotaReached && !isSelected) {
-                                isBinDisabled = true;
+                              // YÊU CẦU: Khi xuất hàng, chỉ hiện những kệ chứa đúng sản phẩm đó, tất cả kệ còn lại in chìm tất
+                              if (!isSelected) {
+                                if (!isEligibleCandidate) {
+                                  isBinDisabled = true;
+                                } else if (isQualifiedButDimmed) {
+                                  isBinDisabled = true;
+                                }
                               }
                             } else {
                               // LOGIC NHẬP KHO:
@@ -2214,6 +2385,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                     shortCode: binCodeShort,
                                     rackCode: rackCode || (activeRack as any)?.rackCode || '',
                                     currentPct: curr,
+                                    allocatedQty: assignedBinQty,
                                   });
                                   setInputPctVal(curr);
                                   setIsAddMode(false);
@@ -2229,6 +2401,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                       zoneCode: zoneCodeStr,
                                       rackCode,
                                       occupancyPct: occupancyPct,
+                                      stockQty: occupiedInfo?.totalPhysical || customConfig?.totalPhysical || (occupancyPct > 0 ? 1 : 0),
+                                      productName: occupiedInfo?.productName || customConfig?.productName,
+                                      sku: occupiedInfo?.sku || customConfig?.sku,
                                       maxWeight: customConfig?.maxWeight || (activeRack as any).defaultBinMaxWeight || 500,
                                       notes: customConfig?.notes || '',
                                     });
@@ -2238,28 +2413,34 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                 }
                               }}
                               title={
-                                 goodsInBin && goodsInBin.length > 0
-                                   ? `Ô ${binCodeShort} (Độ chứa: ${occupancyPct}%):\n${goodsInBin.map((g) => `• ${g.productName}: ${g.quantity} ${g.unit || 'cái'} [${g.occupancyPct || 0}%]`).join('\n')}`
-                                   : customConfig?.notes || `Ô ${binCodeShort} (${occupancyPct > 0 ? `${occupancyPct}%` : 'Trống'})`
-                               }
-                              className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] cursor-pointer ${mode === 'view'
+                                isQualifiedButDimmed
+                                  ? `Ô ${binCodeShort}: Đã chọn đủ số lượng xuất (${totalSelectedStock}/${targetOrderQty} ${curActiveItem?.unit || 'cái'}). Bỏ chọn ô kệ đã chọn nếu muốn chuyển sang lấy hàng ở ô ${binCodeShort}.`
+                                  : isEligibleCandidate && !isSelected
+                                    ? `Ô ${binCodeShort}: KỆ ĐỦ ĐIỀU KIỆN (Bấm để chọn lấy hàng cho "${curActiveItem?.productName || 'mặt hàng'}")`
+                                    : goodsInBin && goodsInBin.length > 0
+                                      ? `Ô ${binCodeShort} (Độ chứa: ${occupancyPct}%):\n${goodsInBin.map((g) => `• ${g.productName}: ${g.quantity} ${g.unit || 'cái'} [${g.occupancyPct || 0}%]`).join('\n')}`
+                                      : customConfig?.notes || `Ô ${binCodeShort} (${occupancyPct > 0 ? `${occupancyPct}%` : 'Trống'})`
+                              }
+                              className={`p-2.5 rounded-2xl border text-center transition-all flex flex-col items-center justify-between gap-1 shadow-2xs relative overflow-hidden aspect-square min-h-[84px] sm:min-h-[92px] ${mode === 'view'
                                 ? isSelected
-                                  ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] z-20 hover:ring-emerald-300'
+                                  ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] z-20 hover:ring-emerald-300 cursor-pointer'
                                   : isFull || hasGoods
-                                    ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs font-black hover:border-cyan-600'
-                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-400'
+                                    ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs font-black hover:border-cyan-600 cursor-pointer'
+                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-400 cursor-pointer'
                                 : readOnly
                                   ? isSelected
-                                    ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-sm font-black hover:border-cyan-600'
+                                    ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-sm font-black hover:border-cyan-600 cursor-pointer'
                                     : isFull || hasGoods
-                                      ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs font-black hover:border-cyan-600'
-                                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-400'
-                                  : isBinDisabled
-                                    ? 'border-2 border-slate-300 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-900/90 text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed select-none'
-                                    : isSelected
-                                      ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] cursor-pointer z-20'
-                                      : isSuggested
-                                        ? 'border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-300/60 font-black cursor-pointer'
+                                      ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs font-black hover:border-cyan-600 cursor-pointer'
+                                      : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-cyan-400 cursor-pointer'
+                                  : isSelected
+                                    ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] cursor-pointer z-20'
+                                    : isBinDisabled
+                                      ? isQualifiedButDimmed
+                                        ? 'border-2 border-dashed border-emerald-400/40 dark:border-emerald-700/40 bg-slate-100/70 dark:bg-slate-900/70 text-slate-400 dark:text-slate-500 opacity-35 cursor-not-allowed select-none'
+                                        : 'border-2 border-slate-200 dark:border-slate-800/80 bg-slate-100/80 dark:bg-slate-900/80 text-slate-400 dark:text-slate-600 opacity-25 cursor-not-allowed select-none grayscale'
+                                      : (isEligibleCandidate || isSuggested)
+                                        ? 'border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 shadow-md ring-2 ring-emerald-300/80 font-black cursor-pointer hover:border-emerald-600 hover:scale-[1.02] transition-all'
                                         : isFull || hasGoods
                                           ? 'border-2 border-[#197e96] bg-cyan-50/90 dark:bg-cyan-950/90 text-cyan-950 dark:text-cyan-100 shadow-2xs cursor-pointer font-black'
                                           : isPartiallyOccupied
@@ -2328,6 +2509,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                           shortCode: binCodeShort,
                                           rackCode: rackCode || (activeRack as any)?.rackCode || '',
                                           currentPct: curr,
+                                          allocatedQty: assignedBinQty,
                                         });
                                         setInputPctVal(curr);
                                         setIsAddMode(false);
@@ -2350,6 +2532,7 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                               shortCode: binCodeShort,
                                               rackCode: rackCode || (activeRack as any)?.rackCode || '',
                                               currentPct: curr,
+                                              allocatedQty: assignedBinQty,
                                             });
                                             setInputPctVal(curr);
                                             setIsAddMode(false);
@@ -2366,7 +2549,17 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                       <button
                                         type="button"
                                         disabled={isBinDisabled}
-                                        title={isBinDisabled ? (isOtherItemFull ? `Đã đầy 100% (${otherItemName || 'Hàng khác'})` : 'Kệ đã đầy 100%') : isSelected ? 'Đã chọn ô' : 'Bấm để chọn ô'}
+                                        title={
+                                          isQualifiedButDimmed
+                                            ? `Đã chọn đủ số lượng xuất (${totalSelectedStock}/${targetOrderQty} ${curActiveItem?.unit || 'cái'}). Bỏ chọn ô kệ đã chọn nếu muốn chuyển sang lấy hàng ở ô ${binCodeShort}.`
+                                            : isBinDisabled
+                                              ? (isOtherItemFull ? `Đã đầy 100% (${otherItemName || 'Hàng khác'})` : !hasGoods || occupancyPct <= 0 ? 'Kệ trống (0%)' : 'Kệ không hợp lệ')
+                                              : isSelected
+                                                ? `Đã chọn ô ${binCodeShort} (Bấm để bỏ chọn)`
+                                                : isEligibleCandidate
+                                                  ? `Kệ ${binCodeShort}: ĐỦ ĐIỀU KIỆN (Bấm để chọn lấy hàng)`
+                                                  : 'Bấm để chọn ô'
+                                        }
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if (isBinDisabled) return;
@@ -2389,12 +2582,12 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                             onBinClick(fullBinCode, customConfig, occupiedInfo || null, getGoodsList(fullBinCode, binCodeShort, rackCode));
                                           }
                                         }}
-                                        className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs cursor-pointer ${isBinDisabled || isOtherItemFull
+                                        className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs ${isBinDisabled || isOtherItemFull
                                           ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
                                           : isSelected
                                             ? 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
-                                            : isSuggested
-                                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm cursor-pointer'
+                                            : (isEligibleCandidate || isSuggested)
+                                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm cursor-pointer ring-1 ring-emerald-400'
                                               : isFull
                                                 ? 'bg-cyan-700 text-white border-cyan-700 opacity-90 cursor-pointer'
                                                 : !hasGoods || occupancyPct <= 0
@@ -2427,11 +2620,11 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               <div className="w-full z-10">
                                 {isSelected ? (
                                   <span
-                                    title={assignedBinQty !== undefined && assignedBinQty > 0 ? `Đã chọn: ${assignedBinQty.toLocaleString('vi-VN')} cái (${occupancyPct > 0 ? occupancyPct : 100}%)` : `Đã chọn (${occupancyPct > 0 ? occupancyPct : 100}%)`}
+                                    title={assignedBinQty !== undefined && assignedBinQty > 0 ? `Đã chọn lấy: ${assignedBinQty.toLocaleString('vi-VN')} ${curActiveItem?.unit || 'cái'}` : `Đã chọn (${occupancyPct > 0 ? occupancyPct : 100}%)`}
                                     className="text-[9px] font-black bg-[#197e96] text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-wide"
                                   >
                                     {assignedBinQty !== undefined && assignedBinQty > 0 ? (
-                                      `${assignedBinQty} cái (${occupancyPct > 0 ? occupancyPct : 100}%)`
+                                      isOutbound ? `LẤY: ${assignedBinQty} ${curActiveItem?.unit || 'cái'}` : `${assignedBinQty} cái (${occupancyPct > 0 ? occupancyPct : 100}%)`
                                     ) : (
                                       `${readOnly ? 'ĐÃ LƯU' : 'CHỌN'} (${occupancyPct > 0 ? occupancyPct : 100}%)`
                                     )}
@@ -2443,6 +2636,14 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                 ) : otherItemName ? (
                                   <span className="text-[8.5px] font-black bg-cyan-100 text-cyan-950 border border-cyan-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
                                     Đã chứa {occupancyPct}% (Dư {100 - occupancyPct}%)
+                                  </span>
+                                ) : isQualifiedButDimmed ? (
+                                  <span title={`Đã chọn đủ ${totalSelectedStock}/${targetOrderQty} ${curActiveItem?.unit || 'cái'}. Kệ này in chìm vì đã đủ số lượng.`} className="text-[8.5px] font-black bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
+                                    Đủ SL (In chìm)
+                                  </span>
+                                ) : (isOutbound && (isEligibleCandidate || isSuggested)) ? (
+                                  <span title="Kệ đủ điều kiện - Bấm để chọn lấy hàng" className="text-[8.5px] font-black bg-emerald-600 text-white px-1 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-tight">
+                                    ĐỦ ĐIỀU KIỆN
                                   </span>
                                 ) : isSuggested ? (
                                   <span className="text-[9px] font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs">
