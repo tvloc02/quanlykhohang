@@ -426,7 +426,7 @@ export default function MainLayout({ children }: LayoutProps) {
                 </div>
                 <div className="hidden sm:block text-left">
                   <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100">{userName}</p>
-                  <p className="text-xs font-bold text-slate-500 dark:text-indigo-300">{userRole}</p>
+                  <p className="text-xs font-medium text-slate-500 dark:text-indigo-300 max-w-[140px] truncate">{userEmail}</p>
                 </div>
                 <ChevronDown className="h-4 w-4 text-slate-500 dark:text-indigo-300" />
               </button>

@@ -38,7 +38,7 @@ import {
   MapPin,
   Boxes,
   Warehouse,
-  TrendingDown,
+  ArrowDownToLine,
   CornerUpRight,
   CornerDownLeft,
   Repeat,
@@ -49,6 +49,8 @@ import {
 import BarcodeScanner, { type ScannedProduct } from '../../shared/components/BarcodeScanner';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 import { parseAssignedBinsFromNote } from '../../shared/utils/warehouseAssignments';
+import { numberToVietnameseWords } from '../../utils/numberToVietnamese';
+import InboundPrintModal from './components/InboundPrintModal';
 
 const getInboundMenuId = (mode?: string) => {
   if (mode === 'purchase-order') return 'inbound-purchase-orders';
@@ -129,6 +131,19 @@ function StatusBadge({ status, featureMode }: { status?: string; featureMode?: s
     </span>
   );
 }
+
+export const isCompletedInboundStatus = (status?: string): boolean => {
+  if (!status) return false;
+  const s = String(status).trim().toLowerCase();
+  return (
+    s === 'completed' ||
+    s === 'received' ||
+    s === 'đã nhập kho' ||
+    s === 'đã xuất trả' ||
+    s === 'shipped' ||
+    s === 'done'
+  );
+};
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -261,11 +276,37 @@ function authHeaders() {
 const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return warehouseList[0]?.name || '-';
-  const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
-  if (found) return found.name;
-  if ((codeOrName === 'SPX001' || !codeOrName) && warehouseList.length > 0) {
-    return warehouseList[0].name;
+  if (!codeOrName) {
+    if (warehouseList.length > 0) {
+      const first = warehouseList[0];
+      const code = first.code || (first as any).warehouseCode || '';
+      return code && !first.name.startsWith(`[${code}]`) ? `[${code}] ${first.name}` : first.name;
+    }
+    return '-';
+  }
+  if (codeOrName.startsWith('[')) return codeOrName;
+
+  const target = codeOrName.trim().toLowerCase();
+  const found = warehouseList.find(
+    (w) =>
+      (w.code && w.code.toLowerCase() === target) ||
+      (w.name && w.name.toLowerCase() === target) ||
+      (w.id && String(w.id).toLowerCase() === target) ||
+      ((w as any).warehouseCode && (w as any).warehouseCode.toLowerCase() === target)
+  );
+
+  if (found) {
+    const code = found.code || (found as any).warehouseCode || '';
+    if (code && !found.name.startsWith(`[${code}]`)) {
+      return `[${code}] ${found.name}`;
+    }
+    return found.name;
+  }
+
+  if ((codeOrName === 'SPX001' || codeOrName === '4445') && warehouseList.length > 0) {
+    const first = warehouseList[0];
+    const code = first.code || (first as any).warehouseCode || '';
+    return code && !first.name.startsWith(`[${code}]`) ? `[${code}] ${first.name}` : first.name;
   }
   return codeOrName;
 }
@@ -352,15 +393,21 @@ export default function Inbound({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDetail, setShowDetail] = useState(false);
 
+function getLocalDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
   // Date filters
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
+    return getLocalDateString(d);
   });
   const [dateTo, setDateTo] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
+    return getLocalDateString(new Date());
   });
 
   // Pagination
@@ -382,7 +429,7 @@ export default function Inbound({
   const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
 
-  const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' = 'create', id?: string) => {
+  const handleOpenFormModal = useCallback((modeAction: 'create' | 'edit' | 'view' = 'create', id?: string | number) => {
     if (modeAction === 'create') {
       sessionStorage.removeItem('inbound_tabs_draft');
       sessionStorage.removeItem('inbound_active_tab_id');
@@ -390,12 +437,16 @@ export default function Inbound({
       sessionStorage.removeItem('outbound_active_tab_id');
       sessionStorage.removeItem('outbound_draft_mode');
     }
-    if (modeAction === 'edit' && id) {
-      setSearchParams({ action: 'edit', id });
+    if ((modeAction === 'edit' || modeAction === 'view') && id) {
+      setSearchParams({ action: modeAction, id: String(id) });
     } else {
       setSearchParams({ action: 'create' });
     }
   }, [setSearchParams]);
+
+  const handleViewOrderFullPage = useCallback((ord: InboundReceiptOrder) => {
+    handleOpenFormModal('view', ord.id);
+  }, [handleOpenFormModal]);
 
   const handleCloseFormModal = useCallback(() => {
     sessionStorage.removeItem('inbound_tabs_draft');
@@ -444,15 +495,15 @@ export default function Inbound({
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
 
-  const { canPerformAction, isAdmin } = usePermissions();
+  const { canPerformAction } = usePermissions();
   const currentMenuId = getInboundMenuId(featureMode);
 
-  const canCreate = isAdmin || canPerformAction(currentMenuId, 'create');
-  const canEdit = isAdmin || canPerformAction(currentMenuId, 'edit');
-  const canDelete = isAdmin || canPerformAction(currentMenuId, 'delete');
-  const canPrint = isAdmin || canPerformAction(currentMenuId, 'print');
-  const canExport = isAdmin || canPerformAction(currentMenuId, 'export');
-  const canChangeStatus = isAdmin || canPerformAction(currentMenuId, 'status');
+  const canCreate = canPerformAction(currentMenuId, 'create');
+  const canEdit = canPerformAction(currentMenuId, 'edit');
+  const canDelete = canPerformAction(currentMenuId, 'delete');
+  const canPrint = canPerformAction(currentMenuId, 'print');
+  const canExport = canPerformAction(currentMenuId, 'export');
+  const canChangeStatus = canPerformAction(currentMenuId, 'status');
 
   // ── Column Visibility Configuration ───────────────────────────
   const DEFAULT_COLUMN_VIS = {
@@ -980,12 +1031,9 @@ export default function Inbound({
   };
 
   const handleEditOrder = (ord: InboundReceiptOrder) => {
-    const isDraft = ['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '');
-    if (!isDraft) {
-      setToast({
-        message: 'Chỉ có thể chỉnh sửa phiếu nhập kho ở trạng thái Đơn nháp (DRAFT). Phiếu đã lưu chính thức không thể chỉnh sửa!',
-        type: 'error',
-      });
+    if (isCompletedInboundStatus(ord.status)) {
+      setToast({ message: 'Phiếu nhập kho này đã hoàn thành, chỉ hỗ trợ xem chi tiết!', type: 'error' });
+      handleViewOrderFullPage(ord);
       return;
     }
 
@@ -1031,7 +1079,7 @@ export default function Inbound({
     handleOpenFormModal('edit', ord.id);
   };
 
-  const handleViewDetail = async (ord: InboundReceiptOrder, openLocationOnly = false) => {
+  const handlePrintOrder = async (ord: InboundReceiptOrder) => {
     try {
       const res = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${ord.id}`, {
         headers: authHeaders(),
@@ -1081,6 +1129,87 @@ export default function Inbound({
         const updatedOrd: InboundReceiptOrder = {
           ...ord,
           supplier: fullPO.supplierName || fullPO.supplier?.name || ord.supplier,
+          supplierPhone: fullPO.supplierPhone || fullPO.supplier?.phone || ord.supplierPhone,
+          supplierAddress: fullPO.supplierAddress || fullPO.supplier?.address || ord.supplierAddress,
+          warehouseCode: fullPO.warehouseCode || ord.warehouseCode,
+          totalAmount: Number(fullPO.totalAmount || ord.totalAmount),
+          details: formattedDetails,
+        };
+
+        setSelectedOrder(updatedOrd);
+        setShowPrintModal(true);
+        return;
+      }
+    } catch (err) {
+      console.error('Lỗi tải chi tiết đơn nhập để in:', err);
+    }
+
+    setSelectedOrder(ord);
+    setShowPrintModal(true);
+  };
+
+  const handleViewDetail = async (ord: InboundReceiptOrder, openLocationOnly = false) => {
+    try {
+      let fullPO: any = null;
+      const poRes = await fetch(`${API_BASE_URL}/inbound/purchase-orders/${ord.id}`, {
+        headers: authHeaders(),
+      }).catch(() => null);
+      if (poRes && poRes.ok) {
+        fullPO = await poRes.json();
+      } else {
+        const stockInRes = await fetch(`${API_BASE_URL}/inbound/stock-in-orders/${ord.id}`, {
+          headers: authHeaders(),
+        }).catch(() => null);
+        if (stockInRes && stockInRes.ok) {
+          fullPO = await stockInRes.json();
+        }
+      }
+      if (fullPO) {
+        const rawDetails = fullPO.details || fullPO.items || [];
+        const formattedDetails = rawDetails.map((d: any) => {
+          const productSku = d.product?.internalSku || d.productSku || d.sku || 'SKU';
+          const productName = d.product?.name || d.productName || 'Sản phẩm';
+          const unit = d.product?.unit || d.unit || 'Cái';
+          const qty = Number(d.receivedQty || d.expectedQty || d.qty || 1);
+          const price = Number(d.unitPrice || d.price || 0);
+
+          let parsedLocationBin = d.locationBin || '';
+          if (!parsedLocationBin && d.note && d.note.includes('[Vị trí Ô:')) {
+            parsedLocationBin = parseAssignedBinsFromNote(d.note).join(', ');
+          }
+          if (!parsedLocationBin && Array.isArray(d.assignedBins) && d.assignedBins.length > 0) {
+            parsedLocationBin = d.assignedBins.join(', ');
+          }
+          if (!parsedLocationBin) {
+            parsedLocationBin = d.warehouseCode || fullPO.warehouseCode || ord.warehouseCode || 'KHO-NVL';
+          }
+
+          return {
+            id: d.id,
+            productId: d.productId || d.product?.id,
+            productSku,
+            productName,
+            unit,
+            qty,
+            price,
+            discountPercent: Number(d.discountPercent || 0),
+            vatPercent: Number(d.vatPercent || 0),
+            totalLineAmount: Number(d.totalLineAmount || (qty * price) || 0),
+            warehouseCode: d.warehouseCode || fullPO.warehouseCode || ord.warehouseCode || 'KHO-NVL',
+            locationBin: parsedLocationBin,
+            assignedBins: Array.isArray(d.assignedBins) ? d.assignedBins : (parsedLocationBin ? parsedLocationBin.split(',').map((s: string) => s.trim()) : []),
+            weight: d.weight,
+            dimensions: d.length && d.width && d.height ? `${d.length}x${d.width}x${d.height} cm` : '',
+            volume: d.volume,
+            note: d.note || '',
+          };
+        });
+
+        const updatedOrd: InboundReceiptOrder = {
+          ...ord,
+          supplier: fullPO.supplierName || fullPO.supplier?.name || ord.supplier,
+          supplierPhone: fullPO.supplierPhone || fullPO.supplier?.phone || ord.supplierPhone,
+          supplierAddress: fullPO.supplierAddress || fullPO.supplier?.address || ord.supplierAddress,
           warehouseCode: fullPO.warehouseCode || ord.warehouseCode,
           totalAmount: Number(fullPO.totalAmount || ord.totalAmount),
           details: formattedDetails,
@@ -1090,7 +1219,7 @@ export default function Inbound({
         if (openLocationOnly) {
           setShowLocationModal(true);
         } else {
-          setSearchParams({ action: 'view', id: ord.id });
+          setShowDetailModal(true);
         }
         return;
       }
@@ -1102,7 +1231,7 @@ export default function Inbound({
     if (openLocationOnly) {
       setShowLocationModal(true);
     } else {
-      setSearchParams({ action: 'view', id: ord.id });
+      setShowDetailModal(true);
     }
   };
 
@@ -1374,11 +1503,12 @@ export default function Inbound({
   }
 
   return (
-    <div className={isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''}>
+    <div className={`${isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''} ${showPrintModal ? 'print:hidden' : ''}`}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
-      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
-      <style>{`
+      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (CHỈ ÁP DỤNG KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+      {!showPrintModal && (
+        <style>{`
         @page {
           size: landscape;
           margin: 5mm 6mm;
@@ -1535,34 +1665,37 @@ export default function Inbound({
           }
         }
       `}</style>
+      )}
 
-      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
-      <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
-        <div className="flex justify-between items-start mb-2 text-xs">
-          <div>
-            <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
-            <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+      {/* ─── HEADER BÁO CÁO KHI IN (CHỈ HIỂN THỊ KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+      {!showPrintModal && (
+        <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
+          <div className="flex justify-between items-start mb-2 text-xs">
+            <div>
+              <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
+              <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+            </div>
+            <div className="text-right text-[11px] text-slate-600">
+              <p>Mẫu biểu báo cáo hệ thống</p>
+              <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+            </div>
           </div>
-          <div className="text-right text-[11px] text-slate-600">
-            <p>Mẫu biểu báo cáo hệ thống</p>
-            <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+          <div className="text-center my-2">
+            <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+              {featureMode === 'return-supplier' ? 'LẬP BÁO CÁO PHIẾU XUẤT TRẢ NHÀ CUNG CẤP' : 'LẬP BÁO CÁO PHIẾU NHẬP KHO'}
+            </h1>
+            <p className="text-xs text-slate-600 italic mt-0.5">
+              {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
+            </p>
+          </div>
+          <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
+            <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
+            <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
           </div>
         </div>
-        <div className="text-center my-2">
-          <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
-            {featureMode === 'return-supplier' ? 'LẬP BÁO CÁO PHIẾU XUẤT TRẢ NHÀ CUNG CẤP' : 'LẬP BÁO CÁO PHIẾU NHẬP KHO'}
-          </h1>
-          <p className="text-xs text-slate-600 italic mt-0.5">
-            {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
-          </p>
-        </div>
-        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
-          <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
-          <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
-        </div>
-      </div>
+      )}
 
-      <div className="space-y-6 animate-in fade-in duration-200">
+      <div className={`space-y-6 animate-in fade-in duration-200 ${showPrintModal ? 'print:hidden' : ''}`}>
         {/* Top Header Section matching Outbound */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
           <div className="flex items-center gap-3">
@@ -1580,7 +1713,7 @@ export default function Inbound({
               ) : featureMode === 'assembly' ? (
                 <LinkIcon className="h-5 w-5" />
               ) : (
-                <TrendingDown className="h-5 w-5" />
+                <ArrowDownToLine className="h-5 w-5" />
               )}
               <h1 className="text-xl font-extrabold tracking-tight">{title}</h1>
             </div>
@@ -1812,9 +1945,19 @@ export default function Inbound({
                 ) : (
                   paginatedOrders.map((ord, index) => {
                     const isSelected = selectedIds.has(ord.id);
+                    const isCompleted = isCompletedInboundStatus(ord.status);
                     return (
                       <React.Fragment key={ord.id}>
-                        <tr className={`group transition cursor-pointer border-b border-slate-200 dark:border-indigo-900/40 ${isSelected ? 'bg-cyan-100/60 dark:bg-indigo-950/70' : 'hover:bg-cyan-50/60 dark:hover:bg-indigo-950/40'}`}>
+                        <tr
+                          onClick={() => {
+                            if (isCompleted) {
+                              handleViewOrderFullPage(ord);
+                            } else {
+                              handleEditOrder(ord);
+                            }
+                          }}
+                          className={`group transition cursor-pointer border-b border-slate-200 dark:border-indigo-900/40 ${isSelected ? 'bg-cyan-100/60 dark:bg-indigo-950/70' : 'hover:bg-cyan-50/60 dark:hover:bg-indigo-950/40'}`}
+                        >
                           <td className="border-r border-slate-200 dark:border-indigo-900/40 px-2 py-3.5 text-center print:hidden" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
@@ -1832,10 +1975,14 @@ export default function Inbound({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSearchParams({ action: 'view', id: ord.id });
+                                  if (isCompleted) {
+                                    handleViewOrderFullPage(ord);
+                                  } else {
+                                    handleEditOrder(ord);
+                                  }
                                 }}
                                 className="text-cyan-700 dark:text-indigo-300 hover:text-cyan-900 dark:hover:text-indigo-100 hover:underline font-extrabold text-center cursor-pointer whitespace-nowrap"
-                                title="Bấm để xem thông tin chi tiết đơn nhập"
+                                title={isCompleted ? "Bấm để xem chi tiết phiếu nhập kho" : "Bấm để mở và chỉnh sửa phiếu nhập kho"}
                               >
                                 {ord.receiptNo}
                               </button>
@@ -1863,34 +2010,36 @@ export default function Inbound({
                           )}
                           <td className="sticky right-0 z-10 w-56 min-w-[210px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                             <div className="flex items-center justify-center gap-1.5">
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  disabled={!['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '')}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditOrder(ord);
-                                  }}
-                                  title={
-                                    ['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '')
-                                      ? 'Sửa phiếu nhập (Nháp)'
-                                      : 'Phiếu đã lưu chính thức / đã nhập kho, không thể chỉnh sửa'
-                                  }
-                                  className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 transition shadow-sm ${['DRAFT', 'draft', 'Đơn nháp'].includes(ord.status || '')
-                                      ? 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
-                                      : 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
+                              {/* Nút Sửa: Nếu hoàn thành hoặc không có quyền thì nút sửa in mờ */}
+                              {(() => {
+                                const isEditAllowed = canEdit && !isCompleted;
+                                return (
+                                  <button
+                                    type="button"
+                                    disabled={!isEditAllowed}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isEditAllowed) return;
+                                      handleEditOrder(ord);
+                                    }}
+                                    title={!canEdit ? 'Không có quyền sửa' : isCompleted ? 'Phiếu nhập kho đã hoàn thành, không thể chỉnh sửa' : 'Chỉnh sửa phiếu nhập kho (Đơn nháp)'}
+                                    className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                      !isEditAllowed
+                                        ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 opacity-30 cursor-not-allowed pointer-events-none'
+                                        : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
                                     }`}
-                                >
-                                  <Pencil size={16} strokeWidth={2.5} />
-                                </button>
-                              )}
+                                  >
+                                    <Pencil size={16} strokeWidth={2.5} />
+                                  </button>
+                                );
+                              })()}
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSearchParams({ action: 'view', id: ord.id });
+                                  handleViewOrderFullPage(ord);
                                 }}
-                                title="Xem chi tiết đơn hàng"
+                                title="Xem chi tiết phiếu nhập kho"
                                 className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
                                 <Eye size={16} strokeWidth={2.5} />
@@ -1901,37 +2050,45 @@ export default function Inbound({
                                   e.stopPropagation();
                                   handleViewDetail(ord, true);
                                 }}
-                                title="Xem vị trí xếp kho & ô kệ"
+                                title="Xem vị trí lưu kệ & ô kho"
                                 className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
                               >
-                                <MapPin size={16} strokeWidth={2.5} />
+                                <Boxes size={16} strokeWidth={2.5} />
                               </button>
-                              {canPrint && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleViewDetail(ord, false).then(() => setShowPrintModal(true));
-                                  }}
-                                  title="In phiếu nhập"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
-                                >
-                                  <Printer size={16} strokeWidth={2.5} />
-                                </button>
-                              )}
-                              {canDelete && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteSingleOrder(ord);
-                                  }}
-                                  title="Xóa phiếu nhập"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm transition hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer"
-                                >
-                                  <Trash2 size={16} strokeWidth={2.5} />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                disabled={!canPrint}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!canPrint) return;
+                                  handlePrintOrder(ord);
+                                }}
+                                title={!canPrint ? 'Không có quyền in' : 'In phiếu nhập'}
+                                className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                  !canPrint
+                                    ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                    : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
+                                }`}
+                              >
+                                <Printer size={16} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canDelete}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!canDelete) return;
+                                  handleDeleteSingleOrder(ord);
+                                }}
+                                title={!canDelete ? 'Không có quyền xóa' : 'Xóa phiếu nhập'}
+                                className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                  !canDelete
+                                    ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                    : 'border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer'
+                                }`}
+                              >
+                                <Trash2 size={16} strokeWidth={2.5} />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -2091,27 +2248,29 @@ export default function Inbound({
           </div>
         </div>
 
-        {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
-        <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
-          <div>
-            <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
-            <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
-            <div className="h-20" />
-            <p className="font-bold text-slate-900">{currentUserName}</p>
+        {/* ─── CHỮ KÝ BÁO CÁO KHI IN (CHỈ HIỂN THỊ KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+        {!showPrintModal && (
+          <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+              <div className="h-20" />
+              <p className="font-bold text-slate-900">{currentUserName}</p>
+            </div>
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+              <div className="h-20" />
+              <p className="text-slate-400 italic font-medium">................................................</p>
+            </div>
+            <div>
+              <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
+              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
+              <div className="h-20" />
+              <p className="text-slate-400 italic font-medium">................................................</p>
+            </div>
           </div>
-          <div>
-            <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
-            <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
-            <div className="h-20" />
-            <p className="text-slate-400 italic font-medium">................................................</p>
-          </div>
-          <div>
-            <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
-            <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
-            <div className="h-20" />
-            <p className="text-slate-400 italic font-medium">................................................</p>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* ─── MODAL ADD SUPPLIER ─────────────────────────────────────── */}
@@ -2451,66 +2610,14 @@ export default function Inbound({
         document.body
       )}
 
-      {/* ─── MODAL PRINT ────────────────────────────────────────────── */}
-      {showPrintModal && selectedOrder && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="text-base font-black text-slate-900">
-                {featureMode === 'return-supplier' ? 'Xem trước Phiếu Xuất Trả Nhà Cung Cấp' : 'Xem trước Phiếu Nhập Kho'}
-              </h2>
-              <button onClick={() => setShowPrintModal(false)} className="rounded-lg p-1 hover:bg-slate-100">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4 border border-slate-300 rounded-xl space-y-3 text-xs">
-              <div className="text-center">
-                <h2 className="text-base font-black uppercase text-slate-900">
-                  {featureMode === 'return-supplier' ? 'PHIẾU XUẤT TRẢ NHÀ CUNG CẤP' : 'PHIẾU NHẬP KHO HÀNG HÓA'}
-                </h2>
-                <p className="text-slate-500">Mã phiếu: {selectedOrder.receiptNo} - Ngày: {selectedOrder.orderDate}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 font-semibold">
-                <p>Nhà cung cấp: {selectedOrder.supplier}</p>
-                <p>{featureMode === 'return-supplier' ? 'Kho xuất:' : 'Kho nhập:'} {formatWarehouseDisplay(selectedOrder.warehouseCode, warehouses)}</p>
-                <p>SĐT: {selectedOrder.supplierPhone || '-'}</p>
-                <p>Người lập: {selectedOrder.employeeName}</p>
-              </div>
-              <table className="w-full border-collapse border border-slate-300 text-xs">
-                <thead className="bg-slate-100 font-bold text-center">
-                  <tr>
-                    <th className="border p-1">STT</th>
-                    <th className="border p-1">Tên hàng</th>
-                    <th className="border p-1">ĐVT</th>
-                    <th className="border p-1">SL</th>
-                    <th className="border p-1">Đơn giá</th>
-                    <th className="border p-1">Thành tiền</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedOrder.details?.map((d, i) => (
-                    <tr key={i} className="text-center">
-                      <td className="border p-1">{i + 1}</td>
-                      <td className="border p-1 text-left font-semibold">{d.productName}</td>
-                      <td className="border p-1">{d.unit}</td>
-                      <td className="border p-1 font-bold">{d.qty}</td>
-                      <td className="border p-1 text-right">{d.price.toLocaleString('vi-VN')}</td>
-                      <td className="border p-1 text-right font-bold">{(d.qty * d.price).toLocaleString('vi-VN')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="text-right font-black text-sm">Tong tiền: {selectedOrder.totalAmount.toLocaleString('vi-VN')} VNĐ</div>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-xs font-bold text-white hover:bg-cyan-700 cursor-pointer">
-                <Printer size={16} /> In Phiếu
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* ─── MODAL PRINT (CHUẨN BẢN DỌC A4 PORTRAIT) ────────────────────────────── */}
+      <InboundPrintModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        order={selectedOrder}
+        warehouses={warehouses}
+        featureMode={featureMode}
+      />
 
       {/* ─── MODAL BARCODE SCANNER ───────────────────────────────────── */}
       {showScannerModal && (

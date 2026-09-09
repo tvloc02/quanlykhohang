@@ -26,6 +26,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import Toast from '../../shared/components/Toast';
+import { usePermissions } from '../../shared/hooks/usePermissions';
 import {
   getStoredProjectTeams,
   getStoredWarehouses,
@@ -202,6 +203,10 @@ function buildWarehouseForm(warehouse: WarehouseRecord, teams = getStoredProject
 
 export default function WarehouseManagement() {
   const navigate = useNavigate();
+  const { canPerformAction } = usePermissions();
+  const canCreate = canPerformAction('warehouses', 'create');
+  const canEdit = canPerformAction('warehouses', 'edit');
+  const canDelete = canPerformAction('warehouses', 'delete');
   const [users, setUsers] = useState<PersonnelUser[]>([]);
   const [warehouses, setWarehouses] = useState<WarehouseRecord[]>(() => getStoredWarehouses());
   const [projectTeams, setProjectTeams] = useState<any[]>(() => getStoredProjectTeams());
@@ -740,19 +745,21 @@ export default function WarehouseManagement() {
             type="button"
             onClick={loadData}
             disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 cursor-pointer disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500 bg-white px-4 py-2.5 text-xs font-bold text-cyan-700 shadow-sm transition hover:bg-cyan-50 cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Làm mới
           </button>
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500 bg-cyan-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-700 cursor-pointer active:scale-95"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Tạo Kho Hàng Mới
-          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-500 bg-cyan-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-700 cursor-pointer active:scale-95"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Tạo Kho Hàng Mới
+            </button>
+          )}
         </div>
       </div>
 
@@ -864,13 +871,15 @@ export default function WarehouseManagement() {
             >
               <Unlock className="h-3.5 w-3.5" /> Mở Khóa Đã Chọn
             </button>
-            <button
-              type="button"
-              onClick={() => setBatchActionType('delete')}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-red-500 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-700 shadow-xs transition hover:bg-red-100 cursor-pointer"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Xóa Đã Chọn
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => setBatchActionType('delete')}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-red-500 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-700 shadow-xs transition hover:bg-red-100 cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Xóa Đã Chọn
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setSelectedIds([])}
@@ -1110,21 +1119,37 @@ export default function WarehouseManagement() {
                           </button>
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 cursor-pointer'
+                            }`}
                             aria-label="Sửa kho"
-                            title="Chỉnh sửa"
-                            onClick={() => navigate(`/warehouses/${w.id}/edit`)}
+                            title={!canEdit ? 'Không có quyền sửa' : 'Chỉnh sửa'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              navigate(`/warehouses/${w.id}/edit`);
+                            }}
                           >
-                            <Pencil className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
+                            <Pencil className="h-3.5 w-3.5" strokeWidth={2.2} />
                           </button>
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
+                            disabled={!canDelete}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canDelete
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 cursor-pointer'
+                            }`}
                             aria-label="Xóa kho"
-                            title="Xóa kho"
-                            onClick={() => openWarehouseModal('delete', w)}
+                            title={!canDelete ? 'Không có quyền xóa' : 'Xóa kho'}
+                            onClick={() => {
+                              if (!canDelete) return;
+                              openWarehouseModal('delete', w);
+                            }}
                           >
-                            <Trash2 className="h-3.5 w-3.5 text-cyan-600" strokeWidth={2.2} />
+                            <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} />
                           </button>
                         </div>
                       </td>

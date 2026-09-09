@@ -29,6 +29,7 @@ export interface ExportBillInvoice {
   staffName: string;
   code: string;
   date: string;
+  rawDate?: string;
   customerName: string;
   address: string;
   phone: string;
@@ -44,6 +45,66 @@ function authHeaders() {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
   };
+}
+
+/**
+ * Kiểm tra xem phiếu có phải là Xuất Hủy, Nháp, hoặc không phải xuất bán thu tiền hay không.
+ * Phiếu xuất hủy là tiêu hủy hàng hỏng/hết hạn, hoàn toàn không thu tiền của ai!
+ */
+export function isDisposalOrNonSalesOrder(item: any): boolean {
+  if (!item) return true;
+  const code = (item.orderNo || item.code || '').trim().toUpperCase();
+  const orderType = (item.orderType || '').trim().toLowerCase();
+  const status = (item.status || '').trim().toLowerCase();
+  const cust = (item.customer || item.customerName || '').trim().toLowerCase();
+  const desc = (item.description || '').trim().toLowerCase();
+
+  // 1. Tuyệt đối loại trừ Xuất Hủy (Disposal / Hàng hư hỏng, hết hạn / Xuất hủy nội bộ)
+  if (
+    orderType === 'disposal' ||
+    code.startsWith('XH') ||
+    code.includes('XUATHUY') ||
+    code.includes('XUAT-HUY') ||
+    cust.includes('xuất hủy') ||
+    cust.includes('xuat huy') ||
+    cust.includes('hư hỏng') ||
+    cust.includes('hết hạn') ||
+    status.includes('xuất hủy') ||
+    status.includes('xuat huy') ||
+    desc.includes('xuất hủy') ||
+    desc.includes('xuat huy') ||
+    desc.includes('hư hỏng') ||
+    desc.includes('tiêu hủy')
+  ) {
+    return true;
+  }
+
+  // 2. Loại trừ phiếu lưu nháp (DRAFT) - chưa xuất kho thực tế, chưa phát sinh công nợ
+  if (['draft', 'lưu tạm', 'nháp', 'luu tam'].includes(status)) {
+    return true;
+  }
+
+  // 3. Loại trừ phiếu xuất trả nhà cung cấp
+  if (
+    orderType === 'return_supplier' ||
+    orderType === 'return' ||
+    code.startsWith('XTR') ||
+    code.startsWith('TRNCC')
+  ) {
+    return true;
+  }
+
+  // 4. Loại trừ phiếu chuyển kho nội bộ
+  if (
+    orderType === 'transfer' ||
+    code.startsWith('CK') ||
+    code.startsWith('PXKNB') ||
+    code.startsWith('NB')
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export default function ReceiptFromBillPage() {
@@ -105,47 +166,85 @@ export default function ReceiptFromBillPage() {
     setTimeout(() => setToastMessage(''), 3500);
   };
 
-  // Load Real Outbound Orders from backend API
+  // Load Real Outbound Orders from backend API (Chỉ lấy phiếu bán hàng, LOẠI BỎ xuất hủy & lưu nháp)
   useEffect(() => {
     const loadRealOrders = async () => {
       setLoading(true);
       try {
+        let rawData: any[] = [];
         const response = await fetch(`${API_BASE_URL}/outbounds`, { headers: authHeaders() }).catch(() => null);
         if (response && response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data)) {
-            const receiptVouchers = readStoredReceiptVouchers();
+          rawData = await response.json();
+        } else {
+          try {
+            const stored = localStorage.getItem('stored_outbound_orders');
+            if (stored) rawData = JSON.parse(stored);
+          } catch {}
+        }
 
-            const mapped: ExportBillInvoice[] = data.map((item: any) => {
-              const orderNo = item.orderNo || `XBH_${item.id.slice(0, 6)}`;
-              const lineTotal = (item.details || []).reduce(
-                (sum: number, d: any) => sum + (Number(d.requiredQty || 0) * Number(d.unitPrice || 0)),
+        if (Array.isArray(rawData)) {
+          const receiptVouchers = readStoredReceiptVouchers();
+
+          // Lọc triệt để: chỉ giữ lại các phiếu bán hàng thực tế, loại bỏ hoàn toàn Xuất Hủy / Nháp / Chuyển kho
+          const salesOrders = rawData.filter((item: any) => !isDisposalOrNonSalesOrder(item));
+
+          const mapped: ExportBillInvoice[] = salesOrders.map((item: any) => {
+            const orderNo = item.orderNo || item.code || `XBH_${String(item.id).slice(0, 6)}`;
+            
+            // Tính tổng tiền phiếu: ưu tiên item.totalAmount, nếu không thì tính từ details
+            let totalAmount = Number(item.totalAmount || 0);
+            if (totalAmount <= 0 && Array.isArray(item.details) && item.details.length > 0) {
+              totalAmount = item.details.reduce(
+                (sum: number, d: any) => sum + (Number(d.requiredQty || d.qty || 0) * Number(d.unitPrice || d.price || 0)),
                 0
               );
-              const totalAmount = lineTotal > 0 ? lineTotal : (item.items || 1) * 500000;
+            }
+            if (totalAmount <= 0) {
+              totalAmount = (item.items || 1) * 500000;
+            }
 
-              const matchedReceipts = receiptVouchers.filter((rv) => rv.note.includes(orderNo));
-              const paidAmount = matchedReceipts.reduce((sum, rv) => sum + rv.amount, 0);
+            const matchedReceipts = receiptVouchers.filter((rv) => rv.note && rv.note.includes(orderNo));
+            const paidFromReceipts = matchedReceipts.reduce((sum, rv) => sum + rv.amount, 0);
+            const directPaid = Number(item.amountPaid || 0);
+            const paidAmount = Math.max(paidFromReceipts, directPaid);
 
-              const status: 'Đã thu' | 'Chưa thu' | 'Thu một phần' =
-                paidAmount >= totalAmount ? 'Đã thu' : paidAmount > 0 ? 'Thu một phần' : 'Chưa thu';
+            const status: 'Đã thu' | 'Chưa thu' | 'Thu một phần' =
+              paidAmount >= totalAmount ? 'Đã thu' : paidAmount > 0 ? 'Thu một phần' : 'Chưa thu';
 
-              return {
-                id: String(item.id),
-                branch: 'Kho Tổng',
-                staffName: item.createdBy?.fullName || 'N/A',
-                code: orderNo,
-                date: item.dueDate ? new Date(item.dueDate).toLocaleDateString('vi-VN') : new Date().toLocaleDateString('vi-VN'),
-                customerName: item.customer || 'Khách hàng lẻ',
-                address: '-',
-                phone: '-',
-                totalAmount,
-                paidAmount,
-                status,
-              };
-            });
-            setBills(mapped);
-          }
+            // Định dạng ngày hiển thị và rawDate (YYYY-MM-DD)
+            let dateFormatted = new Date().toLocaleDateString('vi-VN');
+            let rawDateIso = new Date().toISOString().split('T')[0];
+            const rawDateVal = item.orderDate || item.createdAt || item.dueDate;
+            if (rawDateVal) {
+              try {
+                const d = new Date(rawDateVal);
+                if (!isNaN(d.getTime())) {
+                  dateFormatted = d.toLocaleDateString('vi-VN');
+                  rawDateIso = d.toISOString().split('T')[0];
+                }
+              } catch {}
+            }
+
+            const branchDisplay = item.branchCode
+              ? (item.branchCode === 'KHO-TONG' ? 'Kho Tổng' : (item.branchCode === 'KHO-NVL' ? 'Kho Nguyên Vật Liệu' : item.branchCode))
+              : 'Kho Tổng';
+
+            return {
+              id: String(item.id),
+              branch: branchDisplay,
+              staffName: item.employeeName || item.createdBy?.fullName || 'Admin',
+              code: orderNo,
+              date: dateFormatted,
+              rawDate: rawDateIso,
+              customerName: item.customer || item.customerName || 'Khách hàng lẻ',
+              address: item.customerAddress || '-',
+              phone: item.customerPhone || '-',
+              totalAmount,
+              paidAmount,
+              status,
+            };
+          });
+          setBills(mapped);
         }
       } catch {
         // quiet error
@@ -241,14 +340,20 @@ export default function ReceiptFromBillPage() {
         (statusFilter === 'PAID' && b.status === 'Đã thu') ||
         (statusFilter === 'UNPAID' && b.status !== 'Đã thu');
 
-      return matchesSearch && matchesStatus;
+      let matchesDate = true;
+      if (b.rawDate) {
+        if (fromDate && b.rawDate < fromDate) matchesDate = false;
+        if (toDate && b.rawDate > toDate) matchesDate = false;
+      }
+
+      return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [bills, searchQuery, statusFilter]);
+  }, [bills, searchQuery, statusFilter, fromDate, toDate]);
 
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, fromDate, toDate]);
 
   // Pagination calculations
   const totalItems = filteredBills.length;

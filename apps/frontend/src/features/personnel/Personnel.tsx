@@ -34,7 +34,8 @@ import {
   readStoredPermissionGroups,
   saveStoredPermissionGroups,
   type PermissionGroup,
-} from './PermissionGroupsPage';
+} from '../../shared/utils/permissionStorage';
+import { usePermissions } from '../../shared/hooks/usePermissions';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 const USERS_STORAGE_KEY = 'smart-wms-personnel-users';
@@ -278,6 +279,11 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
 }
 
 export default function Personnel() {
+  const { canPerformAction } = usePermissions();
+  const canCreate = canPerformAction('personnel', 'create');
+  const canEdit = canPerformAction('personnel', 'edit');
+  const canDelete = canPerformAction('personnel', 'delete');
+
   const [users, setUsers] = React.useState<PersonnelUser[]>(readStoredPersonnelUsers);
   const [profiles, setProfiles] = React.useState<Record<string, PersonnelProfile>>(readStoredPersonnelProfiles);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>(getStoredWarehouses);
@@ -370,6 +376,7 @@ export default function Personnel() {
       }
 
       setUsers(mergedUsers);
+      saveStoredPersonnelUsers(mergedUsers);
 
       if (wRes.ok) {
         const remoteWarehouses = (await wRes.json()) as WarehouseRecord[];
@@ -1001,14 +1008,16 @@ export default function Personnel() {
         </div>
 
         <div className="flex flex-wrap gap-2.5">
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 active:scale-95 cursor-pointer"
-          >
-            <UserPlus className="h-4.5 w-4.5" />
-            Thêm nhân sự mới
-          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 active:scale-95 cursor-pointer"
+            >
+              <UserPlus className="h-4.5 w-4.5" />
+              Thêm nhân sự mới
+            </button>
+          )}
         </div>
       </div>
 
@@ -1304,27 +1313,51 @@ export default function Personnel() {
 
                         <button
                           type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                          title="Sửa nhân sự"
-                          onClick={() => openUserModal('edit', user)}
+                          disabled={!canEdit}
+                          className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                            !canEdit
+                              ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                              : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                          }`}
+                          title={!canEdit ? 'Không có quyền sửa' : 'Sửa nhân sự'}
+                          onClick={() => {
+                            if (!canEdit) return;
+                            openUserModal('edit', user);
+                          }}
                         >
                           <Pencil size={16} strokeWidth={2.5} />
                         </button>
 
                         <button
                           type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                          title={profile.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
-                          onClick={() => openLockModal(user)}
+                          disabled={!canEdit}
+                          className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                            !canEdit
+                              ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                              : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                          }`}
+                          title={!canEdit ? 'Không có quyền khóa/mở khóa' : profile.isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
+                          onClick={() => {
+                            if (!canEdit) return;
+                            openLockModal(user);
+                          }}
                         >
                           {profile.isLocked ? <Unlock size={16} strokeWidth={2.5} /> : <Lock size={16} strokeWidth={2.5} />}
                         </button>
 
                         <button
                           type="button"
-                          className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                          title="Xóa nhân sự"
-                          onClick={() => openUserModal('delete', user)}
+                          disabled={!canDelete}
+                          className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                            !canDelete
+                              ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                              : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                          }`}
+                          title={!canDelete ? 'Không có quyền xóa' : 'Xóa nhân sự'}
+                          onClick={() => {
+                            if (!canDelete) return;
+                            openUserModal('delete', user);
+                          }}
                         >
                           <Trash2 size={16} strokeWidth={2.5} />
                         </button>

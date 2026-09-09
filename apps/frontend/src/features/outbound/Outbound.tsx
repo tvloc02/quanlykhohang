@@ -36,7 +36,7 @@ import {
   ShoppingCart,
   User,
   CreditCard,
-  TrendingUp,
+  ArrowUpFromLine,
   PackageCheck,
   Receipt,
   FileX,
@@ -85,24 +85,40 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   );
 }
 
-// ─── STATUS BADGE (Xuất Kho) ───────────────────────────────────
-
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  'Đã giao hàng': { label: 'Đã giao hàng', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-  'shipped': { label: 'Đã giao hàng', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
-  'pending': { label: 'Chờ xử lý', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-  'Chờ xử lý': { label: 'Chờ xử lý', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
-  'picking': { label: 'Đang lấy hàng', color: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-200' },
-  'Đang lấy hàng': { label: 'Đang lấy hàng', color: 'text-violet-700', bg: 'bg-violet-50', border: 'border-violet-200' },
-  'READY_TO_SHIP': { label: 'Sẵn sàng xuất', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  'Sẵn sàng xuất': { label: 'Sẵn sàng xuất', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  'Đã hủy': { label: 'Đã hủy', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200' },
+  'Đã hoàn thành': { label: 'Đã hoàn thành', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/60', border: 'border-emerald-200 dark:border-emerald-800' },
+  'completed': { label: 'Đã hoàn thành', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/60', border: 'border-emerald-200 dark:border-emerald-800' },
+  'Đã xuất hủy': { label: 'Đã hoàn thành', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/60', border: 'border-emerald-200 dark:border-emerald-800' },
+  'Đã giao hàng': { label: 'Đã giao hàng', color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-50 dark:bg-blue-950/60', border: 'border-blue-200 dark:border-blue-800' },
+  'shipped': { label: 'Đã giao hàng', color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-50 dark:bg-blue-950/60', border: 'border-blue-200 dark:border-blue-800' },
+  'DRAFT': { label: 'Lưu tạm', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'draft': { label: 'Lưu tạm', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'Lưu tạm': { label: 'Lưu tạm', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'pending': { label: 'Chờ xử lý', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'Chờ xử lý': { label: 'Chờ xử lý', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'picking': { label: 'Đang lấy hàng', color: 'text-violet-700 dark:text-violet-300', bg: 'bg-violet-50 dark:bg-violet-950/60', border: 'border-violet-200 dark:border-violet-800' },
+  'Đang lấy hàng': { label: 'Đang lấy hàng', color: 'text-violet-700 dark:text-violet-300', bg: 'bg-violet-50 dark:bg-violet-950/60', border: 'border-violet-200 dark:border-violet-800' },
+  'READY_TO_SHIP': { label: 'Sẵn sàng xuất', color: 'text-cyan-700 dark:text-cyan-300', bg: 'bg-cyan-50 dark:bg-cyan-950/60', border: 'border-cyan-200 dark:border-cyan-800' },
+  'Sẵn sàng xuất': { label: 'Sẵn sàng xuất', color: 'text-cyan-700 dark:text-cyan-300', bg: 'bg-cyan-50 dark:bg-cyan-950/60', border: 'border-cyan-200 dark:border-cyan-800' },
+  'Đã hủy': { label: 'Đã hủy', color: 'text-red-700 dark:text-red-300', bg: 'bg-red-50 dark:bg-red-950/60', border: 'border-red-200 dark:border-red-800' },
 };
 
-function StatusBadge({ status }: { status?: string }) {
-  const config = STATUS_MAP[status || ''] || STATUS_MAP['Đã giao hàng'];
+function StatusBadge({ status, isDisposal }: { status?: string; isDisposal?: boolean }) {
+  const rawStatus = (status || '').trim();
+  if (['draft', 'lưu tạm'].includes(rawStatus.toLowerCase())) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-xs font-bold border whitespace-nowrap text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800">
+        Lưu tạm
+      </span>
+    );
+  }
+  let normalizedStatus = rawStatus || (isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng');
+  if (isDisposal && ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed', 'đã hoàn thành'].includes(normalizedStatus.toLowerCase())) {
+    normalizedStatus = 'Đã hoàn thành';
+  }
+  const config = STATUS_MAP[normalizedStatus] || (isDisposal ? STATUS_MAP['Đã hoàn thành'] : STATUS_MAP['Đã giao hàng']);
   return (
-    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold border ${config.color} ${config.bg} ${config.border}`}>
+    <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-xs font-bold border whitespace-nowrap ${config.color} ${config.bg} ${config.border}`}>
       {config.label}
     </span>
   );
@@ -226,6 +242,13 @@ function authHeaders() {
   };
 }
 
+function getLocalDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function toDateOnlyString(dateStr?: string | Date | null): string {
   if (!dateStr) return '';
   const str = String(dateStr).trim();
@@ -282,11 +305,37 @@ function formatDateDisplay(dateVal?: string | Date | null): string {
 const DEFAULT_FALLBACK_WAREHOUSES: WarehouseOption[] = [];
 
 function formatWarehouseDisplay(codeOrName?: string, warehouseList: WarehouseOption[] = []): string {
-  if (!codeOrName) return warehouseList[0]?.name || '-';
-  const found = warehouseList.find((w) => w.code === codeOrName || w.name === codeOrName || w.id === codeOrName);
-  if (found) return found.name;
-  if ((codeOrName === 'SPX001' || codeOrName === '4445' || !codeOrName) && warehouseList.length > 0) {
-    return warehouseList[0].name;
+  if (!codeOrName) {
+    if (warehouseList.length > 0) {
+      const first = warehouseList[0];
+      const code = first.code || (first as any).warehouseCode || '';
+      return code && !first.name.startsWith(`[${code}]`) ? `[${code}] ${first.name}` : first.name;
+    }
+    return '-';
+  }
+  if (codeOrName.startsWith('[')) return codeOrName;
+
+  const target = codeOrName.trim().toLowerCase();
+  const found = warehouseList.find(
+    (w) =>
+      (w.code && w.code.toLowerCase() === target) ||
+      (w.name && w.name.toLowerCase() === target) ||
+      (w.id && String(w.id).toLowerCase() === target) ||
+      ((w as any).warehouseCode && (w as any).warehouseCode.toLowerCase() === target)
+  );
+
+  if (found) {
+    const code = found.code || (found as any).warehouseCode || '';
+    if (code && !found.name.startsWith(`[${code}]`)) {
+      return `[${code}] ${found.name}`;
+    }
+    return found.name;
+  }
+
+  if ((codeOrName === 'SPX001' || codeOrName === '4445') && warehouseList.length > 0) {
+    const first = warehouseList[0];
+    const code = first.code || (first as any).warehouseCode || '';
+    return code && !first.name.startsWith(`[${code}]`) ? `[${code}] ${first.name}` : first.name;
   }
   return codeOrName;
 }
@@ -333,7 +382,7 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'Quản lý kho', 
     orderNo: isDisposal ? `XH_${Math.floor(100 + Math.random() * 900)}` : '',
     branchCode: 'KHO-TONG',
     employeeName: currentUserName || 'Quản lý kho',
-    customer: isDisposal ? 'Hàng hết hạn sử dụng (HSD)' : 'Khách hàng bán lẻ',
+    customer: isDisposal ? 'Xuất hủy nội bộ' : 'Khách hàng bán lẻ',
     customerPhone: '',
     customerAddress: '',
     orderDate: dateFormatted,
@@ -385,11 +434,10 @@ export default function Outbound({
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
+    return getLocalDateString(d);
   });
   const [dateTo, setDateTo] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
+    return getLocalDateString(new Date());
   });
 
   // Pagination
@@ -449,15 +497,15 @@ export default function Outbound({
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
 
-  const { canPerformAction, isAdmin } = usePermissions();
+  const { canPerformAction } = usePermissions();
   const currentMenuId = getOutboundMenuId(featureMode);
 
-  const canCreate = isAdmin || canPerformAction(currentMenuId, 'create');
-  const canEdit = isAdmin || canPerformAction(currentMenuId, 'edit');
-  const canDelete = isAdmin || canPerformAction(currentMenuId, 'delete');
-  const canPrint = isAdmin || canPerformAction(currentMenuId, 'print');
-  const canExport = isAdmin || canPerformAction(currentMenuId, 'export');
-  const canChangeStatus = isAdmin || canPerformAction(currentMenuId, 'status');
+  const canCreate = canPerformAction(currentMenuId, 'create');
+  const canEdit = canPerformAction(currentMenuId, 'edit');
+  const canDelete = canPerformAction(currentMenuId, 'delete');
+  const canPrint = canPerformAction(currentMenuId, 'print');
+  const canExport = canPerformAction(currentMenuId, 'export');
+  const canChangeStatus = canPerformAction(currentMenuId, 'status');
   const DEFAULT_COLUMN_VIS = {
     branch: true,
     nv: true,
@@ -555,56 +603,77 @@ export default function Outbound({
         fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
       ]);
 
+      // Read local storage stored_outbound_orders backup
+      let localOrders: any[] = [];
+      try {
+        const stored = localStorage.getItem('stored_outbound_orders');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) localOrders = parsed;
+        }
+      } catch { }
+
+      let rawList: any[] = [];
       if (ordRes && ordRes.ok) {
         const raw = await ordRes.json();
-        const list = Array.isArray(raw) ? raw : raw.data || [];
-        if (list.length > 0) {
-          const targetList = isDisposal
-            ? list.filter((item: any) => item.orderType === 'disposal' || (item.orderNo && item.orderNo.startsWith('XH')))
-            : isRetail
-            ? list.filter((item: any) => item.orderType === 'retail' || item.orderType === 'RETAIL' || (item.orderNo && item.orderNo.startsWith('XBL')))
-            : isSalesOrder
-            ? list.filter((item: any) => item.orderType === 'sales-order' || (item.orderNo && item.orderNo.startsWith('DDH')))
-            : isQuote
-            ? list.filter((item: any) => item.orderType === 'quote' || (item.orderNo && item.orderNo.startsWith('BG')))
-            : list.filter((item: any) => item.orderType !== 'disposal' && item.orderType !== 'retail' && item.orderType !== 'RETAIL' && item.orderType !== 'sales-order' && item.orderType !== 'quote' && (!item.orderNo || (!item.orderNo.startsWith('XH') && !item.orderNo.startsWith('XBL') && !item.orderNo.startsWith('DDH') && !item.orderNo.startsWith('BG'))));
+        rawList = Array.isArray(raw) ? raw : raw.data || [];
+      }
 
-          const formatted: OutboundOrder[] = targetList.map((item: any, idx: number) => ({
-            id: String(item.id || idx),
-            orderNo: item.orderNo || item.receiptNo || (isDisposal ? `XH_${1000 + idx}` : (isRetail ? `XBL_${1000 + idx}` : `XBH_${1000 + idx}`)),
-            orderType: item.orderType,
-            customer: item.customer || item.customerName || item.customer?.name || (isDisposal ? 'Hàng hết hạn / hư hỏng' : (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ')),
-            customerId: item.customerId || item.customer?.id,
-            customerPhone: item.customerPhone || item.customer?.phone || '',
-            customerAddress: item.customerAddress || item.customer?.address || '',
-            branchCode: (!item.branchCode || item.branchCode === '4445' || item.branchCode === 'SPX001') ? (item.warehouseCode && item.warehouseCode !== '4445' ? item.warehouseCode : 'KHO-NVL') : item.branchCode,
-            employeeName: (!item.employeeName || item.employeeName === 'HUUDQtest') ? (item.creatorName && item.creatorName !== 'HUUDQtest' ? item.creatorName : currentUserName) : item.employeeName,
-            orderDate: item.orderDate || item.createdAt || new Date().toISOString(),
-            expectedDate: item.expectedDate || '',
-            status: item.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'),
-            description: item.description || (isDisposal ? 'Xuất hủy hàng hóa' : ''),
-            subtotal: Number(item.subtotal || item.totalAmount || 0),
-            discount: Number(item.discount || 0),
-            vatAmount: Number(item.vatAmount || 0),
-            totalAmount: Number(item.totalAmount || 0),
-            amountPaid: Number(item.amountPaid || item.totalAmount || 0),
-            itemsCount: item.details?.length || item.items || 1,
-            totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
-            details: item.details?.map((d: any) => ({
-              id: d.id,
-              productId: d.product?.id || d.productId,
-              productSku: d.product?.internalSku || d.productSku || d.sku || 'SKU',
-              productName: d.product?.name || d.productName || 'Sản phẩm',
-              unit: d.product?.unit || d.unit || 'Cái',
-              qty: Number(d.requiredQty || d.qty || 1),
-              price: Number(d.unitPrice || d.price || 0),
-              totalLineAmount: Number(d.totalLineAmount || (Number(d.requiredQty || d.qty || 1) * Number(d.unitPrice || d.price || 0))),
-            })) || [],
-          }));
-          setOrders(formatted);
-        } else {
-          setOrders(isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : (isRetail ? DEFAULT_FALLBACK_RETAIL_ORDERS : DEFAULT_FALLBACK_ORDERS));
+      // Merge backend orders with localOrders without duplicates
+      const combinedList: any[] = [...rawList];
+      localOrders.forEach((lo) => {
+        const loNo = lo.orderNo || lo.orderCode;
+        if (!combinedList.some((co) => (co.orderNo && co.orderNo === loNo) || (co.id && String(co.id) === String(lo.id)))) {
+          combinedList.push(lo);
         }
+      });
+
+      if (combinedList.length > 0) {
+        const targetList = isDisposal
+          ? combinedList.filter((item: any) => item.orderType === 'disposal' || (item.orderNo && item.orderNo.startsWith('XH')))
+          : isRetail
+          ? combinedList.filter((item: any) => item.orderType === 'retail' || item.orderType === 'RETAIL' || (item.orderNo && item.orderNo.startsWith('XBL')))
+          : isSalesOrder
+          ? combinedList.filter((item: any) => item.orderType === 'sales-order' || (item.orderNo && item.orderNo.startsWith('DDH')))
+          : isQuote
+          ? combinedList.filter((item: any) => item.orderType === 'quote' || (item.orderNo && item.orderNo.startsWith('BG')))
+          : combinedList.filter((item: any) => item.orderType !== 'disposal' && item.orderType !== 'retail' && item.orderType !== 'RETAIL' && item.orderType !== 'sales-order' && item.orderType !== 'quote' && (!item.orderNo || (!item.orderNo.startsWith('XH') && !item.orderNo.startsWith('XBL') && !item.orderNo.startsWith('DDH') && !item.orderNo.startsWith('BG'))));
+
+        const formatted: OutboundOrder[] = targetList.map((item: any, idx: number) => ({
+          id: String(item.id || idx),
+          orderNo: item.orderNo || item.orderCode || item.receiptNo || (isDisposal ? `XH_${1000 + idx}` : (isRetail ? `XBL_${1000 + idx}` : `XBH_${1000 + idx}`)),
+          orderType: item.orderType,
+          customer: item.customer || item.customerName || item.customer?.name || (isDisposal ? 'Hàng hết hạn / hư hỏng' : (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ')),
+          customerId: item.customerId || item.customer?.id,
+          customerPhone: item.customerPhone || item.customer?.phone || '',
+          customerAddress: item.customerAddress || item.customer?.address || '',
+          branchCode: (!item.branchCode || item.branchCode === '4445' || item.branchCode === 'SPX001') ? (item.warehouseCode && item.warehouseCode !== '4445' ? item.warehouseCode : 'KHO-NVL') : item.branchCode,
+          employeeName: (!item.employeeName || item.employeeName === 'HUUDQtest') ? (item.creatorName && item.creatorName !== 'HUUDQtest' ? item.creatorName : currentUserName) : item.employeeName,
+          orderDate: item.orderDate || item.createdAt || new Date().toISOString(),
+          expectedDate: item.expectedDate || '',
+          status: item.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'),
+          description: item.description || (isDisposal ? 'Xuất hủy hàng hóa' : ''),
+          subtotal: Number(item.subtotal || item.totalAmount || 0),
+          discount: Number(item.discount || 0),
+          vatAmount: Number(item.vatAmount || 0),
+          totalAmount: Number(item.totalAmount || 0),
+          amountPaid: Number(item.amountPaid || item.totalAmount || 0),
+          itemsCount: item.details?.length || item.items || 1,
+          totalQty: item.details?.reduce((s: number, d: any) => s + (Number(d.requiredQty || d.qty || 1)), 0) || 1,
+          details: item.details?.map((d: any) => ({
+            id: d.id,
+            productId: d.product?.id || d.productId,
+            productSku: d.product?.internalSku || d.productSku || d.sku || 'SKU',
+            productName: d.product?.name || d.productName || 'Sản phẩm',
+            unit: d.product?.unit || d.unit || 'Cái',
+            qty: Number(d.requiredQty || d.qty || 1),
+            price: Number(d.unitPrice || d.price || 0),
+            totalLineAmount: Number(d.totalLineAmount || (Number(d.requiredQty || d.qty || 1) * Number(d.unitPrice || d.price || 0))),
+          })) || [],
+        }));
+        setOrders(formatted);
+      } else {
+        setOrders(isDisposal ? DEFAULT_FALLBACK_DISPOSAL_ORDERS : (isRetail ? DEFAULT_FALLBACK_RETAIL_ORDERS : DEFAULT_FALLBACK_ORDERS));
       }
 
       if (custRes && custRes.ok) {
@@ -957,25 +1026,29 @@ export default function Outbound({
 
   const handleEditOrder = (ord: OutboundOrder) => {
     const statusLower = (ord.status || '').toLowerCase();
-    if (['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed'].includes(statusLower)) {
-      setToast({ message: 'Phiếu đã giao hàng / xuất hủy không thể chỉnh sửa!', type: 'error' });
+    const isDraft = ['draft', 'lưu tạm'].includes(statusLower);
+    if (!isDraft) {
+      setToast({ message: 'Chỉ phiếu ở trạng thái Lưu nháp mới có quyền chỉnh sửa! Phiếu đã tạo mới/xuất kho không thể sửa.', type: 'error' });
       return;
     }
     const existingDetails: FormDetailRow[] = ord.details && ord.details.length > 0
-      ? ord.details.map((d, idx) => ({
+      ? ord.details.map((d: any, idx) => ({
         rowId: `row-edit-${idx}-${Date.now()}`,
-        productId: d.productId,
-        productSku: d.productSku || '',
-        productName: d.productName || '',
+        productId: d.productId || d.product?.id || '',
+        productSku: d.productSku || d.product?.internalSku || '',
+        productName: d.productName || d.product?.name || '',
+        warehouseCode: d.warehouseCode || ord.branchCode || 'KHO-TONG',
+        locationBin: d.locationBin || (Array.isArray(d.assignedBins) ? d.assignedBins.join(', ') : ''),
+        assignedBins: Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []),
         unit: d.unit || 'Cái',
-        qty: d.qty,
-        price: d.price,
-        discountPercent: 0,
-        discountAmount: 0,
-        vatPercent: 0,
-        vatAmount: 0,
-        totalAmount: d.totalLineAmount || (d.qty * d.price),
-        note: '',
+        qty: d.qty || d.requiredQty || 1,
+        price: d.price || d.unitPrice || 0,
+        discountPercent: Number(d.discountPercent || 0),
+        discountAmount: Number(d.discountAmount || 0),
+        vatPercent: Number(d.vatPercent || 0),
+        vatAmount: Number(d.vatAmount || 0),
+        totalAmount: d.totalLineAmount || d.totalAmount || ((d.qty || 1) * (d.price || 0)),
+        note: d.note || '',
       }))
       : [];
 
@@ -1195,9 +1268,18 @@ export default function Outbound({
         (o.employeeName || '').toLowerCase().includes(search.toLowerCase()) ||
         (o.customerPhone || '').toLowerCase().includes(search.toLowerCase());
 
-      const matchStatus =
-        statusFilter === 'all' ||
-        (o.status || '').toLowerCase() === statusFilter.toLowerCase();
+      let matchStatus = statusFilter === 'all';
+      if (!matchStatus) {
+        const lowerFilter = statusFilter.toLowerCase();
+        const lowerStatus = (o.status || '').toLowerCase();
+        if (lowerFilter === 'lưu tạm' || lowerFilter === 'draft') {
+          matchStatus = ['draft', 'lưu tạm'].includes(lowerStatus);
+        } else if (isDisposal && (lowerFilter === 'đã hoàn thành' || lowerFilter === 'đã xuất hủy' || lowerFilter === 'đã giao hàng')) {
+          matchStatus = (['đã hoàn thành', 'đã xuất hủy', 'đã giao hàng', 'shipped', 'completed'].includes(lowerStatus) || !o.status) && !['draft', 'lưu tạm'].includes(lowerStatus);
+        } else {
+          matchStatus = lowerStatus === lowerFilter;
+        }
+      }
 
       if (dateFrom || dateTo) {
         const itemDateStr = o.orderDate || o.expectedDate || (o as any).createdAt;
@@ -1210,7 +1292,7 @@ export default function Outbound({
 
       return matchSearch && matchStatus;
     });
-  }, [orders, search, statusFilter, dateFrom, dateTo]);
+  }, [orders, search, statusFilter, dateFrom, dateTo, isDisposal]);
 
   const totalPages = Math.ceil(filteredOrders.length / pageSize) || 1;
   const paginatedOrders = useMemo(() => {
@@ -1300,11 +1382,12 @@ export default function Outbound({
   };
 
   return (
-    <div className={isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''}>
+    <div className={`${isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''} ${showPrintModal ? 'print:hidden' : ''}`}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
-      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
-      <style>{`
+      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (CHỈ ÁP DỤNG KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+      {!showPrintModal && (
+        <style>{`
         @page {
           size: landscape;
           margin: 5mm 6mm;
@@ -1461,36 +1544,39 @@ export default function Outbound({
           }
         }
       `}</style>
+      )}
 
-      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
-      <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
-        <div className="flex justify-between items-start mb-2 text-xs">
-          <div>
-            <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
-            <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+      {/* ─── HEADER BÁO CÁO KHI IN (CHỈ HIỂN THỊ KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+      {!showPrintModal && (
+        <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
+          <div className="flex justify-between items-start mb-2 text-xs">
+            <div>
+              <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
+              <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+            </div>
+            <div className="text-right text-[11px] text-slate-600">
+              <p>Mẫu biểu báo cáo hệ thống</p>
+              <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+            </div>
           </div>
-          <div className="text-right text-[11px] text-slate-600">
-            <p>Mẫu biểu báo cáo hệ thống</p>
-            <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+          <div className="text-center my-2">
+            <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+              {isDisposal ? 'LẬP BÁO CÁO PHIẾU XUẤT HỦY HÀNG HÓA' : 'LẬP BÁO CÁO PHIẾU XUẤT KHO'}
+            </h1>
+            <p className="text-xs text-slate-600 italic mt-0.5">
+              {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
+            </p>
+          </div>
+          <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
+            <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
+            <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
           </div>
         </div>
-        <div className="text-center my-2">
-          <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
-            {isDisposal ? 'LẬP BÁO CÁO PHIẾU XUẤT HỦY HÀNG HÓA' : 'LẬP BÁO CÁO PHIẾU XUẤT KHO'}
-          </h1>
-          <p className="text-xs text-slate-600 italic mt-0.5">
-            {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
-          </p>
-        </div>
-        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
-          <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
-          <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
-        </div>
-      </div>
+      )}
 
       {/* ═══ WHEN FORM IS CLOSED: SHOW TITLE, ACTION BUTTONS, KPI CARDS & ORDER LIST TABLE ═══ */}
       {!showFormModal ? (
-        <div className="space-y-6 animate-in fade-in duration-200">
+        <div className={`space-y-6 animate-in fade-in duration-200 ${showPrintModal ? 'print:hidden' : ''}`}>
           {/* Top Header Section matching PurchaseOrdersPage */}
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between print:hidden">
             <div>
@@ -1506,7 +1592,7 @@ export default function Outbound({
                 ) : featureMode === 'transfer-out' ? (
                   <Send className="h-5 w-5 text-cyan-100" />
                 ) : (
-                  <TrendingUp className="h-5 w-5 text-cyan-100" />
+                  <ArrowUpFromLine className="h-5 w-5 text-cyan-100" />
                 )}
                 <h1 className="text-lg font-bold tracking-tight text-white">{title}</h1>
               </div>
@@ -1652,7 +1738,8 @@ export default function Outbound({
                     className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                   >
                     <option value="all">Tất cả</option>
-                    <option value="Đã xuất hủy">{isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng'}</option>
+                    <option value="Lưu tạm">Lưu tạm (Nháp)</option>
+                    <option value={isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng'}>{isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng'}</option>
                     <option value="Chờ xử lý">Chờ xử lý</option>
                     <option value="Đã hủy">Đã hủy</option>
                   </select>
@@ -1664,10 +1751,10 @@ export default function Outbound({
           {/* Main Order List Table */}
           <div className="overflow-hidden rounded-2xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-[#0b0f19] shadow-sm print:overflow-visible print:border-none print:shadow-none print:rounded-none print:bg-white print:p-0">
             <div className="overflow-x-auto custom-scrollbar print:overflow-visible print:p-0">
-              <table className={`w-full border-collapse text-left print:min-w-0 print:w-full print:table-auto ${isDisposal ? 'min-w-[1350px]' : 'min-w-[1850px]'}`}>
+              <table className={`w-full border-collapse text-left print:min-w-0 print:w-full print:table-auto ${isDisposal ? 'min-w-[1500px]' : 'min-w-[1900px]'}`}>
                 <thead className="bg-cyan-50 dark:bg-indigo-950/80 sticky top-0 z-20 shadow-sm">
                   <tr className="border-b-2 border-slate-200 dark:border-indigo-900/60 text-slate-800 dark:text-slate-100 font-extrabold uppercase text-xs sm:text-sm tracking-wider">
-                    <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center print:hidden">
+                    <th className="w-12 min-w-[50px] border-r border-slate-200 dark:border-indigo-900/40 px-2 py-4 text-center print:hidden whitespace-nowrap">
                       <input
                         type="checkbox"
                         checked={paginatedOrders.length > 0 && selectedIds.size === paginatedOrders.length}
@@ -1675,35 +1762,35 @@ export default function Outbound({
                         className="h-4.5 w-4.5 rounded border-slate-300 dark:border-indigo-900/60 accent-cyan-600 dark:accent-indigo-600 focus:ring-cyan-500 cursor-pointer"
                       />
                     </th>
-                    <th className="w-14 min-w-[60px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">STT</th>
-                    {columnVis.code && <th className="min-w-[160px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Mã phiếu hủy' : 'Mã phiếu'}</th>}
-                    {columnVis.date && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất'}</th>}
-                    {columnVis.customerName && <th className="min-w-[220px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">{isDisposal ? 'Lý do xuất hủy' : 'Khách hàng'}</th>}
+                    <th className="w-14 min-w-[60px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">STT</th>
+                    {columnVis.code && <th className="min-w-[170px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Mã phiếu hủy' : 'Mã phiếu'}</th>}
+                    {columnVis.date && <th className="min-w-[160px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất'}</th>}
+                    {columnVis.customerName && <th className="min-w-[220px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Lý do xuất hủy' : 'Khách hàng'}</th>}
                     {!isDisposal && (
                       <>
-                        {columnVis.customerPhone && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">SĐT</th>}
-                        {columnVis.customerAddress && <th className="min-w-[240px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">Địa chỉ</th>}
+                        {columnVis.customerPhone && <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">SĐT</th>}
+                        {columnVis.customerAddress && <th className="min-w-[240px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">Địa chỉ</th>}
                       </>
                     )}
-                    {columnVis.branch && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Kho xuất hủy' : 'Kho'}</th>}
-                    {columnVis.nv && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">{isDisposal ? 'Nhân viên thực hiện' : 'Nhân viên'}</th>}
+                    {columnVis.branch && <th className="min-w-[180px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">{isDisposal ? 'Kho xuất hủy' : 'Kho'}</th>}
+                    {columnVis.nv && <th className="min-w-[190px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">{isDisposal ? 'Nhân viên thực hiện' : 'Nhân viên'}</th>}
                     {isDisposal ? (
                       <>
-                        <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Tổng SL hủy</th>
-                        <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Giá trị hủy (đ)</th>
+                        <th className="min-w-[130px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Tổng SL hủy</th>
+                        <th className="min-w-[170px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Thất thoát (đ)</th>
                       </>
                     ) : (
                       <>
-                        {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Thành tiền</th>}
-                        {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Chiết khấu</th>}
-                        {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">VAT</th>}
-                        {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Tổng tiền</th>}
-                        {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Thanh toán</th>}
+                        {columnVis.subtotal && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Thành tiền</th>}
+                        {columnVis.discount && <th className="min-w-[120px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Chiết khấu</th>}
+                        {columnVis.vat && <th className="min-w-[110px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">VAT</th>}
+                        {columnVis.totalAmount && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Tổng tiền</th>}
+                        {columnVis.amountPaid && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Thanh toán</th>}
                       </>
                     )}
-                    {columnVis.note && <th className="min-w-[200px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center">{isDisposal ? 'Phương án / Ghi chú' : 'Ghi chú'}</th>}
-                    {columnVis.status && <th className="min-w-[140px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center">Trạng thái</th>}
-                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 dark:bg-indigo-900/90 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 text-cyan-950 dark:text-indigo-100 font-black print:hidden">Thao tác</th>
+                    {columnVis.note && <th className="min-w-[220px] border-r border-slate-200 dark:border-indigo-900/40 px-4 py-4 text-center whitespace-nowrap">{isDisposal ? 'Phương án / Ghi chú' : 'Ghi chú'}</th>}
+                    {columnVis.status && <th className="min-w-[150px] border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-center whitespace-nowrap">Trạng thái</th>}
+                    <th className="sticky right-0 top-0 z-30 w-44 min-w-[170px] bg-cyan-100 dark:bg-indigo-900/90 px-3 py-4 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 text-cyan-950 dark:text-indigo-100 font-black print:hidden whitespace-nowrap">Thao tác</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40 bg-white dark:bg-slate-950">
@@ -1752,54 +1839,58 @@ export default function Outbound({
                                 </button>
                               </td>
                             )}
-                            {columnVis.date && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{formatDateDisplay(ord.orderDate || (ord as any).createdAt)}</td>}
+                            {columnVis.date && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatDateDisplay(ord.orderDate || (ord as any).createdAt)}</td>}
                             {columnVis.customerName && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-center text-sm font-extrabold text-slate-800 dark:text-slate-100">{ord.customer}</td>}
                             {!isDisposal && (
                               <>
-                                {columnVis.customerPhone && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.customerPhone || '-'}</td>}
+                                {columnVis.customerPhone && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{ord.customerPhone || '-'}</td>}
                                 {columnVis.customerAddress && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-sm font-medium text-slate-700 dark:text-slate-300 max-w-[240px] truncate" title={ord.customerAddress}>{ord.customerAddress || '-'}</td>}
                               </>
                             )}
                             {columnVis.branch && (
-                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-bold text-slate-800 dark:text-slate-200">
+                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
                                 {formatWarehouseDisplay(ord.branchCode || ord.warehouseCode, warehouses)}
                               </td>
                             )}
-                            {columnVis.nv && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300">{ord.employeeName || currentUserName}</td>}
+                            {columnVis.nv && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">{ord.employeeName || currentUserName}</td>}
                             {isDisposal ? (
                               <>
-                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-black text-cyan-800 dark:text-indigo-300">{ord.totalQty || ord.itemsCount || 1}</td>
-                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-black text-rose-600 dark:text-rose-400">{(ord.totalAmount || 0).toLocaleString('vi-VN')} đ</td>
+                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center text-sm font-black text-cyan-800 dark:text-indigo-300 whitespace-nowrap">{ord.totalQty || ord.itemsCount || 1}</td>
+                                <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-black text-rose-600 dark:text-rose-400 whitespace-nowrap">{(ord.totalAmount || 0).toLocaleString('vi-VN')} đ</td>
                               </>
                             ) : (
                               <>
-                                {columnVis.subtotal && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-bold text-slate-800 dark:text-slate-200">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
-                                {columnVis.discount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
-                                {columnVis.vat && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
-                                {columnVis.totalAmount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-right text-sm font-black text-slate-900 dark:text-slate-100">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
-                                {columnVis.amountPaid && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700 dark:text-emerald-400">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.subtotal && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">{(ord.subtotal || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.discount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">{(ord.discount || 0).toLocaleString('vi-VN')}</td>}
+                                {columnVis.vat && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap">{(ord.vatAmount || 0).toLocaleString('vi-VN')}</td>}
+                                {columnVis.totalAmount && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-4 text-right text-sm font-black text-slate-900 dark:text-slate-100 whitespace-nowrap">{ord.totalAmount.toLocaleString('vi-VN')} đ</td>}
+                                {columnVis.amountPaid && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-right text-sm font-extrabold text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{(ord.amountPaid || ord.totalAmount).toLocaleString('vi-VN')} đ</td>}
                               </>
                             )}
                             {columnVis.note && <td className="border-r border-slate-200 dark:border-indigo-900/40 px-4 py-3.5 text-sm font-medium text-slate-600 dark:text-slate-400 max-w-[200px] truncate" title={ord.description}>{ord.description || '-'}</td>}
                             {columnVis.status && (
-                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center">
-                                <StatusBadge status={ord.status || (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng')} />
+                              <td className="border-r border-slate-200 dark:border-indigo-900/40 px-3 py-3.5 text-center whitespace-nowrap">
+                                <StatusBadge status={ord.status || (isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng')} isDisposal={isDisposal} />
                               </td>
                             )}
                             <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                               <div className="flex items-center justify-center gap-1.5">
-                                {canEdit && (() => {
-                                  const isFinalized = ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed'].includes((ord.status || '').toLowerCase());
+                                {(() => {
+                                  const isDraft = ['draft', 'lưu tạm'].includes((ord.status || '').toLowerCase());
+                                  const isEditAllowed = canEdit && isDraft;
                                   return (
                                     <button
                                       type="button"
-                                      disabled={isFinalized}
-                                      onClick={() => handleEditOrder(ord)}
-                                      title={isFinalized ? 'Phiếu đã giao hàng - Không được phép sửa' : isDisposal ? 'Sửa phiếu xuất hủy' : 'Sửa phiếu xuất'}
+                                      disabled={!isEditAllowed}
+                                      onClick={() => {
+                                        if (!isEditAllowed) return;
+                                        handleEditOrder(ord);
+                                      }}
+                                      title={!canEdit ? 'Không có quyền sửa' : !isDraft ? 'Chỉ phiếu lưu nháp mới có quyền chỉnh sửa. Phiếu đã tạo mới/xuất kho không thể sửa!' : isDisposal ? 'Sửa phiếu xuất hủy (Lưu nháp)' : 'Sửa phiếu xuất (Lưu nháp)'}
                                       className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
-                                        isFinalized
-                                          ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-40'
-                                          : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
+                                        !isEditAllowed
+                                          ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                          : 'border-amber-500 dark:border-amber-500 bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer'
                                       }`}
                                     >
                                       <Pencil size={16} strokeWidth={2.5} />
@@ -1817,32 +1908,40 @@ export default function Outbound({
                                 >
                                   <Eye size={16} strokeWidth={2.5} />
                                 </button>
-                                {canPrint && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedOrder(ord);
-                                      setShowPrintModal(true);
-                                    }}
-                                    title={isDisposal ? "In biên bản xuất hủy" : "In phiếu xuất"}
-                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
-                                  >
-                                    <Printer size={16} strokeWidth={2.5} />
-                                  </button>
-                                )}
-                                {canDelete && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteSingleOutboundOrder(ord);
-                                    }}
-                                    title="Xóa phiếu xuất"
-                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm transition hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer"
-                                  >
-                                    <Trash2 size={16} strokeWidth={2.5} />
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  disabled={!canPrint}
+                                  onClick={() => {
+                                    if (!canPrint) return;
+                                    setSelectedOrder(ord);
+                                    setShowPrintModal(true);
+                                  }}
+                                  title={!canPrint ? 'Không có quyền in' : isDisposal ? 'In biên bản xuất hủy' : 'In phiếu xuất'}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                    !canPrint
+                                      ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                      : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
+                                  }`}
+                                >
+                                  <Printer size={16} strokeWidth={2.5} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!canDelete}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!canDelete) return;
+                                    handleDeleteSingleOutboundOrder(ord);
+                                  }}
+                                  title={!canDelete ? 'Không có quyền xóa' : 'Xóa phiếu xuất'}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                    !canDelete
+                                      ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                      : 'border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer'
+                                  }`}
+                                >
+                                  <Trash2 size={16} strokeWidth={2.5} />
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -1916,7 +2015,7 @@ export default function Outbound({
                         <td className="p-3 text-center font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
                           {reportTotals.totalQty.toLocaleString('vi-VN')}
                         </td>
-                        <td className="p-3 text-right font-black text-cyan-950 dark:text-indigo-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
+                        <td className="p-3 text-right font-black text-rose-600 dark:text-rose-400 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">
                           {reportTotals.totalAmount.toLocaleString('vi-VN')} đ
                         </td>
                       </>
@@ -2023,27 +2122,29 @@ export default function Outbound({
             </div>
           </div>
 
-          {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
-          <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
-              <div className="h-20" />
-              <p className="font-bold text-slate-900">{currentUserName}</p>
+          {/* ─── CHỮ KÝ BÁO CÁO KHI IN (CHỈ HIỂN THỊ KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+          {!showPrintModal && (
+            <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+                <div className="h-20" />
+                <p className="font-bold text-slate-900">{currentUserName}</p>
+              </div>
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+                <div className="h-20" />
+                <p className="text-slate-400 italic font-medium">................................................</p>
+              </div>
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
+                <div className="h-20" />
+                <p className="text-slate-400 italic font-medium">................................................</p>
+              </div>
             </div>
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
-              <div className="h-20" />
-              <p className="text-slate-400 italic font-medium">................................................</p>
-            </div>
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
-              <div className="h-20" />
-              <p className="text-slate-400 italic font-medium">................................................</p>
-            </div>
-          </div>
+          )}
         </div>
       ) : (
         <CreateOutboundOrderPage
@@ -2053,6 +2154,7 @@ export default function Outbound({
           title={title}
           codePrefix={codePrefix}
           partnerLabel={partnerLabel}
+          editOrderId={searchParams.get('id') || undefined}
         />
       )}
         {/* ─── MODAL ADD CUSTOMER ─────────────────────────────────────── */}
@@ -2263,8 +2365,11 @@ export default function Outbound({
                       <th className="p-3 text-center w-16 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">ĐVT</th>
                       <th className="p-3 text-center w-36 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">Vị trí kệ lấy hàng</th>
                       <th className="p-3 text-center w-20 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">SL {isDisposal ? 'hủy' : 'xuất'}</th>
-                      <th className="p-3 text-center w-28 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">{isDisposal ? 'Giá vốn ước tính' : 'Đơn giá'}</th>
-                      <th className="p-3 text-center w-32 whitespace-nowrap">{isDisposal ? 'Giá trị thiệt hại' : 'Thành tiền'}</th>
+                      <th className="p-3 text-center w-28 border-r border-cyan-500 dark:border-indigo-800 whitespace-nowrap">{isDisposal ? 'Giá nhập (đ)' : 'Đơn giá'}</th>
+                      <th className={`p-3 text-center w-32 whitespace-nowrap ${isDisposal ? 'border-r border-cyan-500 dark:border-indigo-800' : ''}`}>{isDisposal ? 'Thất thoát (đ)' : 'Thành tiền'}</th>
+                      {isDisposal && (
+                        <th className="p-3 text-center w-32 whitespace-nowrap">Tổng (đ)</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40 bg-white dark:bg-slate-950">
@@ -2281,14 +2386,21 @@ export default function Outbound({
                         </td>
                         <td className="p-2.5 text-center font-black text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-indigo-900/40">{d.qty}</td>
                         <td className="p-2.5 text-right font-semibold text-slate-800 dark:text-slate-200 border-r border-slate-200 dark:border-indigo-900/40 whitespace-nowrap">{d.price.toLocaleString('vi-VN')} đ</td>
-                        <td className="p-2.5 text-right font-black text-cyan-900 dark:text-indigo-300 whitespace-nowrap">{(d.qty * d.price).toLocaleString('vi-VN')} đ</td>
+                        <td className={`p-2.5 text-right font-black text-rose-600 dark:text-rose-400 whitespace-nowrap ${isDisposal ? 'border-r border-slate-200 dark:border-indigo-900/40' : ''}`}>
+                          {((d as any).lossAmount !== undefined && (d as any).lossAmount !== null ? Number((d as any).lossAmount) : (d.qty * d.price)).toLocaleString('vi-VN')} đ
+                        </td>
+                        {isDisposal && (
+                          <td className="p-2.5 text-right font-black text-rose-700 dark:text-rose-300 bg-rose-50/40 dark:bg-rose-950/30 whitespace-nowrap">
+                            {((d as any).totalDisposalAmount !== undefined && (d as any).totalDisposalAmount !== null ? Number((d as any).totalDisposalAmount) : (Number(d.price || 0) + (d.qty * d.price))).toLocaleString('vi-VN')} đ
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <div className="flex justify-end text-sm font-black text-slate-900 dark:text-slate-100 border-t-2 border-slate-200 dark:border-indigo-900/60 pt-3">
-                {isDisposal ? 'Tổng giá trị thiệt hại: ' : 'Tổng giá trị: '}
+                {isDisposal ? 'Tổng thất thoát: ' : 'Tổng giá trị: '}
                 <span className={isDisposal ? 'text-rose-600 dark:text-rose-400 ml-2 font-black text-base' : 'text-cyan-700 dark:text-indigo-400 ml-2 font-black text-base'}>
                   {selectedOrder.totalAmount.toLocaleString('vi-VN')} đ
                 </span>

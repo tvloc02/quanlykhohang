@@ -187,38 +187,48 @@ export class OutboundService implements OnModuleInit {
       pointsAvailable: dto.pointsAvailable || 0,
     });
 
-    // Attach customer by id or name
-    let attachedCustomer: Customer | null = null;
-    if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
-      attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
-    }
-
-    const customerText = (dto.customer || dto.customerName || '').trim();
-    if (!attachedCustomer && customerText) {
-      attachedCustomer = await this.customerRepo.findOne({
-        where: [{ name: customerText }, { customerCode: customerText }],
-      });
-
-      if (!attachedCustomer) {
-        try {
-          const newCust = this.customerRepo.create({
-            name: customerText,
-            customerCode: 'KH-' + Date.now().toString().slice(-6),
-            phone: dto.customerPhone?.trim() || undefined,
-            address: dto.customerAddress?.trim() || undefined,
-          });
-          attachedCustomer = await this.customerRepo.save(newCust);
-        } catch { }
-      }
-    }
-
-    if (attachedCustomer) {
-      order.customer = attachedCustomer;
-      order.customerName = attachedCustomer.name;
-      if (!order.customerPhone) order.customerPhone = attachedCustomer.phone;
-      if (!order.customerAddress) order.customerAddress = attachedCustomer.address;
+    // Attach customer by id or name (Không tạo hoặc gán khách hàng nếu là đơn xuất hủy tiêu hủy hàng hóa)
+    const isDisposalOrder = (dto.orderType === 'disposal') || (orderNo && orderNo.startsWith('XH'));
+    if (isDisposalOrder) {
+      order.customer = null as any;
+      order.customerName = 'Xuất hủy nội bộ';
+      order.customerPhone = undefined;
+      order.customerAddress = undefined;
+      order.debt = '0.00';
+      order.amountPaid = '0.00';
     } else {
-      order.customerName = customerText || '888 - Khách lẻ';
+      let attachedCustomer: Customer | null = null;
+      if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
+        attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
+      }
+
+      const customerText = (dto.customer || dto.customerName || '').trim();
+      if (!attachedCustomer && customerText) {
+        attachedCustomer = await this.customerRepo.findOne({
+          where: [{ name: customerText }, { customerCode: customerText }],
+        });
+
+        if (!attachedCustomer) {
+          try {
+            const newCust = this.customerRepo.create({
+              name: customerText,
+              customerCode: 'KH-' + Date.now().toString().slice(-6),
+              phone: dto.customerPhone?.trim() || undefined,
+              address: dto.customerAddress?.trim() || undefined,
+            });
+            attachedCustomer = await this.customerRepo.save(newCust);
+          } catch { }
+        }
+      }
+
+      if (attachedCustomer) {
+        order.customer = attachedCustomer;
+        order.customerName = attachedCustomer.name;
+        if (!order.customerPhone) order.customerPhone = attachedCustomer.phone;
+        if (!order.customerAddress) order.customerAddress = attachedCustomer.address;
+      } else {
+        order.customerName = customerText || '888 - Khách lẻ';
+      }
     }
 
     const savedOrder = await this.orderRepo.save(order);
@@ -226,8 +236,11 @@ export class OutboundService implements OnModuleInit {
     // Persist detail items if provided
     if (dto.details?.length) {
       const savedDetails = await this.persistDetails(savedOrder.id, dto.details, savedOrder.branchCode);
-      // Deduct inventory for outbound sales order
-      await this.applyInventoryDeduction(savedOrder, savedDetails);
+      // Deduct inventory ONLY for finalized outbound orders, NEVER for drafts
+      const isDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(savedOrder.status || '');
+      if (!isDraft) {
+        await this.applyInventoryDeduction(savedOrder, savedDetails);
+      }
     }
 
     try {
@@ -249,15 +262,14 @@ export class OutboundService implements OnModuleInit {
   async updateOutbound(id: string, dto: CreateOutboundOrderDto) {
     const order = await this.findOrderEntity(id);
 
-    // Update orderNo if provided and different
-    if (dto.orderNo && dto.orderNo !== order.orderNo) {
-      const nextNo = dto.orderNo.trim().toUpperCase();
-      const dup = await this.orderRepo.findOne({ where: { orderNo: nextNo } });
-      if (dup && dup.id !== order.id) {
-        throw new BadRequestException('Mã đơn xuất đã tồn tại');
-      }
-      order.orderNo = nextNo;
+    // Kiểm tra quyền sửa: Chỉ phiếu ở trạng thái Lưu nháp (DRAFT / Lưu tạm) mới được phép sửa
+    const isCurrentDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(order.status || '');
+    if (!isCurrentDraft) {
+      throw new BadRequestException('Chỉ phiếu xuất ở trạng thái Lưu nháp mới được phép chỉnh sửa. Phiếu đã xuất kho/tạo mới chính thức không thể sửa!');
     }
+
+    // Tuyệt đối không cho phép sửa mã phiếu: giữ nguyên order.orderNo
+    // Bỏ qua dto.orderNo nếu có truyền lên
 
     if (dto.branchCode !== undefined) order.branchCode = dto.branchCode.trim() || 'KHO-NVL';
     if (dto.employeeName !== undefined) order.employeeName = dto.employeeName.trim() || 'Quản trị viên hệ thống';
@@ -265,38 +277,48 @@ export class OutboundService implements OnModuleInit {
     if (dto.customerPhone !== undefined) order.customerPhone = dto.customerPhone.trim() || undefined;
     if (dto.customerAddress !== undefined) order.customerAddress = dto.customerAddress.trim() || undefined;
 
-    // Update customer
-    let attachedCustomer: Customer | null = null;
-    if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
-      attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
-    }
-
-    const updateCustText = (dto.customer || dto.customerName || '').trim();
-    if (!attachedCustomer && updateCustText) {
-      attachedCustomer = await this.customerRepo.findOne({
-        where: [{ name: updateCustText }, { customerCode: updateCustText }],
-      });
-
-      if (!attachedCustomer) {
-        try {
-          const newCust = this.customerRepo.create({
-            name: updateCustText,
-            customerCode: 'KH-' + Date.now().toString().slice(-6),
-            phone: dto.customerPhone?.trim() || undefined,
-            address: dto.customerAddress?.trim() || undefined,
-          });
-          attachedCustomer = await this.customerRepo.save(newCust);
-        } catch { }
+    // Update customer (Không tạo hoặc gán khách hàng nếu là đơn xuất hủy)
+    const isDisposalOrder = (dto.orderType === 'disposal') || (order.orderType === 'disposal') || (order.orderNo && order.orderNo.startsWith('XH'));
+    if (isDisposalOrder) {
+      order.customer = null as any;
+      order.customerName = 'Xuất hủy nội bộ';
+      order.customerPhone = undefined;
+      order.customerAddress = undefined;
+      order.debt = '0.00';
+      order.amountPaid = '0.00';
+    } else {
+      let attachedCustomer: Customer | null = null;
+      if (dto.customerId && /^\d+$/.test(String(dto.customerId))) {
+        attachedCustomer = await this.customerRepo.findOneBy({ id: String(dto.customerId) });
       }
-    }
 
-    if (attachedCustomer) {
-      order.customer = attachedCustomer;
-      order.customerName = attachedCustomer.name;
-      if (dto.customerPhone) order.customerPhone = dto.customerPhone.trim();
-      if (dto.customerAddress) order.customerAddress = dto.customerAddress.trim();
-    } else if (updateCustText) {
-      order.customerName = updateCustText;
+      const updateCustText = (dto.customer || dto.customerName || '').trim();
+      if (!attachedCustomer && updateCustText) {
+        attachedCustomer = await this.customerRepo.findOne({
+          where: [{ name: updateCustText }, { customerCode: updateCustText }],
+        });
+
+        if (!attachedCustomer) {
+          try {
+            const newCust = this.customerRepo.create({
+              name: updateCustText,
+              customerCode: 'KH-' + Date.now().toString().slice(-6),
+              phone: dto.customerPhone?.trim() || undefined,
+              address: dto.customerAddress?.trim() || undefined,
+            });
+            attachedCustomer = await this.customerRepo.save(newCust);
+          } catch { }
+        }
+      }
+
+      if (attachedCustomer) {
+        order.customer = attachedCustomer;
+        order.customerName = attachedCustomer.name;
+        if (dto.customerPhone) order.customerPhone = dto.customerPhone.trim();
+        if (dto.customerAddress) order.customerAddress = dto.customerAddress.trim();
+      } else if (updateCustText) {
+        order.customerName = updateCustText;
+      }
     }
 
     if (dto.orderDate) {
@@ -329,7 +351,9 @@ export class OutboundService implements OnModuleInit {
 
     // Replace details if provided
     if (dto.details?.length) {
-      await this.revertInventoryDeduction(order);
+      if (!isCurrentDraft) {
+        await this.revertInventoryDeduction(order);
+      }
 
       const existing = await this.detailRepo.find({
         where: { outboundOrder: { id } as any },
@@ -339,7 +363,16 @@ export class OutboundService implements OnModuleInit {
         await this.detailRepo.remove(existing);
       }
       const savedDetails = await this.persistDetails(id, dto.details, order.branchCode);
-      await this.applyInventoryDeduction(order, savedDetails);
+
+      const isNowDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(dto.status || order.status || '');
+      if (!isNowDraft) {
+        await this.applyInventoryDeduction(order, savedDetails);
+      }
+    } else if (dto.status && !['DRAFT', 'Lưu tạm', 'draft'].includes(dto.status || '') && isCurrentDraft) {
+      // Chuyển từ DRAFT sang xuất chính thức mà không đổi details
+      if (order.details?.length) {
+        await this.applyInventoryDeduction(order, order.details);
+      }
     }
 
     await this.orderRepo.save(order);
@@ -349,8 +382,11 @@ export class OutboundService implements OnModuleInit {
   async removeOutbound(id: string) {
     const order = await this.findOrderEntity(id);
 
-    // Revert inventory before deleting
-    await this.revertInventoryDeduction(order);
+    // Revert inventory before deleting ONLY if order was officially deducted (not draft)
+    const isDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(order.status || '');
+    if (!isDraft) {
+      await this.revertInventoryDeduction(order);
+    }
 
     // Delete details first
     const details = await this.detailRepo.find({
@@ -542,6 +578,8 @@ export class OutboundService implements OnModuleInit {
       if (qty <= 0 && !item.productName && !item.productSku && !item.productId) continue;
 
       const unitPrice = parseNumber(item.unitPrice ?? item.price);
+      const lossAmount = item.lossAmount !== undefined ? parseNumber(item.lossAmount) : (unitPrice * qty);
+      const totalDisposalAmount = item.totalDisposalAmount !== undefined ? parseNumber(item.totalDisposalAmount) : (unitPrice + lossAmount);
       const discountPercent = parseNumber(item.discountPercent);
       const discountAmount = parseNumber(item.discountAmount) || ((unitPrice * qty * discountPercent) / 100);
       const vatPercent = parseNumber(item.vatPercent);
@@ -562,6 +600,8 @@ export class OutboundService implements OnModuleInit {
         requiredQty: qty,
         pickedQty: 0,
         unitPrice: unitPrice.toFixed(2),
+        lossAmount: lossAmount.toFixed(2),
+        totalDisposalAmount: totalDisposalAmount.toFixed(2),
         discountPercent: discountPercent.toFixed(2),
         discountAmount: discountAmount.toFixed(2),
         vatPercent: vatPercent.toFixed(2),
@@ -778,6 +818,9 @@ export class OutboundService implements OnModuleInit {
           qty: effectiveQty,
           quantity: effectiveQty,
           unitPrice: parseNumber(d.unitPrice),
+          price: parseNumber(d.unitPrice),
+          lossAmount: d.lossAmount !== undefined ? parseNumber(d.lossAmount) : (effectiveQty * parseNumber(d.unitPrice)),
+          totalDisposalAmount: d.totalDisposalAmount !== undefined ? parseNumber(d.totalDisposalAmount) : (parseNumber(d.unitPrice) + (effectiveQty * parseNumber(d.unitPrice))),
           discountPercent: parseNumber(d.discountPercent),
           discountAmount: parseNumber(d.discountAmount),
           vatPercent: parseNumber(d.vatPercent),

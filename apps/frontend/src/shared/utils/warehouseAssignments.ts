@@ -431,6 +431,58 @@ export function getUserWarehouseNames(
     .map((w) => w.name);
 }
 
+/**
+ * Trả về danh sách kho đang hoạt động và KHÔNG bị đóng băng.
+ * Dùng cho các thao tác giao dịch: Nhập kho, Xuất kho, Điều chuyển, Đặt hàng...
+ */
+export function getActiveUnfrozenWarehouses<T extends { status?: string; isFrozen?: boolean }>(warehouses: T[]): T[] {
+  return (warehouses || []).filter((w) => w.status !== 'inactive' && !w.isFrozen);
+}
+
+/**
+ * Trả về danh sách kho đang bị đóng băng kiểm kê.
+ * Dùng cho màn hình Kiểm kê kho.
+ */
+export function getFrozenWarehouses<T extends { status?: string; isFrozen?: boolean }>(warehouses: T[]): T[] {
+  return (warehouses || []).filter((w) => w.status !== 'inactive' && Boolean(w.isFrozen));
+}
+
+/**
+ * Gọi API đóng băng hoặc mở khóa kho, đồng bộ vào state & localStorage
+ */
+export async function toggleWarehouseFreezeApi(
+  warehouseIdOrCode: string,
+  freeze: boolean,
+  warehouses: WarehouseRecord[] = getStoredWarehouses(),
+): Promise<WarehouseRecord> {
+  const target = warehouses.find(
+    (w) => w.id === warehouseIdOrCode || w.code === warehouseIdOrCode,
+  );
+  const targetId = target?.id || warehouseIdOrCode;
+  const action = freeze ? 'freeze' : 'unfreeze';
+
+  const res = await fetch(`${API_BASE_URL}/warehouses/${encodeURIComponent(targetId)}/${action}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.message || `Không thể ${freeze ? 'đóng băng' : 'mở khóa'} kho hàng`);
+  }
+
+  const updated = (await res.json()) as WarehouseRecord;
+  const normalized = normalizeWarehouseRecord(updated);
+
+  // Update local storage and notify other components
+  const current = getStoredWarehouses();
+  const next = current.map((w) => (w.id === normalized.id || w.code === normalized.code ? normalized : w));
+  saveStoredWarehouses(next);
+  window.dispatchEvent(new CustomEvent('warehouse-freeze-changed', { detail: normalized }));
+
+  return normalized;
+}
+
 export interface BinCell {
   binCode: string;
   cellCode: string;

@@ -7,7 +7,7 @@ import {
   type PermissionGroup,
   type ActionPermission,
   type GeneralPermissions,
-} from '../../features/personnel/PermissionGroupsPage';
+} from '../utils/permissionStorage';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 
@@ -225,8 +225,6 @@ export function usePermissions() {
   }, [tick]);
 
   const userActiveGroups = useMemo(() => {
-    if (isAdmin) return [];
-
     const userEmail = String(currentUser.email || '').trim().toLowerCase();
     const userId = String(currentUser.id || currentUser.sub || '').trim().toLowerCase();
     const userFullName = String(currentUser.fullName || '').trim().toLowerCase();
@@ -311,54 +309,61 @@ export function usePermissions() {
     });
 
     return matched;
-  }, [permissionGroups, userGroupIds, isAdmin, currentUser.email, currentUser.id, currentUser.sub, currentUser.fullName]);
+  }, [permissionGroups, userGroupIds, currentUser.email, currentUser.id, currentUser.sub, currentUser.fullName]);
 
   const canViewMenu = useCallback(
     (menuId: string): boolean => {
-      if (isAdmin) return true;
-      if (userActiveGroups.length === 0) return true;
+      if (userActiveGroups.length > 0) {
+        let hasExplicitDeny = false;
+        let hasExplicitAllow = false;
 
-      let hasExplicitDeny = false;
-      let hasExplicitAllow = false;
-
-      for (const g of userActiveGroups) {
-        const menuPerms = parseJson(g.menuPermissions) || {};
-        const p = menuPerms[menuId];
-        if (p) {
-          if (p.view === false || p.view === 'false' || p.view === 0) {
-            hasExplicitDeny = true;
-          } else if (p.view === true || p.view === 'true' || p.view === 1 || Boolean(p.view)) {
-            hasExplicitAllow = true;
+        for (const g of userActiveGroups) {
+          const menuPerms = parseJson(g.menuPermissions) || {};
+          const p = menuPerms[menuId];
+          if (p) {
+            if (p.view === false || p.view === 'false' || p.view === 0) {
+              hasExplicitDeny = true;
+            } else if (p.view === true || p.view === 'true' || p.view === 1 || Boolean(p.view)) {
+              hasExplicitAllow = true;
+            }
           }
         }
+
+        if (hasExplicitDeny && !hasExplicitAllow) return false;
+        return true;
       }
 
-      if (hasExplicitDeny && !hasExplicitAllow) return false;
       return true;
     },
-    [isAdmin, userActiveGroups]
+    [userActiveGroups]
   );
 
   const canPerformAction = useCallback(
     (menuId: string, action: keyof ActionPermission): boolean => {
-      if (isAdmin) return true;
-      if (userActiveGroups.length === 0) return true;
-      return userActiveGroups.some((g: PermissionGroup) => {
-        const menuPerms = parseJson(g.menuPermissions) || {};
-        return menuPerms[menuId]?.[action] === true;
-      });
+      if (userActiveGroups.length > 0) {
+        return userActiveGroups.some((g: PermissionGroup) => {
+          const menuPerms = parseJson(g.menuPermissions) || {};
+          const actionPerm = menuPerms[menuId]?.[action];
+          return actionPerm === true || actionPerm === 'true' || actionPerm === 1;
+        });
+      }
+
+      return isAdmin;
     },
     [isAdmin, userActiveGroups]
   );
 
   const canGeneralPermission = useCallback(
     (permKey: keyof GeneralPermissions): boolean => {
-      if (isAdmin) return true;
-      if (userActiveGroups.length === 0) return true;
-      return userActiveGroups.some((g: PermissionGroup) => {
-        const genPerms = parseJson(g.generalPermissions) || {};
-        return genPerms[permKey] === true;
-      });
+      if (userActiveGroups.length > 0) {
+        return userActiveGroups.some((g: PermissionGroup) => {
+          const genPerms = parseJson(g.generalPermissions) || {};
+          const val = genPerms[permKey];
+          return val === true || val === 'true' || val === 1;
+        });
+      }
+
+      return isAdmin;
     },
     [isAdmin, userActiveGroups]
   );

@@ -1,4 +1,4 @@
-const API_BASE = '/api';
+const API_BASE = 'http://localhost:3000/api';
 
 function getAuthHeaders() {
   const token = localStorage.getItem('token');
@@ -95,66 +95,92 @@ export const documentsApi = {
   async getSalesInvoices(): Promise<SalesInvoiceDoc[]> {
     try {
       const res = await fetch(`${API_BASE}/documents/sales-invoices`, { headers: getAuthHeaders() });
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
     } catch (e) {
       console.warn('Fallback sales invoices fetch', e);
     }
-    // Fallback to outbounds
-    const resOutbound = await fetch(`${API_BASE}/outbounds`, { headers: getAuthHeaders() });
-    if (!resOutbound.ok) return [];
-    const list = await resOutbound.json();
-    return list.map((item: any, idx: number) => ({
-      id: item.id || String(idx),
-      invoiceNo: `HD-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
-      invoiceName: item.description || item.orderNo || 'Hóa đơn bán hàng',
-      orderCode: item.orderCode || `SO-${item.id?.slice(0, 6) || '001'}`,
-      customerName: item.customerName || 'Khách hàng',
-      customerTaxCode: '0101234567',
-      address: item.address || 'Hà Nội, Việt Nam',
-      issuedDate: item.createdAt || new Date().toISOString(),
-      paymentMethod: 'Chuyển khoản / Tiền mặt',
-      status: item.status || 'COMPLETED',
-      items: (item.details || []).map((d: any) => ({
-        id: d.id || String(Math.random()),
-        productCode: d.sku || 'SKU-001',
-        productName: d.productName || 'Sản phẩm kinh doanh',
-        unit: 'Cái',
-        quantity: d.qty || 1,
-        unitPrice: 5000000,
-        taxRate: 10,
-      })),
-    }));
+
+    try {
+      // Fallback directly to outbound orders
+      const resOutbound = await fetch(`${API_BASE}/outbound/orders`, { headers: getAuthHeaders() });
+      if (resOutbound.ok) {
+        const list = await resOutbound.json();
+        if (Array.isArray(list) && list.length > 0) {
+          return list.map((item: any, idx: number) => ({
+            id: item.id || String(idx),
+            invoiceNo: item.orderNo || `HD-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
+            invoiceName: item.description || item.orderNo || 'Hóa đơn bán hàng',
+            orderCode: item.orderNo || `SO-${item.id?.slice(0, 6) || '001'}`,
+            customerName: item.customerName || item.customer?.name || item.receiver || 'Khách hàng',
+            customerTaxCode: '0101234567',
+            address: item.customerAddress || item.customer?.address || 'Việt Nam',
+            issuedDate: item.orderDate || item.expectedDate || item.createdAt || new Date().toISOString(),
+            paymentMethod: 'Chuyển khoản / Tiền mặt',
+            status: item.status || 'COMPLETED',
+            items: (item.details || []).map((d: any) => ({
+              id: d.id || String(Math.random()),
+              productCode: d.productSku || d.sku || d.product?.internalSku || d.product?.sku || 'SKU-001',
+              productName: d.productName || d.product?.name || 'Sản phẩm kinh doanh',
+              unit: d.unit || d.product?.unit || 'Cái',
+              quantity: d.requiredQty || d.qty || d.pickedQty || 1,
+              unitPrice: Number(d.unitPrice) || Number(d.price) || 0,
+              taxRate: Number(d.vatPercent) || Number(item.vatRate) || 10,
+            })),
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fallback fetch outbound orders', e);
+    }
+
+    return [];
   },
 
   async getStockInNotes(): Promise<StockInDoc[]> {
     try {
       const res = await fetch(`${API_BASE}/documents/stock-in-notes`, { headers: getAuthHeaders() });
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
     } catch (e) {
       console.warn('Fallback stock-in fetch', e);
     }
-    const resInbound = await fetch(`${API_BASE}/inbound/stock-in-orders`, { headers: getAuthHeaders() });
-    if (!resInbound.ok) return [];
-    const list = await resInbound.json();
-    return list.map((item: any, idx: number) => ({
-      id: item.id || String(idx),
-      receiptNo: item.code || `PNK-${String(idx + 1).padStart(4, '0')}`,
-      supplierName: item.supplierName || 'Nhà cung cấp',
-      warehouseName: item.targetWarehouseName || 'Kho tổng',
-      delivererName: item.createdByName || 'Nguyễn Văn A',
-      createdDate: item.createdAt || new Date().toISOString(),
-      note: item.note || 'Nhập kho hàng mua',
-      status: item.status || 'COMPLETED',
-      items: (item.details || []).map((d: any) => ({
-        id: d.id || String(Math.random()),
-        productCode: d.productSku || 'SKU-IN',
-        productName: d.productName || 'Hàng nhập kho',
-        unit: 'Chiếc',
-        quantityExpected: d.expectedQty || 1,
-        quantityActual: d.actualQty || d.expectedQty || 1,
-        unitPrice: d.unitPrice || 2500000,
-      })),
-    }));
+
+    try {
+      const resInbound = await fetch(`${API_BASE}/inbound/stock-in-orders`, { headers: getAuthHeaders() });
+      if (resInbound.ok) {
+        const list = await resInbound.json();
+        if (Array.isArray(list) && list.length > 0) {
+          return list.map((item: any, idx: number) => ({
+            id: item.id || String(idx),
+            receiptNo: item.orderCode || item.code || `PNK-${String(idx + 1).padStart(4, '0')}`,
+            supplierName: item.supplierName || item.supplier?.name || 'Nhà cung cấp',
+            warehouseName: item.targetWarehouseName || item.warehouseName || 'Kho Tổng',
+            delivererName: item.currentStepUserEmail || item.createdByName || 'Nguyễn Văn A',
+            createdDate: item.createdAt || new Date().toISOString(),
+            note: item.note || 'Nhập kho hàng mua',
+            status: item.status || 'COMPLETED',
+            items: (item.details || []).map((d: any) => ({
+              id: d.id || String(Math.random()),
+              productCode: d.productSku || d.sku || d.product?.internalSku || 'SKU-IN',
+              productName: d.productName || d.product?.name || 'Hàng nhập kho',
+              unit: d.unit || d.product?.unit || 'Chiếc',
+              quantityExpected: d.requestedQty || d.expectedQty || 1,
+              quantityActual: d.actualQty || d.requestedQty || d.expectedQty || 1,
+              unitPrice: Number(d.unitPrice) || 2500000,
+            })),
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fallback fetch inbound orders', e);
+    }
+
+    return [];
   },
 
   async getStockOutNotes(): Promise<StockOutDoc[]> {
@@ -167,58 +193,81 @@ export const documentsApi = {
     } catch (e) {
       console.warn('Fallback stock-out fetch', e);
     }
-    const resOutbound = await fetch(`${API_BASE}/outbounds`, { headers: getAuthHeaders() });
-    if (!resOutbound.ok) return [];
-    const list = await resOutbound.json();
-    return list.map((item: any, idx: number) => ({
-      id: item.id || String(idx),
-      noteNo: `PXK-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
-      receiverName: item.customerName || 'Người nhận',
-      destinationAddress: item.address || 'Kho nhận / Khách nhận',
-      exportWarehouse: 'Kho chính',
-      createdDate: item.createdAt || new Date().toISOString(),
-      reason: 'Xuất kho bán hàng',
-      status: item.status || 'COMPLETED',
-      items: (item.details || []).map((d: any) => ({
-        id: d.id || String(Math.random()),
-        productCode: d.sku || 'SKU-OUT',
-        productName: d.productName || 'Hàng xuất kho',
-        unit: 'Bộ',
-        quantity: d.qty || 1,
-        unitPrice: 4500000,
-      })),
-    }));
+
+    try {
+      const resOutbound = await fetch(`${API_BASE}/outbound/orders`, { headers: getAuthHeaders() });
+      if (resOutbound.ok) {
+        const list = await resOutbound.json();
+        if (Array.isArray(list) && list.length > 0) {
+          return list.map((item: any, idx: number) => ({
+            id: item.id || String(idx),
+            noteNo: item.orderNo || `PXK-${new Date().getFullYear()}-${String(idx + 1).padStart(4, '0')}`,
+            receiverName: item.receiver || item.customerName || item.customer?.name || 'Người nhận',
+            destinationAddress: item.customerAddress || item.customer?.address || 'Kho nhận / Khách nhận',
+            exportWarehouse: item.branchCode || item.details?.[0]?.warehouseCode || 'Kho Tổng',
+            createdDate: item.orderDate || item.expectedDate || item.createdAt || new Date().toISOString(),
+            reason: item.description || 'Xuất kho bán hàng',
+            status: item.status || 'COMPLETED',
+            items: (item.details || []).map((d: any) => ({
+              id: d.id || String(Math.random()),
+              productCode: d.productSku || d.sku || d.product?.internalSku || d.product?.sku || 'SKU-OUT',
+              productName: d.productName || d.product?.name || 'Hàng xuất kho',
+              unit: d.unit || d.product?.unit || 'Bộ',
+              quantity: d.requiredQty || d.qty || d.pickedQty || 1,
+              unitPrice: Number(d.unitPrice) || Number(d.price) || 0,
+            })),
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fallback fetch stock-out orders', e);
+    }
+
+    return [];
   },
 
   async getTransferNotes(): Promise<TransferDoc[]> {
     try {
       const res = await fetch(`${API_BASE}/documents/transfer-notes`, { headers: getAuthHeaders() });
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data;
+      }
     } catch (e) {
       console.warn('Fallback transfer fetch', e);
     }
-    const resDelivery = await fetch(`${API_BASE}/delivery/transfer-orders`, { headers: getAuthHeaders() });
-    if (!resDelivery.ok) return [];
-    const list = await resDelivery.json();
-    return list.map((item: any) => ({
-      id: item.id,
-      transferNo: item.transferNo,
-      commandNo: `LDD-${item.transferNo}`,
-      sourceWarehouse: item.sourceWarehouse,
-      destinationWarehouse: item.destinationWarehouse,
-      transporterName: item.createdBy || 'Người điều chuyển',
-      createdDate: item.createdAt || new Date().toISOString(),
-      note: item.note || 'Điều chuyển nội bộ',
-      status: item.status,
-      items: (item.items || []).map((it: any, idx: number) => ({
-        id: it.id || String(idx),
-        productCode: it.productCode || 'SKU-TRF',
-        productName: it.productName || 'Sản phẩm điều chuyển',
-        unit: it.unit || 'Cái',
-        quantityExported: Number(it.quantity) || 1,
-        quantityImported: Number(it.quantity) || 1,
-        price: 10000000,
-      })),
-    }));
+
+    try {
+      const resDelivery = await fetch(`${API_BASE}/delivery/transfer-orders`, { headers: getAuthHeaders() });
+      if (resDelivery.ok) {
+        const list = await resDelivery.json();
+        if (Array.isArray(list) && list.length > 0) {
+          return list.map((item: any) => ({
+            id: item.id,
+            transferNo: item.transferNo,
+            commandNo: `LDD-${item.transferNo}`,
+            sourceWarehouse: item.sourceWarehouse,
+            destinationWarehouse: item.destinationWarehouse,
+            transporterName: item.createdBy || 'Người điều chuyển',
+            createdDate: item.createdAt || new Date().toISOString(),
+            note: item.note || 'Điều chuyển nội bộ',
+            status: item.status,
+            items: (item.items || []).map((it: any, idx: number) => ({
+              id: it.id || String(idx),
+              productCode: it.productCode || 'SKU-TRF',
+              productName: it.productName || 'Sản phẩm điều chuyển',
+              unit: it.unit || 'Cái',
+              quantityExported: Number(it.quantity) || 1,
+              quantityImported: Number(it.quantity) || 1,
+              price: 10000000,
+            })),
+          }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fallback fetch transfer orders', e);
+    }
+
+    return [];
   },
 };

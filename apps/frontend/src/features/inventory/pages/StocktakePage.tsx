@@ -52,17 +52,33 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   if (!message) return null;
 
   return (
-    <div
-      className={`fixed top-4 right-4 z-[60] flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg transition-all animate-[slideIn_0.3s_ease-out] ${type === 'error'
-        ? 'bg-red-50 text-red-600 border border-red-200'
-        : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+    <div className="fixed top-6 right-6 z-[99999] pointer-events-none">
+      <div
+        className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-2xl border backdrop-blur-md transition-all animate-in slide-in-from-top-4 duration-300 ${
+          type === 'error'
+            ? 'bg-slate-900/95 text-white border-red-500/50 shadow-red-950/30'
+            : 'bg-slate-900/95 text-white border-emerald-500/50 shadow-emerald-950/30'
         }`}
-    >
-      {type === 'error' ? <XCircle size={20} /> : <CheckCircle size={20} />}
-      <p className="text-sm font-semibold">{message}</p>
-      <button onClick={onClose} className="ml-2 rounded-lg p-1 hover:bg-white/50 transition">
-        <X size={16} />
-      </button>
+      >
+        {type === 'error' ? (
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/20 text-red-400 shrink-0">
+            <XCircle size={20} />
+          </div>
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
+            <CheckCircle size={20} />
+          </div>
+        )}
+        <p className="text-sm font-bold text-white tracking-wide">{message}</p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-3 rounded-xl p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+          title="Đóng thông báo"
+        >
+          <X size={16} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -113,10 +129,40 @@ interface ProductOption {
 const API_BASE = 'http://localhost:3000/api';
 
 function authHeaders() {
-  return {
+  const token = localStorage.getItem('token') || '';
+  const userStr = localStorage.getItem('user');
+  let role = '';
+  let permissions: string[] = [];
+  try {
+    if (userStr) {
+      const u = JSON.parse(userStr);
+      role = u.role || (u.roles && u.roles[0]?.name) || '';
+      permissions = u.permissions || [];
+    }
+  } catch {}
+
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
   };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (userStr) {
+    try {
+      headers['x-user'] = encodeURIComponent(userStr);
+    } catch {}
+  }
+  if (role) {
+    try {
+      headers['x-role'] = encodeURIComponent(role);
+    } catch {}
+  }
+  if (permissions.length) {
+    try {
+      headers['x-permissions'] = encodeURIComponent(permissions.join(','));
+    } catch {
+      headers['x-permissions'] = permissions.join(',');
+    }
+  }
+  return headers;
 }
 
 // ─── STATUS CONFIG ─────────────────────────────────────────────
@@ -274,15 +320,18 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
         url = `${API_BASE}/inventory/stocktakes/requests`;
       }
       const res = await fetch(url, { headers: authHeaders() });
-      if (!res.ok) throw new Error('Không tải được dữ liệu kiểm kê');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.message || 'Không tải được dữ liệu kiểm kê');
+      }
       const data = await res.json();
-      setStocktakes(data);
+      setStocktakes(Array.isArray(data) ? data : (data?.data || []));
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : 'Lỗi hệ thống', type: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [isMyTasksView, isRequestsView]);
+  }, [isMyTasksView, isRequestsView, isRequestNewView]);
 
   React.useEffect(() => {
     loadData();
@@ -536,10 +585,11 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
   }
 
   return (
-    <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+    <>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
-      <div className="space-y-6 animate-in fade-in duration-200">
+      <div className={`space-y-6 ${isFullScreen ? 'fixed inset-0 z-[9000] bg-white overflow-y-auto p-6' : ''}`}>
+        <div className="space-y-6 animate-in fade-in duration-200">
         {/* Top Header Section matching Inbound/Outbound */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
@@ -1233,7 +1283,8 @@ export default function StocktakePage({ viewMode = 'stocktake' }: { viewMode?: '
           onError={showError}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   Package,
-  Plus,
   Search,
   Filter,
   RefreshCw,
@@ -32,11 +31,12 @@ import {
   Calendar,
   Layers,
   Bot,
+  Hash,
 } from 'lucide-react';
 import { deliveryApi, type TransferOrder, type TransferOrderItem } from '../api/deliveryApi';
 import InternalShippingNoteModal from '../components/InternalShippingNoteModal';
 import { SmartSlottingGridModal } from '../../warehouses/components/SmartSlottingGridModal';
-import { getStoredWarehouses, mergeStoredWarehouses, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
+import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses, upsertWarehouseToApi, type WarehouseRecord } from '../../../shared/utils/warehouseAssignments';
 
 
 type Toast = {
@@ -50,7 +50,7 @@ type StatusFilter = 'all' | 'DRAFT' | 'PENDING' | 'IN_TRANSIT' | 'DELIVERED' | '
 const statusConfig: Record<string, { label: string; color: string }> = {
   DRAFT: { label: 'Nháp', color: 'border-slate-200 bg-slate-50 text-slate-700' },
   PENDING: { label: 'Chờ xử lý', color: 'border-amber-300 bg-amber-50 text-amber-800 font-bold' },
-  APPROVED: { label: 'Đã duyệt', color: 'border-cyan-300 bg-cyan-50 text-cyan-800 font-bold' },
+  APPROVED: { label: 'Đang giao', color: 'border-blue-400 bg-blue-50 text-blue-800 font-bold' },
   IN_TRANSIT: { label: 'Đang giao', color: 'border-blue-400 bg-blue-50 text-blue-800 font-bold' },
   DELIVERED: { label: 'Đã nhận hàng', color: 'border-emerald-400 bg-emerald-50 text-emerald-800 font-bold' },
   COMPLETED: { label: 'Đã nhận hàng', color: 'border-emerald-400 bg-emerald-50 text-emerald-800 font-bold' },
@@ -107,6 +107,8 @@ export default function TransferRequestsPage() {
   const [receiveModalOrder, setReceiveModalOrder] = useState<TransferOrder | null>(null);
   const [receiveItems, setReceiveItems] = useState<any[]>([]);
   const [receiveSaving, setReceiveSaving] = useState(false);
+  const [receiveDateVal, setReceiveDateVal] = useState<string>('');
+  const [receiveNote, setReceiveNote] = useState<string>('');
 
   // Pick Bin Slotting Modal state
   const [slottingModalOpen, setSlottingModalOpen] = useState(false);
@@ -223,23 +225,36 @@ export default function TransferRequestsPage() {
   // Open Receive & Bin Slotting View mode (Inverted CreateTransferOrderPage for Stock-In)
   const openReceiveModal = (order: TransferOrder) => {
     setReceiveModalOrder(order);
-    const preparedItems = (order.items || []).map((it, idx) => ({
-      rowId: `rec-row-${it.id || idx}`,
-      productId: it.id || '',
-      productSku: it.productCode || '',
-      productName: it.productName || '',
-      unit: it.unit || 'Cái',
-      qty: Number(it.quantity) || 1,
-      receivedQty: Number(it.quantity) || 1,
-      price: Number((it as any).price || 0),
-      locationBin: (it as any).locationBin || (Array.isArray((it as any).assignedBins) ? (it as any).assignedBins.join(', ') : ''),
-      assignedBins: Array.isArray((it as any).assignedBins)
+    setReceiveDateVal(order.receiveDate ? new Date(order.receiveDate).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16));
+    setReceiveNote(order.note || '');
+    const destWhCode = (order.destinationWarehouse || '').trim().toUpperCase();
+    const isCompleted = order.status === 'DELIVERED' || order.status === 'COMPLETED';
+
+    const preparedItems = (order.items || []).map((it, idx) => {
+      const rawBins = Array.isArray((it as any).assignedBins)
         ? (it as any).assignedBins
         : (it as any).locationBin
         ? String((it as any).locationBin).split(',').map((b: string) => b.trim()).filter(Boolean)
-        : [],
-      note: (it as any).note || '',
-    }));
+        : [];
+      // If completed, keep assigned destination bins; if receiving, only keep bins already tagged for destination warehouse
+      const destBins = isCompleted 
+        ? rawBins 
+        : rawBins.filter((b: string) => b.toUpperCase().startsWith(destWhCode));
+
+      return {
+        rowId: `rec-row-${it.id || idx}`,
+        productId: it.id || '',
+        productSku: it.productCode || '',
+        productName: it.productName || '',
+        unit: it.unit || 'Cái',
+        qty: Number(it.quantity) || 1,
+        receivedQty: Number(it.quantity) || 1,
+        price: Number((it as any).price || 0),
+        locationBin: destBins.join(', '),
+        assignedBins: destBins,
+        note: (it as any).note || '',
+      };
+    });
     setReceiveItems(preparedItems);
   };
 
@@ -272,9 +287,125 @@ export default function TransferRequestsPage() {
 
       await deliveryApi.updateTransferOrder(receiveModalOrder.id, {
         status: 'DELIVERED',
-        receiveDate: new Date().toISOString(),
+        receiveDate: receiveDateVal ? new Date(receiveDateVal).toISOString() : new Date().toISOString(),
+        note: receiveNote || receiveModalOrder.note || undefined,
         items: updatedItems,
       });
+
+      // Update destination warehouse customBins topology so shelves reflect the received products
+      try {
+        const destWhCode = (receiveModalOrder.destinationWarehouse || '').trim().toUpperCase();
+        const fullWhList = getStoredWarehouses();
+        const matchedWh = fullWhList.find((w) => w.code === destWhCode || w.id === destWhCode);
+        if (matchedWh && matchedWh.subWarehouses) {
+          let whChanged = false;
+          const updatedSubs = matchedWh.subWarehouses.map((sub: any) => {
+            const racks = (sub.racks || []).map((rk: any) => {
+              const custom = { ...(rk.customBins || {}) };
+              const rackCodeUpper = String(rk.rackCode || '').trim().toUpperCase();
+
+              receiveItems.forEach((r) => {
+                let assignedList: string[] = Array.isArray(r.assignedBins) ? r.assignedBins : [];
+                if (assignedList.length === 0 && r.locationBin) {
+                  assignedList = r.locationBin.split(',').map((s: string) => s.trim()).filter(Boolean);
+                }
+
+                assignedList.forEach((binStr: string) => {
+                  const parts = binStr.split('-');
+                  const shortBin = (parts[parts.length - 1] || binStr).split(' ')[0].trim().toUpperCase();
+                  const targetRack = parts.length >= 2 ? parts[parts.length - 2].trim().toUpperCase() : '';
+
+                  if (targetRack && targetRack !== rackCodeUpper && !binStr.toUpperCase().includes(rackCodeUpper)) {
+                    return;
+                  }
+
+                  const pctMatch = binStr.match(/\((\d+(?:\.\d+)?)%\)/);
+                  const binPct = pctMatch ? Math.min(100, Math.max(1, Number(pctMatch[1]))) : 100;
+
+                  const qtyMatch = binStr.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/i);
+                  const binQty = qtyMatch ? Number(qtyMatch[1]) : (Math.round((Number(r.receivedQty) || Number(r.qty) || 1) / Math.max(1, assignedList.length)));
+
+                  const existingEntry = custom[shortBin] || custom[binStr];
+                  let existingProds: Array<{ sku?: string; productName: string; qty: number; occupancyPct: number; unit?: string }> = [];
+                  if (existingEntry && Array.isArray(existingEntry.products) && existingEntry.products.length > 0) {
+                    existingProds = [...existingEntry.products];
+                  } else if (existingEntry && existingEntry.productName && Number(existingEntry.totalPhysical || 0) > 0) {
+                    existingProds = [{
+                      sku: existingEntry.sku || '',
+                      productName: existingEntry.productName,
+                      qty: Number(existingEntry.totalPhysical || 0),
+                      occupancyPct: Number(existingEntry.occupancyPct || 0),
+                      unit: existingEntry.unit || 'cái',
+                    }];
+                  }
+
+                  const curSku = (r.productSku || '').trim().toUpperCase();
+                  const curName = (r.productName || '').trim().toLowerCase();
+                  const matchProdIdx = existingProds.findIndex((p) => {
+                    const pSku = (p.sku || '').trim().toUpperCase();
+                    const pName = (p.productName || '').trim().toLowerCase();
+                    return (curSku && pSku && curSku === pSku) || (curName && pName && curName === pName);
+                  });
+
+                  if (matchProdIdx >= 0) {
+                    existingProds[matchProdIdx] = {
+                      sku: r.productSku || existingProds[matchProdIdx].sku || '',
+                      productName: r.productName || existingProds[matchProdIdx].productName,
+                      qty: binQty,
+                      occupancyPct: binPct,
+                      unit: r.unit || existingProds[matchProdIdx].unit || 'cái',
+                    };
+                  } else {
+                    existingProds.push({
+                      sku: r.productSku || '',
+                      productName: r.productName,
+                      qty: binQty,
+                      occupancyPct: binPct,
+                      unit: r.unit || 'cái',
+                    });
+                  }
+
+                  const totalShelfPct = Math.min(100, existingProds.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+                  const totalShelfQty = existingProds.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+                  const descNote = `Đã chứa: ${totalShelfPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+
+                  const updatedEntry = {
+                    binCode: shortBin,
+                    length: 120,
+                    width: 80,
+                    height: 100,
+                    maxWeight: 500,
+                    occupancyPct: totalShelfPct,
+                    totalPhysical: totalShelfQty,
+                    products: existingProds,
+                    notes: descNote,
+                    productName: existingProds.map((p) => p.productName).join(', '),
+                    sku: existingProds.map((p) => p.sku).filter(Boolean).join(', '),
+                    unit: r.unit || 'cái',
+                  };
+
+                  custom[shortBin] = updatedEntry;
+                  const fullComposite = `${destWhCode}-${sub.code || 'ZONE'}-${rk.rackCode}-${shortBin}`;
+                  custom[fullComposite] = updatedEntry;
+                  whChanged = true;
+                });
+              });
+
+              return { ...rk, customBins: custom };
+            });
+            return { ...sub, racks };
+          });
+
+          if (whChanged) {
+            const updatedWh: WarehouseRecord = { ...matchedWh, subWarehouses: updatedSubs };
+            const nextList = fullWhList.map((w) => (w.id === updatedWh.id || w.code === updatedWh.code ? updatedWh : w));
+            saveStoredWarehouses(nextList);
+            upsertWarehouseToApi(updatedWh).catch((err) => console.error('Lỗi lưu CSDL kho đích:', err));
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi cập nhật cấu hình kệ kho đích:', err);
+      }
 
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new Event('warehouse-goods-cleared'));
@@ -397,7 +528,11 @@ export default function TransferRequestsPage() {
         (order.sourceWarehouse && order.sourceWarehouse.toLowerCase().includes(q)) ||
         (order.destinationWarehouse && order.destinationWarehouse.toLowerCase().includes(q));
 
-      const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        order.status === statusFilter ||
+        (statusFilter === 'IN_TRANSIT' && order.status === 'APPROVED') ||
+        (statusFilter === 'DELIVERED' && order.status === 'COMPLETED');
       return matchesSearch && matchesStatus;
     });
   }, [orders, search, statusFilter]);
@@ -437,8 +572,8 @@ export default function TransferRequestsPage() {
   // Statistics
   const total = orders.length;
   const pendingCount = useMemo(() => orders.filter((o) => o.status === 'DRAFT' || o.status === 'PENDING').length, [orders]);
-  const movingCount = useMemo(() => orders.filter((o) => o.status === 'IN_TRANSIT').length, [orders]);
-  const doneCount = useMemo(() => orders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED' || o.status === 'APPROVED').length, [orders]);
+  const movingCount = useMemo(() => orders.filter((o) => o.status === 'IN_TRANSIT' || o.status === 'APPROVED').length, [orders]);
+  const doneCount = useMemo(() => orders.filter((o) => o.status === 'DELIVERED' || o.status === 'COMPLETED').length, [orders]);
 
   const resetFilters = () => {
     setSearch('');
@@ -447,7 +582,7 @@ export default function TransferRequestsPage() {
   };
 
   // ════════════════════════════════════════════════════════════════
-  // 🏢 RENDER DEDICATED RECEIVE / STOCK-IN VIEW (Inverted CreateTransferOrderPage style)
+  // 🏢 RENDER DEDICATED RECEIVE / STOCK-IN VIEW (Matching CreateStockInOrderPage Layout)
   // ════════════════════════════════════════════════════════════════
   if (receiveModalOrder) {
     const destWhName = renderWarehouse(receiveModalOrder.destinationWarehouse, warehouses);
@@ -457,237 +592,342 @@ export default function TransferRequestsPage() {
     const totalReceivedQty = receiveItems.reduce((acc, it) => acc + (Number(it.receivedQty) || 0), 0);
 
     return (
-      <div className="space-y-6 pb-12">
-        {/* Header & Back Navigation */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-white p-4 rounded-2xl border-2 border-slate-200 shadow-xs">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setReceiveModalOrder(null)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-slate-300 bg-white text-slate-700 transition hover:bg-cyan-50 hover:border-cyan-600 hover:text-cyan-700 cursor-pointer shadow-xs"
-              title="Quay lại danh sách phiếu"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3 py-1 text-xs font-black text-white uppercase shadow-xs">
-                  <Package className="h-3.5 w-3.5" /> Nhận Hàng & Phân Bổ Ô Kệ
-                </span>
-                <span className="text-sm font-extrabold text-cyan-800 font-mono">
-                  #{receiveModalOrder.transferNo}
-                </span>
-              </div>
-              <h1 className="text-xl font-black text-slate-900 mt-1">
-                Lập Phiếu Nhập Kho Điều Chuyển Nội Bộ
-              </h1>
+      <div className="space-y-3.5 pb-12 animate-[fadeIn_0.2s_ease-in-out]">
+        {/* ═══ 1. TOP HEADER BAR ═══ */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-cyan-500/40 bg-white p-3.5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-700 px-3 py-1.5 text-xs font-black uppercase text-white shadow-xs">
+              <Package size={15} className="text-cyan-200" />
+              <span>Nhập Kho Điều Chuyển Nội Bộ</span>
+            </span>
+            <div className="flex items-center gap-1.5 rounded-xl border-2 border-cyan-600/40 bg-cyan-50/80 px-3.5 py-1.5 text-xs font-extrabold text-cyan-900 shadow-2xs">
+              <span className="font-mono text-sm font-black text-cyan-800">#{receiveModalOrder.transferNo}</span>
             </div>
+            {receiveModalOrder.status && (
+              <span className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-extrabold ${statusConfig[receiveModalOrder.status]?.color || 'border-blue-400 bg-blue-50 text-blue-800 font-bold'}`}>
+                {statusConfig[receiveModalOrder.status]?.label || receiveModalOrder.status}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => {
+                setShippingNoteOrder(receiveModalOrder);
+                setIsShippingNoteModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-600 bg-white px-3.5 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition shadow-xs cursor-pointer"
+              title="In / Xem chứng từ điều chuyển"
+            >
+              <Printer size={15} className="text-cyan-700" />
+              <span>In chứng từ</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setReceiveModalOrder(null)}
-              className="rounded-xl border-2 border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-500 bg-white px-4 py-1.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 transition shadow-xs cursor-pointer ml-1"
             >
-              Hủy bỏ
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirmReceive}
-              disabled={receiveSaving}
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-600 bg-cyan-600 px-6 py-2.5 text-xs sm:text-sm font-black text-white shadow-md transition hover:bg-cyan-700 active:scale-95 cursor-pointer disabled:opacity-50"
-            >
-              <CheckCircle2 className="h-4.5 w-4.5" />
-              {receiveSaving ? 'Đang lưu...' : 'XÁC NHẬN NHẬP KHO & PHÂN BỔ Ô KỆ'}
+              <ArrowLeft size={16} />
+              <span>Quay lại</span>
             </button>
           </div>
         </div>
 
-        {/* Transfer Order Details Header Panel */}
-        <div className="rounded-2xl border-2 border-cyan-500/40 bg-white p-5 shadow-sm space-y-4">
-          <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide flex items-center gap-2 border-b border-slate-200 pb-3">
-            <Building2 className="h-4.5 w-4.5 text-cyan-600" />
-            Thông Tin Phiếu Điều Chuyển Đến
-          </h3>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 text-xs font-bold text-slate-800">
-            {/* Kho chuyển */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-              <span className="text-slate-500 font-semibold block mb-1">Kho Chuyển (Nơi gửi):</span>
-              <span className="text-sm font-black text-slate-900 block">{sourceWhName}</span>
-            </div>
-
-            {/* Kho nhận */}
-            <div className="rounded-xl border-2 border-cyan-500/50 bg-cyan-50/60 p-3">
-              <span className="text-cyan-800 font-bold block mb-1">Kho Nhận (Nơi cất hàng):</span>
-              <span className="text-sm font-black text-cyan-950 block">{destWhName}</span>
-            </div>
-
-            {/* Tài xế & Xe */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-              <span className="text-slate-500 font-semibold block mb-1">Tài Xế & Biển Số Xe:</span>
-              <span className="text-sm font-black text-slate-900 block">
-                {receiveModalOrder.driverName || 'Chưa cập nhật'} {receiveModalOrder.vehiclePlate ? `(${receiveModalOrder.vehiclePlate})` : ''}
-              </span>
-            </div>
-
-            {/* Ngày chuyển / Nhận */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-              <span className="text-slate-500 font-semibold block mb-1">Ngày Vận Chuyển:</span>
-              <span className="text-sm font-black text-slate-900 block">
-                {formatDateTime(receiveModalOrder.dispatchDate || receiveModalOrder.createdAt)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Products Receive & Slotting Grid Table */}
-        <div className="overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-sm space-y-4">
-          <div className="flex items-center justify-between px-5 pt-4">
+        {/* ═══ 2. FULL-WIDTH TOP CONTROL BAR (Grid of Details) ═══ */}
+        <div className="w-full rounded-2xl border-2 border-cyan-500/30 bg-white p-4 shadow-md flex-shrink-0 space-y-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 items-center">
+            {/* Ngày nhận hàng */}
             <div>
-              <h3 className="text-base font-black text-slate-900 uppercase tracking-wide flex items-center gap-2">
-                <Layers className="h-5 w-5 text-cyan-600" />
-                Danh Sách Mặt Hàng & Phân Bổ Ô Kệ Kho Nhận
-              </h3>
-              <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                Nhập số lượng thực nhận và bấm nút <b className="text-cyan-700">"Chọn ô kệ nhập kho"</b> để phân bổ chính xác ô kệ trong kho nhận ({destWhName}).
-              </p>
+              <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
+                <Calendar className="h-4 w-4 text-cyan-600" />
+                <span>Ngày nhận hàng</span>
+              </label>
+              <input
+                type="datetime-local"
+                value={receiveDateVal}
+                onChange={(e) => setReceiveDateVal(e.target.value)}
+                className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 shadow-2xs"
+              />
             </div>
 
-            <button
-              type="button"
-              onClick={() => openSlottingModalForRow(receiveItems[0]?.rowId || '')}
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-700 bg-cyan-50 px-4 py-2 text-xs font-black text-cyan-800 shadow-2xs transition hover:bg-cyan-100 cursor-pointer"
-            >
-              <Sparkles className="h-4 w-4 text-cyan-600" />
-              Gợi ý phân bổ ô kệ AI toàn bộ
-            </button>
+            {/* Mã phiếu điều chuyển */}
+            <div>
+              <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
+                <Hash className="h-4 w-4 text-cyan-600" />
+                <span>Mã phiếu chuyển</span>
+              </label>
+              <input
+                type="text"
+                disabled
+                value={receiveModalOrder.transferNo}
+                className="h-10 w-full rounded-xl border-2 border-slate-300 bg-slate-100 px-3 text-sm font-extrabold text-cyan-900 uppercase outline-none shadow-2xs cursor-not-allowed"
+              />
+            </div>
+
+            {/* Kho chuyển (Nơi gửi) */}
+            <div>
+              <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700">
+                <Building2 className="h-4 w-4 text-cyan-600" />
+                <span>Kho gửi (Nơi chuyển)</span>
+              </label>
+              <div className="h-10 w-full rounded-xl border-2 border-slate-300 bg-slate-100 px-3 text-xs sm:text-sm font-bold text-slate-700 flex items-center truncate shadow-2xs">
+                <span className="truncate">{sourceWhName}</span>
+              </div>
+            </div>
+
+            {/* Kho nhận (Nơi cất hàng) */}
+            <div>
+              <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-cyan-800">
+                <Building2 className="h-4 w-4 text-cyan-600" />
+                <span>Kho nhận (Cất vào kệ)</span>
+              </label>
+              <div className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/70 px-3 text-xs sm:text-sm font-black text-cyan-950 flex items-center truncate shadow-2xs">
+                <span className="truncate">{destWhName}</span>
+              </div>
+            </div>
           </div>
+        </div>
 
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full min-w-[1200px] border-collapse text-left">
-              <thead className="bg-cyan-50 sticky top-0 z-10 shadow-2xs">
-                <tr className="border-b-2 border-slate-200 text-slate-800 font-extrabold uppercase text-xs tracking-wider whitespace-nowrap">
-                  <th className="w-12 border-r border-slate-200 px-3 py-3.5 text-center">STT</th>
-                  <th className="min-w-[150px] border-r border-slate-200 px-4 py-3.5 text-center">Mã SP (SKU)</th>
-                  <th className="min-w-[240px] border-r border-slate-200 px-4 py-3.5">Tên Hàng Hóa</th>
-                  <th className="w-24 border-r border-slate-200 px-3 py-3.5 text-center">ĐVT</th>
-                  <th className="w-32 border-r border-slate-200 px-3 py-3.5 text-center">SL Gửi</th>
-                  <th className="w-36 border-r border-slate-200 px-3 py-3.5 text-center">SL Thực Nhận</th>
-                  <th className="min-w-[320px] border-r border-slate-200 px-4 py-3.5 text-center">Phân Khu & Ô Kệ Nhập Kho</th>
-                  <th className="min-w-[200px] px-4 py-3.5">Ghi Chú</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 bg-white font-medium text-xs">
-                {receiveItems.map((item, idx) => {
-                  const assignedList = item.assignedBins || (item.locationBin ? String(item.locationBin).split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+        {/* ═══ 3. MAIN 2-COLUMN LAYOUT (Table on Left, Payment/Action Sidebar on Right) ═══ */}
+        <div className="flex flex-col lg:flex-row gap-3 items-start">
+          {/* ── LEFT COLUMN: BẢNG HÀNG HÓA NHẬP KHO ── */}
+          <div className="flex-1 min-w-0 flex flex-col w-full">
+            <div className="flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0">
+              {/* Table Header Controls */}
+              <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 text-cyan-900 font-black text-xs sm:text-sm">
+                  <Package className="h-4 w-4 text-cyan-600" />
+                  <span>
+                    THÔNG TIN HÀNG HÓA NHẬP CHUYỂN ({receiveItems.length} MẶT HÀNG - TỔNG SL: {totalReceivedQty})
+                  </span>
+                </div>
 
-                  return (
-                    <tr key={item.rowId} className="hover:bg-cyan-50/40 transition">
-                      <td className="border-r border-slate-200 px-3 py-3.5 text-center font-bold text-slate-700">
-                        {idx + 1}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 text-center font-extrabold text-cyan-800 whitespace-nowrap">
-                        {item.productSku || 'SKU-00' + (idx + 1)}
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3.5 font-bold text-slate-900">
-                        {item.productName || 'Sản phẩm điều chuyển'}
-                      </td>
-                      <td className="border-r border-slate-200 px-3 py-3.5 text-center font-semibold text-slate-700">
-                        {item.unit || 'Cái'}
-                      </td>
-                      <td className="border-r border-slate-200 px-3 py-3.5 text-center font-black text-slate-900 font-mono">
-                        {Number(item.qty).toLocaleString('vi-VN')}
-                      </td>
-                      <td className="border-r border-slate-200 px-3 py-3 text-center">
-                        <input
-                          type="number"
-                          min={1}
-                          value={item.receivedQty}
-                          onChange={(e) => {
-                            const val = Math.max(1, Number(e.target.value) || 1);
-                            setReceiveItems((prev) =>
-                              prev.map((r) => (r.rowId === item.rowId ? { ...r, receivedQty: val } : r))
-                            );
-                          }}
-                          className="h-9 w-28 rounded-xl border-2 border-cyan-600/40 bg-white px-2.5 text-center font-black text-cyan-900 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20"
-                        />
-                      </td>
-                      <td className="border-r border-slate-200 px-4 py-3 text-center">
-                        <div className="flex flex-col items-center gap-2">
-                          {assignedList.length > 0 ? (
-                            <div className="flex flex-wrap items-center justify-center gap-1.5">
-                              {assignedList.map((bin: string) => (
-                                <span
-                                  key={bin}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-cyan-300 bg-cyan-100 px-2.5 py-1 text-[11px] font-black text-cyan-950 shadow-2xs"
-                                >
-                                  <MapPin className="h-3 w-3 text-cyan-700" />
-                                  {bin}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 font-bold italic text-[11px]">Chưa phân bổ ô kệ</span>
-                          )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openSlottingModalForRow(receiveItems[0]?.rowId || '')}
+                    className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-700 bg-cyan-50 px-3.5 py-1.5 text-xs font-extrabold text-cyan-800 shadow-2xs transition hover:bg-cyan-100 cursor-pointer"
+                    title="Gợi ý tự động hoặc chọn ô kệ AI cho toàn bộ danh sách"
+                  >
+                    <Sparkles className="h-4 w-4 text-cyan-600" />
+                    <span>Gợi ý ô kệ AI</span>
+                  </button>
+                </div>
+              </div>
 
-                          <button
-                            type="button"
-                            onClick={() => openSlottingModalForRow(item.rowId)}
-                            className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-3 py-1.5 text-[11px] font-extrabold text-cyan-800 shadow-2xs transition hover:bg-cyan-50 cursor-pointer"
-                          >
-                            <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
-                            {assignedList.length > 0 ? 'Đổi vị trí ô kệ' : 'Chọn ô kệ nhập kho'}
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="text"
-                          value={item.note || ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setReceiveItems((prev) =>
-                              prev.map((r) => (r.rowId === item.rowId ? { ...r, note: val } : r))
-                            );
-                          }}
-                          placeholder="Ghi chú nhận..."
-                          className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-cyan-600"
-                        />
-                      </td>
+              {/* Grid Table */}
+              <div className="overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 max-h-[calc(100vh-280px)]">
+                <table className="w-full text-left border-collapse text-xs min-w-[1000px]">
+                  <thead className="bg-slate-100 text-slate-700 font-black border-b-2 border-slate-200 uppercase text-xs sticky top-0 z-10">
+                    <tr>
+                      <th className="p-2.5 w-12 text-center bg-slate-100">STT</th>
+                      <th className="p-2.5 min-w-[200px] text-center bg-slate-100">TÊN HÀNG HÓA / SKU</th>
+                      <th className="p-2.5 w-20 text-center bg-slate-100">ĐVT</th>
+                      <th className="p-2.5 w-24 text-center bg-slate-100">SL GỬI</th>
+                      <th className="p-2.5 w-32 text-center bg-slate-100">SL THỰC NHẬN</th>
+                      <th className="p-2.5 min-w-[280px] text-center bg-slate-100">VỊ TRÍ Ô KỆ NHẬP KHO ({receiveModalOrder.destinationWarehouse})</th>
+                      <th className="p-2.5 min-w-[140px] text-center bg-slate-100">GHI CHÚ</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {receiveItems.map((item, idx) => {
+                      const assignedList = item.assignedBins || (item.locationBin ? String(item.locationBin).split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+                      const isEven = idx % 2 === 1;
+
+                      return (
+                        <tr key={item.rowId} className={`transition ${isEven ? 'bg-slate-50/70 hover:bg-cyan-50/50' : 'bg-white hover:bg-cyan-50/50'}`}>
+                          <td className="p-2.5 text-center font-bold text-slate-600 border-r border-slate-200">
+                            {idx + 1}
+                          </td>
+                          <td className="p-2.5 border-r border-slate-200">
+                            <div className="font-extrabold text-slate-900 text-xs sm:text-sm">{item.productName || 'Sản phẩm điều chuyển'}</div>
+                            <div className="text-[11px] font-mono font-bold text-cyan-700 mt-0.5">{item.productSku || '-'}</div>
+                          </td>
+                          <td className="p-2.5 text-center font-bold text-slate-700 border-r border-slate-200">
+                            <span className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                              {item.unit || 'Cái'}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-center font-black text-slate-800 font-mono text-sm border-r border-slate-200">
+                            {Number(item.qty).toLocaleString('vi-VN')}
+                          </td>
+                          <td className="p-2.5 text-center border-r border-slate-200">
+                            <input
+                              type="number"
+                              min={1}
+                              value={item.receivedQty}
+                              onChange={(e) => {
+                                const val = Math.max(1, Number(e.target.value) || 1);
+                                setReceiveItems((prev) =>
+                                  prev.map((r) => (r.rowId === item.rowId ? { ...r, receivedQty: val } : r))
+                                );
+                              }}
+                              className="h-9 w-24 rounded-xl border-2 border-cyan-600 bg-white px-2.5 text-center font-black text-cyan-900 outline-none transition focus:ring-2 focus:ring-cyan-500/20 shadow-2xs text-xs sm:text-sm mx-auto"
+                            />
+                          </td>
+                          <td className="p-2.5 border-r border-slate-200">
+                            <div className="flex flex-col items-center gap-1.5">
+                              {assignedList.length > 0 ? (
+                                <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-xs">
+                                  {assignedList.map((bin: string) => (
+                                    <span
+                                      key={bin}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-cyan-400 bg-cyan-100/90 px-2.5 py-1 text-[11px] font-black text-cyan-950 shadow-2xs"
+                                    >
+                                      <MapPin className="h-3 w-3 text-cyan-700" />
+                                      {bin}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 font-bold italic text-[11px]">Chưa phân bổ ô kệ</span>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => openSlottingModalForRow(item.rowId)}
+                                className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-3.5 py-1.5 text-[11px] font-black text-cyan-800 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+                              >
+                                <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
+                                <span>{assignedList.length > 0 ? 'Đổi vị trí ô kệ' : 'Chọn ô kệ nhập kho'}</span>
+                              </button>
+                            </div>
+                          </td>
+                          <td className="p-2.5">
+                            <input
+                              type="text"
+                              value={item.note || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setReceiveItems((prev) =>
+                                  prev.map((r) => (r.rowId === item.rowId ? { ...r, note: val } : r))
+                                );
+                              }}
+                              placeholder="Ghi chú nhận..."
+                              className="h-9 w-full rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-cyan-600"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Summary Footer bar */}
+              <div className="border-t-2 border-slate-200 bg-slate-50 px-4 py-3 flex items-center justify-between text-xs font-bold text-slate-700">
+                <div className="flex items-center gap-6">
+                  <span>Số mặt hàng: <b className="text-slate-900 font-black">{receiveItems.length}</b></span>
+                  <span>Tổng SL gửi: <b className="text-slate-900 font-black font-mono">{totalDispatchedQty.toLocaleString('vi-VN')}</b></span>
+                  <span>Tổng SL thực nhận: <b className="text-cyan-800 font-black font-mono text-sm">{totalReceivedQty.toLocaleString('vi-VN')}</b></span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Footer Summary Bar */}
-          <div className="flex flex-wrap items-center justify-between border-t-2 border-slate-200 bg-slate-50 px-6 py-4 text-xs font-bold text-slate-700">
-            <div className="flex items-center gap-6">
-              <span>Tổng mặt hàng: <b className="text-slate-900 font-black text-sm">{receiveItems.length}</b></span>
-              <span>Tổng SL gửi: <b className="text-slate-900 font-black text-sm font-mono">{totalDispatchedQty.toLocaleString('vi-VN')}</b></span>
-              <span>Tổng SL thực nhận: <b className="text-cyan-800 font-black text-base font-mono">{totalReceivedQty.toLocaleString('vi-VN')}</b></span>
-            </div>
+          {/* ── RIGHT COLUMN: SIDEBAR THÔNG TIN ĐIỀU CHUYỂN & HÀNH ĐỘNG ── */}
+          <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 space-y-3">
+            <div className="rounded-xl border-2 border-slate-200 bg-white p-4 shadow-sm space-y-3.5">
+              <h3 className="text-xs font-black uppercase text-cyan-900 flex items-center gap-1.5 border-b border-slate-200 pb-2.5">
+                <Building2 className="h-4 w-4 text-cyan-600" />
+                <span>THÔNG TIN NHẬP CHUYỂN NỘI BỘ</span>
+              </h3>
 
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setReceiveModalOrder(null)}
-                className="rounded-xl border-2 border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmReceive}
-                disabled={receiveSaving}
-                className="inline-flex items-center gap-2 rounded-xl border-2 border-cyan-600 bg-cyan-600 px-6 py-2.5 text-xs font-black text-white shadow-md hover:bg-cyan-700 cursor-pointer disabled:opacity-50"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                {receiveSaving ? 'Đang lưu...' : 'XÁC NHẬN NHẬP KHO & PHÂN BỔ Ô KỆ'}
-              </button>
+              {/* Thông tin kho gửi & nhận */}
+              <div className="space-y-2 text-xs">
+                <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80">
+                  <span className="text-slate-500 font-semibold block text-[11px]">Kho gửi (Nơi xuất):</span>
+                  <span className="font-extrabold text-slate-900 block text-xs">{sourceWhName}</span>
+                </div>
+
+                <div className="p-2.5 rounded-xl border-2 border-cyan-400/80 bg-cyan-50/70">
+                  <span className="text-cyan-800 font-extrabold block text-[11px]">Kho nhận (Nơi cất hàng):</span>
+                  <span className="font-black text-cyan-950 block text-xs">{destWhName}</span>
+                </div>
+
+                <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-semibold text-[11px]">Tài xế:</span>
+                    <span className="font-extrabold text-slate-900">{receiveModalOrder.driverName || 'Chưa chỉ định'}</span>
+                  </div>
+                  {receiveModalOrder.driverPhone && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-semibold text-[11px]">SĐT tài xế:</span>
+                      <span className="font-bold text-slate-700">{receiveModalOrder.driverPhone}</span>
+                    </div>
+                  )}
+                  {receiveModalOrder.vehiclePlate && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-semibold text-[11px]">Biển số xe:</span>
+                      <span className="font-black text-slate-900">{receiveModalOrder.vehiclePlate}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Thống kê số lượng */}
+              <div className="border-t border-slate-200 pt-3 space-y-1.5 text-xs">
+                <div className="flex items-center justify-between font-semibold text-slate-700">
+                  <span>Số mặt hàng:</span>
+                  <span className="font-black text-slate-900">{receiveItems.length}</span>
+                </div>
+                <div className="flex items-center justify-between font-semibold text-slate-700">
+                  <span>Tổng SL xuất gửi:</span>
+                  <span className="font-black text-slate-900 font-mono">{totalDispatchedQty.toLocaleString('vi-VN')}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-300/80 pt-2">
+                  <span className="text-xs font-black uppercase text-cyan-900">TỔNG SL THỰC NHẬN:</span>
+                  <span className="text-base font-black text-cyan-700 font-mono">{totalReceivedQty.toLocaleString('vi-VN')}</span>
+                </div>
+              </div>
+
+              {/* Ghi chú chung phiếu */}
+              <div className="border-t border-slate-200 pt-3">
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">Ghi chú phiếu nhận:</label>
+                <textarea
+                  rows={2}
+                  value={receiveNote}
+                  onChange={(e) => setReceiveNote(e.target.value)}
+                  placeholder="Nhập ghi chú nhận kho nội bộ..."
+                  className="w-full rounded-xl border border-slate-300 p-2 text-xs font-medium text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20"
+                />
+              </div>
+
+              {/* Large Prominent Action Buttons */}
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={handleConfirmReceive}
+                  disabled={receiveSaving}
+                  className="w-full h-12 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-wide shadow-md transition active:scale-95 cursor-pointer disabled:opacity-50 text-xs sm:text-sm"
+                >
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span>{receiveSaving ? 'ĐANG LƯU...' : 'XÁC NHẬN NHẬP KHO & LƯU Ô KỆ'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShippingNoteOrder(receiveModalOrder);
+                    setIsShippingNoteModalOpen(true);
+                  }}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-600 bg-white hover:bg-cyan-50 text-cyan-800 font-extrabold shadow-xs transition active:scale-95 cursor-pointer text-xs"
+                >
+                  <Printer size={16} className="text-cyan-700" />
+                  <span>IN CHỨNG TỪ ĐIỀU CHUYỂN</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setReceiveModalOrder(null)}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl border-2 border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold transition active:scale-95 cursor-pointer text-xs"
+                >
+                  <ArrowLeft size={16} />
+                  <span>HỦY / QUAY LẠI DANH SÁCH</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -702,6 +942,37 @@ export default function TransferRequestsPage() {
           targetRowId={activeSlottingRowId}
           products={products}
           onConfirmAll={handleConfirmSlottingBins}
+        />
+
+        {/* Internal Shipping Note Modal for Printing Voucher */}
+        <InternalShippingNoteModal
+          open={isShippingNoteModalOpen}
+          onClose={() => {
+            setIsShippingNoteModalOpen(false);
+            setShippingNoteOrder(null);
+          }}
+          initialData={
+            (shippingNoteOrder || receiveModalOrder)
+              ? {
+                  commandNo: (shippingNoteOrder || receiveModalOrder)!.transferNo,
+                  sourceAddress: renderWarehouse((shippingNoteOrder || receiveModalOrder)!.sourceWarehouse, warehouses),
+                  receiverName: renderCreator((shippingNoteOrder || receiveModalOrder)!.createdBy),
+                  destinationAddress: renderWarehouse((shippingNoteOrder || receiveModalOrder)!.destinationWarehouse, warehouses),
+                  transporterName: (shippingNoteOrder || receiveModalOrder)!.driverName || 'Chưa phân công',
+                  vehicle: (shippingNoteOrder || receiveModalOrder)!.vehiclePlate || 'Chưa cập nhật',
+                  items: ((shippingNoteOrder || receiveModalOrder)!.items || []).map((item, idx) => ({
+                    id: item.id || String(idx + 1),
+                    productName: item.productName || 'Sản phẩm điều chuyển',
+                    productCode: item.productCode || 'SKU---',
+                    unit: item.unit || 'Cái',
+                    quantityExported: item.quantity || 1,
+                    quantityImported: item.quantity || 1,
+                    price: Number((item as any).price || 0),
+                  })),
+                }
+              : undefined
+          }
+          setToast={setToast}
         />
       </div>
     );
@@ -721,21 +992,9 @@ export default function TransferRequestsPage() {
           </div>
         </div>
 
-        {/* Toolbar Buttons Bar (Matching Image 2: + Thêm mới, Copy, Xóa, In báo cáo, Export Excel, Hiển thị, Maximize) */}
+        {/* Toolbar Buttons Bar (Copy, Xóa, In báo cáo, Export Excel, Hiển thị, Maximize) */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* 1. + Thêm mới */}
-          <button
-            type="button"
-            onClick={() => {
-              navigate('/delivery/receive-transfer-order', { state: { mode: 'receive', fromRequests: true } });
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <Plus className="h-4 w-4 text-cyan-700" />
-            Thêm mới
-          </button>
-
-          {/* 2. Copy */}
+          {/* 1. Copy */}
           <button
             type="button"
             onClick={handleCopySelected}
@@ -918,7 +1177,7 @@ export default function TransferRequestsPage() {
             <tbody className="divide-y divide-slate-200 bg-white font-medium">
               {paginatedOrders.length > 0 ? (
                 paginatedOrders.map((order, index) => {
-                  const isDraftOrPending = order.status === 'DRAFT' || order.status === 'PENDING' || order.status === 'IN_TRANSIT';
+                  const isPendingReceive = order.status === 'DRAFT' || order.status === 'PENDING' || order.status === 'IN_TRANSIT' || order.status === 'APPROVED';
                   const totalItemsCount = order.items?.length || order.itemCount || 0;
                   const totalQuantityCount = order.totalQuantity || (order.items || []).reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
                   const isChecked = selectedIds.has(order.id);
@@ -944,50 +1203,46 @@ export default function TransferRequestsPage() {
                         </td>
                       )}
                       {columnVis.sourceWarehouse && (
-                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-800">
                           {renderWarehouse(order.sourceWarehouse, warehouses)}
                         </td>
                       )}
                       {columnVis.destinationWarehouse && (
-                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-slate-800">
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-sm font-bold text-cyan-800">
                           {renderWarehouse(order.destinationWarehouse, warehouses)}
                         </td>
                       )}
                       {columnVis.dispatchDate && (
-                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-semibold text-slate-700">
-                          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
-                            <Clock className="h-4 w-4 text-cyan-600 shrink-0" />
-                            {formatDateTime(order.dispatchDate || order.scheduledDate || order.createdAt)}
+                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-700">
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="h-3.5 w-3.5 text-slate-400" />
+                            {formatDateTime(order.dispatchDate)}
                           </span>
                         </td>
                       )}
                       {columnVis.receiveDate && (
-                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-semibold text-slate-700">
-                          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">
-                            <CalendarDays className="h-4 w-4 text-cyan-600 shrink-0" />
-                            {formatDateTime(order.receiveDate || (order.dispatchDate ? new Date(new Date(order.dispatchDate).getTime() + 86400000).toISOString() : order.createdAt))}
+                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-bold text-slate-700">
+                          <span className="inline-flex items-center gap-1">
+                            <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                            {formatDateTime(order.receiveDate)}
                           </span>
                         </td>
                       )}
                       {columnVis.driver && (
-                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-semibold text-slate-800">
+                        <td className="border-r border-slate-200 px-4 py-3.5 text-center text-xs font-semibold text-slate-800">
                           {order.driverName ? (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className="font-extrabold text-slate-900">{order.driverName}</span>
-                              {order.driverPhone && (
-                                <span className="text-xs text-slate-500 font-semibold whitespace-nowrap">
-                                  {order.driverPhone}
-                                </span>
-                              )}
+                            <div>
+                              <p className="font-extrabold text-slate-900">{order.driverName}</p>
+                              {order.driverPhone && <p className="text-[11px] text-slate-500">{order.driverPhone}</p>}
                             </div>
                           ) : (
-                            '-'
+                            <span className="text-slate-400 italic">Chưa chỉ định</span>
                           )}
                         </td>
                       )}
                       {columnVis.vehiclePlate && (
-                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-black text-slate-900 uppercase whitespace-nowrap">
-                          {order.vehiclePlate || '-'}
+                        <td className="border-r border-slate-200 px-3 py-3.5 text-center text-xs font-black text-slate-800">
+                          {order.vehiclePlate || <span className="text-slate-400 font-normal italic">-</span>}
                         </td>
                       )}
                       {columnVis.createdBy && (
@@ -1020,25 +1275,25 @@ export default function TransferRequestsPage() {
                       <td className="sticky right-0 z-10 w-44 min-w-[160px] bg-white group-hover:bg-cyan-50/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200">
                         {/* Action buttons matching exact design & user request */}
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* Nút Duyệt / Nhận hàng -> Chỉ hiện đối với phiếu chưa hoàn thành */}
-                          {isDraftOrPending && (
+                          {/* Nút Đã nhận hàng -> Nhận hàng & Phân bổ ô kệ kho nhận */}
+                          {isPendingReceive && (
                             <button
                               type="button"
-                              onClick={() => navigate('/delivery/receive-transfer-order', { state: { editOrderData: order, mode: 'receive', fromRequests: true } })}
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-emerald-600 bg-white text-emerald-600 shadow-2xs transition hover:bg-emerald-50 cursor-pointer"
+                              onClick={() => openReceiveModal(order)}
+                              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-emerald-600 bg-emerald-50 text-emerald-700 shadow-2xs transition hover:bg-emerald-600 hover:text-white cursor-pointer active:scale-95"
                               title="Đã nhận hàng & Chọn ô kệ nhập kho"
                             >
-                              <CheckCircle2 className="h-4 w-4 text-emerald-600" strokeWidth={2.5} />
+                              <CheckCircle2 className="h-4.5 w-4.5" strokeWidth={2.5} />
                             </button>
                           )}
 
-                          {/* Nút Xem / Sửa phiếu */}
+                          {/* Nút Xem / Sửa phiếu / Xếp ô kệ */}
                           {(order.status as string) === 'DELIVERED' || (order.status as string) === 'COMPLETED' || (order.status as string) === 'RECEIVED' ? (
                             <button
                               type="button"
-                              onClick={() => navigate('/delivery/receive-transfer-order', { state: { editOrderData: order, mode: 'receive', fromRequests: true, isReadOnly: true } })}
+                              onClick={() => openReceiveModal(order)}
                               className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-700 bg-white text-cyan-700 shadow-2xs transition hover:bg-cyan-50 cursor-pointer"
-                              title="Xem chi tiết phiếu (Chỉ xem)"
+                              title="Xem chi tiết phân bổ ô kệ (Chỉ xem)"
                             >
                               <Eye className="h-4 w-4 text-cyan-700" strokeWidth={2.2} />
                             </button>
@@ -1083,7 +1338,7 @@ export default function TransferRequestsPage() {
               ) : (
                 <tr>
                   <td colSpan={15} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                    Chưa có phiếu nhập kho nội bộ. Hãy bấm nút "Thêm mới" để bắt đầu.
+                    Chưa có phiếu nhập kho nội bộ. Dữ liệu sẽ tự động đồng bộ khi có phiếu xuất kho nội bộ.
                   </td>
                 </tr>
               )}

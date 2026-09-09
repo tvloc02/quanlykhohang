@@ -17,6 +17,8 @@ import {
 import { readStoredReceiptVouchers } from '../../finance/pages/ReceiptVouchersPage';
 import { readStoredPaymentVouchers } from '../../finance/pages/PaymentVouchersPage';
 
+import { getLocalDateString, getInitialMonthDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
+
 const fmt = (v: number, unit?: string) => {
   if (unit === '%') {
     return v.toFixed(2);
@@ -25,10 +27,7 @@ const fmt = (v: number, unit?: string) => {
 };
 
 function getInitialDates() {
-  const now = new Date();
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const formatD = (d: Date) => d.toISOString().split('T')[0];
-  return { firstDay: formatD(firstDayOfMonth), today: formatD(now) };
+  return getInitialMonthDates();
 }
 
 interface BusinessItem {
@@ -100,10 +99,10 @@ export default function BusinessSummaryReportPage() {
 
   const toggleBrowserFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
       setIsFullScreen(true);
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
       setIsFullScreen(false);
     }
   };
@@ -148,6 +147,24 @@ export default function BusinessSummaryReportPage() {
       try {
         const outRes = await fetch(`${API_BASE_URL}/outbound/orders`, { headers: authHeaders() });
         if (outRes.ok) outboundOrders = await outRes.json();
+      } catch { }
+
+      // Hợp nhất stored_outbound_orders từ localStorage
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList)) {
+            const existingNos = new Set(outboundOrders.map((o: any) => String(o.orderNo || '').toUpperCase()));
+            localList.forEach((lo: any) => {
+              const oNo = String(lo.orderNo || lo.orderCode || '').toUpperCase();
+              if (oNo && !existingNos.has(oNo)) {
+                outboundOrders.push(lo);
+                existingNos.add(oNo);
+              }
+            });
+          }
+        }
       } catch {}
 
       // 3. Fetch Stock Balances (Inventory Valuation)
@@ -155,7 +172,7 @@ export default function BusinessSummaryReportPage() {
       try {
         const stockRes = await fetch(`${API_BASE_URL}/reports/stock`, { headers: authHeaders() });
         if (stockRes.ok) stockBalances = await stockRes.json();
-      } catch {}
+      } catch { }
 
       // 4. Fetch Customers & Suppliers (Debt)
       let customersDebt = 0;
@@ -168,7 +185,7 @@ export default function BusinessSummaryReportPage() {
             customersDebt = cData.reduce((sum, c) => sum + Number(c.debtAmount || 0), 0);
           }
         }
-      } catch {}
+      } catch { }
 
       try {
         const supRes = await fetch(`${API_BASE_URL}/reports/supplier-debt`, { headers: authHeaders() });
@@ -178,7 +195,7 @@ export default function BusinessSummaryReportPage() {
             suppliersDebt = sData.reduce((sum, s) => sum + Number(s.debtAmount || 0), 0);
           }
         }
-      } catch {}
+      } catch { }
 
       // Local vouchers
       const localReceipts = readStoredReceiptVouchers();
@@ -214,7 +231,7 @@ export default function BusinessSummaryReportPage() {
         whOrders.forEach((o) => {
           const amt = Number(o.totalAmount || 0);
           const paid = Number(o.amountPaid || o.totalAmount || 0);
-          const dateStr = o.orderDate || (o.createdAt ? new Date(o.createdAt).toISOString().split('T')[0] : '');
+          const dateStr = parseAnyDateToLocalString(o.orderDate || o.createdAt);
 
           // Estimated COGS: 75% of sales total for demo precision
           const cogs = Math.round(amt * 0.75);
@@ -237,15 +254,6 @@ export default function BusinessSummaryReportPage() {
           if (r.date.startsWith(currentMonthPrefix)) collectedMonth += amt;
           if ((!startDate || r.date >= startDate) && (!endDate || r.date <= endDate)) collectedPeriod += amt;
         });
-
-        if (index === 0 && revPeriod === 0) {
-          revMonth = 21152182;
-          revPeriod = 23878582;
-          cogsMonth = 101739840;
-          cogsPeriod = 106890500;
-          collectedMonth = 392442;
-          collectedPeriod = 392442;
-        }
 
         totalRevenueMonth += revMonth;
         totalRevenuePeriod += revPeriod;
@@ -348,6 +356,16 @@ export default function BusinessSummaryReportPage() {
 
   useEffect(() => {
     loadData();
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => loadData();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, [startDate, endDate]);
 
   // Filter logic
@@ -500,11 +518,10 @@ export default function BusinessSummaryReportPage() {
                       setSelectedWarehouse('ALL');
                       setIsWarehouseDropdownOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
-                      selectedWarehouse === 'ALL'
+                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${selectedWarehouse === 'ALL'
                         ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
                         : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
-                    }`}
+                      }`}
                   >
                     <span>Tất cả chi nhánh</span>
                     {selectedWarehouse === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
@@ -518,11 +535,10 @@ export default function BusinessSummaryReportPage() {
                         setSelectedWarehouse(wh.id);
                         setIsWarehouseDropdownOpen(false);
                       }}
-                      className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
-                        selectedWarehouse === wh.id
+                      className={`w-full text-left px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${selectedWarehouse === wh.id
                           ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
                           : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
-                      }`}
+                        }`}
                     >
                       <span>{wh.name}</span>
                       {selectedWarehouse === wh.id && <Check className="h-4 w-4 text-white shrink-0" />}

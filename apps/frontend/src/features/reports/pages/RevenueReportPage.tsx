@@ -9,24 +9,18 @@ import {
   Settings,
   Maximize2,
   Minimize2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   SlidersHorizontal,
 } from 'lucide-react';
 import { reportsApi } from '../api/reportsApi';
 import { ReportPrintHeader } from '../components/ReportPrintHeader';
 import { ReportPrintFooter } from '../components/ReportPrintFooter';
 
+import { getLocalDateString, getInitialReportDates, parseAnyDateToLocalString } from '../../../shared/utils/dateUtils';
+
 const fmt = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v || 0));
 
 function getInitialDates() {
-  const now = new Date();
-  const past30 = new Date(now);
-  past30.setDate(past30.getDate() - 30);
-  const formatD = (d: Date) => d.toISOString().split('T')[0];
-  return { firstDay: formatD(past30), today: formatD(now) };
+  return getInitialReportDates(30);
 }
 
 interface RevenueItem {
@@ -53,9 +47,6 @@ export default function RevenueReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Pagination states
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Fullscreen state
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -91,7 +82,56 @@ export default function RevenueReportPage() {
     setError('');
     try {
       const res = await reportsApi.getRevenueReport(startDate, endDate);
-      setData(Array.isArray(res) ? res : []);
+      let groups: RevenueGroup[] = Array.isArray(res) ? [...res] : [];
+
+      // Hợp nhất stored_outbound_orders nếu chưa có
+      try {
+        const rawLocal = localStorage.getItem('stored_outbound_orders');
+        if (rawLocal) {
+          const localList: any[] = JSON.parse(rawLocal);
+          if (Array.isArray(localList) && localList.length > 0) {
+            localList.forEach((lo) => {
+              const oNo = String(lo.orderNo || lo.orderCode || '').trim().toUpperCase();
+              const oType = String(lo.orderType || '').toLowerCase();
+              const isDisposal = oType === 'disposal' || oNo.startsWith('XH');
+              const isCancelled = ['ĐÃ HỦY', 'CANCELLED', 'HỦY'].includes(String(lo.status || '').toUpperCase());
+              if (isDisposal || isCancelled) return;
+
+              const oDateStr = parseAnyDateToLocalString(lo.orderDate || lo.createdAt);
+              if (startDate && oDateStr && oDateStr < startDate) return;
+              if (endDate && oDateStr && oDateStr > endDate) return;
+
+              const whCode = (lo.branchCode || lo.warehouseCode || 'KHO-NVL').trim().toUpperCase();
+              const staffName = lo.customerName || lo.customer || 'Khách hàng bán lẻ';
+              const amt = Number(lo.totalAmount || lo.subtotal || 0);
+
+              let targetGroup = groups.find((g) => (g.groupCode || '').toUpperCase() === whCode || g.groupName.toUpperCase().includes(whCode));
+              if (!targetGroup && groups.length > 0) targetGroup = groups[0];
+
+              if (targetGroup) {
+                targetGroup.items = targetGroup.items.filter((it) => !it.id.startsWith('empty_'));
+                const existingItem = targetGroup.items.find((it) => it.staffName === staffName);
+                if (existingItem) {
+                  existingItem.revenue += amt;
+                  existingItem.netRevenue += amt;
+                  existingItem.cashReceived += amt;
+                } else {
+                  targetGroup.items.push({
+                    id: `local_${Date.now()}_${Math.random()}`,
+                    staffName,
+                    revenue: amt,
+                    returnAmount: 0,
+                    netRevenue: amt,
+                    cashReceived: amt,
+                  });
+                }
+              }
+            });
+          }
+        }
+      } catch (e) {}
+
+      setData(groups);
     } catch (err: any) {
       setError(err?.message || 'Không thể kết nối dữ liệu báo cáo doanh thu');
     } finally {
@@ -101,6 +141,16 @@ export default function RevenueReportPage() {
 
   useEffect(() => {
     loadData();
+  }, [startDate, endDate]);
+
+  useEffect(() => {
+    const handleOrderEvent = () => loadData();
+    window.addEventListener('outbound-order-created', handleOrderEvent);
+    window.addEventListener('storage', handleOrderEvent);
+    return () => {
+      window.removeEventListener('outbound-order-created', handleOrderEvent);
+      window.removeEventListener('storage', handleOrderEvent);
+    };
   }, [startDate, endDate]);
 
   // Filter dataset by search term
@@ -122,7 +172,6 @@ export default function RevenueReportPage() {
     return filteredGroups.flatMap((g) => g.items);
   }, [filteredGroups]);
 
-  const totalPages = Math.ceil(allItems.length / pageSize) || 1;
 
   const grandTotals = useMemo(() => {
     let revenue = 0;
@@ -246,10 +295,7 @@ export default function RevenueReportPage() {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
               placeholder="Tìm theo nhân viên, nhóm chi nhánh..."
             />
@@ -265,20 +311,14 @@ export default function RevenueReportPage() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setStartDate(e.target.value)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
               <span className="text-xs font-bold text-slate-600">Đến</span>
               <input
                 type="date"
                 value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setEndDate(e.target.value)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
             </div>
@@ -372,68 +412,9 @@ export default function RevenueReportPage() {
           </table>
         </div>
 
-        {/* Pagination Footer matching Sales Report */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
-          <div className="flex items-center gap-2">
-            <span>Hiển thị:</span>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="h-8 px-2 rounded-lg border-2 border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-500 cursor-pointer"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-            </select>
-            <span>dòng/trang</span>
-            <span className="mx-2 text-slate-300">|</span>
-            <span>Tổng cộng {allItems.length} mục nhân viên/kho</span>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-              title="Trang đầu"
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-              disabled={currentPage === 1}
-              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-              title="Trang trước"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="px-3 py-1 font-extrabold text-slate-800 bg-slate-100 rounded-lg">
-              Trang {currentPage} / {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-              title="Trang tiếp"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
-              className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-              title="Trang cuối"
-            >
-              <ChevronsRight className="h-4 w-4" />
-            </button>
-          </div>
+        {/* Table Summary Footer */}
+        <div className="flex items-center justify-between px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
+          <span>Tổng cộng: {allItems.length} mục nhân viên/kho</span>
         </div>
       </div>
 

@@ -60,6 +60,7 @@ export interface WarehouseOption {
   id: string;
   code: string;
   name: string;
+  isFrozen?: boolean;
 }
 
 export interface UserOption {
@@ -415,12 +416,27 @@ export default function CreateTransferRequestPage({
           const rawList = Array.isArray(whData) ? whData : whData.data || [];
           const list = mergeStoredWarehouses(rawList, getStoredWarehouses());
           setWarehouses(list);
-          if (list.length >= 2 && !targetEditData) {
+          const unfrozen = list.filter((w) => !w.isFrozen);
+          if (unfrozen.length >= 2 && !targetEditData) {
             setTabs((prev) =>
               prev.map((tab) => ({
                 ...tab,
-                sourceWarehouseCode: tab.sourceWarehouseCode || list[0].code || 'KHO-TONG',
-                destinationWarehouseCode: tab.destinationWarehouseCode || list[1].code || 'KHO-CN-HCM',
+                sourceWarehouseCode:
+                  tab.sourceWarehouseCode && !list.find((w) => w.code === tab.sourceWarehouseCode)?.isFrozen
+                    ? tab.sourceWarehouseCode
+                    : unfrozen[0].code,
+                destinationWarehouseCode:
+                  tab.destinationWarehouseCode && !list.find((w) => w.code === tab.destinationWarehouseCode)?.isFrozen
+                    ? tab.destinationWarehouseCode
+                    : unfrozen[1].code,
+              }))
+            );
+          } else if (unfrozen.length === 1 && !targetEditData) {
+            setTabs((prev) =>
+              prev.map((tab) => ({
+                ...tab,
+                sourceWarehouseCode: unfrozen[0].code,
+                destinationWarehouseCode: unfrozen[0].code,
               }))
             );
           }
@@ -569,11 +585,52 @@ export default function CreateTransferRequestPage({
   };
 
   // Filtered Products for row autocomplete
-  const getFilteredProductsForRow = (rowText: string) => {
-    const kw = (rowText || '').trim().toLowerCase();
-    if (!kw) return products;
-    return products.filter(
-      (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
+    const currentRow = (activeTab?.details || []).find((r) => r.rowId === currentRowId);
+    const isSelectedProductText = currentRow?.productId && (
+      rowText === `${currentRow.productSku ? currentRow.productSku + ' - ' : ''}${currentRow.productName}` ||
+      rowText === currentRow.productName ||
+      rowText === currentRow.productSku
+    );
+
+    const kw = isSelectedProductText ? '' : (rowText || '').trim().toLowerCase();
+
+    // Collect products selected in OTHER rows
+    const otherSelectedIds = new Set<string>();
+    const otherSelectedSkus = new Set<string>();
+    const otherSelectedNames = new Set<string>();
+
+    (activeTab?.details || []).forEach((r) => {
+      if (currentRowId && r.rowId === currentRowId) return;
+      if (r.productId && String(r.productId).trim()) {
+        otherSelectedIds.add(String(r.productId).trim().toLowerCase());
+      }
+      if (r.productSku && String(r.productSku).trim()) {
+        otherSelectedSkus.add(String(r.productSku).trim().toLowerCase());
+      }
+      if (r.productName && String(r.productName).trim()) {
+        otherSelectedNames.add(String(r.productName).trim().toLowerCase());
+      }
+    });
+
+    const unselectedProducts = products.filter((p) => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pSku = String(p.internalSku || '').trim().toLowerCase();
+      const pName = String(p.name || '').trim().toLowerCase();
+
+      if (pId && otherSelectedIds.has(pId)) return false;
+      if (pSku && otherSelectedSkus.has(pSku)) return false;
+      if (pName && otherSelectedNames.has(pName)) return false;
+      return true;
+    });
+
+    if (!kw) return unselectedProducts;
+
+    return unselectedProducts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(kw) ||
+        (p.internalSku || '').toLowerCase().includes(kw) ||
+        `${p.internalSku} ${p.name}`.toLowerCase().includes(kw)
     );
   };
 
@@ -853,12 +910,14 @@ export default function CreateTransferRequestPage({
                   onChange={(e) => handleSourceWarehouseChange(e.target.value)}
                   className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
                 >
-                  {warehouses.length > 0 ? (
-                    warehouses.map((wh) => (
-                      <option key={wh.id || wh.code} value={wh.code}>
-                        [{wh.code}] {wh.name}
-                      </option>
-                    ))
+                  {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                    warehouses
+                      .filter((wh) => !wh.isFrozen)
+                      .map((wh) => (
+                        <option key={wh.id || wh.code} value={wh.code}>
+                          [{wh.code}] {wh.name}
+                        </option>
+                      ))
                   ) : (
                     <>
                       <option value="KHO-TONG">KHO-TONG - Kho Tổng Hà Nội</option>
@@ -880,12 +939,14 @@ export default function CreateTransferRequestPage({
                   onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
                   className="h-9 w-full rounded-lg border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer"
                 >
-                  {warehouses.length > 0 ? (
-                    warehouses.map((wh) => (
-                      <option key={wh.id || wh.code} value={wh.code}>
-                        [{wh.code}] {wh.name}
-                      </option>
-                    ))
+                  {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                    warehouses
+                      .filter((wh) => !wh.isFrozen)
+                      .map((wh) => (
+                        <option key={wh.id || wh.code} value={wh.code}>
+                          [{wh.code}] {wh.name}
+                        </option>
+                      ))
                   ) : (
                     <>
                       <option value="KHO-CN-HCM">KHO-CN-HCM - Kho Hàng TP.HCM</option>
@@ -1125,7 +1186,11 @@ export default function CreateTransferRequestPage({
                             value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
                             onChange={(e) => {
                               const val = e.target.value;
-                              updateRow(row.rowId, { productName: val });
+                              const isExact = row.productId && (val === `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` || val === row.productName);
+                              updateRow(row.rowId, {
+                                productName: val,
+                                ...(isExact ? {} : { productId: '', productSku: '' }),
+                              });
                               setActiveProductDropdownRowId(row.rowId);
                             }}
                             onFocus={() => setActiveProductDropdownRowId(row.rowId)}
@@ -1143,10 +1208,10 @@ export default function CreateTransferRequestPage({
                                 <span className="w-1/3 text-right uppercase">SL Tồn Kho Xuất</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                                {getFilteredProductsForRow(row.productName).length === 0 ? (
+                                {getFilteredProductsForRow(row.productName || row.productSku, row.rowId).length === 0 ? (
                                   <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy sản phẩm phù hợp</div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName).map((p) => {
+                                  getFilteredProductsForRow(row.productName || row.productSku, row.rowId).map((p) => {
                                     const stockInSource = getProductWarehouseStock(p, activeTab?.sourceWarehouseCode);
                                     return (
                                       <div
@@ -1195,12 +1260,14 @@ export default function CreateTransferRequestPage({
                             onChange={(e) => updateRow(row.rowId, { destinationWarehouseCode: e.target.value })}
                             className="w-full h-8 px-1 rounded border border-slate-300 bg-white font-semibold text-slate-800 text-xs outline-none focus:border-cyan-500"
                           >
-                            {warehouses.length > 0 ? (
-                              warehouses.map((wh) => (
-                                <option key={wh.id || wh.code} value={wh.code}>
-                                  {wh.code}
-                                </option>
-                              ))
+                            {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
+                              warehouses
+                                .filter((wh) => !wh.isFrozen)
+                                .map((wh) => (
+                                  <option key={wh.id || wh.code} value={wh.code}>
+                                    {wh.code}
+                                  </option>
+                                ))
                             ) : (
                               <>
                                 <option value="KHO-CN-HCM">KHO-CN-HCM</option>
