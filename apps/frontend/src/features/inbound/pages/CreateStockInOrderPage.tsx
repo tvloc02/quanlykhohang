@@ -2723,11 +2723,20 @@ export default function CreateStockInOrderPage({
   };
 
   const handleDuplicateRow = (index: number) => {
+    const source = activeTab?.details[index];
+    if (!source) return;
+    if (source.productId || source.productSku || source.productName) {
+      setToast({
+        message: 'Mỗi mặt hàng chỉ được chọn 1 dòng trong phiếu. Vui lòng tăng số lượng ở dòng hiện tại thay vì nhân đôi dòng!',
+        type: 'warning',
+      });
+      return;
+    }
     updateActiveTab((tab) => {
-      const source = tab.details[index];
-      if (!source) return tab;
+      const src = tab.details[index];
+      if (!src) return tab;
       const dup: FormDetailRow = {
-        ...source,
+        ...src,
         rowId: `row-${Date.now()}-${Math.random()}`,
       };
       const next = [...tab.details];
@@ -3147,6 +3156,22 @@ export default function CreateStockInOrderPage({
       return;
     }
 
+    // Kiểm tra hàng hóa trùng lặp giữa các dòng
+    const seenProductKeys = new Set<string>();
+    for (const item of activeValidItems) {
+      const key = item.productId ? String(item.productId) : (item.productSku || item.productName || '').trim().toLowerCase();
+      if (key) {
+        if (seenProductKeys.has(key)) {
+          setToast({
+            message: `Hàng hóa "${item.productName || item.productSku}" bị trùng lặp ở nhiều dòng. Mỗi hàng hóa chỉ được chọn 1 dòng trong phiếu!`,
+            type: 'error',
+          });
+          return;
+        }
+        seenProductKeys.add(key);
+      }
+    }
+
     if (!bypassAi) {
       setPendingSaveConfig({ isPrint, saveStatus });
       setShowAiSlottingModal(true);
@@ -3375,10 +3400,32 @@ export default function CreateStockInOrderPage({
     }
   };
 
-  const getFilteredProductsForRow = (rowText: string) => {
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
     const kw = (rowText || '').trim().toLowerCase();
-    if (!kw) return products;
-    return products.filter(
+
+    // Lọc bỏ các sản phẩm đã được chọn ở các dòng khác
+    const otherSelectedProductIds = new Set<string>();
+    const otherSelectedSkus = new Set<string>();
+    const otherSelectedNames = new Set<string>();
+
+    activeTab?.details.forEach((r) => {
+      if (r.rowId !== currentRowId) {
+        if (r.productId) otherSelectedProductIds.add(String(r.productId));
+        if (r.productSku) otherSelectedSkus.add(r.productSku.trim().toLowerCase());
+        if (r.productName) otherSelectedNames.add(r.productName.trim().toLowerCase());
+      }
+    });
+
+    const isAvailable = (p: any) => {
+      if (p.id && otherSelectedProductIds.has(String(p.id))) return false;
+      if (p.internalSku && otherSelectedSkus.has(p.internalSku.trim().toLowerCase())) return false;
+      if (p.name && otherSelectedNames.has(p.name.trim().toLowerCase())) return false;
+      return true;
+    };
+
+    const baseList = products.filter(isAvailable);
+    if (!kw) return baseList;
+    return baseList.filter(
       (p) => p.name.toLowerCase().includes(kw) || (p.internalSku || '').toLowerCase().includes(kw)
     );
   };
@@ -3906,10 +3953,10 @@ export default function CreateStockInOrderPage({
                                 <span className="w-1/4 text-right uppercase">Giá mua</span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                                {getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
+                                {getFilteredProductsForRow(row.productName || row.productSku, row.rowId).length === 0 ? (
                                   <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName || row.productSku).map((p) => (
+                                  getFilteredProductsForRow(row.productName || row.productSku, row.rowId).map((p) => (
                                     <div
                                       key={p.id}
                                       onClick={() => {

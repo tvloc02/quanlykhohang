@@ -1045,11 +1045,20 @@ export default function CreateOutboundOrderPage({
   };
 
   const handleDuplicateRow = (index: number) => {
+    const source = activeTab?.details[index];
+    if (!source) return;
+    if (source.productId || source.productSku || source.productName) {
+      setToast({
+        message: 'Mỗi mặt hàng chỉ xuất 1 dòng trong phiếu. Vui lòng tăng số lượng ở dòng hiện tại thay vì nhân đôi dòng!',
+        type: 'warning',
+      });
+      return;
+    }
     updateActiveTab((tab) => {
-      const source = tab.details[index];
-      if (!source) return tab;
+      const src = tab.details[index];
+      if (!src) return tab;
       const dup: FormDetailRow = {
-        ...source,
+        ...src,
         rowId: `row-${Date.now()}-${Math.random()}`,
       };
       const next = [...tab.details];
@@ -1271,6 +1280,50 @@ export default function CreateOutboundOrderPage({
     if (activeValidItems.length === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
       return;
+    }
+
+    // 1. Kiểm tra hàng hóa trùng lặp giữa các dòng
+    const seenProductKeys = new Set<string>();
+    for (const item of activeValidItems) {
+      const key = item.productId ? String(item.productId) : (item.productSku || item.productName || '').trim().toLowerCase();
+      if (key) {
+        if (seenProductKeys.has(key)) {
+          setToast({
+            message: `Sản phẩm "${item.productName || item.productSku}" bị chọn trùng lặp ở nhiều dòng. Mỗi sản phẩm chỉ được xuất hiện 1 dòng trong phiếu!`,
+            type: 'error',
+          });
+          return;
+        }
+        seenProductKeys.add(key);
+      }
+    }
+
+    // 2. Kiểm soát số lượng tồn kho (Stock Validation)
+    const defaultWhCode = activeTab.branchCode || warehouses[0]?.code || 'KHO-NVL';
+    for (const item of activeValidItems) {
+      const prod = availableProductsForMode.find(
+        (p) => (item.productId && String(p.id) === String(item.productId)) ||
+               (item.productSku && p.internalSku?.toLowerCase() === item.productSku.toLowerCase()) ||
+               (item.productName && p.name?.toLowerCase() === item.productName.toLowerCase())
+      );
+      const wh = item.warehouseCode || defaultWhCode;
+      const availableStock = prod ? getProductWarehouseStock(prod, wh, allInboundOrders) : 0;
+
+      if (availableStock <= 0) {
+        setToast({
+          message: `Sản phẩm "${item.productName || item.productSku}" đã hết hàng trong kho [${wh}] (tồn kho: 0). Không thể lưu phiếu xuất!`,
+          type: 'error',
+        });
+        return;
+      }
+
+      if (Number(item.qty) > availableStock) {
+        setToast({
+          message: `Sản phẩm "${item.productName || item.productSku}" chỉ còn tồn kho ${availableStock} ${item.unit || 'sản phẩm'} tại kho [${wh}], không đủ để xuất số lượng ${item.qty}! Vui lòng điều chỉnh lại số lượng.`,
+          type: 'error',
+        });
+        return;
+      }
     }
 
     const isUpdating = Boolean(activeTab.id);
@@ -1604,9 +1657,30 @@ export default function CreateOutboundOrderPage({
     return { foundBin, foundPrice };
   }, [activeTab?.branchCode, activeTab?.customer, allInboundOrders, getProductPriceForMode]);
 
-  const getFilteredProductsForRow = (rowText: string) => {
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
     const kw = (rowText || '').trim().toLowerCase();
-    const baseList = availableProductsForMode;
+
+    // Lọc bỏ các sản phẩm đã được chọn ở các dòng khác
+    const otherSelectedProductIds = new Set<string>();
+    const otherSelectedSkus = new Set<string>();
+    const otherSelectedNames = new Set<string>();
+
+    activeTab?.details.forEach((r) => {
+      if (r.rowId !== currentRowId) {
+        if (r.productId) otherSelectedProductIds.add(String(r.productId));
+        if (r.productSku) otherSelectedSkus.add(r.productSku.trim().toLowerCase());
+        if (r.productName) otherSelectedNames.add(r.productName.trim().toLowerCase());
+      }
+    });
+
+    const isAvailable = (p: ProductOption) => {
+      if (p.id && otherSelectedProductIds.has(String(p.id))) return false;
+      if (p.internalSku && otherSelectedSkus.has(p.internalSku.trim().toLowerCase())) return false;
+      if (p.name && otherSelectedNames.has(p.name.trim().toLowerCase())) return false;
+      return true;
+    };
+
+    const baseList = availableProductsForMode.filter(isAvailable);
     if (!kw) return baseList;
     return baseList.filter(
       (p) =>
@@ -1618,20 +1692,46 @@ export default function CreateOutboundOrderPage({
 
   const filteredQuickProducts = useMemo(() => {
     const kw = quickProductSearch.trim().toLowerCase();
-    const baseList = availableProductsForMode;
+    const selectedKeys = new Set<string>();
+    activeTab?.details.forEach((r) => {
+      if (r.productId) selectedKeys.add(String(r.productId));
+      if (r.productSku) selectedKeys.add(r.productSku.trim().toLowerCase());
+      if (r.productName) selectedKeys.add(r.productName.trim().toLowerCase());
+    });
+
+    const baseList = availableProductsForMode.filter(
+      (p) =>
+        !selectedKeys.has(String(p.id)) &&
+        (!p.internalSku || !selectedKeys.has(p.internalSku.trim().toLowerCase())) &&
+        (!p.name || !selectedKeys.has(p.name.trim().toLowerCase()))
+    );
+
     if (!kw) return baseList;
     return baseList.filter(
       (p) =>
         p.name.toLowerCase().includes(kw) ||
         (p.internalSku || '').toLowerCase().includes(kw)
     );
-  }, [availableProductsForMode, quickProductSearch]);
+  }, [availableProductsForMode, quickProductSearch, activeTab?.details]);
 
   const handleSelectQuickProduct = (p: ProductOption) => {
     if (!activeTab) return;
 
     if (isReturnSupplier && (!activeTab.customer || activeTab.customer === 'Khách hàng bán lẻ')) {
       setToast({ message: 'Vui lòng chọn Nhà cung cấp trước khi chọn sản phẩm xuất trả!', type: 'error' });
+      return;
+    }
+
+    const isAlreadySelected = activeTab.details.some(
+      (r) =>
+        (r.productId && String(r.productId) === String(p.id)) ||
+        (r.productSku && p.internalSku && r.productSku.toLowerCase() === p.internalSku.toLowerCase()) ||
+        (r.productName && p.name && r.productName.toLowerCase() === p.name.toLowerCase())
+    );
+    if (isAlreadySelected) {
+      setToast({ message: `Sản phẩm "${p.name}" đã có trong danh sách xuất. Vui lòng tăng số lượng ở dòng hiện tại!`, type: 'warning' });
+      setQuickProductSearch('');
+      setShowQuickSearchDropdown(false);
       return;
     }
 
@@ -2326,12 +2426,12 @@ export default function CreateOutboundOrderPage({
                                   <div className="p-3 text-center text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40">
                                     ⚠️ Vui lòng chọn Nhà cung cấp ở mục thông tin phiếu trước khi chọn sản phẩm xuất trả!
                                   </div>
-                                ) : getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
+                                ) : getFilteredProductsForRow(row.productName || row.productSku, row.rowId).length === 0 ? (
                                   <div className="p-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400">
                                     {isReturnSupplier ? `Không có hàng hóa nào thuộc Nhà cung cấp [${activeTab?.customer || ''}]` : 'Không tìm thấy hàng hóa'}
                                   </div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName || row.productSku).map((p) => {
+                                  getFilteredProductsForRow(row.productName || row.productSku, row.rowId).map((p) => {
                                     const rowWhCode = activeTab?.branchCode || row.warehouseCode || warehouses[0]?.code || 'KHO-TONG';
                                     const whStock = getProductWarehouseStock(p, rowWhCode, allInboundOrders);
                                     return (
@@ -2416,15 +2516,54 @@ export default function CreateOutboundOrderPage({
                         </td>
 
                         {/* SỐ LƯỢNG */}
-                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 w-28">
-                          <input
-                            type="number"
-                            min="0"
-                            value={row.qty === 0 ? '' : row.qty}
-                            onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
-                            placeholder="0"
-                            className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
-                          />
+                        <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 min-w-[125px] w-32 align-top">
+                          {(() => {
+                            const rowProduct = availableProductsForMode.find(
+                              (prod) =>
+                                (row.productId && String(prod.id) === String(row.productId)) ||
+                                (row.productSku && prod.internalSku?.toLowerCase() === row.productSku.toLowerCase()) ||
+                                (row.productName && prod.name?.toLowerCase() === row.productName.toLowerCase())
+                            );
+                            const rowWh = activeTab?.branchCode || row.warehouseCode || warehouses[0]?.code || 'KHO-NVL';
+                            const availableStock = rowProduct ? getProductWarehouseStock(rowProduct, rowWh, allInboundOrders) : 0;
+                            const hasProduct = Boolean(row.productId || row.productSku || row.productName);
+                            const isOutOfStock = hasProduct && availableStock <= 0;
+                            const isOverStock = hasProduct && availableStock > 0 && Number(row.qty) > availableStock;
+
+                            return (
+                              <div className="flex flex-col items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={row.qty === 0 ? '' : row.qty}
+                                  onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
+                                  placeholder="0"
+                                  className={`w-full h-9 px-2 text-center rounded-lg border font-bold text-xs shadow-2xs outline-none transition-colors ${
+                                    isOutOfStock || isOverStock
+                                      ? 'border-red-500 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 focus:border-red-600 focus:ring-2 focus:ring-red-500/20'
+                                      : 'border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20'
+                                  }`}
+                                />
+                                {hasProduct && (
+                                  <div className="mt-0.5 text-center leading-tight">
+                                    {isOutOfStock ? (
+                                      <span className="inline-block text-[10px] font-extrabold text-red-600 dark:text-red-400 bg-red-100/80 dark:bg-red-950/80 px-1 py-0.5 rounded">
+                                        Tồn: 0 (Hết hàng!)
+                                      </span>
+                                    ) : isOverStock ? (
+                                      <span className="inline-block text-[10px] font-extrabold text-red-600 dark:text-red-400 bg-red-100/80 dark:bg-red-950/80 px-1 py-0.5 rounded">
+                                        Tồn: {availableStock} (Vượt {Number(row.qty) - availableStock})
+                                      </span>
+                                    ) : (
+                                      <span className="inline-block text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                        Tồn khả dụng: {availableStock}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* ĐƠN GIÁ (đ) */}

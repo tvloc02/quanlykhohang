@@ -231,6 +231,63 @@ export class OutboundService implements OnModuleInit {
       }
     }
 
+    // Xác thực tồn kho trước khi lưu phiếu xuất chính thức
+    const isTargetDraft = ['DRAFT', 'Lưu tạm', 'draft'].includes(order.status || '');
+    if (!isTargetDraft && dto.details?.length) {
+      for (const item of dto.details) {
+        let productId = item.productId;
+        let productName = item.productName || '';
+        if (!productId && item.productSku) {
+          const [prod] = await this.dataSource.query(
+            `SELECT id, name FROM products WHERE internalSku = ? LIMIT 1`,
+            [item.productSku.trim()],
+          );
+          productId = prod?.id;
+          if (!productName && prod?.name) productName = prod.name;
+        }
+        if (!productId && item.productName) {
+          const [prod] = await this.dataSource.query(
+            `SELECT id, name FROM products WHERE name = ? LIMIT 1`,
+            [item.productName.trim()],
+          );
+          productId = prod?.id;
+          if (!productName && prod?.name) productName = prod.name;
+        }
+        if (!productId) continue;
+
+        const locCode = item.warehouseCode || order.branchCode || 'KHO-NVL';
+        const qty = Number(item.qty || (item as any).requiredQty || 0);
+        if (qty <= 0) continue;
+
+        let [balance] = await this.dataSource.query(
+          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
+          [productId, locCode],
+        );
+        if (!balance) {
+          const rows = await this.dataSource.query(
+            `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
+            [productId],
+          );
+          if (rows.length > 0) balance = rows[0];
+        }
+
+        const availableStock = Number(balance?.available ?? balance?.totalPhysical ?? 0);
+        const displayName = productName || item.productSku || `ID ${productId}`;
+
+        if (availableStock <= 0) {
+          throw new BadRequestException(
+            `Sản phẩm '${displayName}' đã hết hàng trong kho ${locCode} (tồn kho: 0). Không thể xuất hàng!`,
+          );
+        }
+
+        if (qty > availableStock) {
+          throw new BadRequestException(
+            `Sản phẩm '${displayName}' chỉ còn tồn kho ${availableStock} tại kho ${locCode}, không đủ để xuất số lượng ${qty}!`,
+          );
+        }
+      }
+    }
+
     const savedOrder = await this.orderRepo.save(order);
 
     // Persist detail items if provided
@@ -614,8 +671,70 @@ export class OutboundService implements OnModuleInit {
     return saved;
   }
 
+  // Kiểm tra tồn kho trước khi xuất hàng
+  private async validateStockAvailability(order: OutboundOrder, details: OutboundDetail[]) {
+    for (const detail of details) {
+      let productId = detail.product?.id;
+      let productName = detail.productName || detail.product?.name || '';
+      if (!productId && detail.productSku) {
+        const [prod] = await this.dataSource.query(
+          `SELECT id, name FROM products WHERE internalSku = ? LIMIT 1`,
+          [detail.productSku.trim()],
+        );
+        productId = prod?.id;
+        if (!productName && prod?.name) productName = prod.name;
+      }
+      if (!productId && detail.productName) {
+        const [prod] = await this.dataSource.query(
+          `SELECT id, name FROM products WHERE name = ? LIMIT 1`,
+          [detail.productName.trim()],
+        );
+        productId = prod?.id;
+        if (!productName && prod?.name) productName = prod.name;
+      }
+      if (!productId) continue;
+
+      const locCode = detail.warehouseCode || order.branchCode || 'KHO-NVL';
+      const qty = Number(detail.requiredQty) || 0;
+      if (qty <= 0) continue;
+
+      // 1. Tìm balance theo kho cụ thể
+      let [balance] = await this.dataSource.query(
+        `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? AND locationCode = ? LIMIT 1`,
+        [productId, locCode],
+      );
+
+      // 2. Nếu không tìm thấy tại kho này, lấy balance có tồn kho lớn nhất
+      if (!balance) {
+        const rows = await this.dataSource.query(
+          `SELECT id, totalPhysical, allocated, available FROM stock_balances WHERE productId = ? ORDER BY totalPhysical DESC LIMIT 1`,
+          [productId],
+        );
+        if (rows.length > 0) {
+          balance = rows[0];
+        }
+      }
+
+      const availableStock = Number(balance?.available ?? balance?.totalPhysical ?? 0);
+      const displayName = productName || detail.productSku || `ID ${productId}`;
+
+      if (availableStock <= 0) {
+        throw new BadRequestException(
+          `Sản phẩm '${displayName}' đã hết hàng trong kho ${locCode} (tồn kho: 0). Không thể xuất hàng!`,
+        );
+      }
+
+      if (qty > availableStock) {
+        throw new BadRequestException(
+          `Sản phẩm '${displayName}' chỉ còn tồn kho ${availableStock} tại kho ${locCode}, không đủ để xuất số lượng ${qty}!`,
+        );
+      }
+    }
+  }
+
   // Khấu trừ tồn kho khi tạo đơn xuất hàng
   private async applyInventoryDeduction(order: OutboundOrder, details: OutboundDetail[]) {
+    await this.validateStockAvailability(order, details);
     for (const detail of details) {
       let productId = detail.product?.id;
       if (!productId && detail.productSku) {

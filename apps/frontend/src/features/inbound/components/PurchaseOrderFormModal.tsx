@@ -295,16 +295,24 @@ export function PurchaseOrderFormModal({
     );
   }, [allSelectableProducts, productSearch]);
 
-  const getFilteredProductsForRow = (rowText: string) => {
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
     const kw = (rowText || '').trim().toLowerCase();
-    if (!kw) return allSelectableProducts;
-    const matched = allSelectableProducts.filter(
+    const otherSelectedIds = new Set<string>();
+    items.forEach((it) => {
+      if (it.rowId !== currentRowId && it.productId) {
+        otherSelectedIds.add(String(it.productId));
+      }
+    });
+
+    const baseList = allSelectableProducts.filter((p) => p && !otherSelectedIds.has(String(p.id)));
+    if (!kw) return baseList;
+    const matched = baseList.filter(
       (p) =>
         p &&
         ((p.name || '').toLowerCase().includes(kw) ||
           (p.internalSku || '').toLowerCase().includes(kw))
     );
-    const nonMatched = allSelectableProducts.filter((p) => !matched.includes(p));
+    const nonMatched = baseList.filter((p) => !matched.includes(p));
     return [...matched, ...nonMatched];
   };
 
@@ -775,7 +783,7 @@ export function PurchaseOrderFormModal({
                                           value={displayVal}
                                           onChange={(e) => {
                                             const val = e.target.value;
-                                            const matched = getFilteredProductsForRow(val)[0];
+                                            const matched = getFilteredProductsForRow(val, item.rowId)[0];
                                             if (matched) {
                                               onProductChange(item.rowId, matched.id);
                                               if (matched.price) {
@@ -799,10 +807,10 @@ export function PurchaseOrderFormModal({
                                               <span className="w-1/4 text-right uppercase">Giá mua</span>
                                             </div>
                                             <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                                              {getFilteredProductsForRow(displayVal).length === 0 ? (
+                                              {getFilteredProductsForRow(displayVal, item.rowId).length === 0 ? (
                                                 <div className="p-3 text-center text-xs text-slate-400">Không tìm thấy hàng hóa</div>
                                               ) : (
-                                                getFilteredProductsForRow(displayVal).map((p) => (
+                                                getFilteredProductsForRow(displayVal, item.rowId).map((p) => (
                                                   <div
                                                     key={p.id}
                                                     onClick={() => {
