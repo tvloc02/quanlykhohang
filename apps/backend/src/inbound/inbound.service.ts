@@ -368,25 +368,32 @@ export class InboundService {
       receipt.status = dto.status;
     }
 
-    const rawItems = (dto.details && dto.details.length) ? dto.details : dto.items;
-    if (rawItems && rawItems.length) {
+    // Detach details relation from in-memory entity so saving receipt scalar fields doesn't unlink details
+    delete (receipt as any).details;
+    await this.receiptRepo.save(receipt);
+
+    const hasItemsPayload = dto.details !== undefined || dto.items !== undefined;
+    const rawItems = (dto.details && dto.details.length) ? dto.details : (dto.items || []);
+
+    if (hasItemsPayload) {
       // Revert previous inventory addition
       await this.revertInboundStockAddition(receipt);
 
       const existingDetails = await this.detailRepo.find({
-        where: { inboundReceipt: { id } as any },
+        where: { inboundReceipt: { id: receipt.id } as any },
         relations: ['inboundReceipt', 'product'],
       });
       if (existingDetails.length) {
         await this.detailRepo.remove(existingDetails);
       }
 
-      const savedDetails = await this.persistDetails(receipt, rawItems, dto.warehouseCode || dto.branchCode);
-      await this.applyInboundStockAddition(receipt, savedDetails);
+      if (rawItems && rawItems.length) {
+        const savedDetails = await this.persistDetails(receipt, rawItems, dto.warehouseCode || dto.branchCode);
+        await this.applyInboundStockAddition(receipt, savedDetails);
+      }
     }
 
     await this.recalculateTotalAmount(receipt.id);
-    await this.receiptRepo.save(receipt);
 
     return this.serializeReceipt(await this.findReceiptEntity(receipt.id));
   }

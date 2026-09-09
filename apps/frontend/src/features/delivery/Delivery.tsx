@@ -212,8 +212,8 @@ export default function Delivery() {
 
   const handleApproveOrder = async (order: TransferOrder) => {
     try {
-      await deliveryApi.updateTransferOrder(order.id, { status: 'APPROVED' });
-      setToast({ type: 'success', message: `Đã duyệt thành công phiếu xuất kho ${order.transferNo}` });
+      await deliveryApi.updateTransferOrder(order.id, { status: 'IN_TRANSIT' });
+      setToast({ type: 'success', message: `Đã duyệt và chuyển sang trạng thái đang giao phiếu xuất kho ${order.transferNo}` });
       await loadOrders();
     } catch (err: any) {
       setToast({ type: 'error', message: err?.message || 'Lỗi khi duyệt phiếu xuất kho' });

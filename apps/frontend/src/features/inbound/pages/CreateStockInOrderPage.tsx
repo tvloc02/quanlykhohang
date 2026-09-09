@@ -45,6 +45,8 @@ import { readStoredBankAccounts } from '../../finance/pages/BankAccountsPage';
 import { readStoredCurrencies } from '../../products/CurrenciesPage';
 import { SmartSlottingGridModal, clearSmartSlottingCache } from '../../warehouses/components/SmartSlottingGridModal';
 import { clearWarehouseBinsCache } from '../../warehouses/components/WarehouseSlottingGrid';
+import InboundPrintModal from '../components/InboundPrintModal';
+import type { InboundReceiptOrder } from '../Inbound';
 
 export const isCompletedInboundStatus = (status?: string): boolean => {
   if (!status) return false;
@@ -288,6 +290,8 @@ export interface InboundTab {
   amountPaid: number;
   status: string;
   stagedSubWarehouses?: any[];
+  initialProductSkus?: string[];
+  initialProductNames?: string[];
   details: FormDetailRow[];
 }
 
@@ -2217,6 +2221,8 @@ export default function CreateStockInOrderPage({
   const [showAiSlottingModal, setShowAiSlottingModal] = useState(false);
   const [aiSlottingTargetRowId, setAiSlottingTargetRowId] = useState<string | null>(null);
   const [pendingSaveConfig, setPendingSaveConfig] = useState<{ isPrint: boolean; saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' } | null>(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printOrderData, setPrintOrderData] = useState<InboundReceiptOrder | null>(null);
 
   // Hardware Barcode Scanner Auto-Detection State
   const [isScannerConnected, setIsScannerConnected] = useState<boolean>(true);
@@ -2579,6 +2585,13 @@ export default function CreateStockInOrderPage({
           detailsList.push(makeEmptyRow(1, orderWhCode));
         }
 
+        const initialSkus = (orderData.details || [])
+          .map((d: any) => (d.product?.internalSku || d.productSku || d.sku || '').trim().toUpperCase())
+          .filter(Boolean);
+        const initialNames = (orderData.details || [])
+          .map((d: any) => (d.product?.name || d.productName || '').trim().toLowerCase())
+          .filter(Boolean);
+
         const loadedTab: InboundTab = {
           tabId: `tab-edit-${orderData.id}`,
           title: `${actionParam === 'edit' ? 'Sửa' : 'Xem'} ${orderData.orderCode || orderData.poNumber || 'Phiếu nhập'}`,
@@ -2606,6 +2619,8 @@ export default function CreateStockInOrderPage({
           shippingFee: Number(orderData.shippingFee || 0),
           amountPaid: Number(orderData.amountPaid || orderData.totalAmount || 0),
           status: orderData.status || 'DRAFT',
+          initialProductSkus: initialSkus,
+          initialProductNames: initialNames,
           details: detailsList,
         };
 
@@ -3079,6 +3094,86 @@ export default function CreateStockInOrderPage({
     return Math.max(0, grandTotal - paid);
   }, [grandTotal, activeTab]);
 
+  const handleOpenPrintModal = useCallback((overrideItems?: FormDetailRow[]) => {
+    if (!activeTab) return;
+    const itemsToPrint = overrideItems || activeTab.details.filter(
+      (r) => (r.productId || r.productName?.trim() || r.productSku?.trim()) && Number(r.qty) > 0
+    );
+    if (itemsToPrint.length === 0) {
+      setToast({ message: 'Không có mặt hàng nào trong phiếu để in', type: 'error' });
+      return;
+    }
+
+    const currentSubtotal = itemsToPrint.reduce(
+      (s, r) => s + (Number(r.totalAmount) || (Number(r.qty) * Number(r.price))),
+      0
+    );
+    const currentVatAmount = (currentSubtotal * (Number(activeTab.vatRate) || 0)) / 100;
+    const currentGrandTotal = Math.max(
+      0,
+      currentSubtotal - (Number(activeTab.discount) || 0) + currentVatAmount + (Number(activeTab.shippingFee) || 0)
+    );
+
+    const printData: InboundReceiptOrder = {
+      id: activeTab.id || `temp-${Date.now()}`,
+      receiptNo: activeTab.orderNo || `PNK-${Date.now().toString().slice(-6)}`,
+      poNumber: activeTab.orderNo || `PNK-${Date.now().toString().slice(-6)}`,
+      supplier: activeTab.supplierName || 'Nhà cung cấp',
+      supplierId: activeTab.supplierId,
+      supplierPhone: activeTab.supplierPhone,
+      supplierAddress: activeTab.supplierAddress,
+      warehouseCode: activeTab.warehouseCode || 'KHO-NVL',
+      employeeName: activeTab.employeeName || currentUserName,
+      orderDate: activeTab.orderDate || new Date().toISOString(),
+      expectedDate: activeTab.expectedDate || activeTab.orderDate,
+      status: activeTab.status || 'DRAFT',
+      description: activeTab.description,
+      subtotal: currentSubtotal,
+      discount: activeTab.discount || 0,
+      vatRate: activeTab.vatRate || 0,
+      vatAmount: currentVatAmount,
+      totalAmount: currentGrandTotal,
+      amountPaid: activeTab.amountPaid ?? currentGrandTotal,
+      itemsCount: itemsToPrint.length,
+      totalQty: itemsToPrint.reduce((s, r) => s + (Number(r.qty) || 0), 0),
+      details: itemsToPrint.map((r, i) => ({
+        id: r.rowId || String(i + 1),
+        productId: r.productId || String(i + 1),
+        productSku: r.productSku || '',
+        productName: r.productName || `Sản phẩm ${i + 1}`,
+        unit: r.unit || 'Cái',
+        qty: Number(r.qty || 1),
+        price: Number(r.price || 0),
+        discountPercent: Number(r.discountPercent || 0),
+        vatPercent: Number(r.vatPercent || 0),
+        totalLineAmount: Number(r.totalAmount || (Number(r.qty || 1) * Number(r.price || 0))),
+        warehouseCode: r.warehouseCode || activeTab.warehouseCode,
+        locationBin: r.locationBin,
+        assignedBins: r.assignedBins,
+        weight: Number(r.weight || 0),
+        volume: Number(r.volume || 0),
+        note: r.note,
+      })),
+    };
+
+    setPrintOrderData(printData);
+    setShowPrintModal(true);
+  }, [activeTab, currentUserName]);
+
+  // Intercept Ctrl+P to always open the official Mẫu 01-VT print modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        if (!showPrintModal) {
+          e.preventDefault();
+          handleOpenPrintModal();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showPrintModal, handleOpenPrintModal]);
+
   const handleConfirmAiSlotting = (updatedRows: FormDetailRow[]) => {
     setShowAiSlottingModal(false);
 
@@ -3130,9 +3225,16 @@ export default function CreateStockInOrderPage({
   const handleSaveInboundOrder = async (
     isPrint = false,
     saveStatus: 'DRAFT' | 'READY' | 'COMPLETED' = 'COMPLETED',
-    bypassAi = false
+    bypassAi = false,
+    overrideRows?: FormDetailRow[],
+    overrideSubWarehouses?: any[]
   ) => {
     if (!activeTab) return;
+
+    const currentRows = overrideRows || activeTab.details;
+    const currentValidItems = currentRows.filter(
+      (r) => (r.productId || r.productName?.trim() || r.productSku?.trim()) && Number(r.qty) > 0
+    );
 
     const isCompleted = isCompletedInboundStatus(activeTab.status);
     if (isCompleted) {
@@ -3143,7 +3245,7 @@ export default function CreateStockInOrderPage({
       return;
     }
 
-    if (activeValidItems.length === 0) {
+    if (currentValidItems.length === 0) {
       setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
       return;
     }
@@ -3165,6 +3267,16 @@ export default function CreateStockInOrderPage({
       ? activeTab.orderNo.trim().toUpperCase()
       : generateOrderCode();
 
+    const currentSubtotal = currentValidItems.reduce(
+      (s, r) => s + (Number(r.totalAmount) || (Number(r.qty) * Number(r.price))),
+      0
+    );
+    const currentVatAmount = (currentSubtotal * (Number(activeTab.vatRate) || 0)) / 100;
+    const currentGrandTotal = Math.max(
+      0,
+      currentSubtotal - (Number(activeTab.discount) || 0) + currentVatAmount + (Number(activeTab.shippingFee) || 0)
+    );
+
     const poPayload = {
       poNumber: generatedNo,
       supplierId: activeTab.supplierId || undefined,
@@ -3176,17 +3288,17 @@ export default function CreateStockInOrderPage({
       expectedDate: activeTab.orderDate,
       status: saveStatus === 'COMPLETED' ? 'RECEIVED' : saveStatus === 'READY' ? 'APPROVED' : 'DRAFT',
       description: activeTab.description?.trim() || 'Tạo phiếu nhập hàng từ nhà cung cấp',
-      subtotal,
+      subtotal: currentSubtotal,
       discount: activeTab.discount || 0,
       vatRate: activeTab.vatRate || 0,
-      vatAmount,
+      vatAmount: currentVatAmount,
       shippingFee: activeTab.shippingFee || 0,
-      totalAmount: grandTotal,
-      amountPaid: activeTab.amountPaid ?? grandTotal,
-      debtAmount: Math.max(0, grandTotal - (activeTab.amountPaid ?? grandTotal)),
+      totalAmount: currentGrandTotal,
+      amountPaid: activeTab.amountPaid ?? currentGrandTotal,
+      debtAmount: Math.max(0, currentGrandTotal - (activeTab.amountPaid ?? currentGrandTotal)),
       paymentMethod: activeTab.paymentMethod,
       paymentAccount: activeTab.paymentAccount,
-      details: activeValidItems.map((r) => {
+      details: currentValidItems.map((r) => {
         let noteText = r.note || '';
         if (r.expiryDate && !noteText.includes('[HSD:')) {
           noteText = noteText ? `${noteText} [HSD: ${r.expiryDate}]` : `[HSD: ${r.expiryDate}]`;
@@ -3247,9 +3359,25 @@ export default function CreateStockInOrderPage({
         const fullWhList = getStoredWarehouses();
         let matchedWh = fullWhList.find((w) => w.code === activeTab.warehouseCode || w.id === activeTab.warehouseCode) || fullWhList[0];
         if (matchedWh) {
-          const currentSubWarehouses = activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0 
-            ? activeTab.stagedSubWarehouses 
-            : (matchedWh.subWarehouses || []);
+          const currentSubWarehouses = overrideSubWarehouses && overrideSubWarehouses.length > 0 
+            ? overrideSubWarehouses 
+            : (activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0 
+                ? activeTab.stagedSubWarehouses 
+                : (matchedWh.subWarehouses || []));
+
+          const currentActiveSkus = new Set(
+            currentValidItems.map((r) => (r.productSku || '').trim().toUpperCase()).filter(Boolean)
+          );
+          const currentActiveNames = new Set(
+            currentValidItems.map((r) => (r.productName || '').trim().toLowerCase()).filter(Boolean)
+          );
+
+          const deletedSkus = new Set(
+            (activeTab.initialProductSkus || []).filter((sku) => sku && !currentActiveSkus.has(sku))
+          );
+          const deletedNames = new Set(
+            (activeTab.initialProductNames || []).filter((name) => name && !currentActiveNames.has(name))
+          );
 
           let whChanged = false;
           const updatedSubs = currentSubWarehouses.map((sub: any) => {
@@ -3258,7 +3386,52 @@ export default function CreateStockInOrderPage({
               const rackCodeUpper = String(rk.rackCode || '').trim().toUpperCase();
               const rackIdUpper = String(rk.id || '').trim().toUpperCase();
 
-              activeValidItems.forEach((r) => {
+              // 1. Remove deleted products from this order across all bins of this rack
+              if (deletedSkus.size > 0 || deletedNames.size > 0) {
+                Object.keys(custom).forEach((bKey) => {
+                  const entry = custom[bKey];
+                  if (!entry) return;
+                  let prods = Array.isArray(entry.products) ? [...entry.products] : [];
+                  const hadCount = prods.length;
+                  prods = prods.filter((p) => {
+                    const pSku = (p.sku || '').trim().toUpperCase();
+                    const pName = (p.productName || '').trim().toLowerCase();
+                    if (pSku && deletedSkus.has(pSku)) return false;
+                    if (pName && deletedNames.has(pName)) return false;
+                    return true;
+                  });
+                  if (prods.length !== hadCount) {
+                    whChanged = true;
+                    if (prods.length === 0) {
+                      custom[bKey] = {
+                        ...entry,
+                        occupancyPct: 0,
+                        totalPhysical: 0,
+                        products: [],
+                        notes: '',
+                        productName: '',
+                        sku: '',
+                      };
+                    } else {
+                      const totPct = Math.min(100, prods.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
+                      const totQty = prods.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
+                      const desc = `Đã chứa: ${totPct}% (${prods.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+                      custom[bKey] = {
+                        ...entry,
+                        occupancyPct: totPct,
+                        totalPhysical: totQty,
+                        products: prods,
+                        notes: desc,
+                        productName: prods.map((p) => p.productName).join(', '),
+                        sku: prods.map((p) => p.sku).filter(Boolean).join(', '),
+                      };
+                    }
+                  }
+                });
+              }
+
+              // 2. Add / update active valid items
+              currentValidItems.forEach((r) => {
                 let assignedList: string[] = Array.isArray(r.assignedBins) ? r.assignedBins : [];
                 if (assignedList.length === 0 && r.locationBin) {
                   assignedList = r.locationBin.split(',').map((s: string) => s.trim());
@@ -3371,7 +3544,7 @@ export default function CreateStockInOrderPage({
             return { ...sub, racks };
           });
 
-          if (whChanged || (activeTab.stagedSubWarehouses && activeTab.stagedSubWarehouses.length > 0)) {
+          if (whChanged || (currentSubWarehouses && currentSubWarehouses.length > 0)) {
             const updatedWh: WarehouseRecord = {
               ...matchedWh,
               subWarehouses: updatedSubs,
@@ -3405,7 +3578,7 @@ export default function CreateStockInOrderPage({
           supplierName: activeTab.supplierName || 'Nhà cung cấp',
           orderDate: activeTab.orderDate || new Date().toISOString(),
           status: saveStatus || 'completed',
-          details: activeValidItems.map((r) => {
+          details: currentValidItems.map((r) => {
             let assignedList: string[] = Array.isArray(r.assignedBins) ? r.assignedBins : [];
             if (assignedList.length === 0 && r.locationBin) {
               assignedList = r.locationBin.split(',').map((s: string) => s.trim());
@@ -3469,12 +3642,12 @@ export default function CreateStockInOrderPage({
       });
 
       if (isPrint) {
-        window.print();
+        handleOpenPrintModal(currentValidItems);
+      } else {
+        setTimeout(() => {
+          handleBackNavigation();
+        }, 1000);
       }
-
-      setTimeout(() => {
-        handleBackNavigation();
-      }, 1000);
     } catch (err: any) {
       setToast({ message: err.message || 'Lỗi khi lưu phiếu nhập hàng', type: 'error' });
     } finally {
@@ -3729,6 +3902,16 @@ export default function CreateStockInOrderPage({
                 <span>+ Thêm phiếu mới</span>
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => handleOpenPrintModal()}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-emerald-500 bg-white px-3.5 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50 transition shadow-xs cursor-pointer ml-1"
+              title="In Phiếu Nhập Kho (Mẫu 01-VT chuẩn Bộ Tài Chính)"
+            >
+              <Printer size={15} className="text-emerald-700" />
+              <span>In phiếu</span>
+            </button>
 
             <button
               type="button"
@@ -4532,6 +4715,15 @@ export default function CreateStockInOrderPage({
                 </div>
                 <button
                   type="button"
+                  onClick={() => handleOpenPrintModal()}
+                  className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 transition active:scale-95 cursor-pointer"
+                  title="In Phiếu Nhập Kho (Mẫu 01-VT chuẩn Bộ Tài Chính)"
+                >
+                  <Printer size={18} strokeWidth={2.2} />
+                  <span>IN PHIẾU NHẬP KHO</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleBackNavigation}
                   className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 transition active:scale-95 cursor-pointer"
                 >
@@ -4629,7 +4821,7 @@ export default function CreateStockInOrderPage({
           if (pendingSaveConfig) {
             const cfg = pendingSaveConfig;
             setPendingSaveConfig(null);
-            handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true);
+            handleSaveInboundOrder(cfg.isPrint, cfg.saveStatus, true, updatedRows, updatedSubWarehouses);
           }
         }}
       />
@@ -4764,6 +4956,14 @@ export default function CreateStockInOrderPage({
           </div>
         </div>
       )}
+
+      {/* Official Standard Inbound Receipt Print Modal (Mẫu 01-VT chuẩn Bộ Tài Chính) */}
+      <InboundPrintModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        order={printOrderData}
+        warehouses={warehouses}
+      />
     </div>
   );
 

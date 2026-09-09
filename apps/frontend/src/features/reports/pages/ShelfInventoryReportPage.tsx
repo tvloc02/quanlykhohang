@@ -279,6 +279,80 @@ export default function ShelfInventoryReportPage({
       });
 
       if (res) {
+        let reportItems: ShelfInventoryItem[] = res.items || [];
+
+        // Đồng bộ các cấu hình kệ/ô mới nhất từ localStorage quản lý kho (/warehouses/:id/edit)
+        try {
+          const localWhStr = localStorage.getItem('smart-wms-warehouses');
+          if (localWhStr) {
+            const localWhs = JSON.parse(localWhStr);
+            if (Array.isArray(localWhs) && localWhs.length > 0) {
+              const localBinMap = new Map<string, any>();
+              localWhs.forEach((wh: any) => {
+                const wCode = String(wh.code || wh.id || '').toUpperCase().trim();
+                (wh.subWarehouses || []).forEach((sub: any) => {
+                  (sub.racks || []).forEach((rk: any) => {
+                    const rCode = String(rk.rackCode || rk.code || rk.id || '').toUpperCase().trim();
+                    const cBins = rk.customBins || {};
+                    Object.entries(cBins).forEach(([bKey, cfg]: [string, any]) => {
+                      if (!cfg) return;
+                      const cleanK = bKey.toUpperCase().trim();
+                      const shortB = String(cfg.binCode || cleanK.split('-').pop() || cleanK).toUpperCase().trim();
+                      localBinMap.set(`${wCode}_${cleanK}`, cfg);
+                      localBinMap.set(`${wCode}_${cleanK.replace(/[^A-Z0-9]/g, '')}`, cfg);
+                      localBinMap.set(`${wCode}_${rCode}_${shortB}`, cfg);
+                      localBinMap.set(`${wCode}_${shortB}`, cfg);
+                      localBinMap.set(`${rCode}_${shortB}`, cfg);
+                    });
+                  });
+                });
+              });
+
+              reportItems = reportItems.map((it) => {
+                const wCode = it.warehouseCode.toUpperCase().trim();
+                const cleanLoc = (it.cleanLocationCode || it.fullLocationCode).toUpperCase().trim();
+                const rCode = it.rackCode.toUpperCase().trim();
+                const bCode = it.binCode.toUpperCase().trim();
+
+                const cfg =
+                  localBinMap.get(`${wCode}_${cleanLoc}`) ||
+                  localBinMap.get(`${wCode}_${cleanLoc.replace(/[^A-Z0-9]/g, '')}`) ||
+                  localBinMap.get(`${wCode}_${rCode}_${bCode}`) ||
+                  localBinMap.get(`${wCode}_${bCode}`) ||
+                  localBinMap.get(`${rCode}_${bCode}`);
+
+                if (cfg) {
+                  if (Array.isArray(cfg.products) && cfg.products.length > 0) {
+                    const matched = cfg.products.find(
+                      (p: any) =>
+                        (p.sku && it.productSku && p.sku.trim().toUpperCase() === it.productSku.trim().toUpperCase()) ||
+                        (p.productName && it.productName && p.productName.trim().toLowerCase() === it.productName.trim().toLowerCase()) ||
+                        (p.productId && Number(p.productId) === Number(it.productId))
+                    );
+                    if (matched && matched.occupancyPct !== undefined && Number(matched.occupancyPct) >= 0) {
+                      return {
+                        ...it,
+                        occupancyPct: Number(matched.occupancyPct),
+                        notes: matched.notes || cfg.notes || it.notes,
+                      };
+                    }
+                  }
+                  if (cfg.occupancyPct !== undefined && Number(cfg.occupancyPct) > 0) {
+                    return {
+                      ...it,
+                      occupancyPct: Number(cfg.occupancyPct),
+                      notes: cfg.notes || it.notes,
+                    };
+                  }
+                }
+                return it;
+              });
+            }
+          }
+        } catch (e) {
+          console.error('Error applying local warehouse bin overlays in ShelfInventoryReportPage:', e);
+        }
+
         setSummary(
           res.summary || {
             totalWarehouses: 0,
@@ -291,7 +365,7 @@ export default function ShelfInventoryReportPage({
             staleStockCount: 0,
           },
         );
-        setItems(res.items || []);
+        setItems(reportItems);
       }
     } catch (err: any) {
       setError(err?.message || 'Không thể tải báo cáo hàng tồn trên kệ từ hệ thống API');
@@ -793,7 +867,7 @@ export default function ShelfInventoryReportPage({
                         <td colSpan={15} className="px-4 py-2.5 text-xs sm:text-sm">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="flex items-center gap-2 text-slate-800 font-bold">
-                              <Building2 className="h-4.5 w-4.5 text-cyan-600 shrink-0" />
+                              <Building2 className="h-4.5 w-4.5 text-cyan-600 shrink-0 print:hidden" />
                               <span className="uppercase tracking-wider">Kho Hàng: {g.warehouseName}</span>
                               <span className="rounded bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                                 {g.warehouseCode}
