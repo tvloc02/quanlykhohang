@@ -1,5 +1,5 @@
-import React from 'react';
-import { createPortal } from 'react-dom';
+import React from "react";
+import { createPortal } from "react-dom";
 import {
   Check,
   CheckCircle,
@@ -20,9 +20,12 @@ import {
   Download,
   RotateCcw,
   History,
-} from 'lucide-react';
-import { normalizeWarehouseRecord, type WarehouseRecord } from '../../shared/utils/warehouseAssignments';
-import { usePermissions } from '../../shared/hooks/usePermissions';
+} from "lucide-react";
+import {
+  normalizeWarehouseRecord,
+  type WarehouseRecord,
+} from "../../shared/utils/warehouseAssignments";
+import { usePermissions } from "../../shared/hooks/usePermissions";
 import {
   STORAGE_KEY,
   type UserRole,
@@ -38,7 +41,7 @@ import {
   getFallbackPermissionGroups,
   readStoredPermissionGroups,
   saveStoredPermissionGroups,
-} from '../../shared/utils/permissionStorage';
+} from "../../shared/utils/permissionStorage";
 
 export {
   STORAGE_KEY,
@@ -57,12 +60,12 @@ export {
   saveStoredPermissionGroups,
 };
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || "/api";
 
 export type UndoLogItem = {
   id: string;
   timestamp: string;
-  type: 'EDIT' | 'DELETE';
+  type: "EDIT" | "DELETE";
   groupName: string;
   description: string;
   deletedGroup?: PermissionGroup;
@@ -78,13 +81,21 @@ type GroupFormState = {
 
 function authHeaders() {
   return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
   };
 }
 
 // Toast notification rendered in Portal at top right to avoid layout distortion
-function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
+function Toast({
+  message,
+  type,
+  onClose,
+}: {
+  message: string;
+  type: "success" | "error";
+  onClose: () => void;
+}) {
   React.useEffect(() => {
     if (message) {
       const timer = setTimeout(() => onClose(), 3000);
@@ -95,31 +106,45 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   if (!message) return null;
 
   return createPortal(
-    <div className={`fixed top-6 right-6 z-[9999] pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-2xl transition-all border backdrop-blur-md animate-in slide-in-from-top-4 ${
-      type === 'error' ? 'bg-red-50/95 text-red-700 border-red-200' : 'bg-emerald-50/95 text-emerald-800 border-emerald-200'
-    }`}>
-      {type === 'error' ? <XCircle className="h-5 w-5 flex-shrink-0 text-red-600" /> : <CheckCircle className="h-5 w-5 flex-shrink-0 text-emerald-600" />}
+    <div
+      className={`fixed top-6 right-6 z-[9999] pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-2xl transition-all border backdrop-blur-md animate-in slide-in-from-top-4 ${
+        type === "error"
+          ? "bg-red-50/95 text-red-700 border-red-200"
+          : "bg-emerald-50/95 text-emerald-800 border-emerald-200"
+      }`}
+    >
+      {type === "error" ? (
+        <XCircle className="h-5 w-5 flex-shrink-0 text-red-600" />
+      ) : (
+        <CheckCircle className="h-5 w-5 flex-shrink-0 text-emerald-600" />
+      )}
       <p className="text-sm font-extrabold">{message}</p>
-      <button type="button" onClick={onClose} className="ml-2 rounded-lg p-1 hover:bg-black/5 transition cursor-pointer">
+      <button
+        type="button"
+        onClick={onClose}
+        className="ml-2 rounded-lg p-1 hover:bg-black/5 transition cursor-pointer"
+      >
         <X className="h-4 w-4" />
       </button>
     </div>,
-    document.body
+    document.body,
   );
 }
 
 export default function PermissionGroupsPage() {
   const { canPerformAction } = usePermissions();
-  const canCreate = canPerformAction('permission-groups', 'create');
-  const canEdit = canPerformAction('permission-groups', 'edit');
-  const canDelete = canPerformAction('permission-groups', 'delete');
+  const canCreate = canPerformAction("permission-groups", "create");
+  const canEdit = canPerformAction("permission-groups", "edit");
+  const canDelete = canPerformAction("permission-groups", "delete");
 
-  const [groups, setGroups] = React.useState<PermissionGroup[]>(readStoredPermissionGroups);
+  const [groups, setGroups] = React.useState<PermissionGroup[]>(
+    readStoredPermissionGroups,
+  );
   const [users, setUsers] = React.useState<PersonnelUser[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>([]);
 
   // Filters
-  const [search, setSearch] = React.useState('');
+  const [search, setSearch] = React.useState("");
 
   // Pagination states
   const [pageSize, setPageSize] = React.useState(20);
@@ -127,48 +152,68 @@ export default function PermissionGroupsPage() {
 
   // Bulk Selection & Deletion State
   const [selectedGroupIds, setSelectedGroupIds] = React.useState<string[]>([]);
-  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = React.useState(false);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] =
+    React.useState(false);
 
   // Add/Edit Group Modal
   const [isGroupModalOpen, setIsGroupModalOpen] = React.useState(false);
-  const [editingGroup, setEditingGroup] = React.useState<PermissionGroup | null>(null);
+  const [editingGroup, setEditingGroup] =
+    React.useState<PermissionGroup | null>(null);
   const [groupForm, setGroupForm] = React.useState<GroupFormState>({
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     memberIds: [],
   });
-  const [memberSearch, setMemberSearch] = React.useState('');
+  const [memberSearch, setMemberSearch] = React.useState("");
 
   // Assign Personnel Modal State
-  const [assignPersonnelGroup, setAssignPersonnelGroup] = React.useState<PermissionGroup | null>(null);
-  const [tempAssignMemberIds, setTempAssignMemberIds] = React.useState<string[]>([]);
-  const [assignUserSearch, setAssignUserSearch] = React.useState('');
+  const [assignPersonnelGroup, setAssignPersonnelGroup] =
+    React.useState<PermissionGroup | null>(null);
+  const [tempAssignMemberIds, setTempAssignMemberIds] = React.useState<
+    string[]
+  >([]);
+  const [assignUserSearch, setAssignUserSearch] = React.useState("");
 
   // Permission Matrix Modal State (PHÂN QUYỀN DÙNG MENU)
-  const [permissionModalGroup, setPermissionModalGroup] = React.useState<PermissionGroup | null>(null);
-  const [tempGeneralPermissions, setTempGeneralPermissions] = React.useState<GeneralPermissions>(getDefaultGeneralPermissions());
-  const [tempMenuPermissions, setTempMenuPermissions] = React.useState<Record<string, ActionPermission>>(getDefaultMenuPermissions());
-  const [matrixSearch, setMatrixSearch] = React.useState('');
-  const [collapsedHeaders, setCollapsedHeaders] = React.useState<Record<string, boolean>>({});
+  const [permissionModalGroup, setPermissionModalGroup] =
+    React.useState<PermissionGroup | null>(null);
+  const [tempGeneralPermissions, setTempGeneralPermissions] =
+    React.useState<GeneralPermissions>(getDefaultGeneralPermissions());
+  const [tempMenuPermissions, setTempMenuPermissions] = React.useState<
+    Record<string, ActionPermission>
+  >(getDefaultMenuPermissions());
+  const [matrixSearch, setMatrixSearch] = React.useState("");
+  const [collapsedHeaders, setCollapsedHeaders] = React.useState<
+    Record<string, boolean>
+  >({});
 
   // Feedback State
-  const [error, setError] = React.useState('');
-  const [success, setSuccess] = React.useState('');
+  const [error, setError] = React.useState("");
+  const [success, setSuccess] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
   // Delete Confirm Modal State
-  const [deletingGroupId, setDeletingGroupId] = React.useState<string | null>(null);
+  const [deletingGroupId, setDeletingGroupId] = React.useState<string | null>(
+    null,
+  );
 
   // Undo / History State
   const [undoHistory, setUndoHistory] = React.useState<UndoLogItem[]>([]);
   const [isUndoModalOpen, setIsUndoModalOpen] = React.useState(false);
-  const [selectedUndoDeleteIds, setSelectedUndoDeleteIds] = React.useState<string[]>([]);
-  const [undoTabFilter, setUndoTabFilter] = React.useState<'ALL' | 'DELETE' | 'EDIT'>('ALL');
+  const [selectedUndoDeleteIds, setSelectedUndoDeleteIds] = React.useState<
+    string[]
+  >([]);
+  const [undoTabFilter, setUndoTabFilter] = React.useState<
+    "ALL" | "DELETE" | "EDIT"
+  >("ALL");
 
   // Undo Action: Restore Deleted Groups (Batch or Single)
   const handleRestoreDeletedGroups = (logIdsToRestore: string[]) => {
     const logsToRestore = undoHistory.filter(
-      (item) => item.type === 'DELETE' && logIdsToRestore.includes(item.id) && item.deletedGroup
+      (item) =>
+        item.type === "DELETE" &&
+        logIdsToRestore.includes(item.id) &&
+        item.deletedGroup,
     );
 
     if (logsToRestore.length === 0) return;
@@ -183,15 +228,23 @@ export default function PermissionGroupsPage() {
       return next;
     });
 
-    setUndoHistory((prev) => prev.filter((item) => !logIdsToRestore.includes(item.id)));
-    setSelectedUndoDeleteIds((prev) => prev.filter((id) => !logIdsToRestore.includes(id)));
+    setUndoHistory((prev) =>
+      prev.filter((item) => !logIdsToRestore.includes(item.id)),
+    );
+    setSelectedUndoDeleteIds((prev) =>
+      prev.filter((id) => !logIdsToRestore.includes(id)),
+    );
 
-    setSuccess(`Đã hoàn tác khôi phục ${restoredGroups.length} nhóm quyền đã xóa.`);
+    setSuccess(
+      `Đã hoàn tác khôi phục ${restoredGroups.length} nhóm quyền đã xóa.`,
+    );
   };
 
   // Undo Action: Revert Edit Group to Previous State
   const handleRevertEditedGroup = (logId: string) => {
-    const log = undoHistory.find((item) => item.id === logId && item.type === 'EDIT');
+    const log = undoHistory.find(
+      (item) => item.id === logId && item.type === "EDIT",
+    );
     if (!log || !log.previousGroup) return;
 
     const prevGroup = log.previousGroup;
@@ -206,7 +259,9 @@ export default function PermissionGroupsPage() {
     });
 
     setUndoHistory((prev) => prev.filter((item) => item.id !== logId));
-    setSuccess(`Đã hoàn tác dữ liệu nhóm quyền "${prevGroup.name}" về ban đầu.`);
+    setSuccess(
+      `Đã hoàn tác dữ liệu nhóm quyền "${prevGroup.name}" về ban đầu.`,
+    );
   };
 
   // Fetch API groups and backend data with Local Storage Merge
@@ -223,10 +278,18 @@ export default function PermissionGroupsPage() {
         const internalOnly = Array.isArray(uData)
           ? uData.filter((u: any) => {
               if (!u) return false;
-              const roles = (u.roles || []).map((r: any) => (typeof r === 'string' ? r : r.name || ''));
-              if (roles.includes('supplier') || roles.includes('customer')) return false;
+              const roles = (u.roles || []).map((r: any) =>
+                typeof r === "string" ? r : r.name || "",
+              );
+              if (roles.includes("supplier") || roles.includes("customer"))
+                return false;
               if (u.supplier || u.customer) return false;
-              if (u.email && (u.email.endsWith('@supplier.local') || u.email.endsWith('@customer.local'))) return false;
+              if (
+                u.email &&
+                (u.email.endsWith("@supplier.local") ||
+                  u.email.endsWith("@customer.local"))
+              )
+                return false;
               return true;
             })
           : [];
@@ -234,7 +297,9 @@ export default function PermissionGroupsPage() {
       }
       if (wRes.ok) {
         const wData = await wRes.json();
-        setWarehouses(Array.isArray(wData) ? wData.map(normalizeWarehouseRecord) : []);
+        setWarehouses(
+          Array.isArray(wData) ? wData.map(normalizeWarehouseRecord) : [],
+        );
       }
       if (tRes.ok) {
         const tData = await tRes.json();
@@ -243,8 +308,15 @@ export default function PermissionGroupsPage() {
             id: t.id,
             name: t.name,
             code: t.code,
-            description: t.description || '',
-            memberIds: t.memberIds || Array.from(new Set([...(t.storekeeperIds || []), ...(t.inventoryCheckerIds || [])])),
+            description: t.description || "",
+            memberIds:
+              t.memberIds ||
+              Array.from(
+                new Set([
+                  ...(t.storekeeperIds || []),
+                  ...(t.inventoryCheckerIds || []),
+                ]),
+              ),
             generalPermissions: t.generalPermissions || null,
             menuPermissions: t.menuPermissions || null,
           }));
@@ -258,13 +330,19 @@ export default function PermissionGroupsPage() {
           // Merge API groups
           apiGroups.forEach((g) => {
             const existing = groupMap.get(g.id);
-            const mergedGeneral = (g.generalPermissions && Object.keys(g.generalPermissions).length > 0)
-              ? g.generalPermissions
-              : (existing?.generalPermissions || getDefaultGeneralPermissions());
-            const mergedMenu = (g.menuPermissions && Object.keys(g.menuPermissions).length > 0)
-              ? g.menuPermissions
-              : (existing?.menuPermissions || getDefaultMenuPermissions(true));
-            const mergedMembers = Array.from(new Set([...(g.memberIds || []), ...(existing?.memberIds || [])]));
+            const mergedGeneral =
+              g.generalPermissions &&
+              Object.keys(g.generalPermissions).length > 0
+                ? g.generalPermissions
+                : existing?.generalPermissions ||
+                  getDefaultGeneralPermissions();
+            const mergedMenu =
+              g.menuPermissions && Object.keys(g.menuPermissions).length > 0
+                ? g.menuPermissions
+                : existing?.menuPermissions || getDefaultMenuPermissions(true);
+            const mergedMembers = Array.from(
+              new Set([...(g.memberIds || []), ...(existing?.memberIds || [])]),
+            );
 
             groupMap.set(g.id, {
               ...existing,
@@ -282,19 +360,25 @@ export default function PermissionGroupsPage() {
           // Auto-sync any unsynced local groups to backend MySQL database
           localGroups.forEach(async (lg) => {
             if (
-              lg.id.startsWith('group-') ||
-              !apiGroups.some((ag) => ag.id === lg.id || ag.name.trim().toLowerCase() === lg.name.trim().toLowerCase())
+              lg.id.startsWith("group-") ||
+              !apiGroups.some(
+                (ag) =>
+                  ag.id === lg.id ||
+                  ag.name.trim().toLowerCase() === lg.name.trim().toLowerCase(),
+              )
             ) {
               try {
                 await fetch(`${API_BASE_URL}/project-teams`, {
-                  method: 'POST',
+                  method: "POST",
                   headers: authHeaders(),
                   body: JSON.stringify({
                     name: lg.name,
-                    description: lg.description || '',
+                    description: lg.description || "",
                     memberIds: lg.memberIds || [],
-                    generalPermissions: lg.generalPermissions || getDefaultGeneralPermissions(),
-                    menuPermissions: lg.menuPermissions || getDefaultMenuPermissions(true),
+                    generalPermissions:
+                      lg.generalPermissions || getDefaultGeneralPermissions(),
+                    menuPermissions:
+                      lg.menuPermissions || getDefaultMenuPermissions(true),
                   }),
                 });
               } catch {}
@@ -318,8 +402,8 @@ export default function PermissionGroupsPage() {
       return (
         !q ||
         g.name.toLowerCase().includes(q) ||
-        (g.description || '').toLowerCase().includes(q) ||
-        (g.code || '').toLowerCase().includes(q)
+        (g.description || "").toLowerCase().includes(q) ||
+        (g.code || "").toLowerCase().includes(q)
       );
     });
   }, [groups, search]);
@@ -341,20 +425,20 @@ export default function PermissionGroupsPage() {
 
   // Open Create/Edit Group Modal
   const openGroupModal = (groupToEdit?: PermissionGroup) => {
-    setError('');
-    setMemberSearch('');
+    setError("");
+    setMemberSearch("");
     if (groupToEdit) {
       setEditingGroup(groupToEdit);
       setGroupForm({
         name: groupToEdit.name,
-        description: groupToEdit.description || '',
+        description: groupToEdit.description || "",
         memberIds: groupToEdit.memberIds || [],
       });
     } else {
       setEditingGroup(null);
       setGroupForm({
-        name: '',
-        description: '',
+        name: "",
+        description: "",
         memberIds: [],
       });
     }
@@ -364,26 +448,26 @@ export default function PermissionGroupsPage() {
   const closeGroupModal = () => {
     setIsGroupModalOpen(false);
     setEditingGroup(null);
-    setError('');
+    setError("");
   };
 
   // Open Assign Personnel Modal
   const openAssignPersonnelModal = (group: PermissionGroup) => {
     setAssignPersonnelGroup(group);
     setTempAssignMemberIds(group.memberIds || []);
-    setAssignUserSearch('');
+    setAssignUserSearch("");
   };
 
   // Save Group via API & update state
   const handleSaveGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupForm.name.trim()) {
-      setError('Vui lòng nhập tên nhóm quyền.');
+      setError("Vui lòng nhập tên nhóm quyền.");
       return;
     }
 
     setSaving(true);
-    setError('');
+    setError("");
 
     const payload = {
       name: groupForm.name.trim(),
@@ -393,18 +477,27 @@ export default function PermissionGroupsPage() {
 
     try {
       if (editingGroup) {
-        const res = await fetch(`${API_BASE_URL}/project-teams/${editingGroup.id}`, {
-          method: 'PATCH',
-          headers: authHeaders(),
-          body: JSON.stringify(payload),
-        });
+        const res = await fetch(
+          `${API_BASE_URL}/project-teams/${editingGroup.id}`,
+          {
+            method: "PATCH",
+            headers: authHeaders(),
+            body: JSON.stringify(payload),
+          },
+        );
 
         const updatedGroup: PermissionGroup = res.ok
-          ? { ...editingGroup, ...(await res.json()), memberIds: groupForm.memberIds }
+          ? {
+              ...editingGroup,
+              ...(await res.json()),
+              memberIds: groupForm.memberIds,
+            }
           : { ...editingGroup, ...payload };
 
         setGroups((prev) => {
-          const next = prev.map((g) => (g.id === editingGroup.id ? updatedGroup : g));
+          const next = prev.map((g) =>
+            g.id === editingGroup.id ? updatedGroup : g,
+          );
           saveStoredPermissionGroups(next);
           return next;
         });
@@ -413,8 +506,12 @@ export default function PermissionGroupsPage() {
         setUndoHistory((prev) => [
           {
             id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            type: 'EDIT',
+            timestamp: new Date().toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }),
+            type: "EDIT",
             groupName: editingGroup.name,
             description: `Đã sửa thông tin nhóm quyền "${editingGroup.name}"`,
             previousGroup: JSON.parse(JSON.stringify(editingGroup)),
@@ -426,11 +523,11 @@ export default function PermissionGroupsPage() {
         setSuccess(`Đã cập nhật nhóm quyền "${payload.name}".`);
       } else {
         const res = await fetch(`${API_BASE_URL}/project-teams`, {
-          method: 'POST',
+          method: "POST",
           headers: authHeaders(),
           body: JSON.stringify({
             ...payload,
-            warehouseId: warehouses[0]?.id || '',
+            warehouseId: warehouses[0]?.id || "",
             generalPermissions: getDefaultGeneralPermissions(),
             menuPermissions: getDefaultMenuPermissions(true),
           }),
@@ -444,13 +541,16 @@ export default function PermissionGroupsPage() {
             name: data.name,
             description: data.description,
             memberIds: groupForm.memberIds,
-            generalPermissions: data.generalPermissions || getDefaultGeneralPermissions(),
-            menuPermissions: data.menuPermissions || getDefaultMenuPermissions(true),
+            generalPermissions:
+              data.generalPermissions || getDefaultGeneralPermissions(),
+            menuPermissions:
+              data.menuPermissions || getDefaultMenuPermissions(true),
           };
         } else {
           const errData = await res.json().catch(() => null);
-          const errMsg = errData?.message || 'Không thể lưu nhóm quyền vào CSDL backend';
-          setError(Array.isArray(errMsg) ? errMsg.join(', ') : errMsg);
+          const errMsg =
+            errData?.message || "Không thể lưu nhóm quyền vào CSDL backend";
+          setError(Array.isArray(errMsg) ? errMsg.join(", ") : errMsg);
           setSaving(false);
           return;
         }
@@ -465,7 +565,7 @@ export default function PermissionGroupsPage() {
       }
       closeGroupModal();
     } catch {
-      setError('Có lỗi xảy ra khi lưu nhóm quyền vào CSDL.');
+      setError("Có lỗi xảy ra khi lưu nhóm quyền vào CSDL.");
     } finally {
       setSaving(false);
     }
@@ -476,7 +576,7 @@ export default function PermissionGroupsPage() {
     if (!assignPersonnelGroup) return;
 
     setSaving(true);
-    setError('');
+    setError("");
 
     const payload = {
       memberIds: tempAssignMemberIds,
@@ -484,7 +584,7 @@ export default function PermissionGroupsPage() {
 
     try {
       await fetch(`${API_BASE_URL}/project-teams/${assignPersonnelGroup.id}`, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify(payload),
       }).catch(() => null);
@@ -495,7 +595,9 @@ export default function PermissionGroupsPage() {
       };
 
       setGroups((prev) => {
-        const next = prev.map((g) => (g.id === assignPersonnelGroup.id ? updatedGroup : g));
+        const next = prev.map((g) =>
+          g.id === assignPersonnelGroup.id ? updatedGroup : g,
+        );
         saveStoredPermissionGroups(next);
         return next;
       });
@@ -504,8 +606,12 @@ export default function PermissionGroupsPage() {
       setUndoHistory((prev) => [
         {
           id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          type: 'EDIT',
+          timestamp: new Date().toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+          type: "EDIT",
           groupName: assignPersonnelGroup.name,
           description: `Đã sửa gán nhân sự cho nhóm "${assignPersonnelGroup.name}"`,
           previousGroup: JSON.parse(JSON.stringify(assignPersonnelGroup)),
@@ -515,41 +621,49 @@ export default function PermissionGroupsPage() {
       ]);
 
       // Sync groupIds for users on backend
-      const allUsersRes = await fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(() => null);
+      const allUsersRes = await fetch(`${API_BASE_URL}/users`, {
+        headers: authHeaders(),
+      }).catch(() => null);
       if (allUsersRes && allUsersRes.ok) {
         const allUsers: any[] = await allUsersRes.json();
         const currentGroupId = assignPersonnelGroup.id;
 
         await Promise.all(
           allUsers.map((u) => {
-            const isMember = tempAssignMemberIds.includes(u.id) || tempAssignMemberIds.includes(u.email);
-            let userGroupIds: string[] = Array.isArray(u.groupIds) ? u.groupIds : [];
+            const isMember =
+              tempAssignMemberIds.includes(u.id) ||
+              tempAssignMemberIds.includes(u.email);
+            let userGroupIds: string[] = Array.isArray(u.groupIds)
+              ? u.groupIds
+              : [];
             const hasGroup = userGroupIds.includes(currentGroupId);
 
             if (isMember && !hasGroup) {
               userGroupIds = [...userGroupIds, currentGroupId];
             } else if (!isMember && hasGroup) {
-              userGroupIds = userGroupIds.filter((gid) => gid !== currentGroupId);
+              userGroupIds = userGroupIds.filter(
+                (gid) => gid !== currentGroupId,
+              );
             } else {
               return Promise.resolve();
             }
 
             return fetch(`${API_BASE_URL}/users/${u.id}`, {
-              method: 'PATCH',
+              method: "PATCH",
               headers: authHeaders(),
               body: JSON.stringify({ groupIds: userGroupIds }),
             }).catch(() => null);
-          })
+          }),
         );
       }
 
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new Event('permissions-updated'));
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new Event("permissions-updated"));
 
       setSuccess(`Đã gán nhân sự cho nhóm "${assignPersonnelGroup.name}".`);
       setAssignPersonnelGroup(null);
     } catch {
-      setError('Có lỗi xảy ra khi gán nhân sự.');
+      setError("Có lỗi xảy ra khi gán nhân sự.");
     } finally {
       setSaving(false);
     }
@@ -561,7 +675,7 @@ export default function PermissionGroupsPage() {
 
     try {
       await fetch(`${API_BASE_URL}/project-teams/${id}`, {
-        method: 'DELETE',
+        method: "DELETE",
         headers: authHeaders(),
       }).catch(() => null);
 
@@ -576,8 +690,12 @@ export default function PermissionGroupsPage() {
         setUndoHistory((prev) => [
           {
             id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            type: 'DELETE',
+            timestamp: new Date().toLocaleTimeString("vi-VN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }),
+            type: "DELETE",
             groupName: targetGroup.name,
             description: `Đã xóa nhóm quyền "${targetGroup.name}"`,
             deletedGroup: JSON.parse(JSON.stringify(targetGroup)),
@@ -587,10 +705,10 @@ export default function PermissionGroupsPage() {
       }
 
       setSelectedGroupIds((prev) => prev.filter((item) => item !== id));
-      setSuccess('Đã xóa nhóm quyền.');
+      setSuccess("Đã xóa nhóm quyền.");
       setDeletingGroupId(null);
     } catch {
-      setError('Có lỗi xảy ra khi xóa nhóm quyền.');
+      setError("Có lỗi xảy ra khi xóa nhóm quyền.");
     }
   };
 
@@ -599,7 +717,7 @@ export default function PermissionGroupsPage() {
     if (selectedGroupIds.length === 0) return;
 
     setSaving(true);
-    setError('');
+    setError("");
 
     const targetGroups = groups.filter((g) => selectedGroupIds.includes(g.id));
 
@@ -607,10 +725,10 @@ export default function PermissionGroupsPage() {
       await Promise.all(
         selectedGroupIds.map((id) =>
           fetch(`${API_BASE_URL}/project-teams/${id}`, {
-            method: 'DELETE',
+            method: "DELETE",
             headers: authHeaders(),
-          }).catch(() => null)
-        )
+          }).catch(() => null),
+        ),
       );
 
       setGroups((prev) => {
@@ -622,8 +740,12 @@ export default function PermissionGroupsPage() {
       // Record Undo Logs for Bulk DELETE
       const newDeleteLogs: UndoLogItem[] = targetGroups.map((g) => ({
         id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        type: 'DELETE',
+        timestamp: new Date().toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+        type: "DELETE",
         groupName: g.name,
         description: `Đã xóa nhóm quyền "${g.name}"`,
         deletedGroup: JSON.parse(JSON.stringify(g)),
@@ -634,7 +756,7 @@ export default function PermissionGroupsPage() {
       setSelectedGroupIds([]);
       setIsBulkDeleteModalOpen(false);
     } catch {
-      setError('Có lỗi xảy ra khi xóa các nhóm quyền đã chọn.');
+      setError("Có lỗi xảy ra khi xóa các nhóm quyền đã chọn.");
     } finally {
       setSaving(false);
     }
@@ -651,7 +773,7 @@ export default function PermissionGroupsPage() {
       ...getDefaultMenuPermissions(true),
       ...(group.menuPermissions || {}),
     });
-    setMatrixSearch('');
+    setMatrixSearch("");
     setCollapsedHeaders({});
   };
 
@@ -664,7 +786,7 @@ export default function PermissionGroupsPage() {
     if (!permissionModalGroup) return;
 
     setSaving(true);
-    setError('');
+    setError("");
 
     const payload = {
       generalPermissions: tempGeneralPermissions,
@@ -673,7 +795,7 @@ export default function PermissionGroupsPage() {
 
     try {
       await fetch(`${API_BASE_URL}/project-teams/${permissionModalGroup.id}`, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify(payload),
       }).catch(() => null);
@@ -688,7 +810,10 @@ export default function PermissionGroupsPage() {
 
       setGroups((prev) => {
         const next = prev.map((g) => {
-          if (g.id === permissionModalGroup.id || (g.name && g.name.trim().toLowerCase() === targetNameLower)) {
+          if (
+            g.id === permissionModalGroup.id ||
+            (g.name && g.name.trim().toLowerCase() === targetNameLower)
+          ) {
             return {
               ...g,
               generalPermissions: tempGeneralPermissions,
@@ -705,8 +830,12 @@ export default function PermissionGroupsPage() {
       setUndoHistory((prev) => [
         {
           id: `undo-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          type: 'EDIT',
+          timestamp: new Date().toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+          type: "EDIT",
           groupName: permissionModalGroup.name,
           description: `Đã sửa quyền Menu cho nhóm "${permissionModalGroup.name}"`,
           previousGroup: JSON.parse(JSON.stringify(permissionModalGroup)),
@@ -715,17 +844,22 @@ export default function PermissionGroupsPage() {
         ...prev,
       ]);
 
-      setSuccess(`Đã lưu cấu hình phân quyền menu cho "${permissionModalGroup.name}".`);
+      setSuccess(
+        `Đã lưu cấu hình phân quyền menu cho "${permissionModalGroup.name}".`,
+      );
       closePermissionMatrixModal();
     } catch {
-      setError('Có lỗi xảy ra khi lưu phân quyền menu.');
+      setError("Có lỗi xảy ra khi lưu phân quyền menu.");
     } finally {
       setSaving(false);
     }
   };
 
   // Toggle Action Permission in Matrix
-  const toggleActionPermission = (menuId: string, actionKey: keyof ActionPermission) => {
+  const toggleActionPermission = (
+    menuId: string,
+    actionKey: keyof ActionPermission,
+  ) => {
     setTempMenuPermissions((prev) => {
       const currentPerm = prev[menuId] || {
         view: false,
@@ -750,11 +884,11 @@ export default function PermissionGroupsPage() {
   // Toggle Vertical Column Permissions (Select All / Deselect All Vertically for a specific column)
   const toggleColumnPermissions = (actionKey: keyof ActionPermission) => {
     const supportedItems = SYSTEM_MENU_TREE.filter(
-      (item) => !item.isHeader && isActionSupported(item.id, actionKey)
+      (item) => !item.isHeader && isActionSupported(item.id, actionKey),
     );
 
     const allChecked = supportedItems.every(
-      (item) => tempMenuPermissions[item.id]?.[actionKey] === true
+      (item) => tempMenuPermissions[item.id]?.[actionKey] === true,
     );
 
     setTempMenuPermissions((prev) => {
@@ -781,16 +915,26 @@ export default function PermissionGroupsPage() {
 
   const isColumnAllChecked = (actionKey: keyof ActionPermission) => {
     const supportedItems = SYSTEM_MENU_TREE.filter(
-      (item) => !item.isHeader && isActionSupported(item.id, actionKey)
+      (item) => !item.isHeader && isActionSupported(item.id, actionKey),
     );
     if (supportedItems.length === 0) return false;
-    return supportedItems.every((item) => tempMenuPermissions[item.id]?.[actionKey] === true);
+    return supportedItems.every(
+      (item) => tempMenuPermissions[item.id]?.[actionKey] === true,
+    );
   };
 
   // Toggle Header Row (Select All / Deselect All for Header Children)
   const toggleHeaderRowPermissions = (headerId: string, enable: boolean) => {
     const children = SYSTEM_MENU_TREE.filter((m) => m.parentId === headerId);
-    const actionKeys: Array<keyof ActionPermission> = ['view', 'create', 'edit', 'delete', 'print', 'import', 'export'];
+    const actionKeys: Array<keyof ActionPermission> = [
+      "view",
+      "create",
+      "edit",
+      "delete",
+      "print",
+      "import",
+      "export",
+    ];
 
     setTempMenuPermissions((prev) => {
       const next = { ...prev };
@@ -828,11 +972,11 @@ export default function PermissionGroupsPage() {
       const found = users.find(
         (u) =>
           u.id === memberIdOrEmail ||
-          u.email.toLowerCase() === memberIdOrEmail.toLowerCase()
+          u.email.toLowerCase() === memberIdOrEmail.toLowerCase(),
       );
-      return found ? (found.fullName || found.email) : memberIdOrEmail;
+      return found ? found.fullName || found.email : memberIdOrEmail;
     },
-    [users]
+    [users],
   );
 
   // Active Menu Count Helper for table badge
@@ -853,9 +997,9 @@ export default function PermissionGroupsPage() {
     return users.filter((u) => {
       return (
         !q ||
-        (u.fullName || '').toLowerCase().includes(q) ||
+        (u.fullName || "").toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q) ||
-        (u.phone || '').includes(q)
+        (u.phone || "").includes(q)
       );
     });
   }, [users, memberSearch]);
@@ -865,51 +1009,69 @@ export default function PermissionGroupsPage() {
     return users.filter((u) => {
       return (
         !q ||
-        (u.fullName || '').toLowerCase().includes(q) ||
+        (u.fullName || "").toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q) ||
-        (u.phone || '').includes(q)
+        (u.phone || "").includes(q)
       );
     });
   }, [users, assignUserSearch]);
 
   // Export CSV Helper Function
   const handleExportCSV = () => {
-    const exportData = selectedGroupIds.length > 0
-      ? groups.filter((g) => selectedGroupIds.includes(g.id))
-      : groups;
+    const exportData =
+      selectedGroupIds.length > 0
+        ? groups.filter((g) => selectedGroupIds.includes(g.id))
+        : groups;
 
     if (exportData.length === 0) {
-      setError('Không có dữ liệu nhóm quyền để xuất file.');
+      setError("Không có dữ liệu nhóm quyền để xuất file.");
       return;
     }
 
-    const headers = ['STT', 'Mã nhóm', 'Tên nhóm quyền', 'Mô tả chức năng', 'Số lượng nhân sự áp dụng', 'Danh sách nhân sự', 'Số lượng Menu có quyền'];
+    const headers = [
+      "STT",
+      "Mã nhóm",
+      "Tên nhóm quyền",
+      "Mô tả chức năng",
+      "Số lượng nhân sự áp dụng",
+      "Danh sách nhân sự",
+      "Số lượng Menu có quyền",
+    ];
     const rows = exportData.map((g, idx) => {
-      const memberNames = (g.memberIds || []).map(getUserDisplayName).join('; ');
+      const memberNames = (g.memberIds || [])
+        .map(getUserDisplayName)
+        .join("; ");
       const activeMenuCount = getActiveMenuCount(g);
       return [
         idx + 1,
         `"${g.code || g.id}"`,
-        `"${(g.name || '').replace(/"/g, '""')}"`,
-        `"${(g.description || '').replace(/"/g, '""')}"`,
+        `"${(g.name || "").replace(/"/g, '""')}"`,
+        `"${(g.description || "").replace(/"/g, '""')}"`,
         g.memberIds?.length || 0,
         `"${memberNames.replace(/"/g, '""')}"`,
         `"${activeMenuCount}/${SYSTEM_MENU_TREE.length}"`,
       ];
     });
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const csvContent =
+      "\uFEFF" +
+      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Nhom_Quyen_WMS_${new Date().toISOString().slice(0, 10)}.csv`);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `Nhom_Quyen_WMS_${new Date().toISOString().slice(0, 10)}.csv`,
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    setSuccess(`Đã xuất file CSV thành công cho ${exportData.length} nhóm quyền.`);
+    setSuccess(
+      `Đã xuất file CSV thành công cho ${exportData.length} nhóm quyền.`,
+    );
   };
 
   // Matrix Filtered List
@@ -929,14 +1091,23 @@ export default function PermissionGroupsPage() {
 
   return (
     <div className="space-y-6">
-      <Toast message={error || success} type={error ? 'error' : 'success'} onClose={() => { setError(''); setSuccess(''); }} />
+      <Toast
+        message={error || success}
+        type={error ? "error" : "success"}
+        onClose={() => {
+          setError("");
+          setSuccess("");
+        }}
+      />
 
       {/* Top Header Section styled as pill badge matching "Người dùng / Nhân viên" */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="inline-flex items-center gap-2.5 rounded-2xl bg-cyan-600 px-5 py-2.5 text-white shadow-md">
             <ShieldCheck className="h-5 w-5" />
-            <h1 className="text-xl font-extrabold tracking-tight">Nhóm quyền</h1>
+            <h1 className="text-xl font-extrabold tracking-tight">
+              Nhóm quyền
+            </h1>
           </div>
         </div>
 
@@ -959,7 +1130,9 @@ export default function PermissionGroupsPage() {
               type="button"
               onClick={() => {
                 if (selectedGroupIds.length === 0) {
-                  setError('Vui lòng tích chọn ít nhất 1 nhóm quyền trong bảng để xóa.');
+                  setError(
+                    "Vui lòng tích chọn ít nhất 1 nhóm quyền trong bảng để xóa.",
+                  );
                   return;
                 }
                 setIsBulkDeleteModalOpen(true);
@@ -967,7 +1140,10 @@ export default function PermissionGroupsPage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
             >
               <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
-              Xóa {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ''}
+              Xóa{" "}
+              {selectedGroupIds.length > 0
+                ? `(${selectedGroupIds.length})`
+                : ""}
             </button>
           )}
 
@@ -978,7 +1154,8 @@ export default function PermissionGroupsPage() {
             className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
           >
             <Download className="h-4.5 w-4.5 text-cyan-700" />
-            Export {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ''}
+            Export{" "}
+            {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ""}
           </button>
 
           {/* 4. Hoàn tác */}
@@ -989,7 +1166,7 @@ export default function PermissionGroupsPage() {
             title="Mở lịch sử thao tác sửa và xóa để hoàn tác"
           >
             <RotateCcw className="h-4.5 w-4.5 text-cyan-700" />
-            Hoàn tác {undoHistory.length > 0 ? `(${undoHistory.length})` : ''}
+            Hoàn tác {undoHistory.length > 0 ? `(${undoHistory.length})` : ""}
           </button>
         </div>
       </div>
@@ -998,7 +1175,11 @@ export default function PermissionGroupsPage() {
       {selectedGroupIds.length > 0 && (
         <div className="flex items-center justify-between rounded-xl bg-cyan-50 border-2 border-cyan-500 px-4 py-3 shadow-sm animate-in fade-in">
           <span className="text-sm font-bold text-cyan-900">
-            Đã tích chọn <b className="text-cyan-700 font-extrabold text-base">{selectedGroupIds.length}</b> nhóm quyền trong bảng
+            Đã tích chọn{" "}
+            <b className="text-cyan-700 font-extrabold text-base">
+              {selectedGroupIds.length}
+            </b>{" "}
+            nhóm quyền trong bảng
           </span>
           <button
             type="button"
@@ -1022,16 +1203,25 @@ export default function PermissionGroupsPage() {
                       type="checkbox"
                       checked={
                         paginatedGroups.length > 0 &&
-                        paginatedGroups.every((g) => selectedGroupIds.includes(g.id))
+                        paginatedGroups.every((g) =>
+                          selectedGroupIds.includes(g.id),
+                        )
                       }
                       onChange={(e) => {
                         if (e.target.checked) {
                           setSelectedGroupIds(
-                            Array.from(new Set([...selectedGroupIds, ...paginatedGroups.map((g) => g.id)]))
+                            Array.from(
+                              new Set([
+                                ...selectedGroupIds,
+                                ...paginatedGroups.map((g) => g.id),
+                              ]),
+                            ),
                           );
                         } else {
                           setSelectedGroupIds(
-                            selectedGroupIds.filter((id) => !paginatedGroups.some((g) => g.id === id))
+                            selectedGroupIds.filter(
+                              (id) => !paginatedGroups.some((g) => g.id === id),
+                            ),
                           );
                         }
                       }}
@@ -1061,7 +1251,9 @@ export default function PermissionGroupsPage() {
               <tbody className="divide-y divide-slate-200 bg-white">
                 {paginatedGroups.map((group, index) => {
                   const globalIndex = (currentPage - 1) * pageSize + index + 1;
-                  const memberList = (group.memberIds || []).map(getUserDisplayName);
+                  const memberList = (group.memberIds || []).map(
+                    getUserDisplayName,
+                  );
                   const activeMenuCount = getActiveMenuCount(group);
 
                   const displayMembers = memberList.slice(0, 2);
@@ -1072,7 +1264,7 @@ export default function PermissionGroupsPage() {
                     <tr
                       key={group.id}
                       className={`group border-b border-slate-200 transition ${
-                        isSelected ? 'bg-cyan-50/70' : 'hover:bg-cyan-50/50'
+                        isSelected ? "bg-cyan-50/70" : "hover:bg-cyan-50/50"
                       }`}
                     >
                       <td className="border-r border-slate-200 px-3 py-3.5 text-center">
@@ -1083,7 +1275,7 @@ export default function PermissionGroupsPage() {
                             setSelectedGroupIds((prev) =>
                               prev.includes(group.id)
                                 ? prev.filter((id) => id !== group.id)
-                                : [...prev, group.id]
+                                : [...prev, group.id],
                             );
                           }}
                           className="h-4 w-4 rounded border-cyan-500 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
@@ -1096,27 +1288,32 @@ export default function PermissionGroupsPage() {
                         {group.name}
                       </td>
                       <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-medium text-slate-700">
-                        {group.description || 'Chưa có mô tả'}
+                        {group.description || "Chưa có mô tả"}
                       </td>
                       <td className="border-r border-slate-200 px-4 py-3.5 text-center text-sm font-medium text-slate-700">
                         {memberList.length > 0 ? (
                           <div className="flex flex-wrap items-center justify-center gap-1.5">
                             {displayMembers.map((m, i) => (
-                              <span key={i} className="inline-block rounded-md bg-cyan-50 px-2 py-0.5 text-xs text-cyan-800 font-semibold border border-cyan-200">
+                              <span
+                                key={i}
+                                className="inline-block rounded-md bg-cyan-50 px-2 py-0.5 text-xs text-cyan-800 font-semibold border border-cyan-200"
+                              >
                                 {m}
                               </span>
                             ))}
                             {remainingCount > 0 && (
                               <span
                                 className="inline-block rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 font-bold border border-slate-200 cursor-help"
-                                title={memberList.slice(2).join(', ')}
+                                title={memberList.slice(2).join(", ")}
                               >
                                 +{remainingCount} nhân sự
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-400 italic text-xs">Chưa gán nhân sự</span>
+                          <span className="text-slate-400 italic text-xs">
+                            Chưa gán nhân sự
+                          </span>
                         )}
                       </td>
                       <td className="border-r border-slate-200 px-3 py-3.5 text-center text-sm font-bold text-cyan-700">
@@ -1131,10 +1328,14 @@ export default function PermissionGroupsPage() {
                             disabled={!canEdit}
                             className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
                               !canEdit
-                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
-                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                                ? "border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none"
+                                : "border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
                             }`}
-                            title={!canEdit ? 'Không có quyền phân quyền menu' : 'Phân quyền dùng Menu'}
+                            title={
+                              !canEdit
+                                ? "Không có quyền phân quyền menu"
+                                : "Phân quyền dùng Menu"
+                            }
                             onClick={() => {
                               if (!canEdit) return;
                               openPermissionMatrixModal(group);
@@ -1148,10 +1349,14 @@ export default function PermissionGroupsPage() {
                             disabled={!canEdit}
                             className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
                               !canEdit
-                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
-                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                                ? "border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none"
+                                : "border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
                             }`}
-                            title={!canEdit ? 'Không có quyền gán nhân sự' : 'Gán nhân sự vào nhóm'}
+                            title={
+                              !canEdit
+                                ? "Không có quyền gán nhân sự"
+                                : "Gán nhân sự vào nhóm"
+                            }
                             onClick={() => {
                               if (!canEdit) return;
                               openAssignPersonnelModal(group);
@@ -1165,10 +1370,10 @@ export default function PermissionGroupsPage() {
                             disabled={!canEdit}
                             className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
                               !canEdit
-                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
-                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                                ? "border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none"
+                                : "border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
                             }`}
-                            title={!canEdit ? 'Không có quyền sửa' : 'Sửa nhóm'}
+                            title={!canEdit ? "Không có quyền sửa" : "Sửa nhóm"}
                             onClick={() => {
                               if (!canEdit) return;
                               openGroupModal(group);
@@ -1182,10 +1387,12 @@ export default function PermissionGroupsPage() {
                             disabled={!canDelete}
                             className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
                               !canDelete
-                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
-                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                                ? "border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none"
+                                : "border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
                             }`}
-                            title={!canDelete ? 'Không có quyền xóa' : 'Xóa nhóm'}
+                            title={
+                              !canDelete ? "Không có quyền xóa" : "Xóa nhóm"
+                            }
                             onClick={() => {
                               if (!canDelete) return;
                               setDeletingGroupId(group.id);
@@ -1206,7 +1413,9 @@ export default function PermissionGroupsPage() {
           {totalItems > 0 && (
             <div className="flex flex-col items-center justify-between border-t border-slate-200 bg-slate-50/50 px-6 py-3 sm:flex-row">
               <div className="text-sm font-medium text-slate-600">
-                Tổng số: <b className="font-extrabold text-slate-900">{totalItems}</b> nhóm quyền{' '}
+                Tổng số:{" "}
+                <b className="font-extrabold text-slate-900">{totalItems}</b>{" "}
+                nhóm quyền{" "}
                 <span className="ml-2 text-slate-500">
                   Hiển thị {startIndex} - {endIndex}
                 </span>
@@ -1250,7 +1459,9 @@ export default function PermissionGroupsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
                     disabled={currentPage === totalPages}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
                   >
@@ -1274,8 +1485,12 @@ export default function PermissionGroupsPage() {
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-600 mb-4">
             <ShieldCheck size={32} />
           </div>
-          <h3 className="text-lg font-bold text-slate-800">Không tìm thấy nhóm quyền nào</h3>
-          <p className="mt-1 text-sm text-slate-500">Thử thay đổi từ khóa tìm kiếm hoặc tạo nhóm quyền mới.</p>
+          <h3 className="text-lg font-bold text-slate-800">
+            Không tìm thấy nhóm quyền nào
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Thử thay đổi từ khóa tìm kiếm hoặc tạo nhóm quyền mới.
+          </p>
         </div>
       )}
 
@@ -1286,7 +1501,9 @@ export default function PermissionGroupsPage() {
             <div className="w-full max-w-lg rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-2xl transition-all">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <h3 className="text-lg font-extrabold text-slate-800">
-                  {editingGroup ? 'Chỉnh sửa Nhóm quyền' : 'Thêm mới Nhóm quyền'}
+                  {editingGroup
+                    ? "Chỉnh sửa Nhóm quyền"
+                    : "Thêm mới Nhóm quyền"}
                 </h3>
                 <button
                   type="button"
@@ -1305,7 +1522,12 @@ export default function PermissionGroupsPage() {
                   <input
                     type="text"
                     value={groupForm.name}
-                    onChange={(e) => setGroupForm((prev) => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) =>
+                      setGroupForm((prev) => ({
+                        ...prev,
+                        name: e.target.value,
+                      }))
+                    }
                     placeholder="VD: Quản lý kho, Thủ kho, NV Kiểm kê..."
                     className="mt-1 h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
                     required
@@ -1313,10 +1535,17 @@ export default function PermissionGroupsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold uppercase text-slate-600">Mô tả chức năng</label>
+                  <label className="block text-xs font-bold uppercase text-slate-600">
+                    Mô tả chức năng
+                  </label>
                   <textarea
                     value={groupForm.description}
-                    onChange={(e) => setGroupForm((prev) => ({ ...prev, description: e.target.value }))}
+                    onChange={(e) =>
+                      setGroupForm((prev) => ({
+                        ...prev,
+                        description: e.target.value,
+                      }))
+                    }
                     placeholder="Mô tả công việc & phạm vi quyền hạn của nhóm..."
                     rows={3}
                     className="mt-1 w-full rounded-xl border-2 border-cyan-500 bg-white p-3 text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-cyan-500/10"
@@ -1325,7 +1554,8 @@ export default function PermissionGroupsPage() {
 
                 <div>
                   <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
-                    Nhân sự áp dụng nhóm quyền ({groupForm.memberIds.length} đã chọn)
+                    Nhân sự áp dụng nhóm quyền ({groupForm.memberIds.length} đã
+                    chọn)
                   </label>
                   <div className="relative mb-2">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1341,7 +1571,8 @@ export default function PermissionGroupsPage() {
                     {filteredUsersForForm.length > 0 ? (
                       filteredUsersForForm.map((user) => {
                         const isChecked =
-                          groupForm.memberIds.includes(user.id) || groupForm.memberIds.includes(user.email);
+                          groupForm.memberIds.includes(user.id) ||
+                          groupForm.memberIds.includes(user.email);
                         return (
                           <label
                             key={user.id}
@@ -1353,9 +1584,13 @@ export default function PermissionGroupsPage() {
                               onChange={() => {
                                 setGroupForm((prev) => {
                                   const exists =
-                                    prev.memberIds.includes(user.id) || prev.memberIds.includes(user.email);
+                                    prev.memberIds.includes(user.id) ||
+                                    prev.memberIds.includes(user.email);
                                   const newMemberIds = exists
-                                    ? prev.memberIds.filter((m) => m !== user.id && m !== user.email)
+                                    ? prev.memberIds.filter(
+                                        (m) =>
+                                          m !== user.id && m !== user.email,
+                                      )
                                     : [...prev.memberIds, user.id];
                                   return { ...prev, memberIds: newMemberIds };
                                 });
@@ -1363,14 +1598,20 @@ export default function PermissionGroupsPage() {
                               className="h-4 w-4 rounded border-cyan-500 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
                             />
                             <div className="flex-1 overflow-hidden">
-                              <p className="font-bold text-slate-800 truncate">{user.fullName || user.email}</p>
-                              <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
+                              <p className="font-bold text-slate-800 truncate">
+                                {user.fullName || user.email}
+                              </p>
+                              <p className="text-[11px] text-slate-400 truncate">
+                                {user.email}
+                              </p>
                             </div>
                           </label>
                         );
                       })
                     ) : (
-                      <p className="text-center py-3 text-xs text-slate-400 italic">Không có nhân sự nào</p>
+                      <p className="text-center py-3 text-xs text-slate-400 italic">
+                        Không có nhân sự nào
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1388,13 +1629,13 @@ export default function PermissionGroupsPage() {
                     disabled={saving}
                     className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-cyan-700 disabled:opacity-50 cursor-pointer"
                   >
-                    {saving ? 'Đang lưu...' : 'Lưu Nhóm quyền'}
+                    {saving ? "Đang lưu..." : "Lưu Nhóm quyền"}
                   </button>
                 </div>
               </form>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
 
       {/* ASSIGN PERSONNEL MODAL FROM TABLE ACTION */}
@@ -1404,9 +1645,14 @@ export default function PermissionGroupsPage() {
             <div className="w-full max-w-lg rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div>
-                  <h3 className="text-lg font-extrabold text-slate-800">Gán nhân sự vào nhóm quyền</h3>
+                  <h3 className="text-lg font-extrabold text-slate-800">
+                    Gán nhân sự vào nhóm quyền
+                  </h3>
                   <p className="text-xs font-bold text-cyan-700 mt-0.5">
-                    Nhóm quyền: <span className="font-extrabold">{assignPersonnelGroup.name}</span>
+                    Nhóm quyền:{" "}
+                    <span className="font-extrabold">
+                      {assignPersonnelGroup.name}
+                    </span>
                   </p>
                 </div>
                 <button
@@ -1434,7 +1680,8 @@ export default function PermissionGroupsPage() {
                   {filteredAssignUsers.length > 0 ? (
                     filteredAssignUsers.map((user) => {
                       const isChecked =
-                        tempAssignMemberIds.includes(user.id) || tempAssignMemberIds.includes(user.email);
+                        tempAssignMemberIds.includes(user.id) ||
+                        tempAssignMemberIds.includes(user.email);
                       return (
                         <label
                           key={user.id}
@@ -1445,30 +1692,42 @@ export default function PermissionGroupsPage() {
                             checked={isChecked}
                             onChange={() => {
                               setTempAssignMemberIds((prev) => {
-                                const exists = prev.includes(user.id) || prev.includes(user.email);
+                                const exists =
+                                  prev.includes(user.id) ||
+                                  prev.includes(user.email);
                                 return exists
-                                  ? prev.filter((m) => m !== user.id && m !== user.email)
+                                  ? prev.filter(
+                                      (m) => m !== user.id && m !== user.email,
+                                    )
                                   : [...prev, user.id];
                               });
                             }}
                             className="h-4 w-4 rounded border-cyan-500 text-cyan-600 focus:ring-cyan-500 cursor-pointer"
                           />
                           <div className="flex-1 overflow-hidden">
-                            <p className="font-bold text-slate-800 truncate">{user.fullName || user.email}</p>
-                            <p className="text-[11px] text-slate-400 truncate">{user.email}</p>
+                            <p className="font-bold text-slate-800 truncate">
+                              {user.fullName || user.email}
+                            </p>
+                            <p className="text-[11px] text-slate-400 truncate">
+                              {user.email}
+                            </p>
                           </div>
                         </label>
                       );
                     })
                   ) : (
-                    <p className="text-center py-4 text-xs text-slate-400 italic">Không tìm thấy nhân sự</p>
+                    <p className="text-center py-4 text-xs text-slate-400 italic">
+                      Không tìm thấy nhân sự
+                    </p>
                   )}
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 mt-4">
                 <span className="text-xs font-bold text-slate-500">
-                  Đã chọn: <b className="text-cyan-700">{tempAssignMemberIds.length}</b> nhân sự
+                  Đã chọn:{" "}
+                  <b className="text-cyan-700">{tempAssignMemberIds.length}</b>{" "}
+                  nhân sự
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -1484,13 +1743,13 @@ export default function PermissionGroupsPage() {
                     disabled={saving}
                     className="rounded-xl bg-cyan-600 px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-cyan-700 disabled:opacity-50 cursor-pointer"
                   >
-                    {saving ? 'Đang lưu...' : 'Lưu phân gán'}
+                    {saving ? "Đang lưu..." : "Lưu phân gán"}
                   </button>
                 </div>
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
 
       {/* SINGLE DELETE CONFIRMATION MODAL */}
@@ -1498,9 +1757,12 @@ export default function PermissionGroupsPage() {
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
             <div className="w-full max-w-md rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-2xl">
-              <h3 className="text-lg font-extrabold text-slate-800">Xác nhận xóa Nhóm quyền</h3>
+              <h3 className="text-lg font-extrabold text-slate-800">
+                Xác nhận xóa Nhóm quyền
+              </h3>
               <p className="mt-2 text-sm text-slate-600">
-                Bạn có chắc chắn muốn xóa nhóm quyền này? Các nhân sự thuộc nhóm sẽ bị hủy liên kết nhóm quyền.
+                Bạn có chắc chắn muốn xóa nhóm quyền này? Các nhân sự thuộc nhóm
+                sẽ bị hủy liên kết nhóm quyền.
               </p>
               <div className="mt-6 flex items-center justify-end gap-3">
                 <button
@@ -1520,7 +1782,7 @@ export default function PermissionGroupsPage() {
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
 
       {/* BULK DELETE CONFIRMATION MODAL */}
@@ -1528,9 +1790,14 @@ export default function PermissionGroupsPage() {
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
             <div className="w-full max-w-md rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-2xl">
-              <h3 className="text-lg font-extrabold text-slate-800">Xác nhận xóa hàng loạt</h3>
+              <h3 className="text-lg font-extrabold text-slate-800">
+                Xác nhận xóa hàng loạt
+              </h3>
               <p className="mt-2 text-sm text-slate-600">
-                Bạn có chắc chắn muốn xóa <b className="text-red-600">{selectedGroupIds.length}</b> nhóm quyền đã chọn? Tất cả liên kết phân quyền của các nhóm này sẽ bị xóa.
+                Bạn có chắc chắn muốn xóa{" "}
+                <b className="text-red-600">{selectedGroupIds.length}</b> nhóm
+                quyền đã chọn? Tất cả liên kết phân quyền của các nhóm này sẽ bị
+                xóa.
               </p>
               <div className="mt-6 flex items-center justify-end gap-3">
                 <button
@@ -1546,12 +1813,12 @@ export default function PermissionGroupsPage() {
                   disabled={saving}
                   className="rounded-xl bg-red-600 px-5 py-2 text-sm font-bold text-white shadow-md hover:bg-red-700 disabled:opacity-50 cursor-pointer"
                 >
-                  {saving ? 'Đang xóa...' : 'Xóa ngay'}
+                  {saving ? "Đang xóa..." : "Xóa ngay"}
                 </button>
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
 
       {/* EXPANDED & STYLISH "PHÂN QUYỀN DÙNG MENU" MODAL */}
@@ -1565,7 +1832,10 @@ export default function PermissionGroupsPage() {
                     PHÂN QUYỀN DÙNG MENU
                   </h2>
                   <p className="text-sm font-bold text-slate-600 mt-0.5">
-                    Nhóm quyền: <span className="text-cyan-700 font-extrabold">{permissionModalGroup.name}</span>
+                    Nhóm quyền:{" "}
+                    <span className="text-cyan-700 font-extrabold">
+                      {permissionModalGroup.name}
+                    </span>
                   </p>
                 </div>
                 <button
@@ -1585,7 +1855,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.canViewImportPrice}
-                        onChange={() => toggleGeneralPermission('canViewImportPrice')}
+                        onChange={() =>
+                          toggleGeneralPermission("canViewImportPrice")
+                        }
                         className="h-4.5 w-4.5 rounded-md border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Được xem giá nhập</span>
@@ -1595,7 +1867,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.canViewExportPriceInCat}
-                        onChange={() => toggleGeneralPermission('canViewExportPriceInCat')}
+                        onChange={() =>
+                          toggleGeneralPermission("canViewExportPriceInCat")
+                        }
                         className="h-4.5 w-4.5 rounded-md border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Xem giá xuất trong DM</span>
@@ -1605,7 +1879,7 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.canCopyKit}
-                        onChange={() => toggleGeneralPermission('canCopyKit')}
+                        onChange={() => toggleGeneralPermission("canCopyKit")}
                         className="h-4.5 w-4.5 rounded-md border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Sao chép bộ</span>
@@ -1615,7 +1889,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.canViewInvoiceByStaff}
-                        onChange={() => toggleGeneralPermission('canViewInvoiceByStaff')}
+                        onChange={() =>
+                          toggleGeneralPermission("canViewInvoiceByStaff")
+                        }
                         className="h-4.5 w-4.5 rounded-md border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Xem Hóa đơn theo Nhân viên</span>
@@ -1624,8 +1900,12 @@ export default function PermissionGroupsPage() {
                     <label className="flex items-center gap-2.5 cursor-pointer hover:text-cyan-700 transition">
                       <input
                         type="checkbox"
-                        checked={tempGeneralPermissions.canManageCustomerByStaff}
-                        onChange={() => toggleGeneralPermission('canManageCustomerByStaff')}
+                        checked={
+                          tempGeneralPermissions.canManageCustomerByStaff
+                        }
+                        onChange={() =>
+                          toggleGeneralPermission("canManageCustomerByStaff")
+                        }
                         className="h-4.5 w-4.5 rounded-md border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Quản lý KH theo Nhân viên</span>
@@ -1635,7 +1915,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.canEditPriceWholesale}
-                        onChange={() => toggleGeneralPermission('canEditPriceWholesale')}
+                        onChange={() =>
+                          toggleGeneralPermission("canEditPriceWholesale")
+                        }
                         className="h-4.5 w-4.5 rounded-md border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Sửa giá khi Xuất bán buôn</span>
@@ -1645,7 +1927,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.canEditDateStock}
-                        onChange={() => toggleGeneralPermission('canEditDateStock')}
+                        onChange={() =>
+                          toggleGeneralPermission("canEditDateStock")
+                        }
                         className="h-4.5 w-4.5 rounded-md border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Sửa ngày phiếu Nhập/Xuất</span>
@@ -1655,7 +1939,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.canEditDateCash}
-                        onChange={() => toggleGeneralPermission('canEditDateCash')}
+                        onChange={() =>
+                          toggleGeneralPermission("canEditDateCash")
+                        }
                         className="h-4.5 w-4.5 rounded-md border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Sửa ngày phiếu Thu/Chi</span>
@@ -1673,7 +1959,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.showInvoiceCount}
-                        onChange={() => toggleGeneralPermission('showInvoiceCount')}
+                        onChange={() =>
+                          toggleGeneralPermission("showInvoiceCount")
+                        }
                         className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Số hóa đơn</span>
@@ -1683,7 +1971,7 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.showRevenue}
-                        onChange={() => toggleGeneralPermission('showRevenue')}
+                        onChange={() => toggleGeneralPermission("showRevenue")}
                         className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Doanh thu</span>
@@ -1693,7 +1981,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.showActualRevenue}
-                        onChange={() => toggleGeneralPermission('showActualRevenue')}
+                        onChange={() =>
+                          toggleGeneralPermission("showActualRevenue")
+                        }
                         className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Thực thu</span>
@@ -1703,7 +1993,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.showProfitLoss}
-                        onChange={() => toggleGeneralPermission('showProfitLoss')}
+                        onChange={() =>
+                          toggleGeneralPermission("showProfitLoss")
+                        }
                         className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Lãi lỗ</span>
@@ -1713,7 +2005,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.showRevenueChart}
-                        onChange={() => toggleGeneralPermission('showRevenueChart')}
+                        onChange={() =>
+                          toggleGeneralPermission("showRevenueChart")
+                        }
                         className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Biểu đồ DThu/LNhận</span>
@@ -1723,7 +2017,7 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.showAuditLog}
-                        onChange={() => toggleGeneralPermission('showAuditLog')}
+                        onChange={() => toggleGeneralPermission("showAuditLog")}
                         className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Lịch sử thao tác</span>
@@ -1733,7 +2027,9 @@ export default function PermissionGroupsPage() {
                       <input
                         type="checkbox"
                         checked={tempGeneralPermissions.showEditAppPrice}
-                        onChange={() => toggleGeneralPermission('showEditAppPrice')}
+                        onChange={() =>
+                          toggleGeneralPermission("showEditAppPrice")
+                        }
                         className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                       />
                       <span>Sửa giá đơn App</span>
@@ -1763,21 +2059,32 @@ export default function PermissionGroupsPage() {
                             DANH MỤC MENU / CHỨC NĂNG
                           </th>
                           {[
-                            { key: 'view', label: 'XEM' },
-                            { key: 'create', label: 'THÊM MỚI' },
-                            { key: 'edit', label: 'SỬA' },
-                            { key: 'delete', label: 'XÓA' },
-                            { key: 'print', label: 'IN CHỨNG TỪ' },
-                            { key: 'import', label: 'NHẬP FILE' },
-                            { key: 'export', label: 'XUẤT FILE' },
+                            { key: "view", label: "XEM" },
+                            { key: "create", label: "THÊM MỚI" },
+                            { key: "edit", label: "SỬA" },
+                            { key: "delete", label: "XÓA" },
+                            { key: "print", label: "IN CHỨNG TỪ" },
+                            { key: "import", label: "NHẬP FILE" },
+                            { key: "export", label: "XUẤT FILE" },
                           ].map((col) => (
-                            <th key={col.key} className="px-2 py-2 text-center border-r border-slate-200 w-24">
+                            <th
+                              key={col.key}
+                              className="px-2 py-2 text-center border-r border-slate-200 w-24"
+                            >
                               <div className="flex flex-col items-center justify-center gap-1.5">
-                                <span className="text-[11px] font-black">{col.label}</span>
+                                <span className="text-[11px] font-black">
+                                  {col.label}
+                                </span>
                                 <input
                                   type="checkbox"
-                                  checked={isColumnAllChecked(col.key as keyof ActionPermission)}
-                                  onChange={() => toggleColumnPermissions(col.key as keyof ActionPermission)}
+                                  checked={isColumnAllChecked(
+                                    col.key as keyof ActionPermission,
+                                  )}
+                                  onChange={() =>
+                                    toggleColumnPermissions(
+                                      col.key as keyof ActionPermission,
+                                    )
+                                  }
                                   title={`Chọn / Bỏ chọn toàn bộ cột ${col.label}`}
                                   className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                                 />
@@ -1791,13 +2098,23 @@ export default function PermissionGroupsPage() {
                           if (item.isHeader) {
                             const isCollapsed = collapsedHeaders[item.id];
                             return (
-                              <tr key={item.id} className="bg-cyan-100/60 font-black text-cyan-900 border-t-2 border-cyan-200">
+                              <tr
+                                key={item.id}
+                                className="bg-cyan-100/60 font-black text-cyan-900 border-t-2 border-cyan-200"
+                              >
                                 <td className="px-4 py-3 flex items-center justify-between border-r border-cyan-200">
-                                  <span className="uppercase text-xs tracking-wider">{item.label}</span>
+                                  <span className="uppercase text-xs tracking-wider">
+                                    {item.label}
+                                  </span>
                                   <div className="flex items-center gap-2">
                                     <button
                                       type="button"
-                                      onClick={() => toggleHeaderRowPermissions(item.id, true)}
+                                      onClick={() =>
+                                        toggleHeaderRowPermissions(
+                                          item.id,
+                                          true,
+                                        )
+                                      }
                                       className="text-[11px] font-bold text-cyan-800 hover:text-cyan-950 underline cursor-pointer"
                                       title="Bật tất cả quyền mục này"
                                     >
@@ -1805,7 +2122,12 @@ export default function PermissionGroupsPage() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => toggleHeaderRowPermissions(item.id, false)}
+                                      onClick={() =>
+                                        toggleHeaderRowPermissions(
+                                          item.id,
+                                          false,
+                                        )
+                                      }
                                       className="text-[11px] font-bold text-slate-600 hover:text-slate-900 underline cursor-pointer"
                                       title="Tắt tất cả quyền mục này"
                                     >
@@ -1813,10 +2135,19 @@ export default function PermissionGroupsPage() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => setCollapsedHeaders((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                      onClick={() =>
+                                        setCollapsedHeaders((prev) => ({
+                                          ...prev,
+                                          [item.id]: !prev[item.id],
+                                        }))
+                                      }
                                       className="ml-2 p-1 text-cyan-800 hover:bg-cyan-200/50 rounded cursor-pointer"
                                     >
-                                      {isCollapsed ? <PlusIcon size={14} /> : <MinusCircle size={14} />}
+                                      {isCollapsed ? (
+                                        <PlusIcon size={14} />
+                                      ) : (
+                                        <MinusCircle size={14} />
+                                      )}
                                     </button>
                                   </div>
                                 </td>
@@ -1825,7 +2156,10 @@ export default function PermissionGroupsPage() {
                             );
                           }
 
-                          if (item.parentId && collapsedHeaders[item.parentId]) {
+                          if (
+                            item.parentId &&
+                            collapsedHeaders[item.parentId]
+                          ) {
                             return null;
                           }
 
@@ -1840,25 +2174,35 @@ export default function PermissionGroupsPage() {
                             export: false,
                           };
 
-                          const columns: Array<{ key: keyof ActionPermission; label: string }> = [
-                            { key: 'view', label: 'Xem' },
-                            { key: 'create', label: 'Thêm mới' },
-                            { key: 'edit', label: 'Sửa' },
-                            { key: 'delete', label: 'Xóa' },
-                            { key: 'print', label: 'In chứng từ' },
-                            { key: 'import', label: 'Nhập file' },
-                            { key: 'export', label: 'Xuất file' },
+                          const columns: Array<{
+                            key: keyof ActionPermission;
+                            label: string;
+                          }> = [
+                            { key: "view", label: "Xem" },
+                            { key: "create", label: "Thêm mới" },
+                            { key: "edit", label: "Sửa" },
+                            { key: "delete", label: "Xóa" },
+                            { key: "print", label: "In chứng từ" },
+                            { key: "import", label: "Nhập file" },
+                            { key: "export", label: "Xuất file" },
                           ];
 
                           return (
-                            <tr key={item.id} className="hover:bg-cyan-50/50 transition">
+                            <tr
+                              key={item.id}
+                              className="hover:bg-cyan-50/50 transition"
+                            >
                               <td className="px-4 py-2.5 border-r border-slate-200 font-semibold text-slate-800 pl-8">
                                 {item.label}
                               </td>
 
                               {columns.map((col) => {
-                                const supported = isActionSupported(item.id, col.key);
-                                const isChecked = supported && Boolean(perm[col.key]);
+                                const supported = isActionSupported(
+                                  item.id,
+                                  col.key,
+                                );
+                                const isChecked =
+                                  supported && Boolean(perm[col.key]);
 
                                 if (!supported) {
                                   return (
@@ -1878,11 +2222,16 @@ export default function PermissionGroupsPage() {
                                 }
 
                                 return (
-                                  <td key={col.key} className="px-3 py-2.5 text-center border-r border-slate-200">
+                                  <td
+                                    key={col.key}
+                                    className="px-3 py-2.5 text-center border-r border-slate-200"
+                                  >
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
-                                      onChange={() => toggleActionPermission(item.id, col.key)}
+                                      onChange={() =>
+                                        toggleActionPermission(item.id, col.key)
+                                      }
                                       className="h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
                                     />
                                   </td>
@@ -1912,12 +2261,12 @@ export default function PermissionGroupsPage() {
                   disabled={saving}
                   className="rounded-xl bg-cyan-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-cyan-700 disabled:opacity-50 transition cursor-pointer"
                 >
-                  {saving ? 'Đang lưu...' : 'Lưu Phân Quyền Menu'}
+                  {saving ? "Đang lưu..." : "Lưu Phân Quyền Menu"}
                 </button>
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
 
       {/* Undo / History Modal */}
@@ -1932,7 +2281,9 @@ export default function PermissionGroupsPage() {
                     <RotateCcw className="h-5 w-5" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-extrabold">Lịch Sử & Hoàn Tác Thao Tác</h2>
+                    <h2 className="text-lg font-extrabold">
+                      Lịch Sử & Hoàn Tác Thao Tác
+                    </h2>
                     <p className="text-xs text-cyan-100 font-medium">
                       Hoàn tác các lệnh Sửa và Xóa nhóm quyền đã thực hiện
                     </p>
@@ -1953,36 +2304,38 @@ export default function PermissionGroupsPage() {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setUndoTabFilter('ALL')}
+                    onClick={() => setUndoTabFilter("ALL")}
                     className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition cursor-pointer ${
-                      undoTabFilter === 'ALL'
-                        ? 'bg-cyan-600 text-white shadow-xs'
-                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-300'
+                      undoTabFilter === "ALL"
+                        ? "bg-cyan-600 text-white shadow-xs"
+                        : "bg-white text-slate-600 hover:bg-slate-200 border border-slate-300"
                     }`}
                   >
                     Tất cả ({undoHistory.length})
                   </button>
                   <button
                     type="button"
-                    onClick={() => setUndoTabFilter('DELETE')}
+                    onClick={() => setUndoTabFilter("DELETE")}
                     className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition cursor-pointer ${
-                      undoTabFilter === 'DELETE'
-                        ? 'bg-cyan-600 text-white shadow-xs'
-                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-300'
+                      undoTabFilter === "DELETE"
+                        ? "bg-cyan-600 text-white shadow-xs"
+                        : "bg-white text-slate-600 hover:bg-slate-200 border border-slate-300"
                     }`}
                   >
-                    Lệnh Xóa ({undoHistory.filter((i) => i.type === 'DELETE').length})
+                    Lệnh Xóa (
+                    {undoHistory.filter((i) => i.type === "DELETE").length})
                   </button>
                   <button
                     type="button"
-                    onClick={() => setUndoTabFilter('EDIT')}
+                    onClick={() => setUndoTabFilter("EDIT")}
                     className={`rounded-lg px-3 py-1.5 text-xs font-extrabold transition cursor-pointer ${
-                      undoTabFilter === 'EDIT'
-                        ? 'bg-cyan-600 text-white shadow-xs'
-                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-300'
+                      undoTabFilter === "EDIT"
+                        ? "bg-cyan-600 text-white shadow-xs"
+                        : "bg-white text-slate-600 hover:bg-slate-200 border border-slate-300"
                     }`}
                   >
-                    Lệnh Sửa ({undoHistory.filter((i) => i.type === 'EDIT').length})
+                    Lệnh Sửa (
+                    {undoHistory.filter((i) => i.type === "EDIT").length})
                   </button>
                 </div>
 
@@ -1990,7 +2343,9 @@ export default function PermissionGroupsPage() {
                 {selectedUndoDeleteIds.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => handleRestoreDeletedGroups(selectedUndoDeleteIds)}
+                    onClick={() =>
+                      handleRestoreDeletedGroups(selectedUndoDeleteIds)
+                    }
                     className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-4 py-1.5 text-xs font-extrabold text-cyan-700 shadow-xs hover:bg-cyan-50 transition cursor-pointer"
                   >
                     <RotateCcw className="h-3.5 w-3.5 text-cyan-700" />
@@ -2001,19 +2356,28 @@ export default function PermissionGroupsPage() {
 
               {/* History Items List */}
               <div className="flex-1 overflow-y-auto p-6 space-y-3">
-                {undoHistory.filter((item) => undoTabFilter === 'ALL' || item.type === undoTabFilter).length === 0 ? (
+                {undoHistory.filter(
+                  (item) =>
+                    undoTabFilter === "ALL" || item.type === undoTabFilter,
+                ).length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center text-slate-400">
                     <History className="h-12 w-12 stroke-[1.5] mb-2 text-slate-300" />
-                    <p className="text-sm font-bold text-slate-600">Chưa có thao tác Sửa hoặc Xóa nào để hoàn tác</p>
+                    <p className="text-sm font-bold text-slate-600">
+                      Chưa có thao tác Sửa hoặc Xóa nào để hoàn tác
+                    </p>
                     <p className="text-xs text-slate-400 mt-1">
-                      Các thao tác chỉnh sửa hoặc xóa nhóm quyền sẽ ghi vết tại đây để bạn khôi phục lại khi cần.
+                      Các thao tác chỉnh sửa hoặc xóa nhóm quyền sẽ ghi vết tại
+                      đây để bạn khôi phục lại khi cần.
                     </p>
                   </div>
                 ) : (
                   undoHistory
-                    .filter((item) => undoTabFilter === 'ALL' || item.type === undoTabFilter)
+                    .filter(
+                      (item) =>
+                        undoTabFilter === "ALL" || item.type === undoTabFilter,
+                    )
                     .map((item) => {
-                      const isDeleted = item.type === 'DELETE';
+                      const isDeleted = item.type === "DELETE";
                       const isChecked = selectedUndoDeleteIds.includes(item.id);
 
                       return (
@@ -2021,8 +2385,8 @@ export default function PermissionGroupsPage() {
                           key={item.id}
                           className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border-2 p-4 transition ${
                             isDeleted
-                              ? 'border-red-200 bg-red-50/40 hover:bg-red-50/70'
-                              : 'border-cyan-200 bg-cyan-50/30 hover:bg-cyan-50/60'
+                              ? "border-red-200 bg-red-50/40 hover:bg-red-50/70"
+                              : "border-cyan-200 bg-cyan-50/30 hover:bg-cyan-50/60"
                           }`}
                         >
                           <div className="flex items-start gap-3">
@@ -2033,9 +2397,14 @@ export default function PermissionGroupsPage() {
                                 checked={isChecked}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setSelectedUndoDeleteIds((prev) => [...prev, item.id]);
+                                    setSelectedUndoDeleteIds((prev) => [
+                                      ...prev,
+                                      item.id,
+                                    ]);
                                   } else {
-                                    setSelectedUndoDeleteIds((prev) => prev.filter((id) => id !== item.id));
+                                    setSelectedUndoDeleteIds((prev) =>
+                                      prev.filter((id) => id !== item.id),
+                                    );
                                   }
                                 }}
                                 className="mt-1 h-4 w-4 rounded border-slate-300 accent-cyan-600 focus:ring-cyan-500 cursor-pointer"
@@ -2051,18 +2420,27 @@ export default function PermissionGroupsPage() {
                               <div className="flex items-center gap-2">
                                 <span
                                   className={`rounded-md px-2 py-0.5 text-[11px] font-black uppercase tracking-wider ${
-                                    isDeleted ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                                    isDeleted
+                                      ? "bg-red-100 text-red-700 border border-red-200"
+                                      : "bg-cyan-100 text-cyan-800 border border-cyan-200"
                                   }`}
                                 >
-                                  {isDeleted ? 'Lệnh Xóa' : 'Lệnh Sửa'}
+                                  {isDeleted ? "Lệnh Xóa" : "Lệnh Sửa"}
                                 </span>
-                                <span className="text-xs font-semibold text-slate-400">{item.timestamp}</span>
+                                <span className="text-xs font-semibold text-slate-400">
+                                  {item.timestamp}
+                                </span>
                               </div>
 
-                              <p className="mt-1.5 text-sm font-extrabold text-slate-800">{item.description}</p>
+                              <p className="mt-1.5 text-sm font-extrabold text-slate-800">
+                                {item.description}
+                              </p>
                               {item.groupName && (
                                 <p className="text-xs font-medium text-slate-500">
-                                  Tên nhóm: <b className="text-slate-700 font-bold">{item.groupName}</b>
+                                  Tên nhóm:{" "}
+                                  <b className="text-slate-700 font-bold">
+                                    {item.groupName}
+                                  </b>
                                 </p>
                               )}
                             </div>
@@ -2073,7 +2451,9 @@ export default function PermissionGroupsPage() {
                             {isDeleted ? (
                               <button
                                 type="button"
-                                onClick={() => handleRestoreDeletedGroups([item.id])}
+                                onClick={() =>
+                                  handleRestoreDeletedGroups([item.id])
+                                }
                                 className="inline-flex items-center gap-1.5 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
                               >
                                 <RotateCcw className="h-3.5 w-3.5 text-cyan-700" />
@@ -2099,7 +2479,8 @@ export default function PermissionGroupsPage() {
               {/* Modal Footer */}
               <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
                 <span className="text-xs font-semibold text-slate-500">
-                  * Chỉ hỗ trợ hoàn tác cho các thao tác Sửa và Xóa trong phiên làm việc hiện tại.
+                  * Chỉ hỗ trợ hoàn tác cho các thao tác Sửa và Xóa trong phiên
+                  làm việc hiện tại.
                 </span>
                 <button
                   type="button"
@@ -2111,7 +2492,7 @@ export default function PermissionGroupsPage() {
               </div>
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

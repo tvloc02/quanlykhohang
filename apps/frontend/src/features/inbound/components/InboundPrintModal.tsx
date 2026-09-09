@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { Printer, X, Plus, Trash2 } from 'lucide-react';
-import type { InboundReceiptOrder } from '../Inbound';
-import { numberToWordsVietnamese } from '../../../shared/utils/numberToWords';
+import React, { useEffect, useState, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { Printer, X, Plus, Trash2 } from "lucide-react";
+import type { InboundReceiptOrder } from "../Inbound";
+import { numberToWordsVietnamese } from "../../../shared/utils/numberToWords";
 
 interface WarehouseOption {
   id?: string;
@@ -29,7 +29,7 @@ interface PrintItem {
   price: number;
 }
 
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || "/api";
 
 export default function InboundPrintModal({
   isOpen,
@@ -41,29 +41,35 @@ export default function InboundPrintModal({
   const [settings, setSettings] = useState<any>(null);
 
   // 1. Company & Header State
-  const [companyName, setCompanyName] = useState('Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng');
-  const [department, setDepartment] = useState('Bộ phận: Kho vận');
-  const [taxCode, setTaxCode] = useState('0101234567');
-  const [templateCode, setTemplateCode] = useState('Mẫu số 01-VT');
+  const [companyName, setCompanyName] = useState(
+    "Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng",
+  );
+  const [department, setDepartment] = useState("Bộ phận: Kho vận");
+  const [taxCode, setTaxCode] = useState("0101234567");
+  const [templateCode, setTemplateCode] = useState("Mẫu số 01-VT");
   const [templateStandard, setTemplateStandard] = useState(
-    'Ban hành theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ Tài chính'
+    "Ban hành theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ Tài chính",
   );
 
   // 2. Voucher info
-  const [voucherTitle, setVoucherTitle] = useState('PHIẾU NHẬP KHO');
-  const [dateDay, setDateDay] = useState(String(new Date().getDate()).padStart(2, '0'));
-  const [dateMonth, setDateMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [voucherTitle, setVoucherTitle] = useState("PHIẾU NHẬP KHO");
+  const [dateDay, setDateDay] = useState(
+    String(new Date().getDate()).padStart(2, "0"),
+  );
+  const [dateMonth, setDateMonth] = useState(
+    String(new Date().getMonth() + 1).padStart(2, "0"),
+  );
   const [dateYear, setDateYear] = useState(String(new Date().getFullYear()));
-  const [receiptNo, setReceiptNo] = useState('');
-  const [debitAccount, setDebitAccount] = useState('156');
-  const [creditAccount, setCreditAccount] = useState('331');
+  const [receiptNo, setReceiptNo] = useState("");
+  const [debitAccount, setDebitAccount] = useState("156");
+  const [creditAccount, setCreditAccount] = useState("331");
 
   // 3. Deliverer & Source & Warehouse
-  const [delivererName, setDelivererName] = useState('');
-  const [sourceDocText, setSourceDocText] = useState('');
-  const [warehouseName, setWarehouseName] = useState('');
-  const [warehouseLocation, setWarehouseLocation] = useState('');
-  const [reason, setReason] = useState('');
+  const [delivererName, setDelivererName] = useState("");
+  const [sourceDocText, setSourceDocText] = useState("");
+  const [warehouseName, setWarehouseName] = useState("");
+  const [warehouseLocation, setWarehouseLocation] = useState("");
+  const [reason, setReason] = useState("");
 
   // 4. Items Table
   const [items, setItems] = useState<PrintItem[]>([]);
@@ -71,13 +77,13 @@ export default function InboundPrintModal({
   const [vatAmount, setVatAmount] = useState(0);
 
   // 5. Attached Docs
-  const [attachedDocs, setAttachedDocs] = useState('');
+  const [attachedDocs, setAttachedDocs] = useState("");
 
   // 6. Signatures (4 vị trí Mẫu 01-VT)
-  const [creatorSign, setCreatorSign] = useState('');
-  const [delivererSign, setDelivererSign] = useState('');
-  const [storekeeperSign, setStorekeeperSign] = useState('');
-  const [chiefAccountantSign, setChiefAccountantSign] = useState('');
+  const [creatorSign, setCreatorSign] = useState("");
+  const [delivererSign, setDelivererSign] = useState("");
+  const [storekeeperSign, setStorekeeperSign] = useState("");
+  const [chiefAccountantSign, setChiefAccountantSign] = useState("");
 
   // Fetch settings from API
   useEffect(() => {
@@ -97,17 +103,20 @@ export default function InboundPrintModal({
     const s = settings || {};
 
     // 1. Company
-    setCompanyName(s.companyName || 'Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng');
-    setDepartment(s.department || 'Bộ phận: Kho vận');
-    setTaxCode(s.taxCode || '0101234567');
-    setTemplateCode('Mẫu số 01-VT');
+    setCompanyName(s.companyName || "Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng");
+    setDepartment(s.department || "Bộ phận: Kho vận");
+    setTaxCode(s.taxCode || "0101234567");
+    setTemplateCode("Mẫu số 01-VT");
     setTemplateStandard(
-      s.templateStandard || 'Ban hành theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ Tài chính'
+      s.templateStandard ||
+        "Ban hành theo Thông tư số 200/2014/TT-BTC ngày 22/12/2014 của Bộ Tài chính",
     );
 
     // 2. Title
-    const isReturn = featureMode === 'return-supplier';
-    setVoucherTitle(isReturn ? 'PHIẾU XUẤT TRẢ NHÀ CUNG CẤP' : 'PHIẾU NHẬP KHO');
+    const isReturn = featureMode === "return-supplier";
+    setVoucherTitle(
+      isReturn ? "PHIẾU XUẤT TRẢ NHÀ CUNG CẤP" : "PHIẾU NHẬP KHO",
+    );
 
     // Date
     let orderDateObj = new Date();
@@ -115,29 +124,37 @@ export default function InboundPrintModal({
       const parsed = new Date(order.orderDate);
       if (!Number.isNaN(parsed.getTime())) orderDateObj = parsed;
     }
-    setDateDay(String(orderDateObj.getDate()).padStart(2, '0'));
-    setDateMonth(String(orderDateObj.getMonth() + 1).padStart(2, '0'));
+    setDateDay(String(orderDateObj.getDate()).padStart(2, "0"));
+    setDateMonth(String(orderDateObj.getMonth() + 1).padStart(2, "0"));
     setDateYear(String(orderDateObj.getFullYear()));
 
-    setReceiptNo(order.receiptNo || '');
-    setDebitAccount(isReturn ? '331' : '156');
-    setCreditAccount(isReturn ? '156' : s.creditAccount || '331');
+    setReceiptNo(order.receiptNo || "");
+    setDebitAccount(isReturn ? "331" : "156");
+    setCreditAccount(isReturn ? "156" : s.creditAccount || "331");
 
     // 3. Deliverer & Source & Warehouse
-    setDelivererName(order.employeeName || order.supplier || 'Nguyễn Văn Giao');
-    const dateFormatted = `${String(orderDateObj.getDate()).padStart(2, '0')}/${String(orderDateObj.getMonth() + 1).padStart(2, '0')}/${orderDateObj.getFullYear()}`;
-    const poNum = order.poNumber || order.receiptNo?.slice(-7) || '0000012';
-    setSourceDocText(`Hóa đơn số ${poNum} ngày ${dateFormatted} của ${order.supplier || 'Nhà cung cấp'}`);
+    setDelivererName(order.employeeName || order.supplier || "Nguyễn Văn Giao");
+    const dateFormatted = `${String(orderDateObj.getDate()).padStart(2, "0")}/${String(orderDateObj.getMonth() + 1).padStart(2, "0")}/${orderDateObj.getFullYear()}`;
+    const poNum = order.poNumber || order.receiptNo?.slice(-7) || "0000012";
+    setSourceDocText(
+      `Hóa đơn số ${poNum} ngày ${dateFormatted} của ${order.supplier || "Nhà cung cấp"}`,
+    );
 
     const whCode = order.warehouseCode;
     const foundWh = warehouses.find(
-      (w) => w.code === whCode || w.name === whCode || w.id === whCode
+      (w) => w.code === whCode || w.name === whCode || w.id === whCode,
     );
-    setWarehouseName(foundWh ? `[${foundWh.code}] ${foundWh.name}` : whCode || 'Kho Tổng (KHO-NVL)');
-    setWarehouseLocation(foundWh?.address || s.address || 'Hà Nội, Việt Nam');
+    setWarehouseName(
+      foundWh
+        ? `[${foundWh.code}] ${foundWh.name}`
+        : whCode || "Kho Tổng (KHO-NVL)",
+    );
+    setWarehouseLocation(foundWh?.address || s.address || "Hà Nội, Việt Nam");
     setReason(
       order.description ||
-        (isReturn ? 'Xuất trả hàng lỗi / không đạt quy chuẩn cho nhà cung cấp' : 'Nhập kho mua hàng hóa theo đơn')
+        (isReturn
+          ? "Xuất trả hàng lỗi / không đạt quy chuẩn cho nhà cung cấp"
+          : "Nhập kho mua hàng hóa theo đơn"),
     );
 
     // 4. Items
@@ -148,8 +165,8 @@ export default function InboundPrintModal({
         return {
           id: String(d.id || i + 1),
           productName: d.productName || `Sản phẩm ${i + 1}`,
-          productSku: d.productSku || '-',
-          unit: d.unit || 'Cái',
+          productSku: d.productSku || "-",
+          unit: d.unit || "Cái",
           qtyDoc: Number(d.requestedQty || qtyVal),
           qtyActual: qtyVal,
           price: priceVal,
@@ -159,10 +176,10 @@ export default function InboundPrintModal({
     } else {
       setItems([
         {
-          id: '1',
-          productName: 'Hàng hóa nhập kho',
-          productSku: 'SKU001',
-          unit: 'Cái',
+          id: "1",
+          productName: "Hàng hóa nhập kho",
+          productSku: "SKU001",
+          unit: "Cái",
           qtyDoc: 1,
           qtyActual: 1,
           price: 100000,
@@ -174,24 +191,29 @@ export default function InboundPrintModal({
     setVatAmount(Number(order.vatAmount || 0));
 
     // 5. Attached Docs
-    setAttachedDocs(`01 Hóa đơn GTGT số ${poNum} kèm biên bản giao nhận hàng hóa`);
+    setAttachedDocs(
+      `01 Hóa đơn GTGT số ${poNum} kèm biên bản giao nhận hàng hóa`,
+    );
 
     // 6. Signatures (4 vị trí chuẩn Mẫu 01-VT)
-    const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-    const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
+    const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+    const currentUserName =
+      currentUser.fullName || currentUser.email?.split("@")[0] || "Quản lý kho";
 
-    setCreatorSign(order.employeeName || currentUserName || s.creatorName || 'Vũ Hữu Dũng');
-    setDelivererSign(order.supplier || 'Nguyễn Văn Giao');
-    setStorekeeperSign(s.storekeeperName || 'Nguyễn Thị Thúy');
-    setChiefAccountantSign(s.chiefAccountantName || 'Trần Thị Hồng Mơ');
+    setCreatorSign(
+      order.employeeName || currentUserName || s.creatorName || "Vũ Hữu Dũng",
+    );
+    setDelivererSign(order.supplier || "Nguyễn Văn Giao");
+    setStorekeeperSign(s.storekeeperName || "Nguyễn Thị Thúy");
+    setChiefAccountantSign(s.chiefAccountantName || "Trần Thị Hồng Mơ");
   }, [isOpen, order, settings, featureMode, warehouses]);
 
   // Set body class for print isolation
   useEffect(() => {
     if (!isOpen) return;
-    document.body.classList.add('is-printing-slip');
+    document.body.classList.add("is-printing-slip");
     return () => {
-      document.body.classList.remove('is-printing-slip');
+      document.body.classList.remove("is-printing-slip");
     };
   }, [isOpen]);
 
@@ -199,18 +221,22 @@ export default function InboundPrintModal({
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+      if (e.key === "Escape") onClose();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
         e.preventDefault();
         window.print();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
   // Items manipulation
-  const handleItemChange = (index: number, field: keyof PrintItem, value: any) => {
+  const handleItemChange = (
+    index: number,
+    field: keyof PrintItem,
+    value: any,
+  ) => {
     setItems((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -223,9 +249,9 @@ export default function InboundPrintModal({
       ...prev,
       {
         id: String(Date.now()),
-        productName: 'Hàng hóa mới',
-        productSku: 'SKU-NEW',
-        unit: 'Cái',
+        productName: "Hàng hóa mới",
+        productSku: "SKU-NEW",
+        unit: "Cái",
         qtyDoc: 1,
         qtyActual: 1,
         price: 0,
@@ -240,11 +266,18 @@ export default function InboundPrintModal({
 
   // Calculations
   const subtotalAmount = useMemo(() => {
-    return items.reduce((sum, item) => sum + Number(item.qtyActual || 0) * Number(item.price || 0), 0);
+    return items.reduce(
+      (sum, item) =>
+        sum + Number(item.qtyActual || 0) * Number(item.price || 0),
+      0,
+    );
   }, [items]);
 
   const totalPayment = useMemo(() => {
-    return Math.max(0, subtotalAmount - Number(discountAmount || 0) + Number(vatAmount || 0));
+    return Math.max(
+      0,
+      subtotalAmount - Number(discountAmount || 0) + Number(vatAmount || 0),
+    );
   }, [subtotalAmount, discountAmount, vatAmount]);
 
   const totalPaymentWords = useMemo(() => {
@@ -268,7 +301,8 @@ export default function InboundPrintModal({
                 Xem trước & Chỉnh sửa Phiếu nhập kho (Mẫu số 01-VT)
               </h2>
               <p className="text-xs text-slate-500">
-                Có thể chỉnh sửa trực tiếp nội dung trước khi in • Bản in đen trắng chuẩn A4
+                Có thể chỉnh sửa trực tiếp nội dung trước khi in • Bản in đen
+                trắng chuẩn A4
               </p>
             </div>
           </div>
@@ -382,7 +416,9 @@ export default function InboundPrintModal({
             <div className="flex justify-between items-start mb-2 text-xs sm:text-sm gap-4">
               <div className="flex-1 space-y-1">
                 <div className="flex items-start gap-1">
-                  <span className="font-semibold text-slate-800 whitespace-nowrap pt-0.5">Đơn vị:</span>
+                  <span className="font-semibold text-slate-800 whitespace-nowrap pt-0.5">
+                    Đơn vị:
+                  </span>
                   <span className="print-hide-input flex-1">
                     <textarea
                       rows={2}
@@ -398,7 +434,9 @@ export default function InboundPrintModal({
                 </div>
 
                 <div className="flex items-baseline gap-1">
-                  <span className="font-semibold text-slate-800 whitespace-nowrap">Bộ phận:</span>
+                  <span className="font-semibold text-slate-800 whitespace-nowrap">
+                    Bộ phận:
+                  </span>
                   <span className="print-hide-input flex-1">
                     <input
                       type="text"
@@ -413,7 +451,9 @@ export default function InboundPrintModal({
                 </div>
 
                 <div className="flex items-baseline gap-1">
-                  <span className="font-semibold text-slate-800 whitespace-nowrap">Mã số thuế:</span>
+                  <span className="font-semibold text-slate-800 whitespace-nowrap">
+                    Mã số thuế:
+                  </span>
                   <span className="print-hide-input flex-1">
                     <input
                       type="text"
@@ -498,7 +538,9 @@ export default function InboundPrintModal({
                     className="w-8 text-center italic border-b border-dotted border-slate-400 bg-transparent focus:border-black outline-none"
                   />
                 </span>
-                <span className="print-show-val font-semibold">{dateMonth}</span>
+                <span className="print-show-val font-semibold">
+                  {dateMonth}
+                </span>
 
                 <span>năm</span>
                 <span className="print-hide-input">
@@ -537,7 +579,9 @@ export default function InboundPrintModal({
                       className="w-14 text-center font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                     />
                   </span>
-                  <span className="print-show-val font-bold">{debitAccount}</span>
+                  <span className="print-show-val font-bold">
+                    {debitAccount}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -550,7 +594,9 @@ export default function InboundPrintModal({
                       className="w-14 text-center font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                     />
                   </span>
-                  <span className="print-show-val font-bold">{creditAccount}</span>
+                  <span className="print-show-val font-bold">
+                    {creditAccount}
+                  </span>
                 </div>
               </div>
             </div>
@@ -558,7 +604,9 @@ export default function InboundPrintModal({
             {/* Thông tin người giao, chứng từ, kho */}
             <div className="space-y-1.5 text-xs sm:text-sm text-black mb-3 border-t border-black pt-2">
               <div className="flex items-baseline gap-1.5">
-                <span className="shrink-0 whitespace-nowrap">- Họ và tên người giao hàng:</span>
+                <span className="shrink-0 whitespace-nowrap">
+                  - Họ và tên người giao hàng:
+                </span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
@@ -567,7 +615,9 @@ export default function InboundPrintModal({
                     className="w-full font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                   />
                 </span>
-                <span className="print-show-val font-bold flex-1">{delivererName}</span>
+                <span className="print-show-val font-bold flex-1">
+                  {delivererName}
+                </span>
               </div>
 
               <div className="flex items-baseline gap-1.5">
@@ -585,7 +635,9 @@ export default function InboundPrintModal({
 
               <div className="grid grid-cols-12 gap-2">
                 <div className="col-span-12 sm:col-span-6 flex items-baseline gap-1.5">
-                  <span className="shrink-0 whitespace-nowrap">- Nhập tại kho:</span>
+                  <span className="shrink-0 whitespace-nowrap">
+                    - Nhập tại kho:
+                  </span>
                   <span className="print-hide-input flex-1">
                     <input
                       type="text"
@@ -594,7 +646,9 @@ export default function InboundPrintModal({
                       className="w-full font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                     />
                   </span>
-                  <span className="print-show-val font-bold flex-1">{warehouseName}</span>
+                  <span className="print-show-val font-bold flex-1">
+                    {warehouseName}
+                  </span>
                 </div>
 
                 <div className="col-span-12 sm:col-span-6 flex items-baseline gap-1.5">
@@ -607,12 +661,16 @@ export default function InboundPrintModal({
                       className="w-full border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                     />
                   </span>
-                  <span className="print-show-val flex-1">{warehouseLocation}</span>
+                  <span className="print-show-val flex-1">
+                    {warehouseLocation}
+                  </span>
                 </div>
               </div>
 
               <div className="flex items-baseline gap-1.5">
-                <span className="shrink-0 whitespace-nowrap">- Lý do nhập kho:</span>
+                <span className="shrink-0 whitespace-nowrap">
+                  - Lý do nhập kho:
+                </span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
@@ -629,148 +687,333 @@ export default function InboundPrintModal({
             <div className="overflow-x-auto w-full mb-3">
               <table
                 className="w-full border-collapse text-xs text-black text-left"
-                style={{ borderCollapse: 'collapse', border: '1px solid #000000', width: '100%' }}
+                style={{
+                  borderCollapse: "collapse",
+                  border: "1px solid #000000",
+                  width: "100%",
+                }}
               >
                 <thead>
                   <tr className="bg-transparent text-black font-bold uppercase text-[11px] sm:text-xs">
-                    <th style={{ border: '1px solid #000000', padding: '5px' }} className="text-center w-8">
+                    <th
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center w-8"
+                    >
                       STT
                     </th>
-                    <th style={{ border: '1px solid #000000', padding: '5px' }} className="text-center min-w-[180px]">
-                      Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ, sản phẩm, hàng hóa
+                    <th
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center min-w-[180px]"
+                    >
+                      Tên, nhãn hiệu, quy cách, phẩm chất vật tư, dụng cụ, sản
+                      phẩm, hàng hóa
                     </th>
-                    <th style={{ border: '1px solid #000000', padding: '5px' }} className="text-center w-20">
+                    <th
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center w-20"
+                    >
                       Mã số
                     </th>
-                    <th style={{ border: '1px solid #000000', padding: '5px' }} className="text-center w-14">
+                    <th
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center w-14"
+                    >
                       Đơn vị tính
                     </th>
-                    <th style={{ border: '1px solid #000000', padding: '0' }} className="text-center" colSpan={2}>
-                      <div style={{ borderBottom: '1px solid #000000', padding: '3px' }} className="font-bold">
+                    <th
+                      style={{ border: "1px solid #000000", padding: "0" }}
+                      className="text-center"
+                      colSpan={2}
+                    >
+                      <div
+                        style={{
+                          borderBottom: "1px solid #000000",
+                          padding: "3px",
+                        }}
+                        className="font-bold"
+                      >
                         Số lượng
                       </div>
                       <div className="flex w-full">
-                        <span style={{ borderRight: '1px solid #000000', padding: '3px', width: '50%' }} className="font-bold">
+                        <span
+                          style={{
+                            borderRight: "1px solid #000000",
+                            padding: "3px",
+                            width: "50%",
+                          }}
+                          className="font-bold"
+                        >
                           Theo CT
                         </span>
-                        <span style={{ padding: '3px', width: '50%' }} className="font-bold">
+                        <span
+                          style={{ padding: "3px", width: "50%" }}
+                          className="font-bold"
+                        >
                           Thực nhập
                         </span>
                       </div>
                     </th>
-                    <th style={{ border: '1px solid #000000', padding: '5px' }} className="text-center w-24">
+                    <th
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center w-24"
+                    >
                       Đơn giá
                     </th>
-                    <th style={{ border: '1px solid #000000', padding: '5px' }} className="text-center w-28">
+                    <th
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center w-28"
+                    >
                       Thành tiền
                     </th>
-                    <th style={{ border: '1px solid #000000', padding: '5px' }} className="text-center w-10 print-hide">
+                    <th
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center w-10 print-hide"
+                    >
                       Thao tác
                     </th>
                   </tr>
                   {/* Dòng đánh mã cột A B C D 1 2 3 4 */}
                   <tr className="bg-transparent text-center italic text-[11px] font-medium text-black">
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">A</th>
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">B</th>
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">C</th>
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">D</th>
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center w-12">1</th>
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center w-12">2</th>
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">3</th>
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center">4</th>
-                    <th style={{ border: '1px solid #000000', padding: '2px' }} className="text-center print-hide"></th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center"
+                    >
+                      A
+                    </th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center"
+                    >
+                      B
+                    </th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center"
+                    >
+                      C
+                    </th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center"
+                    >
+                      D
+                    </th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center w-12"
+                    >
+                      1
+                    </th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center w-12"
+                    >
+                      2
+                    </th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center"
+                    >
+                      3
+                    </th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center"
+                    >
+                      4
+                    </th>
+                    <th
+                      style={{ border: "1px solid #000000", padding: "2px" }}
+                      className="text-center print-hide"
+                    ></th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((it, idx) => {
-                    const lineTotal = Number(it.qtyActual || 0) * Number(it.price || 0);
+                    const lineTotal =
+                      Number(it.qtyActual || 0) * Number(it.price || 0);
 
                     return (
                       <tr key={it.id || idx}>
-                        <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center font-medium">
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                          className="text-center font-medium"
+                        >
                           {idx + 1}
                         </td>
                         {/* Tên hàng */}
-                        <td style={{ border: '1px solid #000000', padding: '4px' }}>
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                        >
                           <span className="print-hide-input">
                             <input
                               type="text"
                               value={it.productName}
-                              onChange={(e) => handleItemChange(idx, 'productName', e.target.value)}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "productName",
+                                  e.target.value,
+                                )
+                              }
                               className="w-full font-bold text-black border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
                             />
                           </span>
-                          <span className="print-show-val font-bold">{it.productName}</span>
+                          <span className="print-show-val font-bold">
+                            {it.productName}
+                          </span>
                         </td>
                         {/* Mã SKU */}
-                        <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center">
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                          className="text-center"
+                        >
                           <span className="print-hide-input">
                             <input
                               type="text"
                               value={it.productSku}
-                              onChange={(e) => handleItemChange(idx, 'productSku', e.target.value)}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "productSku",
+                                  e.target.value,
+                                )
+                              }
                               className="w-full text-center font-mono text-xs text-black border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
                             />
                           </span>
-                          <span className="print-show-val font-mono">{it.productSku}</span>
+                          <span className="print-show-val font-mono">
+                            {it.productSku}
+                          </span>
                         </td>
                         {/* ĐVT */}
-                        <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center">
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                          className="text-center"
+                        >
                           <span className="print-hide-input">
                             <input
                               type="text"
                               value={it.unit}
-                              onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
+                              onChange={(e) =>
+                                handleItemChange(idx, "unit", e.target.value)
+                              }
                               className="w-full text-center text-black border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
                             />
                           </span>
                           <span className="print-show-val">{it.unit}</span>
                         </td>
                         {/* SL Theo chứng từ */}
-                        <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center">
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                          className="text-center"
+                        >
                           <span className="print-hide-input">
                             <input
                               type="number"
                               min={0}
                               value={it.qtyDoc}
-                              onChange={(e) => handleItemChange(idx, 'qtyDoc', Number(e.target.value))}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "qtyDoc",
+                                  Number(e.target.value),
+                                )
+                              }
                               className="w-full text-center font-bold text-black border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
                             />
                           </span>
-                          <span className="print-show-val font-bold">{it.qtyDoc}</span>
+                          <span className="print-show-val font-bold">
+                            {it.qtyDoc}
+                          </span>
                         </td>
                         {/* SL Thực nhập */}
-                        <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center">
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                          className="text-center"
+                        >
                           <span className="print-hide-input">
                             <input
                               type="number"
                               min={0}
                               value={it.qtyActual}
-                              onChange={(e) => handleItemChange(idx, 'qtyActual', Number(e.target.value))}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "qtyActual",
+                                  Number(e.target.value),
+                                )
+                              }
                               className="w-full text-center font-bold text-black border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
                             />
                           </span>
-                          <span className="print-show-val font-bold">{it.qtyActual}</span>
+                          <span className="print-show-val font-bold">
+                            {it.qtyActual}
+                          </span>
                         </td>
                         {/* Đơn giá */}
-                        <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-right">
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                          className="text-right"
+                        >
                           <span className="print-hide-input">
                             <input
                               type="number"
                               min={0}
                               value={it.price}
-                              onChange={(e) => handleItemChange(idx, 'price', Number(e.target.value))}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "price",
+                                  Number(e.target.value),
+                                )
+                              }
                               className="w-full text-right text-black border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
                             />
                           </span>
-                          <span className="print-show-val">{Number(it.price || 0).toLocaleString('vi-VN')}</span>
+                          <span className="print-show-val">
+                            {Number(it.price || 0).toLocaleString("vi-VN")}
+                          </span>
                         </td>
                         {/* Thành tiền */}
-                        <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-right font-bold">
-                          {lineTotal.toLocaleString('vi-VN')}
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                          className="text-right font-bold"
+                        >
+                          {lineTotal.toLocaleString("vi-VN")}
                         </td>
                         {/* Thao tác xóa dòng */}
-                        <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center print-hide">
+                        <td
+                          style={{
+                            border: "1px solid #000000",
+                            padding: "4px",
+                          }}
+                          className="text-center print-hide"
+                        >
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(idx)}
@@ -787,82 +1030,161 @@ export default function InboundPrintModal({
 
                   {/* Dòng Cộng tổng tiền hàng (ĐEN TRẮNG) */}
                   <tr className="bg-transparent font-black text-black">
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-center uppercase tracking-wider font-extrabold">
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center uppercase tracking-wider font-extrabold"
+                    >
                       Cộng
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-center font-bold">x</td>
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-center font-bold">x</td>
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-center font-bold">x</td>
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-center font-bold">
-                      {items.reduce((sum, it) => sum + Number(it.qtyDoc || 0), 0)}
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center font-bold"
+                    >
+                      x
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-center font-bold">
-                      {items.reduce((sum, it) => sum + Number(it.qtyActual || 0), 0)}
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center font-bold"
+                    >
+                      x
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-center font-bold">x</td>
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-right font-black text-sm sm:text-base">
-                      {subtotalAmount.toLocaleString('vi-VN')}
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center font-bold"
+                    >
+                      x
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '5px' }} className="text-center print-hide"></td>
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center font-bold"
+                    >
+                      {items.reduce(
+                        (sum, it) => sum + Number(it.qtyDoc || 0),
+                        0,
+                      )}
+                    </td>
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center font-bold"
+                    >
+                      {items.reduce(
+                        (sum, it) => sum + Number(it.qtyActual || 0),
+                        0,
+                      )}
+                    </td>
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center font-bold"
+                    >
+                      x
+                    </td>
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-right font-black text-sm sm:text-base"
+                    >
+                      {subtotalAmount.toLocaleString("vi-VN")}
+                    </td>
+                    <td
+                      style={{ border: "1px solid #000000", padding: "5px" }}
+                      className="text-center print-hide"
+                    ></td>
                   </tr>
 
                   {/* Chiết khấu (nếu có) */}
                   {(discountAmount > 0 || discountAmount === 0) && (
                     <tr className="bg-transparent text-black">
-                      <td colSpan={7} style={{ border: '1px solid #000000', padding: '4px' }} className="text-right italic font-semibold">
+                      <td
+                        colSpan={7}
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-right italic font-semibold"
+                      >
                         Chiết khấu thương mại:
                       </td>
-                      <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-right font-semibold">
+                      <td
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-right font-semibold"
+                      >
                         <span className="print-hide-input">
                           <input
                             type="number"
                             min={0}
                             value={discountAmount}
-                            onChange={(e) => setDiscountAmount(Number(e.target.value))}
+                            onChange={(e) =>
+                              setDiscountAmount(Number(e.target.value))
+                            }
                             className="w-24 text-right border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
                           />
                         </span>
                         <span className="print-show-val">
-                          {discountAmount > 0 ? `-${discountAmount.toLocaleString('vi-VN')}` : '0'}
+                          {discountAmount > 0
+                            ? `-${discountAmount.toLocaleString("vi-VN")}`
+                            : "0"}
                         </span>
                       </td>
-                      <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center print-hide"></td>
+                      <td
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-center print-hide"
+                      ></td>
                     </tr>
                   )}
 
                   {/* Thuế GTGT VAT (nếu có) */}
                   {(vatAmount > 0 || vatAmount === 0) && (
                     <tr className="bg-transparent text-black">
-                      <td colSpan={7} style={{ border: '1px solid #000000', padding: '4px' }} className="text-right italic font-semibold">
+                      <td
+                        colSpan={7}
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-right italic font-semibold"
+                      >
                         Thuế GTGT (VAT):
                       </td>
-                      <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-right font-semibold">
+                      <td
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-right font-semibold"
+                      >
                         <span className="print-hide-input">
                           <input
                             type="number"
                             min={0}
                             value={vatAmount}
-                            onChange={(e) => setVatAmount(Number(e.target.value))}
+                            onChange={(e) =>
+                              setVatAmount(Number(e.target.value))
+                            }
                             className="w-24 text-right border-b border-dotted border-slate-300 bg-transparent px-1 focus:border-black outline-none"
                           />
                         </span>
                         <span className="print-show-val">
-                          {vatAmount > 0 ? `+${vatAmount.toLocaleString('vi-VN')}` : '0'}
+                          {vatAmount > 0
+                            ? `+${vatAmount.toLocaleString("vi-VN")}`
+                            : "0"}
                         </span>
                       </td>
-                      <td style={{ border: '1px solid #000000', padding: '4px' }} className="text-center print-hide"></td>
+                      <td
+                        style={{ border: "1px solid #000000", padding: "4px" }}
+                        className="text-center print-hide"
+                      ></td>
                     </tr>
                   )}
 
                   {/* Tổng tiền thanh toán */}
                   <tr className="bg-transparent font-black text-black">
-                    <td colSpan={7} style={{ border: '1px solid #000000', padding: '6px' }} className="text-right uppercase tracking-wider font-extrabold text-xs sm:text-sm">
+                    <td
+                      colSpan={7}
+                      style={{ border: "1px solid #000000", padding: "6px" }}
+                      className="text-right uppercase tracking-wider font-extrabold text-xs sm:text-sm"
+                    >
                       Tổng tiền thanh toán:
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-right font-black text-sm sm:text-base">
-                      {totalPayment.toLocaleString('vi-VN')}
+                    <td
+                      style={{ border: "1px solid #000000", padding: "6px" }}
+                      className="text-right font-black text-sm sm:text-base"
+                    >
+                      {totalPayment.toLocaleString("vi-VN")}
                     </td>
-                    <td style={{ border: '1px solid #000000', padding: '6px' }} className="text-center print-hide"></td>
+                    <td
+                      style={{ border: "1px solid #000000", padding: "6px" }}
+                      className="text-center print-hide"
+                    ></td>
                   </tr>
                 </tbody>
               </table>
@@ -894,7 +1216,9 @@ export default function InboundPrintModal({
                     className="w-full italic font-bold border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs sm:text-sm"
                   />
                 </span>
-                <span className="print-show-val italic font-bold flex-1">{totalPaymentWords}</span>
+                <span className="print-show-val italic font-bold flex-1">
+                  {totalPaymentWords}
+                </span>
               </div>
 
               <div className="flex items-baseline gap-1.5">
@@ -920,8 +1244,12 @@ export default function InboundPrintModal({
               {/* 1. Người lập phiếu */}
               <div className="flex flex-col justify-between min-h-[110px]">
                 <div>
-                  <p className="font-bold uppercase text-[11px] sm:text-xs">Người lập phiếu</p>
-                  <p className="text-[10px] text-slate-600 italic mt-0.5">(Ký, họ tên)</p>
+                  <p className="font-bold uppercase text-[11px] sm:text-xs">
+                    Người lập phiếu
+                  </p>
+                  <p className="text-[10px] text-slate-600 italic mt-0.5">
+                    (Ký, họ tên)
+                  </p>
                 </div>
                 <div className="pt-8">
                   <span className="print-hide-input block">
@@ -932,15 +1260,21 @@ export default function InboundPrintModal({
                       className="w-full text-center font-bold text-black border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs"
                     />
                   </span>
-                  <span className="print-show-val font-bold block">{creatorSign}</span>
+                  <span className="print-show-val font-bold block">
+                    {creatorSign}
+                  </span>
                 </div>
               </div>
 
               {/* 2. Người giao hàng */}
               <div className="flex flex-col justify-between min-h-[110px]">
                 <div>
-                  <p className="font-bold uppercase text-[11px] sm:text-xs">Người giao hàng</p>
-                  <p className="text-[10px] text-slate-600 italic mt-0.5">(Ký, họ tên)</p>
+                  <p className="font-bold uppercase text-[11px] sm:text-xs">
+                    Người giao hàng
+                  </p>
+                  <p className="text-[10px] text-slate-600 italic mt-0.5">
+                    (Ký, họ tên)
+                  </p>
                 </div>
                 <div className="pt-8">
                   <span className="print-hide-input block">
@@ -951,15 +1285,21 @@ export default function InboundPrintModal({
                       className="w-full text-center font-bold text-black border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs"
                     />
                   </span>
-                  <span className="print-show-val font-bold block">{delivererSign}</span>
+                  <span className="print-show-val font-bold block">
+                    {delivererSign}
+                  </span>
                 </div>
               </div>
 
               {/* 3. Thủ kho */}
               <div className="flex flex-col justify-between min-h-[110px]">
                 <div>
-                  <p className="font-bold uppercase text-[11px] sm:text-xs">Thủ kho</p>
-                  <p className="text-[10px] text-slate-600 italic mt-0.5">(Ký, họ tên)</p>
+                  <p className="font-bold uppercase text-[11px] sm:text-xs">
+                    Thủ kho
+                  </p>
+                  <p className="text-[10px] text-slate-600 italic mt-0.5">
+                    (Ký, họ tên)
+                  </p>
                 </div>
                 <div className="pt-8">
                   <span className="print-hide-input block">
@@ -970,15 +1310,21 @@ export default function InboundPrintModal({
                       className="w-full text-center font-bold text-black border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs"
                     />
                   </span>
-                  <span className="print-show-val font-bold block">{storekeeperSign}</span>
+                  <span className="print-show-val font-bold block">
+                    {storekeeperSign}
+                  </span>
                 </div>
               </div>
 
               {/* 4. Kế toán trưởng (hoặc bộ phận có nhu cầu nhập) */}
               <div className="flex flex-col justify-between min-h-[110px]">
                 <div>
-                  <p className="font-bold uppercase text-[11px] sm:text-xs">Kế toán trưởng</p>
-                  <p className="text-[10px] text-slate-600 italic mt-0.5">(Hoặc Giám đốc ký)</p>
+                  <p className="font-bold uppercase text-[11px] sm:text-xs">
+                    Kế toán trưởng
+                  </p>
+                  <p className="text-[10px] text-slate-600 italic mt-0.5">
+                    (Hoặc Giám đốc ký)
+                  </p>
                 </div>
                 <div className="pt-8">
                   <span className="print-hide-input block">
@@ -989,7 +1335,9 @@ export default function InboundPrintModal({
                       className="w-full text-center font-bold text-black border-b border-dotted border-slate-400 bg-transparent px-1 focus:border-black outline-none text-xs"
                     />
                   </span>
-                  <span className="print-show-val font-bold block">{chiefAccountantSign}</span>
+                  <span className="print-show-val font-bold block">
+                    {chiefAccountantSign}
+                  </span>
                 </div>
               </div>
             </div>
@@ -999,7 +1347,8 @@ export default function InboundPrintModal({
         {/* Modal Bottom action buttons (Hidden on print) */}
         <div className="modal-no-print flex items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3 print:hidden">
           <p className="text-xs text-slate-500 italic">
-            * Mẹo: Nhấn vào các dòng có gạch chân để chỉnh sửa nội dung trước khi bấm in.
+            * Mẹo: Nhấn vào các dòng có gạch chân để chỉnh sửa nội dung trước
+            khi bấm in.
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -1020,6 +1369,6 @@ export default function InboundPrintModal({
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

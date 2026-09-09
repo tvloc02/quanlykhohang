@@ -1,14 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import {
-  Printer,
-  Save,
-  X,
-  Plus,
-  Trash2,
-  FileCheck,
-} from 'lucide-react';
-import { numberToWordsVietnamese } from '../../../shared/utils/numberToWords';
+import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { Printer, Save, X, Plus, Trash2, FileCheck } from "lucide-react";
+import { numberToWordsVietnamese } from "../../../shared/utils/numberToWords";
 
 export type ShippingNoteItem = {
   id: string;
@@ -19,6 +12,8 @@ export type ShippingNoteItem = {
   quantityImported: number;
   price: number;
 };
+
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || "/api";
 
 export type InternalShippingNoteData = {
   formNo?: string;
@@ -49,15 +44,15 @@ type Props = {
   onClose: () => void;
   initialData?: Partial<InternalShippingNoteData> | any | null;
   onSave?: (data: InternalShippingNoteData) => void;
-  setToast?: (toast: { type: 'success' | 'error'; message: string }) => void;
+  setToast?: (toast: { type: "success" | "error"; message: string }) => void;
 };
 
 const defaultItems: ShippingNoteItem[] = [
   {
-    id: '1',
-    productName: 'Iphone 15 Promax',
-    productCode: 'HH851678',
-    unit: 'Cái',
+    id: "1",
+    productName: "Iphone 15 Promax",
+    productCode: "HH851678",
+    unit: "Cái",
     quantityExported: 100,
     quantityImported: 100,
     price: 25000000,
@@ -75,44 +70,62 @@ export default function InternalShippingNoteModal({
   const [settings, setSettings] = useState<any>(null);
 
   // Form Fields State
-  const [organizationName, setOrganizationName] = useState('Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng');
-  const [organizationAddress, setOrganizationAddress] = useState('Kho Nghệ An (KH007)');
-  const [taxCode, setTaxCode] = useState('0101234567');
-  const [symbol, setSymbol] = useState('6C26TNB');
-  const [noteNo, setNoteNo] = useState('PXC20260907-5052');
+  const [organizationName, setOrganizationName] = useState(
+    "Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng",
+  );
+  const [organizationAddress, setOrganizationAddress] = useState(
+    "Kho Nghệ An (KH007)",
+  );
+  const [taxCode, setTaxCode] = useState("0101234567");
+  const [symbol, setSymbol] = useState("6C26TNB");
+  const [noteNo, setNoteNo] = useState("PXC20260907-5052");
 
   // Date parts
-  const [dateDay, setDateDay] = useState(String(new Date().getDate()).padStart(2, '0'));
-  const [dateMonth, setDateMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [dateDay, setDateDay] = useState(
+    String(new Date().getDate()).padStart(2, "0"),
+  );
+  const [dateMonth, setDateMonth] = useState(
+    String(new Date().getMonth() + 1).padStart(2, "0"),
+  );
   const [dateYear, setDateYear] = useState(String(new Date().getFullYear()));
 
   // Movement & Dispatch order details
-  const [commandNo, setCommandNo] = useState('12/LĐĐ-PXC20260907-5052');
-  const [commandDay, setCommandDay] = useState(String(new Date().getDate()).padStart(2, '0'));
-  const [commandMonth, setCommandMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
-  const [commandYear, setCommandYear] = useState(String(new Date().getFullYear()));
-  const [commandBy, setCommandBy] = useState('Ban Giám đốc Công ty');
-  const [commandReason, setCommandReason] = useState('Điều chuyển hàng hóa nội bộ phục vụ sản xuất / kinh doanh');
+  const [commandNo, setCommandNo] = useState("12/LĐĐ-PXC20260907-5052");
+  const [commandDay, setCommandDay] = useState(
+    String(new Date().getDate()).padStart(2, "0"),
+  );
+  const [commandMonth, setCommandMonth] = useState(
+    String(new Date().getMonth() + 1).padStart(2, "0"),
+  );
+  const [commandYear, setCommandYear] = useState(
+    String(new Date().getFullYear()),
+  );
+  const [commandBy, setCommandBy] = useState("Ban Giám đốc Công ty");
+  const [commandReason, setCommandReason] = useState(
+    "Điều chuyển hàng hóa nội bộ phục vụ sản xuất / kinh doanh",
+  );
 
-  const [transporterName, setTransporterName] = useState('Tạ Văn Thanh');
-  const [contractNo, setContractNo] = useState('HĐVC-01/2026');
-  const [vehicle, setVehicle] = useState('30H-00011');
-  const [sourceWarehouse, setSourceWarehouse] = useState('Kho Nghệ An (KH007)');
-  const [destinationWarehouse, setDestinationWarehouse] = useState('Kho Chi Nhánh HCM (KH002)');
+  const [transporterName, setTransporterName] = useState("Tạ Văn Thanh");
+  const [contractNo, setContractNo] = useState("HĐVC-01/2026");
+  const [vehicle, setVehicle] = useState("30H-00011");
+  const [sourceWarehouse, setSourceWarehouse] = useState("Kho Nghệ An (KH007)");
+  const [destinationWarehouse, setDestinationWarehouse] = useState(
+    "Kho Chi Nhánh HCM (KH002)",
+  );
 
   // Items table
   const [items, setItems] = useState<ShippingNoteItem[]>(defaultItems);
 
   // 4 Signatures
-  const [creatorName, setCreatorName] = useState('System Administrator');
-  const [exportStorekeeper, setExportStorekeeper] = useState('Nguyễn Thị Thúy');
-  const [transporterSign, setTransporterSign] = useState('Tạ Văn Thanh');
-  const [importStorekeeper, setImportStorekeeper] = useState('Phạm Thị Duyên');
+  const [creatorName, setCreatorName] = useState("System Administrator");
+  const [exportStorekeeper, setExportStorekeeper] = useState("Nguyễn Thị Thúy");
+  const [transporterSign, setTransporterSign] = useState("Tạ Văn Thanh");
+  const [importStorekeeper, setImportStorekeeper] = useState("Phạm Thị Duyên");
 
   // Fetch settings from backend
   useEffect(() => {
     if (!open) return;
-    fetch('http://localhost:3000/api/settings')
+    fetch(`${API_BASE_URL}/settings`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data) {
@@ -120,7 +133,7 @@ export default function InternalShippingNoteModal({
         }
       })
       .catch((err) => {
-        console.error('Không thể tải cài đặt chứng từ:', err);
+        console.error("Không thể tải cài đặt chứng từ:", err);
       });
   }, [open]);
 
@@ -132,13 +145,23 @@ export default function InternalShippingNoteModal({
     const raw = initialData || {};
 
     // 1. Organization info
-    setOrganizationName(raw.senderName || s.companyName || 'Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng');
-    setOrganizationAddress(raw.sourceAddress || raw.sourceWarehouse || s.address || 'Kho Nghệ An (KH007)');
-    setTaxCode(raw.exporterTaxCode || s.taxCode || '0101234567');
+    setOrganizationName(
+      raw.senderName ||
+        s.companyName ||
+        "Công Ty TNHH Dịch Vụ Kế Toán Thiên Ứng",
+    );
+    setOrganizationAddress(
+      raw.sourceAddress ||
+        raw.sourceWarehouse ||
+        s.address ||
+        "Kho Nghệ An (KH007)",
+    );
+    setTaxCode(raw.exporterTaxCode || s.taxCode || "0101234567");
 
     // 2. Codes
-    setSymbol(raw.symbol || s.transferSymbol || '6C26TNB');
-    const orderNo = raw.noteNo || raw.transferNo || raw.commandNo || 'PXC20260907-5052';
+    setSymbol(raw.symbol || s.transferSymbol || "6C26TNB");
+    const orderNo =
+      raw.noteNo || raw.transferNo || raw.commandNo || "PXC20260907-5052";
     setNoteNo(orderNo);
 
     // 3. Dates
@@ -153,11 +176,13 @@ export default function InternalShippingNoteModal({
         }
       }
     } else if (raw.dispatchDate || raw.scheduledDate || raw.createdAt) {
-      const d = new Date(raw.dispatchDate || raw.scheduledDate || raw.createdAt);
+      const d = new Date(
+        raw.dispatchDate || raw.scheduledDate || raw.createdAt,
+      );
       if (!Number.isNaN(d.getTime())) orderDate = d;
     }
-    const day = String(orderDate.getDate()).padStart(2, '0');
-    const month = String(orderDate.getMonth() + 1).padStart(2, '0');
+    const day = String(orderDate.getDate()).padStart(2, "0");
+    const month = String(orderDate.getMonth() + 1).padStart(2, "0");
     const year = String(orderDate.getFullYear());
 
     setDateDay(day);
@@ -169,45 +194,88 @@ export default function InternalShippingNoteModal({
     setCommandYear(year);
 
     // 4. Movement Order / Lệnh điều động
-    const defaultCommandNo = raw.commandNo || (orderNo ? `12/LĐĐ-${orderNo}` : s.transferDispatchNo || '12/LĐĐ-PXC20260907-5052');
+    const defaultCommandNo =
+      raw.commandNo ||
+      (orderNo
+        ? `12/LĐĐ-${orderNo}`
+        : s.transferDispatchNo || "12/LĐĐ-PXC20260907-5052");
     setCommandNo(defaultCommandNo);
-    setCommandBy(raw.commandBy || s.transferDispatchBy || 'Ban Giám đốc Công ty');
-    setCommandReason(raw.commandReason || s.transferDispatchReason || 'Điều chuyển hàng hóa nội bộ phục vụ sản xuất / kinh doanh');
+    setCommandBy(
+      raw.commandBy || s.transferDispatchBy || "Ban Giám đốc Công ty",
+    );
+    setCommandReason(
+      raw.commandReason ||
+        s.transferDispatchReason ||
+        "Điều chuyển hàng hóa nội bộ phục vụ sản xuất / kinh doanh",
+    );
 
     // 5. Transporter & Vehicle
-    const driver = raw.transporterName || raw.driverName || s.transferTransporter || 'Tạ Văn Thanh';
+    const driver =
+      raw.transporterName ||
+      raw.driverName ||
+      s.transferTransporter ||
+      "Tạ Văn Thanh";
     setTransporterName(driver);
     setTransporterSign(driver);
-    setContractNo(raw.contractNo || s.transferContractNo || 'HĐVC-01/2026');
-    setVehicle(raw.vehicle || raw.vehiclePlate || s.transferVehicle || '30H-00011');
+    setContractNo(raw.contractNo || s.transferContractNo || "HĐVC-01/2026");
+    setVehicle(
+      raw.vehicle || raw.vehiclePlate || s.transferVehicle || "30H-00011",
+    );
 
     // 6. Warehouses
-    const srcWh = raw.sourceWarehouse || raw.sourceAddress || 'Kho Nghệ An (KH007)';
-    const dstWh = raw.destinationWarehouse || raw.destinationAddress || raw.receiverName || 'Kho Chi Nhánh HCM (KH002)';
+    const srcWh =
+      raw.sourceWarehouse || raw.sourceAddress || "Kho Nghệ An (KH007)";
+    const dstWh =
+      raw.destinationWarehouse ||
+      raw.destinationAddress ||
+      raw.receiverName ||
+      "Kho Chi Nhánh HCM (KH002)";
     setSourceWarehouse(srcWh);
     setDestinationWarehouse(dstWh);
 
     // 7. Signatures
-    setCreatorName(raw.creatorName || s.transferCreatorName || s.creatorName || 'System Administrator');
-    setExportStorekeeper(raw.exportStorekeeper || s.transferExportStorekeeper || s.storekeeperName || 'Nguyễn Thị Thúy');
-    setImportStorekeeper(raw.importStorekeeper || s.transferImportStorekeeper || s.receiverName || 'Phạm Thị Duyên');
+    setCreatorName(
+      raw.creatorName ||
+        s.transferCreatorName ||
+        s.creatorName ||
+        "System Administrator",
+    );
+    setExportStorekeeper(
+      raw.exportStorekeeper ||
+        s.transferExportStorekeeper ||
+        s.storekeeperName ||
+        "Nguyễn Thị Thúy",
+    );
+    setImportStorekeeper(
+      raw.importStorekeeper ||
+        s.transferImportStorekeeper ||
+        s.receiverName ||
+        "Phạm Thị Duyên",
+    );
 
     // 8. Items
     if (raw.items && raw.items.length > 0) {
-      const mappedItems: ShippingNoteItem[] = raw.items.map((it: any, idx: number) => {
-        const qtyExp = Number(it.quantityExported ?? it.quantity ?? it.qty ?? 1);
-        const qtyImp = Number(it.quantityImported ?? it.quantityExported ?? it.quantity ?? 1);
-        const unitPrice = Number(it.price ?? it.unitPrice ?? 25000000);
-        return {
-          id: String(it.id || idx + 1),
-          productName: it.productName || it.name || 'Iphone 15 Promax',
-          productCode: it.productCode || it.productSku || it.sku || `HH851678`,
-          unit: it.unit || 'Cái',
-          quantityExported: qtyExp,
-          quantityImported: qtyImp,
-          price: unitPrice,
-        };
-      });
+      const mappedItems: ShippingNoteItem[] = raw.items.map(
+        (it: any, idx: number) => {
+          const qtyExp = Number(
+            it.quantityExported ?? it.quantity ?? it.qty ?? 1,
+          );
+          const qtyImp = Number(
+            it.quantityImported ?? it.quantityExported ?? it.quantity ?? 1,
+          );
+          const unitPrice = Number(it.price ?? it.unitPrice ?? 25000000);
+          return {
+            id: String(it.id || idx + 1),
+            productName: it.productName || it.name || "Iphone 15 Promax",
+            productCode:
+              it.productCode || it.productSku || it.sku || `HH851678`,
+            unit: it.unit || "Cái",
+            quantityExported: qtyExp,
+            quantityImported: qtyImp,
+            price: unitPrice,
+          };
+        },
+      );
       setItems(mappedItems);
     }
   }, [open, initialData, settings]);
@@ -215,9 +283,9 @@ export default function InternalShippingNoteModal({
   // Set body class for print isolation
   useEffect(() => {
     if (!open) return;
-    document.body.classList.add('is-printing-slip');
+    document.body.classList.add("is-printing-slip");
     return () => {
-      document.body.classList.remove('is-printing-slip');
+      document.body.classList.remove("is-printing-slip");
     };
   }, [open]);
 
@@ -225,18 +293,22 @@ export default function InternalShippingNoteModal({
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+      if (e.key === "Escape") onClose();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "p") {
         e.preventDefault();
         window.print();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
   // Handle item changes
-  const handleItemChange = (index: number, field: keyof ShippingNoteItem, value: any) => {
+  const handleItemChange = (
+    index: number,
+    field: keyof ShippingNoteItem,
+    value: any,
+  ) => {
     setItems((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
@@ -249,9 +321,9 @@ export default function InternalShippingNoteModal({
       ...prev,
       {
         id: String(Date.now()),
-        productName: 'Sản phẩm mới',
-        productCode: 'SKU-NEW',
-        unit: 'Cái',
+        productName: "Sản phẩm mới",
+        productCode: "SKU-NEW",
+        unit: "Cái",
         quantityExported: 1,
         quantityImported: 1,
         price: 100000,
@@ -261,7 +333,11 @@ export default function InternalShippingNoteModal({
 
   const handleRemoveItem = (index: number) => {
     if (items.length <= 1) {
-      if (setToast) setToast({ type: 'error', message: 'Phiếu phải có ít nhất 1 mặt hàng!' });
+      if (setToast)
+        setToast({
+          type: "error",
+          message: "Phiếu phải có ít nhất 1 mặt hàng!",
+        });
       return;
     }
     setItems((prev) => prev.filter((_, i) => i !== index));
@@ -269,21 +345,31 @@ export default function InternalShippingNoteModal({
 
   // Computations
   const totalQuantityExported = useMemo(
-    () => items.reduce((sum, it) => sum + (Number(it.quantityExported) || 0), 0),
-    [items]
+    () =>
+      items.reduce((sum, it) => sum + (Number(it.quantityExported) || 0), 0),
+    [items],
   );
   const totalQuantityImported = useMemo(
-    () => items.reduce((sum, it) => sum + (Number(it.quantityImported) || 0), 0),
-    [items]
+    () =>
+      items.reduce((sum, it) => sum + (Number(it.quantityImported) || 0), 0),
+    [items],
   );
   const totalAmount = useMemo(
-    () => items.reduce((sum, it) => sum + (Number(it.quantityExported) || 0) * (Number(it.price) || 0), 0),
-    [items]
+    () =>
+      items.reduce(
+        (sum, it) =>
+          sum + (Number(it.quantityExported) || 0) * (Number(it.price) || 0),
+        0,
+      ),
+    [items],
   );
-  const totalAmountWords = useMemo(() => numberToWordsVietnamese(totalAmount), [totalAmount]);
+  const totalAmountWords = useMemo(
+    () => numberToWordsVietnamese(totalAmount),
+    [totalAmount],
+  );
 
   const formatMoney = (val: number) => {
-    return new Intl.NumberFormat('vi-VN').format(val || 0);
+    return new Intl.NumberFormat("vi-VN").format(val || 0);
   };
 
   const handlePrint = () => {
@@ -313,7 +399,11 @@ export default function InternalShippingNoteModal({
       importStorekeeper,
     };
     if (onSave) onSave(data);
-    if (setToast) setToast({ type: 'success', message: 'Đã lưu thông tin phiếu xuất kho kiêm vận chuyển nội bộ!' });
+    if (setToast)
+      setToast({
+        type: "success",
+        message: "Đã lưu thông tin phiếu xuất kho kiêm vận chuyển nội bộ!",
+      });
     onClose();
   };
 
@@ -452,7 +542,9 @@ export default function InternalShippingNoteModal({
               {/* Left Column: Tên tổ chức, cá nhân, địa chỉ, MST */}
               <div className="sm:col-span-8 space-y-1.5">
                 <div className="flex items-baseline gap-1.5">
-                  <span className="font-semibold text-slate-900 whitespace-nowrap">Tên tổ chức, cá nhân:</span>
+                  <span className="font-semibold text-slate-900 whitespace-nowrap">
+                    Tên tổ chức, cá nhân:
+                  </span>
                   <span className="print-hide-input flex-1">
                     <input
                       type="text"
@@ -467,7 +559,9 @@ export default function InternalShippingNoteModal({
                 </div>
 
                 <div className="flex items-baseline gap-1.5">
-                  <span className="font-semibold text-slate-900 whitespace-nowrap">Địa chỉ:</span>
+                  <span className="font-semibold text-slate-900 whitespace-nowrap">
+                    Địa chỉ:
+                  </span>
                   <span className="print-hide-input flex-1">
                     <input
                       type="text"
@@ -482,7 +576,9 @@ export default function InternalShippingNoteModal({
                 </div>
 
                 <div className="flex items-baseline gap-1.5">
-                  <span className="font-semibold text-slate-900 whitespace-nowrap">Mã số thuế:</span>
+                  <span className="font-semibold text-slate-900 whitespace-nowrap">
+                    Mã số thuế:
+                  </span>
                   <span className="print-hide-input flex-1">
                     <input
                       type="text"
@@ -500,7 +596,9 @@ export default function InternalShippingNoteModal({
               {/* Right Column: Ký hiệu & Số */}
               <div className="sm:col-span-4 flex flex-col justify-end space-y-1.5 text-sm sm:pl-4">
                 <div className="flex items-baseline justify-start sm:justify-end gap-1.5">
-                  <span className="font-semibold text-slate-900 whitespace-nowrap">Ký hiệu:</span>
+                  <span className="font-semibold text-slate-900 whitespace-nowrap">
+                    Ký hiệu:
+                  </span>
                   <span className="print-hide-input">
                     <input
                       type="text"
@@ -515,7 +613,9 @@ export default function InternalShippingNoteModal({
                 </div>
 
                 <div className="flex items-baseline justify-start sm:justify-end gap-1.5">
-                  <span className="font-semibold text-slate-900 whitespace-nowrap">Số:</span>
+                  <span className="font-semibold text-slate-900 whitespace-nowrap">
+                    Số:
+                  </span>
                   <span className="print-hide-input">
                     <input
                       type="text"
@@ -581,7 +681,9 @@ export default function InternalShippingNoteModal({
             {/* Movement Details (Căn cứ lệnh điều động số... của... về việc...) */}
             <div className="mt-6 space-y-2 text-sm">
               <div className="flex flex-wrap items-baseline gap-1.5">
-                <span className="font-semibold text-slate-900 whitespace-nowrap">Căn cứ lệnh điều động số:</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap">
+                  Căn cứ lệnh điều động số:
+                </span>
                 <span className="print-hide-input flex-1 min-w-[140px]">
                   <input
                     type="text"
@@ -594,7 +696,9 @@ export default function InternalShippingNoteModal({
                   {commandNo}
                 </span>
 
-                <span className="text-slate-900 whitespace-nowrap ml-3">Ngày</span>
+                <span className="text-slate-900 whitespace-nowrap ml-3">
+                  Ngày
+                </span>
                 <span className="print-hide-input">
                   <input
                     type="text"
@@ -635,7 +739,9 @@ export default function InternalShippingNoteModal({
               </div>
 
               <div className="flex flex-wrap items-baseline gap-1.5">
-                <span className="font-semibold text-slate-900 whitespace-nowrap">của</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap">
+                  của
+                </span>
                 <span className="print-hide-input min-w-[180px]">
                   <input
                     type="text"
@@ -648,7 +754,9 @@ export default function InternalShippingNoteModal({
                   {commandBy}
                 </span>
 
-                <span className="font-semibold text-slate-900 whitespace-nowrap ml-3">về việc</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap ml-3">
+                  về việc
+                </span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
@@ -663,7 +771,9 @@ export default function InternalShippingNoteModal({
               </div>
 
               <div className="flex flex-wrap items-baseline gap-1.5">
-                <span className="font-semibold text-slate-900 whitespace-nowrap">Họ tên người vận chuyển:</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap">
+                  Họ tên người vận chuyển:
+                </span>
                 <span className="print-hide-input flex-1 min-w-[180px]">
                   <input
                     type="text"
@@ -679,7 +789,9 @@ export default function InternalShippingNoteModal({
                   {transporterName}
                 </span>
 
-                <span className="font-semibold text-slate-900 whitespace-nowrap ml-3">Hợp đồng số:</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap ml-3">
+                  Hợp đồng số:
+                </span>
                 <span className="print-hide-input">
                   <input
                     type="text"
@@ -694,7 +806,9 @@ export default function InternalShippingNoteModal({
               </div>
 
               <div className="flex items-baseline gap-1.5">
-                <span className="font-semibold text-slate-900 whitespace-nowrap">Phương tiện vận chuyển:</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap">
+                  Phương tiện vận chuyển:
+                </span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
@@ -709,7 +823,9 @@ export default function InternalShippingNoteModal({
               </div>
 
               <div className="flex items-baseline gap-1.5">
-                <span className="font-semibold text-slate-900 whitespace-nowrap">Xuất tại kho:</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap">
+                  Xuất tại kho:
+                </span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
@@ -724,7 +840,9 @@ export default function InternalShippingNoteModal({
               </div>
 
               <div className="flex items-baseline gap-1.5">
-                <span className="font-semibold text-slate-900 whitespace-nowrap">Nhập tại kho:</span>
+                <span className="font-semibold text-slate-900 whitespace-nowrap">
+                  Nhập tại kho:
+                </span>
                 <span className="print-hide-input flex-1">
                   <input
                     type="text"
@@ -744,28 +862,50 @@ export default function InternalShippingNoteModal({
               <table className="w-full border-collapse border border-black text-center text-xs sm:text-sm">
                 <thead>
                   <tr className="border-b border-black font-bold text-slate-950">
-                    <th rowSpan={2} className="border border-black px-2 py-2 w-10">
+                    <th
+                      rowSpan={2}
+                      className="border border-black px-2 py-2 w-10"
+                    >
                       STT
                     </th>
-                    <th rowSpan={2} className="border border-black px-3 py-2 text-center min-w-[220px]">
-                      Tên nhãn hiệu, quy cách, phẩm chất vật tư (sản phẩm, hàng hóa)
+                    <th
+                      rowSpan={2}
+                      className="border border-black px-3 py-2 text-center min-w-[220px]"
+                    >
+                      Tên nhãn hiệu, quy cách, phẩm chất vật tư (sản phẩm, hàng
+                      hóa)
                     </th>
-                    <th rowSpan={2} className="border border-black px-2 py-2 w-24">
+                    <th
+                      rowSpan={2}
+                      className="border border-black px-2 py-2 w-24"
+                    >
                       Mã số
                     </th>
-                    <th rowSpan={2} className="border border-black px-2 py-2 w-18">
+                    <th
+                      rowSpan={2}
+                      className="border border-black px-2 py-2 w-18"
+                    >
                       Đơn vị tính
                     </th>
                     <th colSpan={2} className="border border-black px-2 py-1.5">
                       Số lượng
                     </th>
-                    <th rowSpan={2} className="border border-black px-2 py-2 w-24">
+                    <th
+                      rowSpan={2}
+                      className="border border-black px-2 py-2 w-24"
+                    >
                       Đơn giá
                     </th>
-                    <th rowSpan={2} className="border border-black px-3 py-2 w-28">
+                    <th
+                      rowSpan={2}
+                      className="border border-black px-3 py-2 w-28"
+                    >
                       Thành tiền
                     </th>
-                    <th rowSpan={2} className="border border-black px-1 py-1 w-8 print-hide">
+                    <th
+                      rowSpan={2}
+                      className="border border-black px-1 py-1 w-8 print-hide"
+                    >
                       Thao tác
                     </th>
                   </tr>
@@ -781,9 +921,14 @@ export default function InternalShippingNoteModal({
 
                 <tbody>
                   {items.map((item, idx) => {
-                    const itemAmount = (Number(item.quantityExported) || 0) * (Number(item.price) || 0);
+                    const itemAmount =
+                      (Number(item.quantityExported) || 0) *
+                      (Number(item.price) || 0);
                     return (
-                      <tr key={item.id || idx} className="border-b border-black">
+                      <tr
+                        key={item.id || idx}
+                        className="border-b border-black"
+                      >
                         <td className="border border-black px-1 py-1.5 font-medium">
                           {idx + 1}
                         </td>
@@ -792,7 +937,13 @@ export default function InternalShippingNoteModal({
                             <input
                               type="text"
                               value={item.productName}
-                              onChange={(e) => handleItemChange(idx, 'productName', e.target.value)}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "productName",
+                                  e.target.value,
+                                )
+                              }
                               className="w-full font-bold text-slate-900 bg-transparent outline-none"
                             />
                           </span>
@@ -805,7 +956,13 @@ export default function InternalShippingNoteModal({
                             <input
                               type="text"
                               value={item.productCode}
-                              onChange={(e) => handleItemChange(idx, 'productCode', e.target.value)}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "productCode",
+                                  e.target.value,
+                                )
+                              }
                               className="w-full text-center font-medium bg-transparent outline-none"
                             />
                           </span>
@@ -818,7 +975,9 @@ export default function InternalShippingNoteModal({
                             <input
                               type="text"
                               value={item.unit}
-                              onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
+                              onChange={(e) =>
+                                handleItemChange(idx, "unit", e.target.value)
+                              }
                               className="w-full text-center bg-transparent outline-none"
                             />
                           </span>
@@ -831,7 +990,13 @@ export default function InternalShippingNoteModal({
                             <input
                               type="number"
                               value={item.quantityExported}
-                              onChange={(e) => handleItemChange(idx, 'quantityExported', Number(e.target.value))}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "quantityExported",
+                                  Number(e.target.value),
+                                )
+                              }
                               className="w-full text-center font-bold bg-transparent outline-none"
                             />
                           </span>
@@ -844,7 +1009,13 @@ export default function InternalShippingNoteModal({
                             <input
                               type="number"
                               value={item.quantityImported}
-                              onChange={(e) => handleItemChange(idx, 'quantityImported', Number(e.target.value))}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "quantityImported",
+                                  Number(e.target.value),
+                                )
+                              }
                               className="w-full text-center font-bold bg-transparent outline-none"
                             />
                           </span>
@@ -857,7 +1028,13 @@ export default function InternalShippingNoteModal({
                             <input
                               type="number"
                               value={item.price}
-                              onChange={(e) => handleItemChange(idx, 'price', Number(e.target.value))}
+                              onChange={(e) =>
+                                handleItemChange(
+                                  idx,
+                                  "price",
+                                  Number(e.target.value),
+                                )
+                              }
                               className="w-full text-right bg-transparent outline-none"
                             />
                           </span>
@@ -884,23 +1061,31 @@ export default function InternalShippingNoteModal({
 
                   {/* Empty rows if items list is short */}
                   {items.length < 3 &&
-                    Array.from({ length: 3 - items.length }).map((_, emptyIdx) => (
-                      <tr key={`empty-${emptyIdx}`} className="border-b border-black h-7">
-                        <td className="border border-black"></td>
-                        <td className="border border-black"></td>
-                        <td className="border border-black"></td>
-                        <td className="border border-black"></td>
-                        <td className="border border-black"></td>
-                        <td className="border border-black"></td>
-                        <td className="border border-black"></td>
-                        <td className="border border-black"></td>
-                        <td className="border border-black print-hide"></td>
-                      </tr>
-                    ))}
+                    Array.from({ length: 3 - items.length }).map(
+                      (_, emptyIdx) => (
+                        <tr
+                          key={`empty-${emptyIdx}`}
+                          className="border-b border-black h-7"
+                        >
+                          <td className="border border-black"></td>
+                          <td className="border border-black"></td>
+                          <td className="border border-black"></td>
+                          <td className="border border-black"></td>
+                          <td className="border border-black"></td>
+                          <td className="border border-black"></td>
+                          <td className="border border-black"></td>
+                          <td className="border border-black"></td>
+                          <td className="border border-black print-hide"></td>
+                        </tr>
+                      ),
+                    )}
 
                   {/* Total Row */}
                   <tr className="border-t-2 border-black font-bold text-slate-950">
-                    <td colSpan={4} className="border border-black px-3 py-2 text-right uppercase tracking-wider">
+                    <td
+                      colSpan={4}
+                      className="border border-black px-3 py-2 text-right uppercase tracking-wider"
+                    >
                       TỔNG CỘNG:
                     </td>
                     <td className="border border-black px-1 py-2 font-black text-center">
@@ -933,7 +1118,10 @@ export default function InternalShippingNoteModal({
 
             {/* Total Amount in Words */}
             <div className="mt-3 text-sm italic text-slate-800">
-              Tổng số tiền (viết bằng chữ): <span className="font-bold text-slate-950 not-italic">{totalAmountWords}</span>
+              Tổng số tiền (viết bằng chữ):{" "}
+              <span className="font-bold text-slate-950 not-italic">
+                {totalAmountWords}
+              </span>
             </div>
 
             {/* 4 Signatures Section (Exact 4 columns from Image 2) */}
@@ -942,7 +1130,9 @@ export default function InternalShippingNoteModal({
               <div className="flex flex-col items-center justify-between min-h-[130px]">
                 <div>
                   <div className="font-bold text-slate-950">Người lập</div>
-                  <div className="text-xs italic text-slate-600">(ký, ghi rõ họ tên)</div>
+                  <div className="text-xs italic text-slate-600">
+                    (ký, ghi rõ họ tên)
+                  </div>
                 </div>
                 <div className="w-full pt-14">
                   <span className="print-hide-input w-full">
@@ -963,7 +1153,9 @@ export default function InternalShippingNoteModal({
               <div className="flex flex-col items-center justify-between min-h-[130px]">
                 <div>
                   <div className="font-bold text-slate-950">Thủ kho xuất</div>
-                  <div className="text-xs italic text-slate-600">(ký, ghi rõ họ tên)</div>
+                  <div className="text-xs italic text-slate-600">
+                    (ký, ghi rõ họ tên)
+                  </div>
                 </div>
                 <div className="w-full pt-14">
                   <span className="print-hide-input w-full">
@@ -983,8 +1175,12 @@ export default function InternalShippingNoteModal({
               {/* 3. Người vận chuyển */}
               <div className="flex flex-col items-center justify-between min-h-[130px]">
                 <div>
-                  <div className="font-bold text-slate-950">Người vận chuyển</div>
-                  <div className="text-xs italic text-slate-600">(ký, ghi rõ họ tên)</div>
+                  <div className="font-bold text-slate-950">
+                    Người vận chuyển
+                  </div>
+                  <div className="text-xs italic text-slate-600">
+                    (ký, ghi rõ họ tên)
+                  </div>
                 </div>
                 <div className="w-full pt-14">
                   <span className="print-hide-input w-full">
@@ -1005,7 +1201,9 @@ export default function InternalShippingNoteModal({
               <div className="flex flex-col items-center justify-between min-h-[130px]">
                 <div>
                   <div className="font-bold text-slate-950">Thủ kho nhập</div>
-                  <div className="text-xs italic text-slate-600">(ký, ghi rõ họ tên)</div>
+                  <div className="text-xs italic text-slate-600">
+                    (ký, ghi rõ họ tên)
+                  </div>
                 </div>
                 <div className="w-full pt-14">
                   <span className="print-hide-input w-full">
@@ -1028,7 +1226,10 @@ export default function InternalShippingNoteModal({
         {/* Modal Bottom Actions Bar (Hidden on print) */}
         <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-3.5 print:hidden">
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-            <span>Dữ liệu mẫu in được đồng bộ tự động từ Cấu hình hệ thống (Settings).</span>
+            <span>
+              Dữ liệu mẫu in được đồng bộ tự động từ Cấu hình hệ thống
+              (Settings).
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -1059,6 +1260,6 @@ export default function InternalShippingNoteModal({
         </div>
       </div>
     </div>,
-    document.body
+    document.body,
   );
 }

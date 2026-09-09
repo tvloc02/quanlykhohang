@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Package,
@@ -41,9 +41,11 @@ import {
   AlertOctagon,
   Lock,
   Zap,
-} from 'lucide-react';
-import SyncStatusBanner from '../../features/offline-sync/components/SyncStatusBanner';
-import Sidebar from './Sidebar';
+} from "lucide-react";
+import SyncStatusBanner from "../../features/offline-sync/components/SyncStatusBanner";
+import Sidebar from "./Sidebar";
+
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || "/api";
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -51,7 +53,7 @@ interface LayoutProps {
 
 export default function MainLayout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = React.useState(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       return window.innerWidth >= 1024;
     }
     return true;
@@ -61,7 +63,7 @@ export default function MainLayout({ children }: LayoutProps) {
 
   // Close sidebar on mobile when navigating
   React.useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
       setSidebarOpen(false);
     }
   }, [location.pathname]);
@@ -75,41 +77,72 @@ export default function MainLayout({ children }: LayoutProps) {
         setSidebarOpen(true);
       }
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
   const storedUser = React.useMemo(() => {
     try {
-      return JSON.parse(localStorage.getItem('user') || '{}') as { email?: string; fullName?: string; role?: string };
+      return JSON.parse(localStorage.getItem("user") || "{}") as {
+        email?: string;
+        fullName?: string;
+        role?: string;
+      };
     } catch {
       return {};
     }
   }, []);
-  const userName = storedUser.fullName || 'Dương Ngọc Anh';
-  const userEmail = storedUser.email || 'admin@smartwms.vn';
+  const userName = storedUser.fullName || "Dương Ngọc Anh";
+  const userEmail = storedUser.email || "admin@smartwms.vn";
   const formatUserRoleDisplay = (role?: string) => {
-    if (!role) return 'Quản trị viên';
+    if (!role) return "Quản trị viên";
     const lower = String(role).trim().toLowerCase();
-    if (lower === 'admin' || lower === 'administrator') return 'Quản trị viên';
-    if (lower === 'manager' || lower === 'warehouse_manager' || lower === 'quản lý kho') return 'Quản lý kho';
-    if (lower === 'staff' || lower === 'inventory_staff' || lower === 'warehouse_staff' || lower === 'storekeeper') return 'Thủ kho';
-    if (lower === 'inventory_checker' || lower === 'inventory-checker' || lower === 'nhân viên kiểm kê') return 'Nhân viên kiểm kê';
-    if (lower === 'customer') return 'Khách hàng';
-    if (lower === 'supplier') return 'Nhà cung cấp';
+    if (lower === "admin" || lower === "administrator") return "Quản trị viên";
+    if (
+      lower === "manager" ||
+      lower === "warehouse_manager" ||
+      lower === "quản lý kho"
+    )
+      return "Quản lý kho";
+    if (
+      lower === "staff" ||
+      lower === "inventory_staff" ||
+      lower === "warehouse_staff" ||
+      lower === "storekeeper"
+    )
+      return "Thủ kho";
+    if (
+      lower === "inventory_checker" ||
+      lower === "inventory-checker" ||
+      lower === "nhân viên kiểm kê"
+    )
+      return "Nhân viên kiểm kê";
+    if (lower === "customer") return "Khách hàng";
+    if (lower === "supplier") return "Nhà cung cấp";
     return role;
   };
-  const rawRole = storedUser.role || ((storedUser as any).roles && (storedUser as any).roles[0]?.name) || '';
+  const rawRole =
+    storedUser.role ||
+    ((storedUser as any).roles && (storedUser as any).roles[0]?.name) ||
+    "";
   const userRole = formatUserRoleDisplay(rawRole);
-  const userInitials = userName.trim().split(/\s+/).map((n) => n[0]).join('').slice(0, 3).toUpperCase() || 'WMS';
+  const userInitials =
+    userName
+      .trim()
+      .split(/\s+/)
+      .map((n) => n[0])
+      .join("")
+      .slice(0, 3)
+      .toUpperCase() || "WMS";
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
-  const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
+  const [notificationDropdownOpen, setNotificationDropdownOpen] =
+    useState(false);
 
   // Default to dark mode (isDarkMode: true) matching dem.cmcu.edu.vn sample
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme) return savedTheme === 'dark';
+      const savedTheme = localStorage.getItem("theme");
+      if (savedTheme) return savedTheme === "dark";
       return true; // Default to Dark Mode as requested
     } catch {
       return true;
@@ -118,76 +151,86 @@ export default function MainLayout({ children }: LayoutProps) {
 
   useEffect(() => {
     if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
     } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
     }
   }, [isDarkMode]);
 
-  const DEFAULT_OPERATIONAL_NOTIFICATIONS = React.useMemo(() => [
-    {
-      id: 'op-1',
-      title: 'Phiếu nhập kho mới PNK20260821-2054',
-      message: 'Phiếu nhập kho PNK20260821-2054 vừa được tạo. Vui lòng duyệt trước khi nhập kho.',
-      link: '/inbound/receipts',
-      priority: 'high',
-      type: 'inbound',
-      isUnread: true,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: 'op-2',
-      title: 'Phiếu xuất kho mới PXK20260821-0012',
-      message: 'Phiếu xuất kho PXK20260821-0012 vừa được tạo. Vui lòng chuẩn bị đóng gói và xuất kho.',
-      link: '/outbound/orders',
-      priority: 'normal',
-      type: 'outbound',
-      isUnread: true,
-      createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-    },
-    {
-      id: 'op-3',
-      title: 'Đơn mua hàng DH01082026-0002',
-      message: 'Nhà cung cấp Công ty giặt may Hà Thành đã xác nhận đơn mua hàng DH01082026-0002.',
-      link: '/inbound/purchase-orders',
-      priority: 'normal',
-      type: 'purchase',
-      isUnread: true,
-      createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
-    },
-    {
-      id: 'op-4',
-      title: 'Đơn chuyển kho CK20260821-0005',
-      message: 'Đơn chuyển kho nội bộ từ Kho tổng đến Kho Cầu Giấy đã hoàn tất vận chuyển.',
-      link: '/delivery/transfer-requests',
-      priority: 'normal',
-      type: 'transfer',
-      isUnread: false,
-      createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
-    },
-    {
-      id: 'op-5',
-      title: 'Cảnh báo tồn kho tối thiểu',
-      message: 'Phát hiện 15 mặt hàng có số lượng tồn kho giảm xuống dưới ngưỡng tối thiểu.',
-      link: '/reports/below-min-stock',
-      priority: 'urgent',
-      type: 'warning',
-      isUnread: true,
-      createdAt: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
-    },
-  ], []);
+  const DEFAULT_OPERATIONAL_NOTIFICATIONS = React.useMemo(
+    () => [
+      {
+        id: "op-1",
+        title: "Phiếu nhập kho mới PNK20260821-2054",
+        message:
+          "Phiếu nhập kho PNK20260821-2054 vừa được tạo. Vui lòng duyệt trước khi nhập kho.",
+        link: "/inbound/receipts",
+        priority: "high",
+        type: "inbound",
+        isUnread: true,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "op-2",
+        title: "Phiếu xuất kho mới PXK20260821-0012",
+        message:
+          "Phiếu xuất kho PXK20260821-0012 vừa được tạo. Vui lòng chuẩn bị đóng gói và xuất kho.",
+        link: "/outbound/orders",
+        priority: "normal",
+        type: "outbound",
+        isUnread: true,
+        createdAt: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+      },
+      {
+        id: "op-3",
+        title: "Đơn mua hàng DH01082026-0002",
+        message:
+          "Nhà cung cấp Công ty giặt may Hà Thành đã xác nhận đơn mua hàng DH01082026-0002.",
+        link: "/inbound/purchase-orders",
+        priority: "normal",
+        type: "purchase",
+        isUnread: true,
+        createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+      },
+      {
+        id: "op-4",
+        title: "Đơn chuyển kho CK20260821-0005",
+        message:
+          "Đơn chuyển kho nội bộ từ Kho tổng đến Kho Cầu Giấy đã hoàn tất vận chuyển.",
+        link: "/delivery/transfer-requests",
+        priority: "normal",
+        type: "transfer",
+        isUnread: false,
+        createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+      },
+      {
+        id: "op-5",
+        title: "Cảnh báo tồn kho tối thiểu",
+        message:
+          "Phát hiện 15 mặt hàng có số lượng tồn kho giảm xuống dưới ngưỡng tối thiểu.",
+        link: "/reports/below-min-stock",
+        priority: "urgent",
+        type: "warning",
+        isUnread: true,
+        createdAt: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
+      },
+    ],
+    [],
+  );
 
-  const [notifications, setNotifications] = useState<any[]>(DEFAULT_OPERATIONAL_NOTIFICATIONS);
-  const unreadCount = notifications.filter(n => n.isUnread).length;
+  const [notifications, setNotifications] = useState<any[]>(
+    DEFAULT_OPERATIONAL_NOTIFICATIONS,
+  );
+  const unreadCount = notifications.filter((n) => n.isUnread).length;
   const [currentTime, setCurrentTime] = useState(() => new Date());
 
   const loadNotifications = React.useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/notifications', {
+      const response = await fetch(`${API_BASE_URL}/notifications`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
         },
       });
       if (response.ok) {
@@ -205,13 +248,13 @@ export default function MainLayout({ children }: LayoutProps) {
 
   useEffect(() => {
     const handleClickOutside = (event: any) => {
-      if (!event.target.closest('.dropdown-container')) {
+      if (!event.target.closest(".dropdown-container")) {
         setUserDropdownOpen(false);
         setNotificationDropdownOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -228,21 +271,21 @@ export default function MainLayout({ children }: LayoutProps) {
   }, [loadNotifications]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login', { replace: true });
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/login", { replace: true });
   };
 
-  const formattedTime = currentTime.toLocaleTimeString('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+  const formattedTime = currentTime.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
-  const formattedDate = currentTime.toLocaleDateString('vi-VN', {
-    weekday: 'short',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+  const formattedDate = currentTime.toLocaleDateString("vi-VN", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   });
 
   return (
@@ -257,7 +300,10 @@ export default function MainLayout({ children }: LayoutProps) {
 
       {/* Sidebar Component */}
       <div className="print:hidden">
-        <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
+        <Sidebar
+          isOpen={sidebarOpen}
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
+        />
       </div>
 
       {/* Main Content Area */}
@@ -278,9 +324,15 @@ export default function MainLayout({ children }: LayoutProps) {
               className="h-10 w-10 sm:h-[3.5rem] sm:w-[3.5rem] flex items-center justify-center bg-white dark:bg-[#0f172a] border-2 border-slate-200 dark:border-slate-800/80 hover:bg-cyan-50 dark:hover:bg-[#1a233a] rounded-xl transition-all group lg:hidden cursor-pointer shrink-0"
             >
               {sidebarOpen ? (
-                <X size={18} className="text-slate-600 dark:text-blue-200 group-hover:text-cyan-600 dark:group-hover:text-blue-400" />
+                <X
+                  size={18}
+                  className="text-slate-600 dark:text-blue-200 group-hover:text-cyan-600 dark:group-hover:text-blue-400"
+                />
               ) : (
-                <Menu size={18} className="text-slate-600 dark:text-blue-200 group-hover:text-cyan-600 dark:group-hover:text-blue-400" />
+                <Menu
+                  size={18}
+                  className="text-slate-600 dark:text-blue-200 group-hover:text-cyan-600 dark:group-hover:text-blue-400"
+                />
               )}
             </button>
 
@@ -319,9 +371,15 @@ export default function MainLayout({ children }: LayoutProps) {
                       className="inline-flex items-center gap-2.5 cursor-pointer hover:text-cyan-600 dark:hover:text-blue-400 transition-colors shrink-0"
                       title="Bấm để xem chi tiết thông báo"
                     >
-                      <span className="font-extrabold text-cyan-700 dark:text-blue-400 text-sm">{notif.title}:</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{notif.message}</span>
-                      <span className="text-cyan-400 dark:text-blue-400 font-extrabold ml-6">✦</span>
+                      <span className="font-extrabold text-cyan-700 dark:text-blue-400 text-sm">
+                        {notif.title}:
+                      </span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
+                        {notif.message}
+                      </span>
+                      <span className="text-cyan-400 dark:text-blue-400 font-extrabold ml-6">
+                        ✦
+                      </span>
                     </span>
                   ))}
               </div>
@@ -330,11 +388,12 @@ export default function MainLayout({ children }: LayoutProps) {
 
           {/* Right Section: Controls & Profile */}
           <div className="flex items-center space-x-3 flex-shrink-0">
-
             {/* Notifications Dropdown */}
             <div className="relative dropdown-container">
               <div className="relative">
-                {unreadCount > 0 && <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-pink-500 rounded-xl blur-md opacity-50 animate-pulse"></div>}
+                {unreadCount > 0 && (
+                  <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-pink-500 rounded-xl blur-md opacity-50 animate-pulse"></div>
+                )}
                 <button
                   onClick={() => {
                     setUserDropdownOpen(false);
@@ -358,21 +417,35 @@ export default function MainLayout({ children }: LayoutProps) {
                   <div className="px-4 py-3 border-b-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#090d16]">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Thông báo</p>
-                        {unreadCount > 0 && <p className="text-xs text-slate-600 dark:text-indigo-300">{unreadCount} thông báo chưa đọc</p>}
+                        <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                          Thông báo
+                        </p>
+                        {unreadCount > 0 && (
+                          <p className="text-xs text-slate-600 dark:text-indigo-300">
+                            {unreadCount} thông báo chưa đọc
+                          </p>
+                        )}
                       </div>
                       <div className="flex items-center space-x-2">
                         {unreadCount > 0 && (
                           <button
                             onClick={async () => {
-                              setNotifications(notifications.map((n) => ({ ...n, isUnread: false })));
+                              setNotifications(
+                                notifications.map((n) => ({
+                                  ...n,
+                                  isUnread: false,
+                                })),
+                              );
                               try {
-                                await fetch('http://localhost:3000/api/notifications/read-all', {
-                                  method: 'POST',
-                                  headers: {
-                                    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+                                await fetch(
+                                  `${API_BASE_URL}/notifications/read-all`,
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+                                    },
                                   },
-                                });
+                                );
                               } catch {
                                 // Ignore background sync errors.
                               }
@@ -390,8 +463,12 @@ export default function MainLayout({ children }: LayoutProps) {
                     {notifications.length === 0 ? (
                       <div className="px-4 py-8 text-center flex flex-col items-center justify-center">
                         <Bell className="h-10 w-10 text-slate-300 dark:text-indigo-800 mb-3" />
-                        <p className="text-sm font-bold text-slate-600 dark:text-indigo-300">Không có thông báo mới</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">Các thông báo của bạn sẽ xuất hiện ở đây</p>
+                        <p className="text-sm font-bold text-slate-600 dark:text-indigo-300">
+                          Không có thông báo mới
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
+                          Các thông báo của bạn sẽ xuất hiện ở đây
+                        </p>
                       </div>
                     ) : (
                       notifications.map((notif) => (
@@ -400,15 +477,22 @@ export default function MainLayout({ children }: LayoutProps) {
                           type="button"
                           onClick={async () => {
                             setNotifications((current) =>
-                              current.map((item) => (item.id === notif.id || item._id === notif._id ? { ...item, isUnread: false } : item)),
+                              current.map((item) =>
+                                item.id === notif.id || item._id === notif._id
+                                  ? { ...item, isUnread: false }
+                                  : item,
+                              ),
                             );
                             try {
-                              await fetch(`http://localhost:3000/api/notifications/${notif.id || notif._id}/read`, {
-                                method: 'POST',
-                                headers: {
-                                  Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+                              await fetch(
+                                `${API_BASE_URL}/notifications/${notif.id || notif._id}/read`,
+                                {
+                                  method: "POST",
+                                  headers: {
+                                    Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+                                  },
                                 },
-                              });
+                              );
                             } catch {
                               // Ignore background sync errors.
                             }
@@ -417,20 +501,39 @@ export default function MainLayout({ children }: LayoutProps) {
                               setNotificationDropdownOpen(false);
                             }
                           }}
-                          className={`w-full px-4 py-3 text-left hover:bg-cyan-50 dark:hover:bg-[#1a233a] cursor-pointer border-b-2 border-slate-100 dark:border-slate-800/60 transition-colors ${notif.isUnread ? 'bg-cyan-50/50 dark:bg-[#131b2e]' : ''}`}
+                          className={`w-full px-4 py-3 text-left hover:bg-cyan-50 dark:hover:bg-[#1a233a] cursor-pointer border-b-2 border-slate-100 dark:border-slate-800/60 transition-colors ${notif.isUnread ? "bg-cyan-50/50 dark:bg-[#131b2e]" : ""}`}
                         >
                           <div className="flex items-start space-x-3">
                             <div className="flex-shrink-0 mt-1">
-                              {notif.priority === 'urgent' ? <AlertCircle className="h-4 w-4 text-red-500" /> : notif.priority === 'high' ? <AlertTriangle className="h-4 w-4 text-orange-500" /> : <Info className="h-4 w-4 text-cyan-500 dark:text-indigo-400" />}
+                              {notif.priority === "urgent" ? (
+                                <AlertCircle className="h-4 w-4 text-red-500" />
+                              ) : notif.priority === "high" ? (
+                                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                              ) : (
+                                <Info className="h-4 w-4 text-cyan-500 dark:text-indigo-400" />
+                              )}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between mb-1">
-                                <p className={`text-sm font-bold ${notif.isUnread ? 'text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}>{notif.title}</p>
-                                {notif.isUnread && <div className="h-2 w-2 rounded-full bg-cyan-500 dark:bg-indigo-500 ml-2 mt-1"></div>}
+                                <p
+                                  className={`text-sm font-bold ${notif.isUnread ? "text-slate-900 dark:text-slate-100" : "text-slate-700 dark:text-slate-300"}`}
+                                >
+                                  {notif.title}
+                                </p>
+                                {notif.isUnread && (
+                                  <div className="h-2 w-2 rounded-full bg-cyan-500 dark:bg-indigo-500 ml-2 mt-1"></div>
+                                )}
                               </div>
-                              <p className="text-xs mb-2 line-clamp-2 text-slate-600 dark:text-slate-400">{notif.message}</p>
+                              <p className="text-xs mb-2 line-clamp-2 text-slate-600 dark:text-slate-400">
+                                {notif.message}
+                              </p>
                               <div className="flex items-center text-xs text-slate-500 dark:text-slate-500">
-                                <Clock className="h-3 w-3 mr-1" /> {notif.createdAt ? new Date(notif.createdAt).toLocaleString('vi-VN') : 'Vừa xong'}
+                                <Clock className="h-3 w-3 mr-1" />{" "}
+                                {notif.createdAt
+                                  ? new Date(notif.createdAt).toLocaleString(
+                                      "vi-VN",
+                                    )
+                                  : "Vừa xong"}
                               </div>
                             </div>
                           </div>
@@ -439,7 +542,12 @@ export default function MainLayout({ children }: LayoutProps) {
                     )}
                   </div>
                   <div className="px-4 py-3 border-t-2 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#090d16]">
-                    <button onClick={() => setNotificationDropdownOpen(false)} className="w-full text-center text-xs font-bold text-cyan-600 dark:text-indigo-400 cursor-pointer">Xem tất cả thông báo</button>
+                    <button
+                      onClick={() => setNotificationDropdownOpen(false)}
+                      className="w-full text-center text-xs font-bold text-cyan-600 dark:text-indigo-400 cursor-pointer"
+                    >
+                      Xem tất cả thông báo
+                    </button>
                   </div>
                 </div>
               )}
@@ -458,8 +566,12 @@ export default function MainLayout({ children }: LayoutProps) {
                   {userInitials}
                 </div>
                 <div className="hidden md:block text-left">
-                  <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100">{userName}</p>
-                  <p className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-indigo-300 max-w-[140px] truncate">{userEmail}</p>
+                  <p className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                    {userName}
+                  </p>
+                  <p className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-indigo-300 max-w-[140px] truncate">
+                    {userEmail}
+                  </p>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-500 dark:text-indigo-300" />
               </button>
@@ -467,14 +579,18 @@ export default function MainLayout({ children }: LayoutProps) {
               {userDropdownOpen && (
                 <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-[#0f172a] rounded-xl shadow-2xl py-2 z-50 border-2 border-slate-200 dark:border-slate-800">
                   <div className="px-4 pb-2 mb-2 border-b-2 border-slate-200 dark:border-slate-800">
-                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{userName}</p>
-                    <p className="text-xs text-slate-500 dark:text-indigo-300 truncate">{userEmail}</p>
+                    <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
+                      {userName}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-indigo-300 truncate">
+                      {userEmail}
+                    </p>
                   </div>
 
                   <button
                     onClick={() => {
                       setUserDropdownOpen(false);
-                      navigate('/profile');
+                      navigate("/profile");
                     }}
                     className="flex items-center w-[calc(100%-1rem)] px-4 py-3 text-xs hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors rounded-lg mx-2 text-slate-900 dark:text-slate-100 font-bold cursor-pointer"
                   >
@@ -484,21 +600,31 @@ export default function MainLayout({ children }: LayoutProps) {
                   <button
                     onClick={() => {
                       setUserDropdownOpen(false);
-                      navigate('/settings');
+                      navigate("/settings");
                     }}
                     className="flex items-center w-[calc(100%-1rem)] px-4 py-3 text-xs hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors rounded-lg mx-2 text-slate-900 dark:text-slate-100 font-bold cursor-pointer"
                   >
                     <Settings className="h-4 w-4 mr-3 text-slate-600 dark:text-indigo-400" />
                     Cài đặt hệ thống
                   </button>
-                  <button onClick={() => setIsDarkMode(!isDarkMode)} className="flex items-center w-[calc(100%-1rem)] px-4 py-3 text-xs hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors rounded-lg mx-2 text-slate-900 dark:text-slate-100 font-bold cursor-pointer">
-                    {isDarkMode ? <Moon className="h-4 w-4 mr-3 text-indigo-400" /> : <Sun className="h-4 w-4 mr-3 text-amber-500" />}
-                    {isDarkMode ? 'Giao diện: Tối' : 'Giao diện: Sáng'}
+                  <button
+                    onClick={() => setIsDarkMode(!isDarkMode)}
+                    className="flex items-center w-[calc(100%-1rem)] px-4 py-3 text-xs hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors rounded-lg mx-2 text-slate-900 dark:text-slate-100 font-bold cursor-pointer"
+                  >
+                    {isDarkMode ? (
+                      <Moon className="h-4 w-4 mr-3 text-indigo-400" />
+                    ) : (
+                      <Sun className="h-4 w-4 mr-3 text-amber-500" />
+                    )}
+                    {isDarkMode ? "Giao diện: Tối" : "Giao diện: Sáng"}
                   </button>
 
                   <div className="my-2 border-t-2 border-slate-200 dark:border-slate-800" />
 
-                  <button onClick={handleLogout} className="flex items-center w-[calc(100%-1rem)] px-4 py-3 text-xs hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors rounded-lg mx-2 text-rose-600 dark:text-rose-400 font-extrabold cursor-pointer">
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center w-[calc(100%-1rem)] px-4 py-3 text-xs hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors rounded-lg mx-2 text-rose-600 dark:text-rose-400 font-extrabold cursor-pointer"
+                  >
                     <LogOut className="h-4 w-4 mr-3" />
                     Đăng xuất
                   </button>

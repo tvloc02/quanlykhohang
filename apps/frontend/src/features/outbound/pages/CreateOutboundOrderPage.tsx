@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   Plus,
@@ -36,15 +36,22 @@ import {
   TrendingDown,
   FileX,
   Lock,
-} from 'lucide-react';
-import MainLayout from '../../../shared/components/MainLayout';
-import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
-import { filterOutDeletedProducts } from '../../../shared/utils/productUtils';
-import { getStoredWarehouses, mergeStoredWarehouses, saveStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
-import { SmartSlottingGridModal, clearSmartSlottingCache } from '../../warehouses/components/SmartSlottingGridModal';
-import { clearWarehouseBinsCache } from '../../warehouses/components/WarehouseSlottingGrid';
-
-
+} from "lucide-react";
+import MainLayout from "../../../shared/components/MainLayout";
+import BarcodeScanner, {
+  type ScannedProduct,
+} from "../../../shared/components/BarcodeScanner";
+import { filterOutDeletedProducts } from "../../../shared/utils/productUtils";
+import {
+  getStoredWarehouses,
+  mergeStoredWarehouses,
+  saveStoredWarehouses,
+} from "../../../shared/utils/warehouseAssignments";
+import {
+  SmartSlottingGridModal,
+  clearSmartSlottingCache,
+} from "../../warehouses/components/SmartSlottingGridModal";
+import { clearWarehouseBinsCache } from "../../warehouses/components/WarehouseSlottingGrid";
 
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
@@ -72,24 +79,45 @@ export interface ProductOption {
   }>;
 }
 
-export function getProductWarehouseStock(p?: ProductOption | null, whCode?: string, allInboundOrders: any[] = []): number {
+export function getProductWarehouseStock(
+  p?: ProductOption | null,
+  whCode?: string,
+  allInboundOrders: any[] = [],
+): number {
   if (!p) return 0;
-  const targetCode = (whCode || '').trim().toLowerCase();
-  const normTarget = targetCode.replace(/[^a-z0-9]/g, '');
+  const targetCode = (whCode || "").trim().toLowerCase();
+  const normTarget = targetCode.replace(/[^a-z0-9]/g, "");
 
   // 1. Check stockBalances array attached to product
   if (Array.isArray(p.stockBalances) && p.stockBalances.length > 0) {
     if (targetCode) {
       const match = p.stockBalances.find((b) => {
-        const bCode = (b.locationCode || (b as any).warehouseCode || (b as any).branchCode || '').trim().toLowerCase();
+        const bCode = (
+          b.locationCode ||
+          (b as any).warehouseCode ||
+          (b as any).branchCode ||
+          ""
+        )
+          .trim()
+          .toLowerCase();
         if (!bCode) return false;
         if (bCode === targetCode) return true;
-        const normB = bCode.replace(/[^a-z0-9]/g, '');
-        if (normB && normTarget && (normB === normTarget || normB.includes(normTarget) || normTarget.includes(normB))) return true;
+        const normB = bCode.replace(/[^a-z0-9]/g, "");
+        if (
+          normB &&
+          normTarget &&
+          (normB === normTarget ||
+            normB.includes(normTarget) ||
+            normTarget.includes(normB))
+        )
+          return true;
 
         if (
-          (targetCode === 'kh006' || targetCode === 'kho thanh trì') &&
-          (bCode === 'kh006' || bCode === 'kho thanh trì' || bCode === 'kho-nvl' || bCode === 'kho-tong')
+          (targetCode === "kh006" || targetCode === "kho thanh trì") &&
+          (bCode === "kh006" ||
+            bCode === "kho thanh trì" ||
+            bCode === "kho-nvl" ||
+            bCode === "kho-tong")
         ) {
           return true;
         }
@@ -115,7 +143,7 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
 
   if (!ordersList || ordersList.length === 0) {
     try {
-      const rawInbound = localStorage.getItem('stored_stock_in_orders');
+      const rawInbound = localStorage.getItem("stored_stock_in_orders");
       if (rawInbound) {
         ordersList = JSON.parse(rawInbound);
       }
@@ -124,26 +152,51 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
 
   if (Array.isArray(ordersList) && ordersList.length > 0) {
     ordersList.forEach((ord: any) => {
-      const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
-      const normOWh = oWh.replace(/[^a-z0-9]/g, '');
+      const oWh = (ord.warehouseCode || ord.branchCode || "")
+        .trim()
+        .toLowerCase();
+      const normOWh = oWh.replace(/[^a-z0-9]/g, "");
 
-      const isWhMatch = !targetCode || oWh === targetCode || (normOWh && normTarget && (normOWh === normTarget || normOWh.includes(normTarget) || normTarget.includes(normOWh))) ||
-        ((targetCode === 'kh006' || targetCode === 'kho thanh trì') && (oWh === 'kh006' || oWh === 'kho thanh trì' || oWh === 'kho-nvl' || oWh === 'kho-tong'));
+      const isWhMatch =
+        !targetCode ||
+        oWh === targetCode ||
+        (normOWh &&
+          normTarget &&
+          (normOWh === normTarget ||
+            normOWh.includes(normTarget) ||
+            normTarget.includes(normOWh))) ||
+        ((targetCode === "kh006" || targetCode === "kho thanh trì") &&
+          (oWh === "kh006" ||
+            oWh === "kho thanh trì" ||
+            oWh === "kho-nvl" ||
+            oWh === "kho-tong"));
 
       if (!isWhMatch) return;
 
       const details = ord.details || ord.items || [];
       details.forEach((item: any) => {
-        const itemProdId = String(item.product?.id || item.productId || '');
-        const itemSku = String(item.product?.internalSku || item.productSku || item.sku || '').toLowerCase();
-        const itemName = String(item.product?.name || item.productName || '').toLowerCase();
+        const itemProdId = String(item.product?.id || item.productId || "");
+        const itemSku = String(
+          item.product?.internalSku || item.productSku || item.sku || "",
+        ).toLowerCase();
+        const itemName = String(
+          item.product?.name || item.productName || "",
+        ).toLowerCase();
 
         if (
           (itemProdId && itemProdId === String(p.id)) ||
-          (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase()) ||
+          (itemSku &&
+            p.internalSku &&
+            itemSku === p.internalSku.toLowerCase()) ||
           (itemName && p.name && itemName === p.name.toLowerCase())
         ) {
-          whInboundSum += Number(item.receivedQty ?? item.expectedQty ?? item.qty ?? item.quantity ?? 0);
+          whInboundSum += Number(
+            item.receivedQty ??
+              item.expectedQty ??
+              item.qty ??
+              item.quantity ??
+              0,
+          );
           foundInWh = true;
         }
       });
@@ -152,25 +205,38 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
 
   // Deduct local outbound orders for target warehouse
   try {
-    const rawOutbound = localStorage.getItem('stored_outbound_orders');
+    const rawOutbound = localStorage.getItem("stored_outbound_orders");
     if (rawOutbound) {
       const outboundList = JSON.parse(rawOutbound);
       if (Array.isArray(outboundList)) {
         outboundList.forEach((ord: any) => {
-          const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
-          const normOWh = oWh.replace(/[^a-z0-9]/g, '');
+          const oWh = (ord.warehouseCode || ord.branchCode || "")
+            .trim()
+            .toLowerCase();
+          const normOWh = oWh.replace(/[^a-z0-9]/g, "");
 
-          const isWhMatch = !targetCode || oWh === targetCode || (normOWh && normTarget && (normOWh === normTarget || normOWh.includes(normTarget) || normTarget.includes(normOWh)));
+          const isWhMatch =
+            !targetCode ||
+            oWh === targetCode ||
+            (normOWh &&
+              normTarget &&
+              (normOWh === normTarget ||
+                normOWh.includes(normTarget) ||
+                normTarget.includes(normOWh)));
 
           if (!isWhMatch) return;
 
           const details = ord.details || ord.items || [];
           details.forEach((item: any) => {
-            const itemProdId = String(item.productId || item.product?.id || '');
-            const itemSku = String(item.productSku || item.sku || item.product?.internalSku || '').toLowerCase();
+            const itemProdId = String(item.productId || item.product?.id || "");
+            const itemSku = String(
+              item.productSku || item.sku || item.product?.internalSku || "",
+            ).toLowerCase();
             if (
               (itemProdId && itemProdId === String(p.id)) ||
-              (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase())
+              (itemSku &&
+                p.internalSku &&
+                itemSku === p.internalSku.toLowerCase())
             ) {
               whOutboundSum += Number(item.qty ?? item.quantity ?? 0);
               foundInWh = true;
@@ -187,13 +253,19 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
 
   // If no target warehouse code was provided, return overall system total stock
   if (!targetCode) {
-    return Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? (p as any).quantity ?? (p as any).stock ?? 0);
+    return Number(
+      p.totalStock ??
+        p.totalPhysical ??
+        p.stockQty ??
+        (p as any).quantity ??
+        (p as any).stock ??
+        0,
+    );
   }
 
   // When target warehouse IS selected but has no stock recorded for this product, strictly return 0!
   return 0;
 }
-
 
 export interface CustomerOption {
   id: string;
@@ -242,43 +314,63 @@ export function findStockBinForProduct(
   pId: string,
   pSku: string,
   pName: string,
-  whCode?: string
+  whCode?: string,
 ): { locationBin: string; assignedBins: string[] } {
   if (!pId && !pSku && !pName) {
-    return { locationBin: '', assignedBins: [] };
+    return { locationBin: "", assignedBins: [] };
   }
 
-  const normId = String(pId || '').trim().toLowerCase();
-  const normSku = String(pSku || '').trim().toLowerCase();
-  const normName = String(pName || '').trim().toLowerCase();
-  const targetWh = String(whCode || '').trim().toUpperCase();
+  const normId = String(pId || "")
+    .trim()
+    .toLowerCase();
+  const normSku = String(pSku || "")
+    .trim()
+    .toLowerCase();
+  const normName = String(pName || "")
+    .trim()
+    .toLowerCase();
+  const targetWh = String(whCode || "")
+    .trim()
+    .toUpperCase();
 
   const foundBinsSet = new Set<string>();
 
   // 1. Check local stock-in orders
   try {
-    const rawOrders = localStorage.getItem('stored_stock_in_orders');
+    const rawOrders = localStorage.getItem("stored_stock_in_orders");
     if (rawOrders) {
       const orders = JSON.parse(rawOrders);
       if (Array.isArray(orders)) {
         orders.forEach((ord: any) => {
-          const oWh = String(ord.warehouseCode || ord.branchCode || '').trim().toUpperCase();
+          const oWh = String(ord.warehouseCode || ord.branchCode || "")
+            .trim()
+            .toUpperCase();
           if (targetWh && oWh && oWh !== targetWh) return;
           (ord.details || ord.items || []).forEach((item: any) => {
-            const iName = String(item.productName || '').trim().toLowerCase();
-            const iSku = String(item.sku || item.productSku || '').trim().toLowerCase();
-            const iId = String(item.productId || '').trim().toLowerCase();
+            const iName = String(item.productName || "")
+              .trim()
+              .toLowerCase();
+            const iSku = String(item.sku || item.productSku || "")
+              .trim()
+              .toLowerCase();
+            const iId = String(item.productId || "")
+              .trim()
+              .toLowerCase();
 
             const matches =
               (normId && iId && normId === iId) ||
               (normSku && iSku && normSku === iSku) ||
-              (normName && iName && (normName.includes(iName) || iName.includes(normName)));
+              (normName &&
+                iName &&
+                (normName.includes(iName) || iName.includes(normName)));
 
             if (matches) {
-              let bins: string[] = item.assignedBins || (item.locationBin ? item.locationBin.split(',') : []);
+              let bins: string[] =
+                item.assignedBins ||
+                (item.locationBin ? item.locationBin.split(",") : []);
               bins.forEach((b: string) => {
-                const clean = b.split('(')[0].trim();
-                const short = (clean.split('-').pop() || clean).toUpperCase();
+                const clean = b.split("(")[0].trim();
+                const short = (clean.split("-").pop() || clean).toUpperCase();
                 if (short) foundBinsSet.add(short);
               });
             }
@@ -290,27 +382,34 @@ export function findStockBinForProduct(
 
   // 2. Check stored warehouses customBins
   try {
-    const rawWhs = localStorage.getItem('smart-wms-warehouses');
+    const rawWhs = localStorage.getItem("smart-wms-warehouses");
     if (rawWhs) {
       const whs = JSON.parse(rawWhs);
       if (Array.isArray(whs)) {
         whs.forEach((wh: any) => {
-          const wCode = String(wh.code || wh.id || '').trim().toUpperCase();
+          const wCode = String(wh.code || wh.id || "")
+            .trim()
+            .toUpperCase();
           if (targetWh && wCode && wCode !== targetWh) return;
           (wh.subWarehouses || []).forEach((sub: any) => {
             (sub.racks || []).forEach((rk: any) => {
               if (rk.customBins) {
-                Object.entries(rk.customBins).forEach(([bKey, cfg]: [string, any]) => {
-                  const notes = String(cfg?.notes || '').toLowerCase();
-                  const pct = Number(cfg?.occupancyPct || 0);
-                  if (
-                    pct > 0 &&
-                    ((normName && notes.includes(normName)) || (normSku && notes.includes(normSku)))
-                  ) {
-                    const shortBin = (bKey.split('-').pop() || bKey).toUpperCase();
-                    foundBinsSet.add(shortBin);
-                  }
-                });
+                Object.entries(rk.customBins).forEach(
+                  ([bKey, cfg]: [string, any]) => {
+                    const notes = String(cfg?.notes || "").toLowerCase();
+                    const pct = Number(cfg?.occupancyPct || 0);
+                    if (
+                      pct > 0 &&
+                      ((normName && notes.includes(normName)) ||
+                        (normSku && notes.includes(normSku)))
+                    ) {
+                      const shortBin = (
+                        bKey.split("-").pop() || bKey
+                      ).toUpperCase();
+                      foundBinsSet.add(shortBin);
+                    }
+                  },
+                );
               }
             });
           });
@@ -322,15 +421,18 @@ export function findStockBinForProduct(
   const binsList = Array.from(foundBinsSet);
   if (binsList.length > 0) {
     return {
-      locationBin: binsList.join(', '),
+      locationBin: binsList.join(", "),
       assignedBins: binsList,
     };
   }
 
-  return { locationBin: '', assignedBins: [] };
+  return { locationBin: "", assignedBins: [] };
 }
 
-export function getAvailableBinsForProduct(row?: FormDetailRow | null, branchCode?: string): string[] {
+export function getAvailableBinsForProduct(
+  row?: FormDetailRow | null,
+  branchCode?: string,
+): string[] {
   const binsSet = new Set<string>();
 
   if (row?.locationBin) binsSet.add(row.locationBin);
@@ -340,10 +442,10 @@ export function getAvailableBinsForProduct(row?: FormDetailRow | null, branchCod
 
   if (row?.productId || row?.productName || row?.productSku) {
     const autoBins = findStockBinForProduct(
-      row.productId || '',
-      row.productSku || '',
-      row.productName || '',
-      branchCode
+      row.productId || "",
+      row.productSku || "",
+      row.productName || "",
+      branchCode,
     );
     autoBins.assignedBins.forEach((b) => binsSet.add(b));
   }
@@ -376,48 +478,106 @@ export interface OutboundTab {
 }
 
 const DEFAULT_ROWS_COUNT = 50;
-const API_BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || "/api";
 
 const DEFAULT_FALLBACK_PRODUCTS: ProductOption[] = [
-  { id: 'p1', internalSku: 'SP001', name: 'Đèn Led Module 3 bóng Samsung', unit: 'Cái', purchasePrice: 45000, salePrice: 65000, wholesalePrice: 55000, price: 65000 },
-  { id: 'p2', internalSku: 'SP002', name: 'Cảm biến nhiệt độ công nghiệp Omron', unit: 'Bộ', purchasePrice: 320000, salePrice: 450000, wholesalePrice: 390000, price: 450000 },
-  { id: 'p3', internalSku: 'SP003', name: 'Dây cáp mạng Cat6 UTP 305m', unit: 'Cuộn', purchasePrice: 1200000, salePrice: 1500000, wholesalePrice: 1350000, price: 1500000 },
-  { id: 'p4', internalSku: 'SP004', name: 'Bộ nguồn Tổ Ong 12V 30A High Quality', unit: 'Cái', purchasePrice: 180000, salePrice: 240000, wholesalePrice: 210000, price: 240000 },
-  { id: 'p5', internalSku: 'SP005', name: 'Công tắc hành trình Panasonic HZ-12', unit: 'Cái', purchasePrice: 85000, salePrice: 120000, wholesalePrice: 100000, price: 120000 },
-  { id: 'p6', internalSku: 'SP006', name: 'Thanh nhôm định hình 20x20 2m', unit: 'Thanh', purchasePrice: 110000, salePrice: 160000, wholesalePrice: 135000, price: 160000 },
+  {
+    id: "p1",
+    internalSku: "SP001",
+    name: "Đèn Led Module 3 bóng Samsung",
+    unit: "Cái",
+    purchasePrice: 45000,
+    salePrice: 65000,
+    wholesalePrice: 55000,
+    price: 65000,
+  },
+  {
+    id: "p2",
+    internalSku: "SP002",
+    name: "Cảm biến nhiệt độ công nghiệp Omron",
+    unit: "Bộ",
+    purchasePrice: 320000,
+    salePrice: 450000,
+    wholesalePrice: 390000,
+    price: 450000,
+  },
+  {
+    id: "p3",
+    internalSku: "SP003",
+    name: "Dây cáp mạng Cat6 UTP 305m",
+    unit: "Cuộn",
+    purchasePrice: 1200000,
+    salePrice: 1500000,
+    wholesalePrice: 1350000,
+    price: 1500000,
+  },
+  {
+    id: "p4",
+    internalSku: "SP004",
+    name: "Bộ nguồn Tổ Ong 12V 30A High Quality",
+    unit: "Cái",
+    purchasePrice: 180000,
+    salePrice: 240000,
+    wholesalePrice: 210000,
+    price: 240000,
+  },
+  {
+    id: "p5",
+    internalSku: "SP005",
+    name: "Công tắc hành trình Panasonic HZ-12",
+    unit: "Cái",
+    purchasePrice: 85000,
+    salePrice: 120000,
+    wholesalePrice: 100000,
+    price: 120000,
+  },
+  {
+    id: "p6",
+    internalSku: "SP006",
+    name: "Thanh nhôm định hình 20x20 2m",
+    unit: "Thanh",
+    purchasePrice: 110000,
+    salePrice: 160000,
+    wholesalePrice: 135000,
+    price: 160000,
+  },
 ];
 
 function formatNumberWithCommas(val: number | string): string {
-  if (val === undefined || val === null || val === '') return '';
-  const num = typeof val === 'number' ? val : parseFloat(String(val).replace(/,/g, ''));
-  if (isNaN(num)) return '';
-  return num.toLocaleString('en-US');
+  if (val === undefined || val === null || val === "") return "";
+  const num =
+    typeof val === "number" ? val : parseFloat(String(val).replace(/,/g, ""));
+  if (isNaN(num)) return "";
+  return num.toLocaleString("en-US");
 }
 
 function parseFormattedNumber(val: string): number {
   if (!val) return 0;
-  const clean = val.replace(/,/g, '');
+  const clean = val.replace(/,/g, "");
   const num = parseFloat(clean);
   return isNaN(num) ? 0 : num;
 }
 
 function authHeaders() {
   return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
   };
 }
 
-function makeEmptyRow(index: number, defaultWhCode = 'KHO-TONG'): FormDetailRow {
+function makeEmptyRow(
+  index: number,
+  defaultWhCode = "KHO-TONG",
+): FormDetailRow {
   return {
     rowId: `row-${Date.now()}-${index}-${Math.random()}`,
-    productId: '',
-    productSku: '',
-    productName: '',
+    productId: "",
+    productSku: "",
+    productName: "",
     warehouseCode: defaultWhCode,
-    locationBin: '',
+    locationBin: "",
     assignedBins: [],
-    unit: 'Cái',
+    unit: "Cái",
     qty: 0,
     price: 0,
     lossAmount: 0,
@@ -427,7 +587,7 @@ function makeEmptyRow(index: number, defaultWhCode = 'KHO-TONG'): FormDetailRow 
     vatPercent: 0,
     vatAmount: 0,
     totalAmount: 0,
-    note: '',
+    note: "",
   };
 }
 
@@ -436,41 +596,55 @@ function makeInitialRows(count = DEFAULT_ROWS_COUNT): FormDetailRow[] {
 }
 
 function formatFullDateTime(d = new Date()): string {
-  const pad = (n: number) => n.toString().padStart(2, '0');
+  const pad = (n: number) => n.toString().padStart(2, "0");
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function generateOutboundCode(prefix = 'PXK'): string {
+function generateOutboundCode(prefix = "PXK"): string {
   const d = new Date();
-  const dateStr = `${d.getFullYear()}${(d.getMonth() + 1).toString().padStart(2, '0')}${d.getDate().toString().padStart(2, '0')}`;
+  const dateStr = `${d.getFullYear()}${(d.getMonth() + 1).toString().padStart(2, "0")}${d.getDate().toString().padStart(2, "0")}`;
   const randomNum = Math.floor(1000 + Math.random() * 9000);
   return `${prefix}${dateStr}-${randomNum}`;
 }
 
-function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administrator', isDisposal = false, isReturnSupplier = false, codePrefix = 'PXK'): OutboundTab {
+function createNewOutboundTab(
+  tabIndex = 1,
+  currentUserName = "System Administrator",
+  isDisposal = false,
+  isReturnSupplier = false,
+  codePrefix = "PXK",
+): OutboundTab {
   const dateFormatted = formatFullDateTime();
-  const defaultPrefix = isDisposal ? 'XH' : (isReturnSupplier ? 'XTR' : (codePrefix || 'PXK'));
+  const defaultPrefix = isDisposal
+    ? "XH"
+    : isReturnSupplier
+      ? "XTR"
+      : codePrefix || "PXK";
   const defaultOrderNo = generateOutboundCode(defaultPrefix);
 
   return {
     tabId: `tab-${Date.now()}-${tabIndex}`,
     title: `# ${tabIndex}`,
     orderNo: defaultOrderNo,
-    branchCode: 'KHO-TONG',
-    employeeName: currentUserName || 'System Administrator',
-    customer: isReturnSupplier ? '' : (isDisposal ? 'Xuất hủy nội bộ' : 'Khách hàng bán lẻ'),
-    customerPhone: '',
-    customerAddress: '',
+    branchCode: "KHO-TONG",
+    employeeName: currentUserName || "System Administrator",
+    customer: isReturnSupplier
+      ? ""
+      : isDisposal
+        ? "Xuất hủy nội bộ"
+        : "Khách hàng bán lẻ",
+    customerPhone: "",
+    customerAddress: "",
     orderDate: dateFormatted,
     expectedDate: dateFormatted,
-    description: isDisposal ? 'Xuất hủy hàng hỏng / hết hạn sử dụng' : '',
+    description: isDisposal ? "Xuất hủy hàng hỏng / hết hạn sử dụng" : "",
     discount: 0,
     shippingFee: 0,
     vatRate: 0,
-    paymentMethod: 'Tiền mặt',
-    paymentAccount: '',
+    paymentMethod: "Tiền mặt",
+    paymentAccount: "",
     amountPaid: 0,
-    status: isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng',
+    status: isDisposal ? "Đã xuất hủy" : "Đã giao hàng",
     details: makeInitialRows(DEFAULT_ROWS_COUNT),
   };
 }
@@ -478,7 +652,14 @@ function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administra
 export interface CreateOutboundOrderPageProps {
   onBack?: () => void;
   standalone?: boolean;
-  featureMode?: 'orders' | 'retail' | 'transfer-out' | 'sales-order' | 'quote' | 'disposal' | 'return-supplier';
+  featureMode?:
+    | "orders"
+    | "retail"
+    | "transfer-out"
+    | "sales-order"
+    | "quote"
+    | "disposal"
+    | "return-supplier";
   orderType?: string;
   title?: string;
   codePrefix?: string;
@@ -489,44 +670,71 @@ export interface CreateOutboundOrderPageProps {
 export default function CreateOutboundOrderPage({
   onBack,
   standalone = true,
-  featureMode = 'orders',
+  featureMode = "orders",
   orderType,
   title,
-  codePrefix = 'PXK',
-  partnerLabel = 'Khách hàng',
+  codePrefix = "PXK",
+  partnerLabel = "Khách hàng",
   editOrderId,
 }: CreateOutboundOrderPageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const effectiveEditId = editOrderId || searchParams.get('id') || searchParams.get('editId') || searchParams.get('orderId');
-  const isRetail = featureMode === 'retail' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/retail'));
-  const isDisposal = featureMode === 'disposal' || (typeof window !== 'undefined' && window.location.pathname.includes('/outbound/disposal'));
-  const isReturnSupplier = featureMode === 'return-supplier' || orderType === 'return-supplier' || partnerLabel === 'Nhà cung cấp';
+  const effectiveEditId =
+    editOrderId ||
+    searchParams.get("id") ||
+    searchParams.get("editId") ||
+    searchParams.get("orderId");
+  const isRetail =
+    featureMode === "retail" ||
+    (typeof window !== "undefined" &&
+      window.location.pathname.includes("/outbound/retail"));
+  const isDisposal =
+    featureMode === "disposal" ||
+    (typeof window !== "undefined" &&
+      window.location.pathname.includes("/outbound/disposal"));
+  const isReturnSupplier =
+    featureMode === "return-supplier" ||
+    orderType === "return-supplier" ||
+    partnerLabel === "Nhà cung cấp";
 
-  const getProductPriceForMode = useCallback((p: ProductOption) => {
-    if (isDisposal || isReturnSupplier) {
-      return p.purchasePrice || (p as any).importPrice || (p as any).costPrice || 0;
-    }
-    if (isRetail) {
-      return p.salePrice || p.price || 0;
-    }
-    return (p.wholesalePrice && p.wholesalePrice > 0) ? p.wholesalePrice : (p.salePrice || p.price || 0);
-  }, [isDisposal, isReturnSupplier, isRetail]);
+  const getProductPriceForMode = useCallback(
+    (p: ProductOption) => {
+      if (isDisposal || isReturnSupplier) {
+        return (
+          p.purchasePrice || (p as any).importPrice || (p as any).costPrice || 0
+        );
+      }
+      if (isRetail) {
+        return p.salePrice || p.price || 0;
+      }
+      return p.wholesalePrice && p.wholesalePrice > 0
+        ? p.wholesalePrice
+        : p.salePrice || p.price || 0;
+    },
+    [isDisposal, isReturnSupplier, isRetail],
+  );
 
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-  const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'System Administrator';
+  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const currentUserName =
+    currentUser.fullName ||
+    currentUser.email?.split("@")[0] ||
+    "System Administrator";
 
   // Master Data
-  const [products, setProducts] = useState<ProductOption[]>(DEFAULT_FALLBACK_PRODUCTS);
+  const [products, setProducts] = useState<ProductOption[]>(
+    DEFAULT_FALLBACK_PRODUCTS,
+  );
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>(() => getStoredWarehouses());
+  const [warehouses, setWarehouses] = useState<WarehouseOption[]>(() =>
+    getStoredWarehouses(),
+  );
   const [inboundOrders, setInboundOrders] = useState<any[]>([]);
 
   const allInboundOrders = useMemo(() => {
     let list = [...inboundOrders];
     try {
-      const raw = localStorage.getItem('stored_stock_in_orders');
+      const raw = localStorage.getItem("stored_stock_in_orders");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
@@ -541,9 +749,11 @@ export default function CreateOutboundOrderPage({
     return list;
   }, [inboundOrders]);
 
-
   // Toast alert
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -556,73 +766,97 @@ export default function CreateOutboundOrderPage({
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [pickBinModalOpen, setPickBinModalOpen] = useState(false);
-  const [activePickBinRowId, setActivePickBinRowId] = useState<string | null>(null);
+  const [activePickBinRowId, setActivePickBinRowId] = useState<string | null>(
+    null,
+  );
 
   const openPickBinModal = (rowId?: string) => {
     if (rowId) setActivePickBinRowId(rowId);
     setPickBinModalOpen(true);
   };
-  const [newCustomerForm, setNewCustomerForm] = useState({ fullName: '', email: '', phone: '', address: '', status: 'active' as 'active' | 'inactive', password: '' });
+  const [newCustomerForm, setNewCustomerForm] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    address: "",
+    status: "active" as "active" | "inactive",
+    password: "",
+  });
   const [showPassword, setShowPassword] = useState(false);
 
   // Dropdown & Quick Search states
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [activeProductDropdownRowId, setActiveProductDropdownRowId] = useState<string | null>(null);
-  const [quickProductSearch, setQuickProductSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [activeProductDropdownRowId, setActiveProductDropdownRowId] = useState<
+    string | null
+  >(null);
+  const [quickProductSearch, setQuickProductSearch] = useState("");
   const [showQuickSearchDropdown, setShowQuickSearchDropdown] = useState(false);
   const [useLoyaltyPoints, setUseLoyaltyPoints] = useState(false);
-  const [disposalReasonSelect, setDisposalReasonSelect] = useState('Hàng hết hạn sử dụng (HSD)');
+  const [disposalReasonSelect, setDisposalReasonSelect] = useState(
+    "Hàng hết hạn sử dụng (HSD)",
+  );
   const [disposalReasons, setDisposalReasons] = useState<string[]>([
-    'Hàng hết hạn sử dụng (HSD)',
-    'Hàng hư hỏng / Bể vỡ trong quá trình lưu kho',
-    'Hàng ẩm mốc / Biến chất / Lỗi bảo quản',
-    'Hàng lỗi nhà sản xuất (không đổi trả được)',
-    'Hao hụt kiểm kê / Thanh lý tiêu hủy',
-    'Khác (Ghi chú chi tiết)',
+    "Hàng hết hạn sử dụng (HSD)",
+    "Hàng hư hỏng / Bể vỡ trong quá trình lưu kho",
+    "Hàng ẩm mốc / Biến chất / Lỗi bảo quản",
+    "Hàng lỗi nhà sản xuất (không đổi trả được)",
+    "Hao hụt kiểm kê / Thanh lý tiêu hủy",
+    "Khác (Ghi chú chi tiết)",
   ]);
   const [showAddReasonModal, setShowAddReasonModal] = useState(false);
-  const [newReasonInput, setNewReasonInput] = useState('');
-  const [disposalMethod, setDisposalMethod] = useState('Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)');
+  const [newReasonInput, setNewReasonInput] = useState("");
+  const [disposalMethod, setDisposalMethod] = useState(
+    "Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)",
+  );
 
   // Synchronous Multi-Tab state with Session Storage restoration
   const [tabs, setTabs] = useState<OutboundTab[]>(() => {
     try {
-      const isCreateOrEditAction = typeof window !== 'undefined' && (
-        window.location.search.includes('action=create') ||
-        window.location.search.includes('mode=create') ||
-        window.location.search.includes('action=edit') ||
-        window.location.search.includes('id=') ||
-        window.location.search.includes('editId=')
-      );
-      const savedDraft = sessionStorage.getItem('outbound_tabs_draft');
-      const savedMode = sessionStorage.getItem('outbound_draft_mode');
+      const isCreateOrEditAction =
+        typeof window !== "undefined" &&
+        (window.location.search.includes("action=create") ||
+          window.location.search.includes("mode=create") ||
+          window.location.search.includes("action=edit") ||
+          window.location.search.includes("id=") ||
+          window.location.search.includes("editId="));
+      const savedDraft = sessionStorage.getItem("outbound_tabs_draft");
+      const savedMode = sessionStorage.getItem("outbound_draft_mode");
 
-      if (savedDraft && !isCreateOrEditAction && (!savedMode || savedMode === featureMode)) {
+      if (
+        savedDraft &&
+        !isCreateOrEditAction &&
+        (!savedMode || savedMode === featureMode)
+      ) {
         const parsed = JSON.parse(savedDraft);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed.map((t: OutboundTab) => ({
             ...t,
             details: (t.details || []).map((d) => ({
               ...d,
-              locationBin: d.locationBin === 'Kệ A1-01' ? '' : (d.locationBin || ''),
-              assignedBins: (d.assignedBins || []).filter((b) => b !== 'Kệ A1-01'),
+              locationBin:
+                d.locationBin === "Kệ A1-01" ? "" : d.locationBin || "",
+              assignedBins: (d.assignedBins || []).filter(
+                (b) => b !== "Kệ A1-01",
+              ),
             })),
           }));
         }
       }
-    } catch { }
-    return [createNewOutboundTab(1, currentUserName, isDisposal, isReturnSupplier)];
+    } catch {}
+    return [
+      createNewOutboundTab(1, currentUserName, isDisposal, isReturnSupplier),
+    ];
   });
 
   const [activeTabId, setActiveTabId] = useState<string>(() => {
     try {
-      const savedActiveId = sessionStorage.getItem('outbound_active_tab_id');
+      const savedActiveId = sessionStorage.getItem("outbound_active_tab_id");
       if (savedActiveId && tabs.some((t) => t.tabId === savedActiveId)) {
         return savedActiveId;
       }
-    } catch { }
-    return tabs && tabs[0] ? tabs[0].tabId : '';
+    } catch {}
+    return tabs && tabs[0] ? tabs[0].tabId : "";
   });
 
   const activeTab = useMemo(() => {
@@ -633,31 +867,42 @@ export default function CreateOutboundOrderPage({
 
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;
-    const newTab = createNewOutboundTab(newTabIndex, currentUserName, isDisposal, isReturnSupplier);
+    const newTab = createNewOutboundTab(
+      newTabIndex,
+      currentUserName,
+      isDisposal,
+      isReturnSupplier,
+    );
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.tabId);
-    setToast({ message: `Đã mở tab tạo phiếu xuất mới (#${newTabIndex})`, type: 'success' });
+    setToast({
+      message: `Đã mở tab tạo phiếu xuất mới (#${newTabIndex})`,
+      type: "success",
+    });
   }, [tabs.length, currentUserName, isDisposal, isReturnSupplier]);
 
-  const handleCloseTab = useCallback((tabIdToClose: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (tabs.length <= 1) {
-      setToast({ message: 'Không thể đóng tab duy nhất', type: 'error' });
-      return;
-    }
-    const nextTabs = tabs.filter((t) => t.tabId !== tabIdToClose);
-    setTabs(nextTabs);
-    if (activeTabId === tabIdToClose) {
-      setActiveTabId(nextTabs[nextTabs.length - 1].tabId);
-    }
-  }, [tabs, activeTabId]);
+  const handleCloseTab = useCallback(
+    (tabIdToClose: string, e?: React.MouseEvent) => {
+      if (e) e.stopPropagation();
+      if (tabs.length <= 1) {
+        setToast({ message: "Không thể đóng tab duy nhất", type: "error" });
+        return;
+      }
+      const nextTabs = tabs.filter((t) => t.tabId !== tabIdToClose);
+      setTabs(nextTabs);
+      if (activeTabId === tabIdToClose) {
+        setActiveTabId(nextTabs[nextTabs.length - 1].tabId);
+      }
+    },
+    [tabs, activeTabId],
+  );
 
   // Sync draft tabs to sessionStorage
   useEffect(() => {
     if (tabs && tabs.length > 0) {
-      sessionStorage.setItem('outbound_tabs_draft', JSON.stringify(tabs));
-      sessionStorage.setItem('outbound_active_tab_id', activeTabId);
-      sessionStorage.setItem('outbound_draft_mode', featureMode);
+      sessionStorage.setItem("outbound_tabs_draft", JSON.stringify(tabs));
+      sessionStorage.setItem("outbound_active_tab_id", activeTabId);
+      sessionStorage.setItem("outbound_draft_mode", featureMode);
     }
   }, [tabs, activeTabId, featureMode]);
 
@@ -669,12 +914,16 @@ export default function CreateOutboundOrderPage({
       let newOrderDate = activeTab.orderDate;
 
       if (!newOrderNo) {
-        const prefix = isDisposal ? 'XH' : (isReturnSupplier ? 'XTR' : (codePrefix || 'PXK'));
+        const prefix = isDisposal
+          ? "XH"
+          : isReturnSupplier
+            ? "XTR"
+            : codePrefix || "PXK";
         newOrderNo = generateOutboundCode(prefix);
         updated = true;
       }
 
-      if (!newOrderDate || !newOrderDate.includes(':')) {
+      if (!newOrderDate || !newOrderDate.includes(":")) {
         newOrderDate = formatFullDateTime();
         updated = true;
       }
@@ -687,18 +936,28 @@ export default function CreateOutboundOrderPage({
         }));
       }
     }
-  }, [activeTabId, isDisposal, isReturnSupplier, codePrefix, activeTab?.orderNo, activeTab?.orderDate]);
+  }, [
+    activeTabId,
+    isDisposal,
+    isReturnSupplier,
+    codePrefix,
+    activeTab?.orderNo,
+    activeTab?.orderDate,
+  ]);
 
   const [showWarehouseDropdown, setShowWarehouseDropdown] = useState(false);
-  const [warehouseSearch, setWarehouseSearch] = useState('');
+  const [warehouseSearch, setWarehouseSearch] = useState("");
 
   const selectedWarehouse = useMemo(() => {
-    const curCode = activeTab?.branchCode || 'KHO-TONG';
+    const curCode = activeTab?.branchCode || "KHO-TONG";
     const unfrozen = warehouses.filter((w) => !w.isFrozen);
     return (
       unfrozen.find((w) => w.code === curCode || w.id === curCode) ||
       unfrozen[0] ||
-      warehouses.find((w) => w.code === curCode || w.id === curCode) || { code: curCode, name: `Kho ${curCode}` }
+      warehouses.find((w) => w.code === curCode || w.id === curCode) || {
+        code: curCode,
+        name: `Kho ${curCode}`,
+      }
     );
   }, [warehouses, activeTab?.branchCode]);
 
@@ -706,7 +965,10 @@ export default function CreateOutboundOrderPage({
     const unfrozen = warehouses.filter((w) => !w.isFrozen);
     const kw = warehouseSearch.trim().toLowerCase();
     if (!kw) return unfrozen;
-    return unfrozen.filter((w) => w.name.toLowerCase().includes(kw) || w.code.toLowerCase().includes(kw));
+    return unfrozen.filter(
+      (w) =>
+        w.name.toLowerCase().includes(kw) || w.code.toLowerCase().includes(kw),
+    );
   }, [warehouses, warehouseSearch]);
 
   // Click outside listener for dropdowns
@@ -714,10 +976,10 @@ export default function CreateOutboundOrderPage({
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as HTMLElement;
       if (
-        !target.closest('.customer-dropdown-box') &&
-        !target.closest('.product-table-dropdown') &&
-        !target.closest('.quick-search-box') &&
-        !target.closest('.warehouse-dropdown-box')
+        !target.closest(".customer-dropdown-box") &&
+        !target.closest(".product-table-dropdown") &&
+        !target.closest(".quick-search-box") &&
+        !target.closest(".warehouse-dropdown-box")
       ) {
         setShowCustomerDropdown(false);
         setActiveProductDropdownRowId(null);
@@ -725,33 +987,52 @@ export default function CreateOutboundOrderPage({
         setShowWarehouseDropdown(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   // Fetch Master Data
   useEffect(() => {
     async function loadMasterData() {
       try {
-        const partnerEndpoint = isReturnSupplier ? `${API_BASE_URL}/suppliers` : `${API_BASE_URL}/customers`;
-        const [custRes, prodRes, userRes, whRes, balRes, poRes] = await Promise.all([
-          fetch(partnerEndpoint, { headers: authHeaders() }).catch(() => null),
-          fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(() => null),
-          fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(() => null),
-          fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
-          fetch(`${API_BASE_URL}/inventory/balances`, { headers: authHeaders() }).catch(() => null),
-          fetch(`${API_BASE_URL}/inbound/purchase-orders`, { headers: authHeaders() }).catch(() => null),
-        ]);
+        const partnerEndpoint = isReturnSupplier
+          ? `${API_BASE_URL}/suppliers`
+          : `${API_BASE_URL}/customers`;
+        const [custRes, prodRes, userRes, whRes, balRes, poRes] =
+          await Promise.all([
+            fetch(partnerEndpoint, { headers: authHeaders() }).catch(
+              () => null,
+            ),
+            fetch(`${API_BASE_URL}/products`, { headers: authHeaders() }).catch(
+              () => null,
+            ),
+            fetch(`${API_BASE_URL}/users`, { headers: authHeaders() }).catch(
+              () => null,
+            ),
+            fetch(`${API_BASE_URL}/warehouses`, {
+              headers: authHeaders(),
+            }).catch(() => null),
+            fetch(`${API_BASE_URL}/inventory/balances`, {
+              headers: authHeaders(),
+            }).catch(() => null),
+            fetch(`${API_BASE_URL}/inbound/purchase-orders`, {
+              headers: authHeaders(),
+            }).catch(() => null),
+          ]);
 
         if (custRes && custRes.ok) {
           const custData = await custRes.json();
           const list = Array.isArray(custData) ? custData : custData.data || [];
           const normalized: CustomerOption[] = list.map((c: any) => ({
             id: String(c.id),
-            customerCode: c.customerCode || c.supplierCode || c.code || (isReturnSupplier ? `NCC${c.id}` : `KH${c.id}`),
-            name: c.name || '',
-            phone: c.phone || '',
-            address: c.address || '',
+            customerCode:
+              c.customerCode ||
+              c.supplierCode ||
+              c.code ||
+              (isReturnSupplier ? `NCC${c.id}` : `KH${c.id}`),
+            name: c.name || "",
+            phone: c.phone || "",
+            address: c.address || "",
           }));
           setCustomers(normalized);
         }
@@ -773,13 +1054,27 @@ export default function CreateOutboundOrderPage({
           const list = Array.isArray(prodData) ? prodData : prodData.data || [];
           if (list.length > 0) {
             const normalized: ProductOption[] = list.map((p: any) => {
-              let stockBalances: any[] = Array.isArray(p.stockBalances) ? [...p.stockBalances] : [];
+              let stockBalances: any[] = Array.isArray(p.stockBalances)
+                ? [...p.stockBalances]
+                : [];
 
               rawBalances.forEach((b: any) => {
-                if (String(b.productId) === String(p.id) || (b.sku && p.internalSku && b.sku.toLowerCase() === p.internalSku.toLowerCase())) {
-                  if (!stockBalances.some((sb) => sb.locationCode === b.locationCode || sb.warehouseCode === b.locationCode)) {
+                if (
+                  String(b.productId) === String(p.id) ||
+                  (b.sku &&
+                    p.internalSku &&
+                    b.sku.toLowerCase() === p.internalSku.toLowerCase())
+                ) {
+                  if (
+                    !stockBalances.some(
+                      (sb) =>
+                        sb.locationCode === b.locationCode ||
+                        sb.warehouseCode === b.locationCode,
+                    )
+                  ) {
                     stockBalances.push({
-                      locationCode: b.locationCode || b.warehouseCode || 'KHO-TONG',
+                      locationCode:
+                        b.locationCode || b.warehouseCode || "KHO-TONG",
                       available: Number(b.available ?? b.totalPhysical ?? 0),
                       totalPhysical: Number(b.totalPhysical ?? 0),
                     });
@@ -790,13 +1085,15 @@ export default function CreateOutboundOrderPage({
               return {
                 id: String(p.id),
                 internalSku: p.internalSku || p.sku || p.code || `SP${p.id}`,
-                name: p.name || '',
-                unit: p.unit || 'Cái',
+                name: p.name || "",
+                unit: p.unit || "Cái",
                 purchasePrice: Number(p.importPrice || p.purchasePrice || 0),
                 salePrice: Number(p.retailPrice || p.salePrice || p.price || 0),
                 wholesalePrice: Number(p.wholesalePrice || 0),
                 price: Number(p.retailPrice || p.salePrice || p.price || 0),
-                totalStock: Number(p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0),
+                totalStock: Number(
+                  p.totalStock ?? p.totalPhysical ?? p.stockQty ?? 0,
+                ),
                 totalPhysical: Number(p.totalPhysical ?? p.totalStock ?? 0),
                 stockQty: Number(p.stockQty ?? p.totalStock ?? 0),
                 supplierId: p.supplierId || p.supplier?.id,
@@ -828,17 +1125,19 @@ export default function CreateOutboundOrderPage({
           if (firstUnfrozen) {
             setTabs((prev) =>
               prev.map((t) => {
-                const isCurrentFrozen = merged.find((w) => w.code === t.branchCode)?.isFrozen;
+                const isCurrentFrozen = merged.find(
+                  (w) => w.code === t.branchCode,
+                )?.isFrozen;
                 if (!t.branchCode || isCurrentFrozen) {
                   return { ...t, branchCode: firstUnfrozen.code };
                 }
                 return t;
-              })
+              }),
             );
           }
         }
       } catch (err) {
-        console.error('Error loading master data:', err);
+        console.error("Error loading master data:", err);
       }
     }
     loadMasterData();
@@ -852,16 +1151,23 @@ export default function CreateOutboundOrderPage({
     async function loadExistingDraft() {
       try {
         let ordData: any = null;
-        const res = await fetch(`${API_BASE_URL}/outbounds/${effectiveEditId}`, { headers: authHeaders() }).catch(() => null);
+        const res = await fetch(
+          `${API_BASE_URL}/outbounds/${effectiveEditId}`,
+          { headers: authHeaders() },
+        ).catch(() => null);
         if (res && res.ok) {
           ordData = await res.json();
         } else {
           // Fallback check stored_outbound_orders from localStorage
-          const storedStr = localStorage.getItem('stored_outbound_orders');
+          const storedStr = localStorage.getItem("stored_outbound_orders");
           if (storedStr) {
             try {
               const list = JSON.parse(storedStr);
-              ordData = list.find((item: any) => String(item.id) === String(effectiveEditId) || item.orderNo === effectiveEditId);
+              ordData = list.find(
+                (item: any) =>
+                  String(item.id) === String(effectiveEditId) ||
+                  item.orderNo === effectiveEditId,
+              );
             } catch {}
           }
         }
@@ -869,49 +1175,74 @@ export default function CreateOutboundOrderPage({
         if (!ordData || !isMounted) return;
 
         const rawDetails = ordData.details || [];
-        const existingDetails: FormDetailRow[] = rawDetails.map((d: any, idx: number) => {
-          const reqQty = Number(d.requiredQty ?? d.qty ?? 1);
-          const uPrice = Number(d.unitPrice ?? d.price ?? 0);
-          const discP = Number(d.discountPercent || 0);
-          const discA = Number(d.discountAmount || 0);
-          const vatP = Number(d.vatPercent || 0);
-          const vatA = Number(d.vatAmount || 0);
-          const tot = Number(d.totalLineAmount || d.totalAmount || (reqQty * uPrice - discA + vatA));
+        const existingDetails: FormDetailRow[] = rawDetails.map(
+          (d: any, idx: number) => {
+            const reqQty = Number(d.requiredQty ?? d.qty ?? 1);
+            const uPrice = Number(d.unitPrice ?? d.price ?? 0);
+            const discP = Number(d.discountPercent || 0);
+            const discA = Number(d.discountAmount || 0);
+            const vatP = Number(d.vatPercent || 0);
+            const vatA = Number(d.vatAmount || 0);
+            const tot = Number(
+              d.totalLineAmount ||
+                d.totalAmount ||
+                reqQty * uPrice - discA + vatA,
+            );
 
-          const rawAssigned = Array.isArray(d.assignedBins) ? d.assignedBins : [];
-          const locBin = d.locationBin || (rawAssigned.length > 0 ? rawAssigned.join(', ') : '');
+            const rawAssigned = Array.isArray(d.assignedBins)
+              ? d.assignedBins
+              : [];
+            const locBin =
+              d.locationBin ||
+              (rawAssigned.length > 0 ? rawAssigned.join(", ") : "");
 
-          return {
-            rowId: `row-edit-${d.id || idx}-${Date.now()}`,
-            productId: d.product?.id || d.productId || '',
-            productSku: d.productSku || d.product?.internalSku || '',
-            productName: d.productName || d.product?.name || '',
-            warehouseCode: d.warehouseCode || ordData.branchCode || 'KHO-TONG',
-            locationBin: locBin,
-            assignedBins: rawAssigned.length > 0 ? rawAssigned : (locBin ? locBin.split(',').map((s: string) => s.trim()) : []),
-            unit: d.unit || d.product?.unit || 'Cái',
-            qty: reqQty,
-            price: uPrice,
-            lossAmount: Number(d.lossAmount || (reqQty * uPrice)),
-            totalDisposalAmount: Number(d.totalDisposalAmount || (uPrice + (reqQty * uPrice))),
-            discountPercent: discP,
-            discountAmount: discA,
-            vatPercent: vatP,
-            vatAmount: vatA,
-            totalAmount: tot,
-            note: d.note || '',
-          };
-        });
+            return {
+              rowId: `row-edit-${d.id || idx}-${Date.now()}`,
+              productId: d.product?.id || d.productId || "",
+              productSku: d.productSku || d.product?.internalSku || "",
+              productName: d.productName || d.product?.name || "",
+              warehouseCode:
+                d.warehouseCode || ordData.branchCode || "KHO-TONG",
+              locationBin: locBin,
+              assignedBins:
+                rawAssigned.length > 0
+                  ? rawAssigned
+                  : locBin
+                    ? locBin.split(",").map((s: string) => s.trim())
+                    : [],
+              unit: d.unit || d.product?.unit || "Cái",
+              qty: reqQty,
+              price: uPrice,
+              lossAmount: Number(d.lossAmount || reqQty * uPrice),
+              totalDisposalAmount: Number(
+                d.totalDisposalAmount || uPrice + reqQty * uPrice,
+              ),
+              discountPercent: discP,
+              discountAmount: discA,
+              vatPercent: vatP,
+              vatAmount: vatA,
+              totalAmount: tot,
+              note: d.note || "",
+            };
+          },
+        );
 
         const paddedDetails = [
           ...existingDetails,
-          ...Array.from({ length: Math.max(0, DEFAULT_ROWS_COUNT - existingDetails.length) }, (_, i) =>
-            makeEmptyRow(existingDetails.length + i, ordData.branchCode || 'KHO-TONG')
+          ...Array.from(
+            {
+              length: Math.max(0, DEFAULT_ROWS_COUNT - existingDetails.length),
+            },
+            (_, i) =>
+              makeEmptyRow(
+                existingDetails.length + i,
+                ordData.branchCode || "KHO-TONG",
+              ),
           ),
         ];
 
-        let orderDateStr = ordData.orderDate || '';
-        if (orderDateStr.includes('T')) {
+        let orderDateStr = ordData.orderDate || "";
+        if (orderDateStr.includes("T")) {
           try {
             orderDateStr = formatFullDateTime(new Date(orderDateStr));
           } catch {}
@@ -919,29 +1250,31 @@ export default function CreateOutboundOrderPage({
         if (!orderDateStr) orderDateStr = formatFullDateTime();
 
         setTabs((prevTabs) => {
-          const targetTabId = activeTabId || prevTabs[0]?.tabId || 'tab-edit-1';
+          const targetTabId = activeTabId || prevTabs[0]?.tabId || "tab-edit-1";
           return prevTabs.map((t) => {
             if (t.tabId === targetTabId) {
               return {
                 ...t,
                 id: String(ordData.id),
                 orderNo: ordData.orderNo, // Giữ nguyên mã phiếu
-                branchCode: ordData.branchCode || 'KHO-TONG',
+                branchCode: ordData.branchCode || "KHO-TONG",
                 employeeName: ordData.employeeName || currentUserName,
-                customer: ordData.customer || ordData.customerName || '',
-                customerId: ordData.customerId || ordData.customer?.id || '',
-                customerPhone: ordData.customerPhone || ordData.customer?.phone || '',
-                customerAddress: ordData.customerAddress || ordData.customer?.address || '',
+                customer: ordData.customer || ordData.customerName || "",
+                customerId: ordData.customerId || ordData.customer?.id || "",
+                customerPhone:
+                  ordData.customerPhone || ordData.customer?.phone || "",
+                customerAddress:
+                  ordData.customerAddress || ordData.customer?.address || "",
                 orderDate: orderDateStr,
                 expectedDate: ordData.expectedDate || orderDateStr,
-                description: ordData.description || '',
+                description: ordData.description || "",
                 discount: Number(ordData.discount || 0),
                 shippingFee: Number(ordData.shippingFee || 0),
                 vatRate: Number(ordData.vatRate || 0),
-                paymentMethod: ordData.paymentMethod || 'Tiền mặt',
-                paymentAccount: ordData.paymentAccount || '',
+                paymentMethod: ordData.paymentMethod || "Tiền mặt",
+                paymentAccount: ordData.paymentAccount || "",
                 amountPaid: Number(ordData.amountPaid || 0),
-                status: ordData.status || 'DRAFT',
+                status: ordData.status || "DRAFT",
                 details: paddedDetails,
               };
             }
@@ -950,36 +1283,46 @@ export default function CreateOutboundOrderPage({
         });
 
         if (ordData.description && isDisposal) {
-          const matchedReason = disposalReasons.find((r) => ordData.description.includes(r));
+          const matchedReason = disposalReasons.find((r) =>
+            ordData.description.includes(r),
+          );
           if (matchedReason) setDisposalReasonSelect(matchedReason);
         }
       } catch (err) {
-        console.error('Lỗi khi tải chi tiết phiếu xuất để sửa:', err);
+        console.error("Lỗi khi tải chi tiết phiếu xuất để sửa:", err);
       }
     }
 
     loadExistingDraft();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [effectiveEditId]);
 
   const handleBackNavigation = () => {
-    sessionStorage.removeItem('outbound_form_open');
-    sessionStorage.removeItem('outbound_tabs_draft');
-    sessionStorage.removeItem('outbound_active_tab_id');
+    sessionStorage.removeItem("outbound_form_open");
+    sessionStorage.removeItem("outbound_tabs_draft");
+    sessionStorage.removeItem("outbound_active_tab_id");
     if (onBack) {
       onBack();
     } else {
-      navigate(isDisposal ? '/outbound/disposal' : (isRetail ? '/outbound/retail' : '/outbound/orders'));
+      navigate(
+        isDisposal
+          ? "/outbound/disposal"
+          : isRetail
+            ? "/outbound/retail"
+            : "/outbound/orders",
+      );
     }
   };
 
   const updateActiveTab = useCallback(
     (updater: (prevTab: OutboundTab) => OutboundTab) => {
       setTabs((prevTabs) =>
-        prevTabs.map((t) => (t.tabId === activeTabId ? updater(t) : t))
+        prevTabs.map((t) => (t.tabId === activeTabId ? updater(t) : t)),
       );
     },
-    [activeTabId]
+    [activeTabId],
   );
 
   const updateRow = (rowId: string, patch: Partial<FormDetailRow>) => {
@@ -993,18 +1336,22 @@ export default function CreateOutboundOrderPage({
           if (p) {
             newRow.productSku = p.internalSku;
             newRow.productName = p.name;
-            newRow.unit = p.unit || 'Cái';
+            newRow.unit = p.unit || "Cái";
             newRow.price = getProductPriceForMode(p);
             if (newRow.qty === 0) newRow.qty = 1;
           }
         }
 
-        if ((patch.productId || patch.productName || patch.productSku) && !patch.locationBin && (!patch.assignedBins || patch.assignedBins.length === 0)) {
+        if (
+          (patch.productId || patch.productName || patch.productSku) &&
+          !patch.locationBin &&
+          (!patch.assignedBins || patch.assignedBins.length === 0)
+        ) {
           const autoBin = findStockBinForProduct(
-            newRow.productId || '',
-            newRow.productSku || '',
-            newRow.productName || '',
-            newRow.warehouseCode || tab.branchCode
+            newRow.productId || "",
+            newRow.productSku || "",
+            newRow.productName || "",
+            newRow.warehouseCode || tab.branchCode,
           );
           if (autoBin.locationBin) {
             newRow.locationBin = autoBin.locationBin;
@@ -1019,7 +1366,11 @@ export default function CreateOutboundOrderPage({
         if (isDisposal) {
           if (patch.lossAmount !== undefined) {
             newRow.lossAmount = patch.lossAmount;
-          } else if (patch.qty !== undefined || patch.price !== undefined || patch.productId !== undefined) {
+          } else if (
+            patch.qty !== undefined ||
+            patch.price !== undefined ||
+            patch.productId !== undefined
+          ) {
             newRow.lossAmount = qty * price;
           } else if (newRow.lossAmount === undefined) {
             newRow.lossAmount = qty * price;
@@ -1036,7 +1387,10 @@ export default function CreateOutboundOrderPage({
 
         newRow.discountAmount = discAmount;
         newRow.vatAmount = vatAmount;
-        newRow.totalAmount = Math.max(0, lineTotalBeforeDisc - discAmount + vatAmount);
+        newRow.totalAmount = Math.max(
+          0,
+          lineTotalBeforeDisc - discAmount + vatAmount,
+        );
 
         return newRow;
       });
@@ -1064,7 +1418,7 @@ export default function CreateOutboundOrderPage({
       next.splice(index + 1, 0, dup);
       return { ...tab, details: next };
     });
-    setToast({ message: `Đã nhân đôi dòng số ${index + 1}`, type: 'success' });
+    setToast({ message: `Đã nhân đôi dòng số ${index + 1}`, type: "success" });
   };
 
   const handleRemoveRow = (rowId: string) => {
@@ -1077,18 +1431,30 @@ export default function CreateOutboundOrderPage({
   const handleBarcodeScanned = (scanned: ScannedProduct) => {
     if (!scanned || !activeTab) return;
 
-    const barcodeVal = scanned.supplierBarcode || scanned.internalSku || '';
+    const barcodeVal = scanned.supplierBarcode || scanned.internalSku || "";
     const rawRetail = scanned.salePrice || scanned.purchasePrice || 0;
     const rawWholesale = (scanned as any).wholesalePrice || rawRetail;
-    const rawPurchase = scanned.purchasePrice || (scanned as any).importPrice || 0;
-    const priceVal = (isDisposal || isReturnSupplier) ? rawPurchase : (isRetail ? rawRetail : (rawWholesale > 0 ? rawWholesale : rawRetail));
+    const rawPurchase =
+      scanned.purchasePrice || (scanned as any).importPrice || 0;
+    const priceVal =
+      isDisposal || isReturnSupplier
+        ? rawPurchase
+        : isRetail
+          ? rawRetail
+          : rawWholesale > 0
+            ? rawWholesale
+            : rawRetail;
 
     // 1. Ưu tiên kiểm tra sản phẩm đã có trong bảng chưa, nếu có thì cộng dồn số lượng
     const existingIndex = activeTab.details.findIndex(
       (r) =>
         (r.productId && r.productId === scanned.id) ||
-        (r.productSku && barcodeVal && r.productSku.toLowerCase() === barcodeVal.toLowerCase()) ||
-        (r.productName && scanned.name && r.productName.toLowerCase() === scanned.name.toLowerCase())
+        (r.productSku &&
+          barcodeVal &&
+          r.productSku.toLowerCase() === barcodeVal.toLowerCase()) ||
+        (r.productName &&
+          scanned.name &&
+          r.productName.toLowerCase() === scanned.name.toLowerCase()),
     );
 
     if (existingIndex >= 0) {
@@ -1103,18 +1469,23 @@ export default function CreateOutboundOrderPage({
         price: unitP,
         totalAmount: Math.max(0, totalAmount),
       });
-      setToast({ message: `Đã tăng số lượng "${scanned.name}": ${newQty} ${existingRow.unit || 'Cái'}`, type: 'success' });
+      setToast({
+        message: `Đã tăng số lượng "${scanned.name}": ${newQty} ${existingRow.unit || "Cái"}`,
+        type: "success",
+      });
       return;
     }
 
     // 2. Nếu chưa có, kiểm tra dòng trống có sẵn để điền vào
-    const emptyRow = activeTab.details.find((r) => !r.productId && !r.productName);
+    const emptyRow = activeTab.details.find(
+      (r) => !r.productId && !r.productName,
+    );
     if (emptyRow) {
       updateRow(emptyRow.rowId, {
         productId: scanned.id,
         productSku: barcodeVal,
         productName: scanned.name,
-        unit: scanned.unit || 'Cái',
+        unit: scanned.unit || "Cái",
         price: priceVal,
         qty: 1,
         totalAmount: priceVal,
@@ -1125,20 +1496,23 @@ export default function CreateOutboundOrderPage({
       newRow.productId = scanned.id;
       newRow.productSku = barcodeVal;
       newRow.productName = scanned.name;
-      newRow.unit = scanned.unit || 'Cái';
+      newRow.unit = scanned.unit || "Cái";
       newRow.price = priceVal;
       newRow.qty = 1;
       newRow.totalAmount = priceVal;
 
       updateActiveTab((tab) => ({ ...tab, details: [...tab.details, newRow] }));
     }
-    setToast({ message: `Đã thêm sản phẩm: ${scanned.name}`, type: 'success' });
+    setToast({ message: `Đã thêm sản phẩm: ${scanned.name}`, type: "success" });
   };
 
   const handleAddQuickCustomer = async () => {
     const custName = newCustomerForm.fullName.trim();
     if (!custName) {
-      setToast({ message: 'Vui lòng nhập họ và tên khách hàng', type: 'error' });
+      setToast({
+        message: "Vui lòng nhập họ và tên khách hàng",
+        type: "error",
+      });
       return;
     }
     const autoCode = `KH${Date.now().toString().slice(-6)}`;
@@ -1154,7 +1528,7 @@ export default function CreateOutboundOrderPage({
     };
     try {
       const res = await fetch(`${API_BASE_URL}/customers`, {
-        method: 'POST',
+        method: "POST",
         headers: authHeaders(),
         body: JSON.stringify(payload),
       });
@@ -1163,9 +1537,9 @@ export default function CreateOutboundOrderPage({
         created = await res.json();
       } else {
         const userRes = await fetch(`${API_BASE_URL}/users`, {
-          method: 'POST',
+          method: "POST",
           headers: authHeaders(),
-          body: JSON.stringify({ ...payload, role: 'customer' }),
+          body: JSON.stringify({ ...payload, role: "customer" }),
         }).catch(() => null);
 
         if (userRes && userRes.ok) {
@@ -1184,8 +1558,18 @@ export default function CreateOutboundOrderPage({
           customerAddress: created.address || newCustomerForm.address,
         }));
         setShowAddCustomerModal(false);
-        setNewCustomerForm({ fullName: '', email: '', phone: '', address: '', status: 'active', password: '' });
-        setToast({ message: `Đã thêm khách hàng ${created.name || custName}`, type: 'success' });
+        setNewCustomerForm({
+          fullName: "",
+          email: "",
+          phone: "",
+          address: "",
+          status: "active",
+          password: "",
+        });
+        setToast({
+          message: `Đã thêm khách hàng ${created.name || custName}`,
+          type: "success",
+        });
       }
     } catch {
       const fallbackCreated = { id: `cust-${Date.now()}`, ...payload };
@@ -1198,8 +1582,18 @@ export default function CreateOutboundOrderPage({
         customerAddress: fallbackCreated.address,
       }));
       setShowAddCustomerModal(false);
-      setNewCustomerForm({ fullName: '', email: '', phone: '', address: '', status: 'active', password: '' });
-      setToast({ message: `Đã thêm khách hàng ${fallbackCreated.name}`, type: 'success' });
+      setNewCustomerForm({
+        fullName: "",
+        email: "",
+        phone: "",
+        address: "",
+        status: "active",
+        password: "",
+      });
+      setToast({
+        message: `Đã thêm khách hàng ${fallbackCreated.name}`,
+        type: "success",
+      });
     }
   };
 
@@ -1207,7 +1601,9 @@ export default function CreateOutboundOrderPage({
   const activeValidItems = useMemo(() => {
     if (!activeTab) return [];
     return activeTab.details.filter(
-      (r) => (r.productId || r.productName?.trim() || r.productSku?.trim()) && r.qty > 0
+      (r) =>
+        (r.productId || r.productName?.trim() || r.productSku?.trim()) &&
+        r.qty > 0,
     );
   }, [activeTab]);
 
@@ -1218,14 +1614,25 @@ export default function CreateOutboundOrderPage({
   // Tổng tiền gốc chưa chiết khấu/VAT
   const baseSubtotal = useMemo(() => {
     return activeValidItems.reduce(
-      (s, r) => s + (isDisposal ? Number(r.lossAmount !== undefined && r.lossAmount !== null ? r.lossAmount : ((Number(r.qty) || 0) * (Number(r.price) || 0))) : ((Number(r.qty) || 0) * (Number(r.price) || 0))),
-      0
+      (s, r) =>
+        s +
+        (isDisposal
+          ? Number(
+              r.lossAmount !== undefined && r.lossAmount !== null
+                ? r.lossAmount
+                : (Number(r.qty) || 0) * (Number(r.price) || 0),
+            )
+          : (Number(r.qty) || 0) * (Number(r.price) || 0)),
+      0,
     );
   }, [activeValidItems, isDisposal]);
 
   // Tổng chiết khấu của tất cả các dòng
   const totalRowDiscount = useMemo(() => {
-    return activeValidItems.reduce((s, r) => s + (Number(r.discountAmount) || 0), 0);
+    return activeValidItems.reduce(
+      (s, r) => s + (Number(r.discountAmount) || 0),
+      0,
+    );
   }, [activeValidItems]);
 
   // Tổng VAT của tất cả các dòng
@@ -1265,7 +1672,10 @@ export default function CreateOutboundOrderPage({
     if (!activeTab) return 0;
     return Math.max(
       0,
-      baseSubtotal - totalDiscount + totalVat + (Number(activeTab.shippingFee) || 0)
+      baseSubtotal -
+        totalDiscount +
+        totalVat +
+        (Number(activeTab.shippingFee) || 0),
     );
   }, [baseSubtotal, totalDiscount, totalVat, activeTab?.shippingFee]);
 
@@ -1273,10 +1683,15 @@ export default function CreateOutboundOrderPage({
   const hasAssignedBins = useMemo(() => {
     if (!activeTab) return false;
     return (activeTab.details || []).some((r) => {
-      const hasProduct = Boolean(r.productId || r.productName?.trim() || r.productSku?.trim());
+      const hasProduct = Boolean(
+        r.productId || r.productName?.trim() || r.productSku?.trim(),
+      );
       if (!hasProduct) return false;
-      const hasArray = Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
-      const hasStr = Boolean(r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== '-');
+      const hasArray =
+        Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
+      const hasStr = Boolean(
+        r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== "-",
+      );
       return hasArray || hasStr;
     });
   }, [activeTab]);
@@ -1286,28 +1701,31 @@ export default function CreateOutboundOrderPage({
     return Math.max(0, grandTotal - (activeTab.amountPaid || grandTotal));
   }, [grandTotal, activeTab]);
 
-  const handleSaveOutboundOrder = async (isPrint = false, saveStatus: 'DRAFT' | 'OFFICIAL' = 'OFFICIAL') => {
+  const handleSaveOutboundOrder = async (
+    isPrint = false,
+    saveStatus: "DRAFT" | "OFFICIAL" = "OFFICIAL",
+  ) => {
     if (!activeTab) return;
 
     const itemsWithProduct = (activeTab.details || []).filter(
-      (r) => r.productId || r.productName?.trim() || r.productSku?.trim()
+      (r) => r.productId || r.productName?.trim() || r.productSku?.trim(),
     );
 
     if (itemsWithProduct.length === 0) {
       setToast({
-        message: `${isDisposal ? 'Phiếu xuất hủy' : 'Phiếu xuất hàng'} phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.`,
-        type: 'error',
+        message: `${isDisposal ? "Phiếu xuất hủy" : "Phiếu xuất hàng"} phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.`,
+        type: "error",
       });
       return;
     }
 
     const invalidQtyItem = itemsWithProduct.find(
-      (r) => !r.qty || Number(r.qty) < 1 || isNaN(Number(r.qty))
+      (r) => !r.qty || Number(r.qty) < 1 || isNaN(Number(r.qty)),
     );
     if (invalidQtyItem) {
       setToast({
-        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || 'trong phiếu'}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
-        type: 'error',
+        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || "trong phiếu"}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
+        type: "error",
       });
       return;
     }
@@ -1315,27 +1733,45 @@ export default function CreateOutboundOrderPage({
     const isUpdating = Boolean(activeTab.id);
     const defaultCode = isDisposal
       ? `XH_${Date.now().toString().slice(-6)}`
-      : (isRetail ? `XBL_${Date.now().toString().slice(-6)}` : `XBH_${Date.now().toString().slice(-6)}`);
+      : isRetail
+        ? `XBL_${Date.now().toString().slice(-6)}`
+        : `XBH_${Date.now().toString().slice(-6)}`;
 
     // Khi đang sửa phiếu: giữ nguyên orderNo hiện tại (CỐ ĐỊNH, không cho sửa)
     const finalOrderNo = isUpdating
       ? activeTab.orderNo
-      : (activeTab.orderNo.trim() ? activeTab.orderNo.trim().toUpperCase() : defaultCode);
+      : activeTab.orderNo.trim()
+        ? activeTab.orderNo.trim().toUpperCase()
+        : defaultCode;
 
-    const isDraft = saveStatus === 'DRAFT';
-    const targetStatus = isDraft ? 'DRAFT' : (isDisposal ? 'Đã xuất hủy' : 'Đã giao hàng');
+    const isDraft = saveStatus === "DRAFT";
+    const targetStatus = isDraft
+      ? "DRAFT"
+      : isDisposal
+        ? "Đã xuất hủy"
+        : "Đã giao hàng";
 
     const payload = isDisposal
       ? {
           orderNo: finalOrderNo,
-          orderType: 'disposal',
-          branchCode: activeTab.branchCode || 'KHO-TONG',
-          employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
-          customerName: 'Xuất hủy nội bộ',
+          orderType: "disposal",
+          branchCode: activeTab.branchCode || "KHO-TONG",
+          employeeName:
+            activeTab.employeeName ||
+            currentUser?.fullName ||
+            currentUser?.email?.split("@")[0] ||
+            "Quản trị viên hệ thống",
+          customerName: "Xuất hủy nội bộ",
           orderDate: activeTab.orderDate,
           expectedDate: activeTab.orderDate,
           status: targetStatus,
-          description: [disposalReasonSelect, activeTab.description?.trim(), disposalMethod ? `Phương án: ${disposalMethod}` : ''].filter(Boolean).join(' - '),
+          description: [
+            disposalReasonSelect,
+            activeTab.description?.trim(),
+            disposalMethod ? `Phương án: ${disposalMethod}` : "",
+          ]
+            .filter(Boolean)
+            .join(" - "),
           subtotal,
           discount: 0,
           vatRate: 0,
@@ -1343,15 +1779,27 @@ export default function CreateOutboundOrderPage({
           totalAmount: subtotal,
           amountPaid: 0,
           details: activeValidItems.map((r) => {
-            const lineLoss = r.lossAmount !== undefined && r.lossAmount !== null ? Number(r.lossAmount) : (Number(r.qty) * Number(r.price));
+            const lineLoss =
+              r.lossAmount !== undefined && r.lossAmount !== null
+                ? Number(r.lossAmount)
+                : Number(r.qty) * Number(r.price);
             const lineTotal = Number(r.price) + lineLoss;
             return {
               productId: r.productId,
               productSku: r.productSku,
               productName: r.productName,
-              warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-TONG',
-              locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
-              assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
+              warehouseCode:
+                r.warehouseCode || activeTab.branchCode || "KHO-TONG",
+              locationBin:
+                r.locationBin ||
+                (r.assignedBins && r.assignedBins.join(", ")) ||
+                "",
+              assignedBins:
+                Array.isArray(r.assignedBins) && r.assignedBins.length > 0
+                  ? r.assignedBins
+                  : r.locationBin
+                    ? [r.locationBin]
+                    : [],
               unit: r.unit,
               qty: Number(r.qty),
               price: Number(r.price),
@@ -1364,11 +1812,17 @@ export default function CreateOutboundOrderPage({
         }
       : {
           orderNo: finalOrderNo,
-          orderType: isRetail ? 'retail' : 'orders',
-          branchCode: activeTab.branchCode || 'KHO-NVL',
-          employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
+          orderType: isRetail ? "retail" : "orders",
+          branchCode: activeTab.branchCode || "KHO-NVL",
+          employeeName:
+            activeTab.employeeName ||
+            currentUser?.fullName ||
+            currentUser?.email?.split("@")[0] ||
+            "Quản trị viên hệ thống",
           customerId: activeTab.customerId,
-          customerName: activeTab.customer?.trim() || (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ'),
+          customerName:
+            activeTab.customer?.trim() ||
+            (isRetail ? "Khách hàng bán lẻ" : "888 - Khách lẻ"),
           customerPhone: activeTab.customerPhone?.trim() || undefined,
           customerAddress: activeTab.customerAddress?.trim() || undefined,
           orderDate: activeTab.orderDate,
@@ -1385,9 +1839,17 @@ export default function CreateOutboundOrderPage({
             productId: r.productId,
             productSku: r.productSku,
             productName: r.productName,
-            warehouseCode: r.warehouseCode || activeTab.branchCode || 'KHO-NVL',
-            locationBin: r.locationBin || (r.assignedBins && r.assignedBins.join(', ')) || '',
-            assignedBins: Array.isArray(r.assignedBins) && r.assignedBins.length > 0 ? r.assignedBins : (r.locationBin ? [r.locationBin] : []),
+            warehouseCode: r.warehouseCode || activeTab.branchCode || "KHO-NVL",
+            locationBin:
+              r.locationBin ||
+              (r.assignedBins && r.assignedBins.join(", ")) ||
+              "",
+            assignedBins:
+              Array.isArray(r.assignedBins) && r.assignedBins.length > 0
+                ? r.assignedBins
+                : r.locationBin
+                  ? [r.locationBin]
+                  : [],
             unit: r.unit,
             qty: Number(r.qty),
             price: Number(r.price),
@@ -1396,8 +1858,10 @@ export default function CreateOutboundOrderPage({
         };
 
     try {
-      const url = isUpdating ? `${API_BASE_URL}/outbounds/${activeTab.id}` : `${API_BASE_URL}/outbounds`;
-      const method = isUpdating ? 'PUT' : 'POST';
+      const url = isUpdating
+        ? `${API_BASE_URL}/outbounds/${activeTab.id}`
+        : `${API_BASE_URL}/outbounds`;
+      const method = isUpdating ? "PUT" : "POST";
 
       const res = await fetch(url, {
         method,
@@ -1407,7 +1871,10 @@ export default function CreateOutboundOrderPage({
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
-        throw new Error(errData?.message || `Không thể ${isUpdating ? 'cập nhật' : 'tạo'} ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`);
+        throw new Error(
+          errData?.message ||
+            `Không thể ${isUpdating ? "cập nhật" : "tạo"} ${isDisposal ? "phiếu xuất hủy" : "phiếu xuất hàng"}`,
+        );
       }
 
       // Chỉ tự động cập nhật tồn kho & ô kệ khi xuất kho CHÍNH THỨC (không phải DRAFT)
@@ -1417,59 +1884,112 @@ export default function CreateOutboundOrderPage({
           let changed = false;
 
           activeValidItems.forEach((r) => {
-            const binsToDeduct: string[] = Array.isArray(r.assignedBins) && r.assignedBins.length > 0
-              ? r.assignedBins
-              : (r.locationBin ? r.locationBin.split(',').map((s: string) => s.trim()) : []);
+            const binsToDeduct: string[] =
+              Array.isArray(r.assignedBins) && r.assignedBins.length > 0
+                ? r.assignedBins
+                : r.locationBin
+                  ? r.locationBin.split(",").map((s: string) => s.trim())
+                  : [];
 
             binsToDeduct.forEach((bCode) => {
-              const cleanCode = bCode.split('(')[0].trim();
-              const normKey = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, '');
+              const cleanCode = bCode.split("(")[0].trim();
+              const normKey = cleanCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
               localWhs.forEach((wh) => {
                 (wh.subWarehouses || []).forEach((sub) => {
                   (sub.racks || []).forEach((rk) => {
-                    const customBins = rk.customBins as Record<string, any> | undefined;
+                    const customBins = rk.customBins as
+                      | Record<string, any>
+                      | undefined;
                     if (customBins) {
                       Object.keys(customBins).forEach((k) => {
-                        const normK = k.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                        const shortClean = (cleanCode.split('-').pop() || cleanCode).toUpperCase();
-                        const shortK = (k.split('-').pop() || k).toUpperCase();
-                        const isMatch = normK === normKey || k === cleanCode || k.includes(cleanCode) || cleanCode.includes(k) || (shortClean && shortK === shortClean);
+                        const normK = k.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        const shortClean = (
+                          cleanCode.split("-").pop() || cleanCode
+                        ).toUpperCase();
+                        const shortK = (k.split("-").pop() || k).toUpperCase();
+                        const isMatch =
+                          normK === normKey ||
+                          k === cleanCode ||
+                          k.includes(cleanCode) ||
+                          cleanCode.includes(k) ||
+                          (shortClean && shortK === shortClean);
                         if (isMatch) {
                           const curr = customBins[k];
-                          let existingProds: Array<{ sku?: string; productName: string; qty: number; occupancyPct: number; unit?: string }> = [];
-                          if (curr && Array.isArray(curr.products) && curr.products.length > 0) {
-                            existingProds = curr.products.map((p: any) => ({ ...p }));
-                          } else if (curr && curr.productName && Number(curr.totalPhysical || 0) > 0) {
-                            existingProds = [{
-                              sku: curr.sku || '',
-                              productName: curr.productName,
-                              qty: Number(curr.totalPhysical || 0),
-                              occupancyPct: Number(curr.occupancyPct || 100),
-                              unit: curr.unit || 'cái',
-                            }];
+                          let existingProds: Array<{
+                            sku?: string;
+                            productName: string;
+                            qty: number;
+                            occupancyPct: number;
+                            unit?: string;
+                          }> = [];
+                          if (
+                            curr &&
+                            Array.isArray(curr.products) &&
+                            curr.products.length > 0
+                          ) {
+                            existingProds = curr.products.map((p: any) => ({
+                              ...p,
+                            }));
+                          } else if (
+                            curr &&
+                            curr.productName &&
+                            Number(curr.totalPhysical || 0) > 0
+                          ) {
+                            existingProds = [
+                              {
+                                sku: curr.sku || "",
+                                productName: curr.productName,
+                                qty: Number(curr.totalPhysical || 0),
+                                occupancyPct: Number(curr.occupancyPct || 100),
+                                unit: curr.unit || "cái",
+                              },
+                            ];
                           }
 
-                          const curSku = (r.productSku || '').trim().toUpperCase();
-                          const curName = (r.productName || '').trim().toLowerCase();
+                          const curSku = (r.productSku || "")
+                            .trim()
+                            .toUpperCase();
+                          const curName = (r.productName || "")
+                            .trim()
+                            .toLowerCase();
                           const exportQty = Number(r.qty || 0);
 
                           let matchIdx = existingProds.findIndex((p) => {
-                            const pSku = (p.sku || '').trim().toUpperCase();
-                            const pName = (p.productName || '').trim().toLowerCase();
-                            return (curSku && pSku && curSku === pSku) || (curName && pName && (curName.includes(pName) || pName.includes(curName)));
+                            const pSku = (p.sku || "").trim().toUpperCase();
+                            const pName = (p.productName || "")
+                              .trim()
+                              .toLowerCase();
+                            return (
+                              (curSku && pSku && curSku === pSku) ||
+                              (curName &&
+                                pName &&
+                                (curName.includes(pName) ||
+                                  pName.includes(curName)))
+                            );
                           });
 
                           if (matchIdx >= 0) {
                             const matchedProd = existingProds[matchIdx];
                             const oldItemQty = Number(matchedProd.qty || 0);
-                            const oldItemPct = Number(matchedProd.occupancyPct || 0);
-                            const newItemQty = Math.max(0, oldItemQty - exportQty);
+                            const oldItemPct = Number(
+                              matchedProd.occupancyPct || 0,
+                            );
+                            const newItemQty = Math.max(
+                              0,
+                              oldItemQty - exportQty,
+                            );
                             let newItemPct = 0;
                             if (newItemQty > 0) {
-                              newItemPct = oldItemQty > 0
-                                ? Math.max(1, Math.round((newItemQty / oldItemQty) * oldItemPct))
-                                : oldItemPct;
+                              newItemPct =
+                                oldItemQty > 0
+                                  ? Math.max(
+                                      1,
+                                      Math.round(
+                                        (newItemQty / oldItemQty) * oldItemPct,
+                                      ),
+                                    )
+                                  : oldItemPct;
                             }
                             if (newItemQty > 0) {
                               existingProds[matchIdx] = {
@@ -1484,21 +2004,43 @@ export default function CreateOutboundOrderPage({
                             const oldPct = Number(curr?.occupancyPct ?? 100);
                             const oldQty = Number(curr?.totalPhysical || 0);
                             const newQty = Math.max(0, oldQty - exportQty);
-                            const newPct = oldQty > 0 ? Math.max(0, Math.round((newQty / oldQty) * oldPct)) : Math.max(0, oldPct - 25);
-                            existingProds = newQty > 0 ? [{
-                              sku: curSku || 'SKU-001',
-                              productName: r.productName || 'Hàng tồn kho',
-                              qty: newQty,
-                              occupancyPct: newPct,
-                              unit: r.unit || 'cái',
-                            }] : [];
+                            const newPct =
+                              oldQty > 0
+                                ? Math.max(
+                                    0,
+                                    Math.round((newQty / oldQty) * oldPct),
+                                  )
+                                : Math.max(0, oldPct - 25);
+                            existingProds =
+                              newQty > 0
+                                ? [
+                                    {
+                                      sku: curSku || "SKU-001",
+                                      productName:
+                                        r.productName || "Hàng tồn kho",
+                                      qty: newQty,
+                                      occupancyPct: newPct,
+                                      unit: r.unit || "cái",
+                                    },
+                                  ]
+                                : [];
                           }
 
-                          const newTotalPct = Math.min(100, existingProds.reduce((sum, p) => sum + (Number(p.occupancyPct) || 0), 0));
-                          const newTotalQty = existingProds.reduce((sum, p) => sum + (Number(p.qty) || 0), 0);
-                          const descNote = existingProds.length === 0 || newTotalPct === 0
-                            ? 'Ô Trống'
-                            : `Đã chứa: ${newTotalPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || 'cái'} [${p.occupancyPct}%]`).join(', ')})`;
+                          const newTotalPct = Math.min(
+                            100,
+                            existingProds.reduce(
+                              (sum, p) => sum + (Number(p.occupancyPct) || 0),
+                              0,
+                            ),
+                          );
+                          const newTotalQty = existingProds.reduce(
+                            (sum, p) => sum + (Number(p.qty) || 0),
+                            0,
+                          );
+                          const descNote =
+                            existingProds.length === 0 || newTotalPct === 0
+                              ? "Ô Trống"
+                              : `Đã chứa: ${newTotalPct}% (${existingProds.map((p) => `${p.productName}: ${p.qty} ${p.unit || "cái"} [${p.occupancyPct}%]`).join(", ")})`;
 
                           customBins[k] = {
                             ...curr,
@@ -1506,8 +2048,14 @@ export default function CreateOutboundOrderPage({
                             totalPhysical: newTotalQty,
                             products: existingProds,
                             notes: descNote,
-                            productName: existingProds.map((p) => p.productName).join(', ') || 'Ô Trống',
-                            sku: existingProds.map((p) => p.sku).filter(Boolean).join(', '),
+                            productName:
+                              existingProds
+                                .map((p) => p.productName)
+                                .join(", ") || "Ô Trống",
+                            sku: existingProds
+                              .map((p) => p.sku)
+                              .filter(Boolean)
+                              .join(", "),
                           };
                           changed = true;
                         }
@@ -1524,22 +2072,34 @@ export default function CreateOutboundOrderPage({
           }
 
           try {
-            const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
-            let localOutboundOrders: any[] = storedOutboundStr ? JSON.parse(storedOutboundStr) : [];
+            const storedOutboundStr = localStorage.getItem(
+              "stored_outbound_orders",
+            );
+            let localOutboundOrders: any[] = storedOutboundStr
+              ? JSON.parse(storedOutboundStr)
+              : [];
             const savedOutboundEntry = {
               id: activeTab.id || `PXK-${Date.now()}`,
               orderNo: activeTab.orderNo || `PXK-${Date.now()}`,
-              warehouseCode: activeTab.branchCode || 'KHO-NVL',
+              warehouseCode: activeTab.branchCode || "KHO-NVL",
               orderDate: activeTab.orderDate,
               status: targetStatus,
               items: payload.details,
             };
-            localOutboundOrders = [savedOutboundEntry, ...localOutboundOrders.filter((o: any) => o.id !== savedOutboundEntry.id)];
-            localStorage.setItem('stored_outbound_orders', JSON.stringify(localOutboundOrders));
+            localOutboundOrders = [
+              savedOutboundEntry,
+              ...localOutboundOrders.filter(
+                (o: any) => o.id !== savedOutboundEntry.id,
+              ),
+            ];
+            localStorage.setItem(
+              "stored_outbound_orders",
+              JSON.stringify(localOutboundOrders),
+            );
           } catch {}
 
           // Cập nhật smart-wms-products
-          const storedProdsStr = localStorage.getItem('smart-wms-products');
+          const storedProdsStr = localStorage.getItem("smart-wms-products");
           if (storedProdsStr) {
             let prods = JSON.parse(storedProdsStr);
             if (Array.isArray(prods)) {
@@ -1548,7 +2108,9 @@ export default function CreateOutboundOrderPage({
                   if (
                     p.id === r.productId ||
                     p.sku === r.productSku ||
-                    (r.productSku && p.sku && p.sku.toUpperCase() === r.productSku.toUpperCase())
+                    (r.productSku &&
+                      p.sku &&
+                      p.sku.toUpperCase() === r.productSku.toUpperCase())
                   ) {
                     const currentStk = Number(p.stock || 0);
                     return {
@@ -1559,31 +2121,36 @@ export default function CreateOutboundOrderPage({
                   return p;
                 });
               });
-              localStorage.setItem('smart-wms-products', JSON.stringify(prods));
+              localStorage.setItem("smart-wms-products", JSON.stringify(prods));
             }
           }
 
           clearWarehouseBinsCache();
           clearSmartSlottingCache();
-          window.dispatchEvent(new Event('warehouse-goods-cleared'));
-          window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new Event("warehouse-goods-cleared"));
+          window.dispatchEvent(new Event("storage"));
         } catch (e) {
-          console.error('Lỗi tự động cập nhật sơ đồ kho sau khi xuất hàng:', e);
+          console.error("Lỗi tự động cập nhật sơ đồ kho sau khi xuất hàng:", e);
         }
       }
 
       // Sync stored_outbound_orders in localStorage
       try {
-        const storedOutboundStr = localStorage.getItem('stored_outbound_orders');
+        const storedOutboundStr = localStorage.getItem(
+          "stored_outbound_orders",
+        );
         let storedOutbound: any[] = [];
         if (storedOutboundStr) {
-          try { storedOutbound = JSON.parse(storedOutboundStr); } catch {}
+          try {
+            storedOutbound = JSON.parse(storedOutboundStr);
+          } catch {}
         }
         if (isUpdating) {
           storedOutbound = storedOutbound.map((item: any) =>
-            String(item.id) === String(activeTab.id) || item.orderNo === finalOrderNo
+            String(item.id) === String(activeTab.id) ||
+            item.orderNo === finalOrderNo
               ? { ...item, ...payload, updatedAt: new Date().toISOString() }
-              : item
+              : item,
           );
         } else {
           storedOutbound.push({
@@ -1593,14 +2160,20 @@ export default function CreateOutboundOrderPage({
             createdAt: new Date().toISOString(),
           });
         }
-        localStorage.setItem('stored_outbound_orders', JSON.stringify(storedOutbound));
-        window.dispatchEvent(new Event('outbound-order-created'));
-        window.dispatchEvent(new Event('storage'));
+        localStorage.setItem(
+          "stored_outbound_orders",
+          JSON.stringify(storedOutbound),
+        );
+        window.dispatchEvent(new Event("outbound-order-created"));
+        window.dispatchEvent(new Event("storage"));
       } catch (errLocal) {
-        console.warn('Lỗi lưu stored_outbound_orders vào localStorage:', errLocal);
+        console.warn(
+          "Lỗi lưu stored_outbound_orders vào localStorage:",
+          errLocal,
+        );
       }
 
-      let successMessage = '';
+      let successMessage = "";
       if (isDraft) {
         successMessage = isUpdating
           ? `Đã cập nhật thành công bản nháp phiếu xuất ${payload.orderNo}!`
@@ -1608,10 +2181,10 @@ export default function CreateOutboundOrderPage({
       } else {
         successMessage = isUpdating
           ? `Đã xuất kho thành công từ phiếu nháp ${payload.orderNo}!`
-          : `Đã lưu thành công ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất kho'} ${payload.orderNo}!`;
+          : `Đã lưu thành công ${isDisposal ? "phiếu xuất hủy" : "phiếu xuất kho"} ${payload.orderNo}!`;
       }
 
-      setToast({ message: successMessage, type: 'success' });
+      setToast({ message: successMessage, type: "success" });
 
       if (isPrint) {
         setTimeout(() => {
@@ -1623,7 +2196,12 @@ export default function CreateOutboundOrderPage({
         handleBackNavigation();
       }, 900);
     } catch (err: any) {
-      setToast({ message: err.message || `Lỗi khi lưu ${isDisposal ? 'phiếu xuất hủy' : 'phiếu xuất hàng'}`, type: 'error' });
+      setToast({
+        message:
+          err.message ||
+          `Lỗi khi lưu ${isDisposal ? "phiếu xuất hủy" : "phiếu xuất hàng"}`,
+        type: "error",
+      });
     }
   };
 
@@ -1631,38 +2209,63 @@ export default function CreateOutboundOrderPage({
   const availableProductsForMode = useMemo(() => {
     if (!isReturnSupplier) return products;
 
-    const selectedSupName = (activeTab?.customer || '').trim().toLowerCase();
-    const selectedSupId = String(activeTab?.customerId || '').trim().toLowerCase();
+    const selectedSupName = (activeTab?.customer || "").trim().toLowerCase();
+    const selectedSupId = String(activeTab?.customerId || "")
+      .trim()
+      .toLowerCase();
 
-    if (!selectedSupName || selectedSupName === 'khách hàng bán lẻ') {
+    if (!selectedSupName || selectedSupName === "khách hàng bán lẻ") {
       return [];
     }
 
     const matched = products.filter((p) => {
-      const pSupId = String(p.supplierId || p.supplier?.id || '').trim().toLowerCase();
-      const pSupName = String(p.supplierName || p.supplier?.name || '').trim().toLowerCase();
+      const pSupId = String(p.supplierId || p.supplier?.id || "")
+        .trim()
+        .toLowerCase();
+      const pSupName = String(p.supplierName || p.supplier?.name || "")
+        .trim()
+        .toLowerCase();
 
       if (selectedSupId && pSupId && selectedSupId === pSupId) return true;
-      if (selectedSupName && pSupName && (pSupName.includes(selectedSupName) || selectedSupName.includes(pSupName))) return true;
+      if (
+        selectedSupName &&
+        pSupName &&
+        (pSupName.includes(selectedSupName) ||
+          selectedSupName.includes(pSupName))
+      )
+        return true;
 
       const isFromInbound = allInboundOrders.some((ord: any) => {
-        const oSupId = String(ord.supplierId || ord.supplier?.id || '').trim().toLowerCase();
-        const oSupName = String(ord.supplierName || ord.supplier?.name || '').trim().toLowerCase();
+        const oSupId = String(ord.supplierId || ord.supplier?.id || "")
+          .trim()
+          .toLowerCase();
+        const oSupName = String(ord.supplierName || ord.supplier?.name || "")
+          .trim()
+          .toLowerCase();
 
         const isSupplierMatch =
           (selectedSupId && oSupId && selectedSupId === oSupId) ||
-          (selectedSupName && oSupName && (oSupName.includes(selectedSupName) || selectedSupName.includes(oSupName)));
+          (selectedSupName &&
+            oSupName &&
+            (oSupName.includes(selectedSupName) ||
+              selectedSupName.includes(oSupName)));
 
         if (!isSupplierMatch) return false;
 
         const details = ord.details || ord.items || [];
         return details.some((item: any) => {
-          const itemProdId = String(item.product?.id || item.productId || '');
-          const itemSku = String(item.product?.internalSku || item.productSku || '').toLowerCase();
-          const itemName = String(item.product?.name || item.productName || '').toLowerCase();
+          const itemProdId = String(item.product?.id || item.productId || "");
+          const itemSku = String(
+            item.product?.internalSku || item.productSku || "",
+          ).toLowerCase();
+          const itemName = String(
+            item.product?.name || item.productName || "",
+          ).toLowerCase();
           return (
             (itemProdId && itemProdId === String(p.id)) ||
-            (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase()) ||
+            (itemSku &&
+              p.internalSku &&
+              itemSku === p.internalSku.toLowerCase()) ||
             (itemName && p.name && itemName === p.name.toLowerCase())
           );
         });
@@ -1674,56 +2277,101 @@ export default function CreateOutboundOrderPage({
     if (matched.length > 0) return matched;
 
     return products.filter((p) => {
-      const pSupId = String(p.supplierId || p.supplier?.id || '').trim().toLowerCase();
-      const pSupName = String(p.supplierName || p.supplier?.name || '').trim().toLowerCase();
+      const pSupId = String(p.supplierId || p.supplier?.id || "")
+        .trim()
+        .toLowerCase();
+      const pSupName = String(p.supplierName || p.supplier?.name || "")
+        .trim()
+        .toLowerCase();
       if (pSupId && selectedSupId && pSupId !== selectedSupId) return false;
-      if (pSupName && selectedSupName && !pSupName.includes(selectedSupName) && !selectedSupName.includes(pSupName)) return false;
+      if (
+        pSupName &&
+        selectedSupName &&
+        !pSupName.includes(selectedSupName) &&
+        !selectedSupName.includes(pSupName)
+      )
+        return false;
       return true;
     });
-  }, [products, isReturnSupplier, activeTab?.customer, activeTab?.customerId, allInboundOrders]);
+  }, [
+    products,
+    isReturnSupplier,
+    activeTab?.customer,
+    activeTab?.customerId,
+    allInboundOrders,
+  ]);
 
-  const findInboundDetailsForProduct = useCallback((p: ProductOption) => {
-    const targetWh = (activeTab?.branchCode || 'KHO-TONG').trim().toLowerCase();
-    const targetSup = (activeTab?.customer || '').trim().toLowerCase();
+  const findInboundDetailsForProduct = useCallback(
+    (p: ProductOption) => {
+      const targetWh = (activeTab?.branchCode || "KHO-TONG")
+        .trim()
+        .toLowerCase();
+      const targetSup = (activeTab?.customer || "").trim().toLowerCase();
 
-    let foundBin = '';
-    let foundPrice = getProductPriceForMode(p);
+      let foundBin = "";
+      let foundPrice = getProductPriceForMode(p);
 
-    allInboundOrders.forEach((ord: any) => {
-      const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
-      const oSup = (ord.supplierName || ord.supplier?.name || '').trim().toLowerCase();
+      allInboundOrders.forEach((ord: any) => {
+        const oWh = (ord.warehouseCode || ord.branchCode || "")
+          .trim()
+          .toLowerCase();
+        const oSup = (ord.supplierName || ord.supplier?.name || "")
+          .trim()
+          .toLowerCase();
 
-      const isWhMatch = !targetWh || oWh.includes(targetWh) || targetWh.includes(oWh);
-      const isSupMatch = !targetSup || oSup.includes(targetSup) || targetSup.includes(oSup);
+        const isWhMatch =
+          !targetWh || oWh.includes(targetWh) || targetWh.includes(oWh);
+        const isSupMatch =
+          !targetSup || oSup.includes(targetSup) || targetSup.includes(oSup);
 
-      if (isWhMatch && isSupMatch) {
-        const details = ord.details || ord.items || [];
-        details.forEach((item: any) => {
-          const itemProdId = String(item.product?.id || item.productId || '');
-          const itemSku = String(item.product?.internalSku || item.productSku || '').toLowerCase();
-          if (
-            (itemProdId && itemProdId === String(p.id)) ||
-            (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase())
-          ) {
-            if (item.locationBin) foundBin = item.locationBin;
-            if (item.unitPrice || item.price) foundPrice = Number(item.unitPrice || item.price);
-          }
-        });
-      }
-    });
+        if (isWhMatch && isSupMatch) {
+          const details = ord.details || ord.items || [];
+          details.forEach((item: any) => {
+            const itemProdId = String(item.product?.id || item.productId || "");
+            const itemSku = String(
+              item.product?.internalSku || item.productSku || "",
+            ).toLowerCase();
+            if (
+              (itemProdId && itemProdId === String(p.id)) ||
+              (itemSku &&
+                p.internalSku &&
+                itemSku === p.internalSku.toLowerCase())
+            ) {
+              if (item.locationBin) foundBin = item.locationBin;
+              if (item.unitPrice || item.price)
+                foundPrice = Number(item.unitPrice || item.price);
+            }
+          });
+        }
+      });
 
-    return { foundBin, foundPrice };
-  }, [activeTab?.branchCode, activeTab?.customer, allInboundOrders, getProductPriceForMode]);
+      return { foundBin, foundPrice };
+    },
+    [
+      activeTab?.branchCode,
+      activeTab?.customer,
+      allInboundOrders,
+      getProductPriceForMode,
+    ],
+  );
 
-  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
-    const currentRow = (activeTab?.details || []).find((r) => r.rowId === currentRowId);
-    const isSelectedProductText = currentRow?.productId && (
-      rowText === `${currentRow.productSku ? currentRow.productSku + ' - ' : ''}${currentRow.productName}` ||
-      rowText === currentRow.productName ||
-      rowText === currentRow.productSku
+  const getFilteredProductsForRow = (
+    rowText: string,
+    currentRowId?: string,
+  ) => {
+    const currentRow = (activeTab?.details || []).find(
+      (r) => r.rowId === currentRowId,
     );
+    const isSelectedProductText =
+      currentRow?.productId &&
+      (rowText ===
+        `${currentRow.productSku ? currentRow.productSku + " - " : ""}${currentRow.productName}` ||
+        rowText === currentRow.productName ||
+        rowText === currentRow.productSku);
 
-    const kw = isSelectedProductText ? '' : (rowText || '').trim().toLowerCase();
+    const kw = isSelectedProductText
+      ? ""
+      : (rowText || "").trim().toLowerCase();
     const baseList = availableProductsForMode;
 
     // Collect products selected in OTHER rows to exclude them
@@ -1745,9 +2393,15 @@ export default function CreateOutboundOrderPage({
     });
 
     const unselectedProducts = baseList.filter((p) => {
-      const pId = String(p.id || '').trim().toLowerCase();
-      const pSku = String(p.internalSku || '').trim().toLowerCase();
-      const pName = String(p.name || '').trim().toLowerCase();
+      const pId = String(p.id || "")
+        .trim()
+        .toLowerCase();
+      const pSku = String(p.internalSku || "")
+        .trim()
+        .toLowerCase();
+      const pName = String(p.name || "")
+        .trim()
+        .toLowerCase();
 
       if (pId && otherSelectedIds.has(pId)) return false;
       if (pSku && otherSelectedSkus.has(pSku)) return false;
@@ -1760,8 +2414,8 @@ export default function CreateOutboundOrderPage({
     return unselectedProducts.filter(
       (p) =>
         p.name.toLowerCase().includes(kw) ||
-        (p.internalSku || '').toLowerCase().includes(kw) ||
-        `${p.internalSku} ${p.name}`.toLowerCase().includes(kw)
+        (p.internalSku || "").toLowerCase().includes(kw) ||
+        `${p.internalSku} ${p.name}`.toLowerCase().includes(kw),
     );
   };
 
@@ -1786,9 +2440,15 @@ export default function CreateOutboundOrderPage({
     });
 
     const unselectedProducts = baseList.filter((p) => {
-      const pId = String(p.id || '').trim().toLowerCase();
-      const pSku = String(p.internalSku || '').trim().toLowerCase();
-      const pName = String(p.name || '').trim().toLowerCase();
+      const pId = String(p.id || "")
+        .trim()
+        .toLowerCase();
+      const pSku = String(p.internalSku || "")
+        .trim()
+        .toLowerCase();
+      const pName = String(p.name || "")
+        .trim()
+        .toLowerCase();
 
       if (pId && otherSelectedIds.has(pId)) return false;
       if (pSku && otherSelectedSkus.has(pSku)) return false;
@@ -1801,33 +2461,41 @@ export default function CreateOutboundOrderPage({
     return unselectedProducts.filter(
       (p) =>
         p.name.toLowerCase().includes(kw) ||
-        (p.internalSku || '').toLowerCase().includes(kw)
+        (p.internalSku || "").toLowerCase().includes(kw),
     );
   }, [availableProductsForMode, quickProductSearch, activeTab?.details]);
 
   const handleSelectQuickProduct = (p: ProductOption) => {
     if (!activeTab) return;
 
-    if (isReturnSupplier && (!activeTab.customer || activeTab.customer === 'Khách hàng bán lẻ')) {
-      setToast({ message: 'Vui lòng chọn Nhà cung cấp trước khi chọn sản phẩm xuất trả!', type: 'error' });
+    if (
+      isReturnSupplier &&
+      (!activeTab.customer || activeTab.customer === "Khách hàng bán lẻ")
+    ) {
+      setToast({
+        message: "Vui lòng chọn Nhà cung cấp trước khi chọn sản phẩm xuất trả!",
+        type: "error",
+      });
       return;
     }
 
     const { foundBin, foundPrice } = findInboundDetailsForProduct(p);
     const targetPrice = foundPrice || getProductPriceForMode(p);
     const firstUnfrozen = warehouses.find((w) => !w.isFrozen);
-    const rowWhCode = activeTab.branchCode || firstUnfrozen?.code || 'KHO-TONG';
+    const rowWhCode = activeTab.branchCode || firstUnfrozen?.code || "KHO-TONG";
 
-    const emptyRow = activeTab.details.find((r) => !r.productId && !r.productName);
+    const emptyRow = activeTab.details.find(
+      (r) => !r.productId && !r.productName,
+    );
     if (emptyRow) {
       updateRow(emptyRow.rowId, {
         productId: p.id,
         productSku: p.internalSku,
         productName: p.name,
-        unit: p.unit || 'Cái',
+        unit: p.unit || "Cái",
         price: targetPrice,
-        locationBin: foundBin || emptyRow.locationBin || '',
-        assignedBins: foundBin ? [foundBin] : (emptyRow.assignedBins || []),
+        locationBin: foundBin || emptyRow.locationBin || "",
+        assignedBins: foundBin ? [foundBin] : emptyRow.assignedBins || [],
         qty: 1,
         warehouseCode: rowWhCode,
       });
@@ -1836,7 +2504,7 @@ export default function CreateOutboundOrderPage({
       newRow.productId = p.id;
       newRow.productSku = p.internalSku;
       newRow.productName = p.name;
-      newRow.unit = p.unit || 'Cái';
+      newRow.unit = p.unit || "Cái";
       newRow.price = targetPrice;
       newRow.locationBin = foundBin;
       newRow.assignedBins = foundBin ? [foundBin] : [];
@@ -1845,9 +2513,9 @@ export default function CreateOutboundOrderPage({
       newRow.warehouseCode = rowWhCode;
       updateActiveTab((tab) => ({ ...tab, details: [...tab.details, newRow] }));
     }
-    setQuickProductSearch('');
+    setQuickProductSearch("");
     setShowQuickSearchDropdown(false);
-    setToast({ message: `Đã chọn: ${p.name}`, type: 'success' });
+    setToast({ message: `Đã chọn: ${p.name}`, type: "success" });
   };
 
   const filteredCustomers = useMemo(() => {
@@ -1856,42 +2524,58 @@ export default function CreateOutboundOrderPage({
     return customers.filter(
       (c) =>
         c.name.toLowerCase().includes(kw) ||
-        (c.customerCode || '').toLowerCase().includes(kw) ||
-        (c.phone || '').toLowerCase().includes(kw)
+        (c.customerCode || "").toLowerCase().includes(kw) ||
+        (c.phone || "").toLowerCase().includes(kw),
     );
   }, [customers, customerSearch]);
 
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
-  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [employeeSearch, setEmployeeSearch] = useState("");
 
   const filteredEmployees = useMemo(() => {
     const kw = employeeSearch.trim().toLowerCase();
     const allEmps = [
-      { id: 'curr', name: currentUserName, email: '' },
-      ...users.map((u) => ({ id: u.id, name: u.fullName || u.email, email: u.email }))
+      { id: "curr", name: currentUserName, email: "" },
+      ...users.map((u) => ({
+        id: u.id,
+        name: u.fullName || u.email,
+        email: u.email,
+      })),
     ];
     if (!kw) return allEmps;
-    return allEmps.filter((e) => e.name.toLowerCase().includes(kw) || e.email.toLowerCase().includes(kw));
+    return allEmps.filter(
+      (e) =>
+        e.name.toLowerCase().includes(kw) || e.email.toLowerCase().includes(kw),
+    );
   }, [users, currentUserName, employeeSearch]);
 
   const contentMarkup = (
     <div
-      className={`animate-[fadeIn_0.2s_ease-out] ${isFullScreen
-        ? 'fixed inset-0 z-[9999] bg-slate-100 dark:bg-slate-950 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden'
-        : 'space-y-3 pb-20'
-        }`}
+      className={`animate-[fadeIn_0.2s_ease-out] ${
+        isFullScreen
+          ? "fixed inset-0 z-[9999] bg-slate-100 dark:bg-slate-950 p-2.5 sm:p-3 flex flex-col h-screen overflow-hidden"
+          : "space-y-3 pb-20"
+      }`}
     >
       {/* Toast Alert */}
       {toast && (
         <div
-          className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${toast.type === 'error'
-            ? 'bg-red-50 dark:bg-rose-950/80 text-red-600 dark:text-rose-300 border-red-200 dark:border-rose-900/60'
-            : 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/60'
-            }`}
+          className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-5 py-3 shadow-xl transition-all border ${
+            toast.type === "error"
+              ? "bg-red-50 dark:bg-rose-950/80 text-red-600 dark:text-rose-300 border-red-200 dark:border-rose-900/60"
+              : "bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/60"
+          }`}
         >
-          {toast.type === 'error' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
+          {toast.type === "error" ? (
+            <XCircle size={20} />
+          ) : (
+            <CheckCircle2 size={20} />
+          )}
           <p className="text-sm font-bold">{toast.message}</p>
-          <button onClick={() => setToast(null)} className="ml-2 rounded-lg p-1 hover:bg-white/50 dark:hover:bg-slate-800/50 transition cursor-pointer">
+          <button
+            onClick={() => setToast(null)}
+            className="ml-2 rounded-lg p-1 hover:bg-white/50 dark:hover:bg-slate-800/50 transition cursor-pointer"
+          >
             <X size={16} />
           </button>
         </div>
@@ -1903,7 +2587,11 @@ export default function CreateOutboundOrderPage({
           isOpen={showScannerModal}
           onProductFound={handleBarcodeScanned}
           onClose={() => setShowScannerModal(false)}
-          title={isDisposal ? "Quét Mã Barcode Hàng Hóa Xuất Hủy" : "Quét Mã Barcode Hàng Hóa Xuất Kho"}
+          title={
+            isDisposal
+              ? "Quét Mã Barcode Hàng Hóa Xuất Hủy"
+              : "Quét Mã Barcode Hàng Hóa Xuất Kho"
+          }
         />
       )}
 
@@ -1917,11 +2605,18 @@ export default function CreateOutboundOrderPage({
                   <UserPlus className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Thêm khách hàng mới</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">Nhập thông tin khách hàng đầy đủ</p>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Thêm khách hàng mới
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-normal">
+                    Nhập thông tin khách hàng đầy đủ
+                  </p>
                 </div>
               </div>
-              <button onClick={() => setShowAddCustomerModal(false)} className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300">
+              <button
+                onClick={() => setShowAddCustomerModal(false)}
+                className="rounded-lg p-1 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -1929,22 +2624,36 @@ export default function CreateOutboundOrderPage({
             <div className="mt-5 space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Họ và tên</label>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Họ và tên
+                  </label>
                   <input
                     type="text"
                     placeholder="Nguyễn Văn A"
                     value={newCustomerForm.fullName}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, fullName: e.target.value })}
+                    onChange={(e) =>
+                      setNewCustomerForm({
+                        ...newCustomerForm,
+                        fullName: e.target.value,
+                      })
+                    }
                     className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Email</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Email
+                  </label>
                   <input
                     type="email"
                     placeholder="admin@example.com"
                     value={newCustomerForm.email}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, email: e.target.value })}
+                    onChange={(e) =>
+                      setNewCustomerForm({
+                        ...newCustomerForm,
+                        email: e.target.value,
+                      })
+                    }
                     className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40"
                   />
                 </div>
@@ -1952,22 +2661,36 @@ export default function CreateOutboundOrderPage({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Số điện thoại</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Số điện thoại
+                  </label>
                   <input
                     type="text"
                     placeholder="0901234567"
                     value={newCustomerForm.phone}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, phone: e.target.value })}
+                    onChange={(e) =>
+                      setNewCustomerForm({
+                        ...newCustomerForm,
+                        phone: e.target.value,
+                      })
+                    }
                     className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Địa chỉ</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Địa chỉ
+                  </label>
                   <input
                     type="text"
                     placeholder="Số nhà, tên đường, phường/xã, quận/huyện..."
                     value={newCustomerForm.address}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, address: e.target.value })}
+                    onChange={(e) =>
+                      setNewCustomerForm({
+                        ...newCustomerForm,
+                        address: e.target.value,
+                      })
+                    }
                     className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition"
                   />
                 </div>
@@ -1975,10 +2698,17 @@ export default function CreateOutboundOrderPage({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Trạng thái</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Trạng thái
+                  </label>
                   <select
                     value={newCustomerForm.status}
-                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, status: e.target.value as 'active' | 'inactive' })}
+                    onChange={(e) =>
+                      setNewCustomerForm({
+                        ...newCustomerForm,
+                        status: e.target.value as "active" | "inactive",
+                      })
+                    }
                     className="w-full h-10 rounded-xl border border-slate-200 px-3.5 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-white"
                   >
                     <option value="active">Đang hoạt động</option>
@@ -1986,13 +2716,20 @@ export default function CreateOutboundOrderPage({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Mật khẩu</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Mật khẩu
+                  </label>
                   <div className="relative">
                     <input
-                      type={showPassword ? 'text' : 'password'}
+                      type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={newCustomerForm.password}
-                      onChange={(e) => setNewCustomerForm({ ...newCustomerForm, password: e.target.value })}
+                      onChange={(e) =>
+                        setNewCustomerForm({
+                          ...newCustomerForm,
+                          password: e.target.value,
+                        })
+                      }
                       className="w-full h-10 rounded-xl border border-slate-200 pl-3.5 pr-10 text-xs font-medium text-slate-800 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/10 transition bg-blue-50/40"
                     />
                     <button
@@ -2000,7 +2737,11 @@ export default function CreateOutboundOrderPage({
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -2037,7 +2778,9 @@ export default function CreateOutboundOrderPage({
               <ArrowUpFromLine className="h-5 w-5 text-cyan-100 dark:text-indigo-200" />
             )}
             <h1 className="text-base font-black tracking-tight uppercase">
-              {isDisposal ? (title || 'TẠO PHIẾU XUẤT HỦY HÀNG HÓA') : 'TẠO PHIẾU XUẤT HÀNG HÓA'}
+              {isDisposal
+                ? title || "TẠO PHIẾU XUẤT HỦY HÀNG HÓA"
+                : "TẠO PHIẾU XUẤT HÀNG HÓA"}
             </h1>
           </div>
 
@@ -2045,24 +2788,32 @@ export default function CreateOutboundOrderPage({
             {/* MULTI-TAB SWITCHER */}
             {tabs.map((tab, idx) => {
               const isActive = tab.tabId === activeTabId;
-              const validItemsCount = tab.details.filter((d) => d.productName && d.qty > 0).length;
+              const validItemsCount = tab.details.filter(
+                (d) => d.productName && d.qty > 0,
+              ).length;
               return (
                 <div
                   key={tab.tabId}
                   onClick={() => setActiveTabId(tab.tabId)}
-                  className={`group inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer border shadow-xs select-none ${isActive
-                    ? 'bg-cyan-600 dark:bg-indigo-600 text-white border-cyan-600 dark:border-indigo-500 shadow-md ring-2 ring-cyan-200 dark:ring-indigo-900/60'
-                    : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-indigo-900/60 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:border-cyan-300 dark:hover:border-indigo-500 hover:text-cyan-800 dark:hover:text-indigo-300'
-                    }`}
+                  className={`group inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold transition-all cursor-pointer border shadow-xs select-none ${
+                    isActive
+                      ? "bg-cyan-600 dark:bg-indigo-600 text-white border-cyan-600 dark:border-indigo-500 shadow-md ring-2 ring-cyan-200 dark:ring-indigo-900/60"
+                      : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-indigo-900/60 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:border-cyan-300 dark:hover:border-indigo-500 hover:text-cyan-800 dark:hover:text-indigo-300"
+                  }`}
                 >
-                  <FileText className={`h-3.5 w-3.5 ${isActive ? 'text-cyan-100 dark:text-indigo-200' : 'text-cyan-600 dark:text-indigo-400'}`} />
+                  <FileText
+                    className={`h-3.5 w-3.5 ${isActive ? "text-cyan-100 dark:text-indigo-200" : "text-cyan-600 dark:text-indigo-400"}`}
+                  />
                   <span className="max-w-[140px] truncate">
                     {tab.orderNo ? tab.orderNo : `Phiếu #${idx + 1}`}
                   </span>
                   {validItemsCount > 0 && (
                     <span
-                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${isActive ? 'bg-white dark:bg-slate-950 text-cyan-800 dark:text-indigo-300' : 'bg-cyan-100 dark:bg-indigo-950 text-cyan-800 dark:text-indigo-300'
-                        }`}
+                      className={`rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                        isActive
+                          ? "bg-white dark:bg-slate-950 text-cyan-800 dark:text-indigo-300"
+                          : "bg-cyan-100 dark:bg-indigo-950 text-cyan-800 dark:text-indigo-300"
+                      }`}
                     >
                       {validItemsCount} SP
                     </span>
@@ -2071,10 +2822,11 @@ export default function CreateOutboundOrderPage({
                     <button
                       type="button"
                       onClick={(e) => handleCloseTab(tab.tabId, e)}
-                      className={`rounded p-0.5 transition ${isActive
-                        ? 'hover:bg-cyan-700 dark:hover:bg-indigo-700 text-cyan-200 dark:text-indigo-200 hover:text-white'
-                        : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-red-500'
-                        }`}
+                      className={`rounded p-0.5 transition ${
+                        isActive
+                          ? "hover:bg-cyan-700 dark:hover:bg-indigo-700 text-cyan-200 dark:text-indigo-200 hover:text-white"
+                          : "hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-red-500"
+                      }`}
                       title="Đóng phiếu này"
                     >
                       <X size={13} />
@@ -2114,12 +2866,14 @@ export default function CreateOutboundOrderPage({
           <div>
             <label className="mb-1.5 flex items-center gap-1 text-xs font-black uppercase text-slate-700 dark:text-slate-300">
               <Calendar className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
-              <span>{isDisposal ? 'Ngày xuất hủy' : 'Ngày xuất hàng'}</span>
+              <span>{isDisposal ? "Ngày xuất hủy" : "Ngày xuất hàng"}</span>
             </label>
             <input
               type="text"
               value={activeTab?.orderDate || formatFullDateTime()}
-              onChange={(e) => updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))}
+              onChange={(e) =>
+                updateActiveTab((t) => ({ ...t, orderDate: e.target.value }))
+              }
               placeholder="DD/MM/YYYY HH:mm:ss"
               className="h-10 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 shadow-xs"
             />
@@ -2130,7 +2884,9 @@ export default function CreateOutboundOrderPage({
             <div className="mb-1.5 flex items-center justify-between">
               <label className="flex items-center gap-1 text-xs font-black uppercase text-slate-700 dark:text-slate-300">
                 <Hash className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
-                <span>{isDisposal ? 'Mã phiếu xuất hủy' : 'Mã phiếu / Lệnh'}</span>
+                <span>
+                  {isDisposal ? "Mã phiếu xuất hủy" : "Mã phiếu / Lệnh"}
+                </span>
               </label>
               {isEditingDraft && (
                 <span className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-black text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
@@ -2142,18 +2898,22 @@ export default function CreateOutboundOrderPage({
               type="text"
               readOnly={isEditingDraft}
               disabled={isEditingDraft}
-              value={activeTab?.orderNo || ''}
+              value={activeTab?.orderNo || ""}
               onChange={(e) => {
                 if (!isEditingDraft) {
                   updateActiveTab((t) => ({ ...t, orderNo: e.target.value }));
                 }
               }}
-              placeholder={isDisposal ? 'XH20260822-1001' : 'PXK20260822-1001'}
-              title={isEditingDraft ? 'Mã phiếu xuất kho được cố định, không thể chỉnh sửa!' : 'Mã phiếu xuất kho'}
+              placeholder={isDisposal ? "XH20260822-1001" : "PXK20260822-1001"}
+              title={
+                isEditingDraft
+                  ? "Mã phiếu xuất kho được cố định, không thể chỉnh sửa!"
+                  : "Mã phiếu xuất kho"
+              }
               className={`h-10 w-full rounded-xl border-2 px-3 text-xs sm:text-sm font-black uppercase outline-none transition shadow-xs ${
                 isEditingDraft
-                  ? 'border-slate-300 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none'
-                  : 'border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20'
+                  ? "border-slate-300 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none"
+                  : "border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20"
               }`}
             />
           </div>
@@ -2181,12 +2941,20 @@ export default function CreateOutboundOrderPage({
                 onChange={(e) => {
                   const val = e.target.value;
                   setDisposalReasonSelect(val);
-                  updateActiveTab((t) => ({ ...t, customer: val, description: val }));
+                  updateActiveTab((t) => ({
+                    ...t,
+                    customer: val,
+                    description: val,
+                  }));
                 }}
                 className="h-10 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 cursor-pointer shadow-xs rounded-xl"
               >
                 {disposalReasons.map((reason) => (
-                  <option key={reason} value={reason} className="py-1.5 px-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-semibold rounded-lg">
+                  <option
+                    key={reason}
+                    value={reason}
+                    className="py-1.5 px-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-semibold rounded-lg"
+                  >
                     {reason}
                   </option>
                 ))}
@@ -2197,7 +2965,10 @@ export default function CreateOutboundOrderPage({
               <div className="mb-1.5 flex items-center justify-between">
                 <label className="text-xs font-black uppercase text-slate-700 flex items-center gap-1">
                   <User className="h-4 w-4 text-cyan-600" />
-                  <span>{partnerLabel || (isReturnSupplier ? 'Nhà cung cấp' : 'Khách hàng')}</span>
+                  <span>
+                    {partnerLabel ||
+                      (isReturnSupplier ? "Nhà cung cấp" : "Khách hàng")}
+                  </span>
                 </label>
                 {!isReturnSupplier && (
                   <button
@@ -2215,32 +2986,42 @@ export default function CreateOutboundOrderPage({
                 value={
                   showCustomerDropdown
                     ? customerSearch
-                    : activeTab?.customer || ''
+                    : activeTab?.customer || ""
                 }
                 onChange={(e) => {
                   setCustomerSearch(e.target.value);
                   setShowCustomerDropdown(true);
                 }}
                 onFocus={() => {
-                  setCustomerSearch('');
+                  setCustomerSearch("");
                   setShowCustomerDropdown(true);
                 }}
                 onClick={() => setShowCustomerDropdown(true)}
-                placeholder={isReturnSupplier ? "Tìm theo tên NCC, mã NCC, SĐT..." : "Tìm theo tên, mã KH, SĐT..."}
+                placeholder={
+                  isReturnSupplier
+                    ? "Tìm theo tên NCC, mã NCC, SĐT..."
+                    : "Tìm theo tên, mã KH, SĐT..."
+                }
                 className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 cursor-text"
               />
 
               {showCustomerDropdown && (
                 <div className="absolute left-0 top-full z-[100] mt-1 w-[400px] max-h-60 overflow-y-auto rounded-xl border border-slate-300 bg-white shadow-2xl flex flex-col">
                   <div className="flex bg-slate-100 border-b border-slate-300 px-3 py-2 text-xs font-black text-slate-700 sticky top-0 z-10">
-                    <span className="w-1/3 uppercase">{isReturnSupplier ? 'Mã NCC' : 'Mã KH'}</span>
-                    <span className="w-1/3 uppercase">{isReturnSupplier ? 'Tên NCC' : 'Tên khách hàng'}</span>
+                    <span className="w-1/3 uppercase">
+                      {isReturnSupplier ? "Mã NCC" : "Mã KH"}
+                    </span>
+                    <span className="w-1/3 uppercase">
+                      {isReturnSupplier ? "Tên NCC" : "Tên khách hàng"}
+                    </span>
                     <span className="w-1/3 text-right uppercase">SĐT</span>
                   </div>
                   <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
                     {filteredCustomers.length === 0 ? (
                       <div className="p-3 text-center text-xs text-slate-400">
-                        {isReturnSupplier ? 'Không tìm thấy nhà cung cấp' : 'Không tìm thấy khách hàng'}
+                        {isReturnSupplier
+                          ? "Không tìm thấy nhà cung cấp"
+                          : "Không tìm thấy khách hàng"}
                       </div>
                     ) : (
                       filteredCustomers.map((c) => (
@@ -2251,16 +3032,23 @@ export default function CreateOutboundOrderPage({
                               ...tab,
                               customer: c.name,
                               customerId: c.id,
-                              customerPhone: c.phone || '',
-                              customerAddress: c.address || '',
+                              customerPhone: c.phone || "",
+                              customerAddress: c.address || "",
                             }));
                             setShowCustomerDropdown(false);
                           }}
                           className="flex items-center px-3 py-2.5 hover:bg-cyan-50 cursor-pointer text-xs transition"
                         >
-                          <span className="w-1/3 font-bold text-cyan-800">{c.customerCode || (isReturnSupplier ? 'NCC---' : 'KH---')}</span>
-                          <span className="w-1/3 font-bold text-slate-800 truncate pr-1">{c.name}</span>
-                          <span className="w-1/3 text-right text-slate-500 font-semibold">{c.phone || '-'}</span>
+                          <span className="w-1/3 font-bold text-cyan-800">
+                            {c.customerCode ||
+                              (isReturnSupplier ? "NCC---" : "KH---")}
+                          </span>
+                          <span className="w-1/3 font-bold text-slate-800 truncate pr-1">
+                            {c.name}
+                          </span>
+                          <span className="w-1/3 text-right text-slate-500 font-semibold">
+                            {c.phone || "-"}
+                          </span>
                         </div>
                       ))
                     )}
@@ -2275,7 +3063,7 @@ export default function CreateOutboundOrderPage({
             <div className="mb-1.5 flex items-center justify-between">
               <label className="block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
                 <WarehouseIcon className="h-4 w-4 text-cyan-600" />
-                <span>{isDisposal ? 'Kho xuất hủy' : 'Kho xuất hàng'}</span>
+                <span>{isDisposal ? "Kho xuất hủy" : "Kho xuất hàng"}</span>
               </label>
             </div>
 
@@ -2284,8 +3072,9 @@ export default function CreateOutboundOrderPage({
               onClick={() => {
                 if (hasAssignedBins) {
                   setToast({
-                    message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho lưu trữ!',
-                    type: 'error',
+                    message:
+                      "Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho lưu trữ!",
+                    type: "error",
                   });
                   return;
                 }
@@ -2293,19 +3082,31 @@ export default function CreateOutboundOrderPage({
               }}
               className={`h-10 w-full rounded-xl border-2 px-3 flex items-center justify-between text-xs sm:text-sm font-bold shadow-xs transition ${
                 hasAssignedBins
-                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
-                  : 'bg-white border-slate-300 text-slate-800 outline-none hover:border-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer'
+                  ? "bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed"
+                  : "bg-white border-slate-300 text-slate-800 outline-none hover:border-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               }`}
-              title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
+              title={
+                hasAssignedBins
+                  ? "Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho."
+                  : undefined
+              }
             >
               <span className="font-bold text-xs sm:text-sm truncate flex items-center gap-1.5">
-                {hasAssignedBins && <Lock size={14} className="text-amber-600 shrink-0" />}
-                [{selectedWarehouse?.code || activeTab?.branchCode || 'KHO-TONG'}] {selectedWarehouse?.name || `Kho ${activeTab?.branchCode || 'KHO-TONG'}`}
+                {hasAssignedBins && (
+                  <Lock size={14} className="text-amber-600 shrink-0" />
+                )}
+                [
+                {selectedWarehouse?.code || activeTab?.branchCode || "KHO-TONG"}
+                ]{" "}
+                {selectedWarehouse?.name ||
+                  `Kho ${activeTab?.branchCode || "KHO-TONG"}`}
               </span>
               {hasAssignedBins ? (
                 <Lock size={16} className="text-amber-600 shrink-0" />
               ) : (
-                <ChevronDown className={`h-4 w-4 text-slate-500 shrink-0 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`} />
+                <ChevronDown
+                  className={`h-4 w-4 text-slate-500 shrink-0 transition-transform duration-200 ${showWarehouseDropdown ? "rotate-180" : ""}`}
+                />
               )}
             </button>
 
@@ -2315,7 +3116,7 @@ export default function CreateOutboundOrderPage({
                   <div className="flex items-center gap-1.5">
                     <WarehouseIcon className="h-4 w-4 text-slate-600" />
                     <span className="text-xs font-extrabold uppercase text-slate-800 tracking-wide">
-                      {isDisposal ? 'Chọn Kho Xuất Hủy' : 'Chọn Kho Xuất Hàng'}
+                      {isDisposal ? "Chọn Kho Xuất Hủy" : "Chọn Kho Xuất Hàng"}
                     </span>
                   </div>
                   <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md border border-slate-300">
@@ -2342,7 +3143,9 @@ export default function CreateOutboundOrderPage({
                     </div>
                   ) : (
                     filteredWarehousesList.map((wh) => {
-                      const isSelected = (activeTab?.branchCode || '').toUpperCase() === (wh.code || '').toUpperCase();
+                      const isSelected =
+                        (activeTab?.branchCode || "").toUpperCase() ===
+                        (wh.code || "").toUpperCase();
                       return (
                         <div
                           key={wh.id || wh.code}
@@ -2360,8 +3163,8 @@ export default function CreateOutboundOrderPage({
                           }}
                           className={`flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition text-xs ${
                             isSelected
-                              ? 'bg-cyan-50 text-cyan-950 font-black'
-                              : 'hover:bg-slate-100 text-slate-800 font-bold'
+                              ? "bg-cyan-50 text-cyan-950 font-black"
+                              : "hover:bg-slate-100 text-slate-800 font-bold"
                           }`}
                         >
                           <span className="truncate pr-2">
@@ -2387,8 +3190,12 @@ export default function CreateOutboundOrderPage({
             </label>
             <input
               type="text"
-              value={activeTab?.employeeName || currentUserName || 'Dương Ngọc Anh'}
-              onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
+              value={
+                activeTab?.employeeName || currentUserName || "Dương Ngọc Anh"
+              }
+              onChange={(e) =>
+                updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))
+              }
               placeholder="Nhập tên người tạo phiếu..."
               className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-xs sm:text-sm font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-text shadow-xs"
             />
@@ -2397,12 +3204,17 @@ export default function CreateOutboundOrderPage({
       </div>
 
       {/* ═══ 3. MAIN 2-COLUMN BOTTOM LAYOUT (Left Product Table, Right Sleek Panel) ═══ */}
-      <div className={`flex flex-col lg:flex-row gap-3 items-stretch ${isFullScreen ? 'flex-1 min-h-0' : 'items-start'}`}>
+      <div
+        className={`flex flex-col lg:flex-row gap-3 items-stretch ${isFullScreen ? "flex-1 min-h-0" : "items-start"}`}
+      >
         {/* ── LEFT COLUMN: PRODUCT TABLE ── */}
-        <div className={`flex-1 min-w-0 flex flex-col ${isFullScreen ? 'h-full' : ''}`}>
-
+        <div
+          className={`flex-1 min-w-0 flex flex-col ${isFullScreen ? "h-full" : ""}`}
+        >
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
-          <div className={`flex flex-col rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 shadow-sm overflow-hidden min-h-0 ${isFullScreen ? 'flex-1 h-full' : ''}`}>
+          <div
+            className={`flex flex-col rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 shadow-sm overflow-hidden min-h-0 ${isFullScreen ? "flex-1 h-full" : ""}`}
+          >
             {/* Product Section Top Control Bar */}
             <div className="px-4 py-3 border-b-2 border-slate-200 dark:border-indigo-900/40 bg-slate-50 dark:bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-shrink-0">
               <div className="flex items-center gap-2 text-cyan-800 dark:text-indigo-300 font-extrabold text-xs sm:text-sm">
@@ -2437,39 +3249,61 @@ export default function CreateOutboundOrderPage({
                   type="button"
                   onClick={() => setIsFullScreen(!isFullScreen)}
                   className="inline-flex h-9 items-center gap-1.5 rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer shadow-xs"
-                  title={isFullScreen ? 'Thu nhỏ cửa sổ' : 'Phóng to toàn màn hình'}
+                  title={
+                    isFullScreen ? "Thu nhỏ cửa sổ" : "Phóng to toàn màn hình"
+                  }
                 >
-                  {isFullScreen ? <Minimize2 className="h-4 w-4 text-slate-600 dark:text-slate-400" /> : <Maximize2 className="h-4 w-4 text-slate-600 dark:text-slate-400" />}
-                  <span>{isFullScreen ? 'Thu nhỏ' : 'Phóng to'}</span>
+                  {isFullScreen ? (
+                    <Minimize2 className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+                  ) : (
+                    <Maximize2 className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+                  )}
+                  <span>{isFullScreen ? "Thu nhỏ" : "Phóng to"}</span>
                 </button>
               </div>
             </div>
 
             {/* Clean Grid Product Table */}
-            <div className={`overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 ${isFullScreen ? '' : 'max-h-[calc(100vh-215px)]'}`}>
+            <div
+              className={`overflow-x-auto overflow-y-auto custom-scrollbar flex-1 min-h-0 ${isFullScreen ? "" : "max-h-[calc(100vh-215px)]"}`}
+            >
               <table className="w-full text-left border-collapse text-xs min-w-[950px]">
                 <thead className="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 font-extrabold border-b-2 border-slate-200 dark:border-indigo-900/40 uppercase text-xs sticky top-0 z-10">
                   <tr>
-                    <th className="p-2 w-10 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">STT</th>
-                    <th className="p-2 w-[24%] min-w-[180px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">TÊN HÀNG HÓA</th>
-                    <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
-                      {isDisposal ? 'KỆ XUẤT HỦY' : 'KỆ LẤY HÀNG'}
+                    <th className="p-2 w-10 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
+                      STT
                     </th>
-                    <th className="p-2 w-14 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">ĐVT</th>
+                    <th className="p-2 w-[24%] min-w-[180px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
+                      TÊN HÀNG HÓA
+                    </th>
+                    <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
+                      {isDisposal ? "KỆ XUẤT HỦY" : "KỆ LẤY HÀNG"}
+                    </th>
+                    <th className="p-2 w-14 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
+                      ĐVT
+                    </th>
                     <th className="p-2 w-28 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
-                      {isDisposal ? 'SL HỦY' : 'SỐ LƯỢNG'}
+                      {isDisposal ? "SL HỦY" : "SỐ LƯỢNG"}
                     </th>
                     <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
-                      {isDisposal ? 'GIÁ NHẬP (đ)' : (isReturnSupplier ? 'GIÁ NHẬP (đ)' : 'ĐƠN GIÁ (đ)')}
+                      {isDisposal
+                        ? "GIÁ NHẬP (đ)"
+                        : isReturnSupplier
+                          ? "GIÁ NHẬP (đ)"
+                          : "ĐƠN GIÁ (đ)"}
                     </th>
                     {!isDisposal && (
                       <>
-                        <th className="p-2 min-w-[130px] whitespace-nowrap text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">CHIẾT KHẤU (%)</th>
-                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">VAT (%)</th>
+                        <th className="p-2 min-w-[130px] whitespace-nowrap text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
+                          CHIẾT KHẤU (%)
+                        </th>
+                        <th className="p-2 w-16 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
+                          VAT (%)
+                        </th>
                       </>
                     )}
                     <th className="p-2 w-32 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
-                      {isDisposal ? 'THẤT THOÁT (đ)' : 'THÀNH TIỀN'}
+                      {isDisposal ? "THẤT THOÁT (đ)" : "THÀNH TIỀN"}
                     </th>
                     {isDisposal && (
                       <th className="p-2 w-36 text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
@@ -2477,9 +3311,11 @@ export default function CreateOutboundOrderPage({
                       </th>
                     )}
                     <th className="p-2 w-64 min-w-[220px] text-center border-r border-slate-200 dark:border-indigo-900/40 bg-slate-100 dark:bg-slate-950">
-                      {isDisposal ? 'LÝ DO HỦY / GHI CHÚ' : 'GHI CHÚ'}
+                      {isDisposal ? "LÝ DO HỦY / GHI CHÚ" : "GHI CHÚ"}
                     </th>
-                    <th className="p-2.5 w-24 text-center bg-slate-100 dark:bg-slate-950 min-w-[90px]">THAO TÁC</th>
+                    <th className="p-2.5 w-24 text-center bg-slate-100 dark:bg-slate-950 min-w-[90px]">
+                      THAO TÁC
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-indigo-900/40">
@@ -2488,7 +3324,7 @@ export default function CreateOutboundOrderPage({
                     return (
                       <tr
                         key={row.rowId}
-                        className={`${isEven ? 'bg-slate-50/70 dark:bg-slate-900/60' : 'bg-white dark:bg-slate-950'} hover:bg-cyan-50/50 dark:hover:bg-indigo-950/50 transition-colors`}
+                        className={`${isEven ? "bg-slate-50/70 dark:bg-slate-900/60" : "bg-white dark:bg-slate-950"} hover:bg-cyan-50/50 dark:hover:bg-indigo-950/50 transition-colors`}
                       >
                         {/* STT */}
                         <td className="p-1.5 text-center font-bold text-slate-500 dark:text-slate-400 border-r border-slate-200 dark:border-indigo-900/40">
@@ -2499,18 +3335,32 @@ export default function CreateOutboundOrderPage({
                         <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 relative product-table-dropdown">
                           <input
                             type="text"
-                            value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
+                            value={
+                              row.productName
+                                ? `${row.productSku ? row.productSku + " - " : ""}${row.productName}`
+                                : ""
+                            }
                             onChange={(e) => {
                               const val = e.target.value;
-                              const isExact = row.productId && (val === `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` || val === row.productName);
+                              const isExact =
+                                row.productId &&
+                                (val ===
+                                  `${row.productSku ? row.productSku + " - " : ""}${row.productName}` ||
+                                  val === row.productName);
                               updateRow(row.rowId, {
                                 productName: val,
-                                ...(isExact ? {} : { productId: '', productSku: '' }),
+                                ...(isExact
+                                  ? {}
+                                  : { productId: "", productSku: "" }),
                               });
                               setActiveProductDropdownRowId(row.rowId);
                             }}
-                            onFocus={() => setActiveProductDropdownRowId(row.rowId)}
-                            onClick={() => setActiveProductDropdownRowId(row.rowId)}
+                            onFocus={() =>
+                              setActiveProductDropdownRowId(row.rowId)
+                            }
+                            onClick={() =>
+                              setActiveProductDropdownRowId(row.rowId)
+                            }
                             placeholder="Chọn hoặc nhập tên hàng..."
                             className="w-full h-9 px-3 rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs cursor-text"
                           />
@@ -2520,42 +3370,85 @@ export default function CreateOutboundOrderPage({
                             <div className="absolute left-0 top-full z-[100] mt-1 w-[480px] max-h-64 overflow-y-auto rounded-xl border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
                               <div className="flex bg-slate-100 dark:bg-slate-950 border-b border-slate-300 dark:border-indigo-900/40 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 sticky top-0 z-10">
                                 <span className="w-1/4 uppercase">Mã hàng</span>
-                                <span className="w-1/3 uppercase">Tên hàng hóa</span>
-                                <span className="w-1/5 text-center uppercase">Tồn kho</span>
-                                <span className="w-1/4 text-right uppercase">{isReturnSupplier ? 'Giá nhập / Giá' : 'Giá vốn / Giá'}</span>
+                                <span className="w-1/3 uppercase">
+                                  Tên hàng hóa
+                                </span>
+                                <span className="w-1/5 text-center uppercase">
+                                  Tồn kho
+                                </span>
+                                <span className="w-1/4 text-right uppercase">
+                                  {isReturnSupplier
+                                    ? "Giá nhập / Giá"
+                                    : "Giá vốn / Giá"}
+                                </span>
                               </div>
                               <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-indigo-900/40">
-                                {isReturnSupplier && (!activeTab?.customer || activeTab.customer === 'Khách hàng bán lẻ') ? (
+                                {isReturnSupplier &&
+                                (!activeTab?.customer ||
+                                  activeTab.customer ===
+                                    "Khách hàng bán lẻ") ? (
                                   <div className="p-3 text-center text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40">
-                                    ⚠️ Vui lòng chọn Nhà cung cấp ở mục thông tin phiếu trước khi chọn sản phẩm xuất trả!
+                                    ⚠️ Vui lòng chọn Nhà cung cấp ở mục thông
+                                    tin phiếu trước khi chọn sản phẩm xuất trả!
                                   </div>
-                                ) : getFilteredProductsForRow(row.productName || row.productSku, row.rowId).length === 0 ? (
+                                ) : getFilteredProductsForRow(
+                                    row.productName || row.productSku,
+                                    row.rowId,
+                                  ).length === 0 ? (
                                   <div className="p-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400">
-                                    {isReturnSupplier ? `Không có hàng hóa nào thuộc Nhà cung cấp [${activeTab?.customer || ''}]` : 'Không tìm thấy hàng hóa'}
+                                    {isReturnSupplier
+                                      ? `Không có hàng hóa nào thuộc Nhà cung cấp [${activeTab?.customer || ""}]`
+                                      : "Không tìm thấy hàng hóa"}
                                   </div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName || row.productSku, row.rowId).map((p) => {
-                                    const rowWhCode = activeTab?.branchCode || row.warehouseCode || warehouses[0]?.code || 'KHO-TONG';
-                                    const whStock = getProductWarehouseStock(p, rowWhCode, allInboundOrders);
+                                  getFilteredProductsForRow(
+                                    row.productName || row.productSku,
+                                    row.rowId,
+                                  ).map((p) => {
+                                    const rowWhCode =
+                                      activeTab?.branchCode ||
+                                      row.warehouseCode ||
+                                      warehouses[0]?.code ||
+                                      "KHO-TONG";
+                                    const whStock = getProductWarehouseStock(
+                                      p,
+                                      rowWhCode,
+                                      allInboundOrders,
+                                    );
                                     return (
                                       <div
                                         key={p.id}
                                         onClick={() => {
-                                          if (isReturnSupplier && (!activeTab?.customer || activeTab.customer === 'Khách hàng bán lẻ')) {
-                                            setToast({ message: 'Vui lòng chọn Nhà cung cấp trước khi chọn sản phẩm xuất trả!', type: 'error' });
+                                          if (
+                                            isReturnSupplier &&
+                                            (!activeTab?.customer ||
+                                              activeTab.customer ===
+                                                "Khách hàng bán lẻ")
+                                          ) {
+                                            setToast({
+                                              message:
+                                                "Vui lòng chọn Nhà cung cấp trước khi chọn sản phẩm xuất trả!",
+                                              type: "error",
+                                            });
                                             return;
                                           }
-                                          const { foundBin, foundPrice } = findInboundDetailsForProduct(p);
-                                          const targetPrice = foundPrice || getProductPriceForMode(p);
+                                          const { foundBin, foundPrice } =
+                                            findInboundDetailsForProduct(p);
+                                          const targetPrice =
+                                            foundPrice ||
+                                            getProductPriceForMode(p);
 
                                           updateRow(row.rowId, {
                                             productId: p.id,
                                             productSku: p.internalSku,
                                             productName: p.name,
-                                            unit: p.unit || 'Cái',
+                                            unit: p.unit || "Cái",
                                             price: targetPrice,
-                                            locationBin: foundBin || row.locationBin || '',
-                                            assignedBins: foundBin ? [foundBin] : (row.assignedBins || []),
+                                            locationBin:
+                                              foundBin || row.locationBin || "",
+                                            assignedBins: foundBin
+                                              ? [foundBin]
+                                              : row.assignedBins || [],
                                             qty: row.qty === 0 ? 1 : row.qty,
                                             warehouseCode: rowWhCode,
                                           });
@@ -2563,13 +3456,22 @@ export default function CreateOutboundOrderPage({
                                         }}
                                         className="flex items-center px-3 py-2 text-xs hover:bg-cyan-50 dark:hover:bg-indigo-950 cursor-pointer text-slate-700 dark:text-slate-200 transition"
                                       >
-                                        <span className="w-1/4 font-extrabold text-cyan-800 dark:text-indigo-300">{p.internalSku}</span>
-                                        <span className="w-1/3 font-bold text-slate-800 dark:text-slate-100 truncate pr-1">{p.name}</span>
-                                        <span className={`w-1/5 text-center font-bold px-1.5 py-0.5 rounded text-[11px] ${whStock > 0 ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60' : 'bg-red-50 dark:bg-rose-950/60 text-red-600 dark:text-rose-300 border border-red-200 dark:border-rose-900/60'}`}>
+                                        <span className="w-1/4 font-extrabold text-cyan-800 dark:text-indigo-300">
+                                          {p.internalSku}
+                                        </span>
+                                        <span className="w-1/3 font-bold text-slate-800 dark:text-slate-100 truncate pr-1">
+                                          {p.name}
+                                        </span>
+                                        <span
+                                          className={`w-1/5 text-center font-bold px-1.5 py-0.5 rounded text-[11px] ${whStock > 0 ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60" : "bg-red-50 dark:bg-rose-950/60 text-red-600 dark:text-rose-300 border border-red-200 dark:border-rose-900/60"}`}
+                                        >
                                           Tồn: {whStock}
                                         </span>
                                         <span className="w-1/4 text-right font-extrabold text-slate-900 dark:text-slate-100">
-                                          {getProductPriceForMode(p).toLocaleString('vi-VN')} đ
+                                          {getProductPriceForMode(
+                                            p,
+                                          ).toLocaleString("vi-VN")}{" "}
+                                          đ
                                         </span>
                                       </div>
                                     );
@@ -2585,12 +3487,22 @@ export default function CreateOutboundOrderPage({
                           <div className="flex items-center gap-1">
                             <input
                               type="text"
-                              value={row.locationBin || (row.assignedBins && row.assignedBins.join(', ')) || ''}
+                              value={
+                                row.locationBin ||
+                                (row.assignedBins &&
+                                  row.assignedBins.join(", ")) ||
+                                ""
+                              }
                               onChange={(e) => {
                                 const val = e.target.value;
                                 updateRow(row.rowId, {
                                   locationBin: val,
-                                  assignedBins: val ? val.split(',').map((s) => s.trim()).filter(Boolean) : [],
+                                  assignedBins: val
+                                    ? val
+                                        .split(",")
+                                        .map((s) => s.trim())
+                                        .filter(Boolean)
+                                    : [],
                                 });
                               }}
                               placeholder="Kệ..."
@@ -2613,7 +3525,9 @@ export default function CreateOutboundOrderPage({
                           <input
                             type="text"
                             value={row.unit}
-                            onChange={(e) => updateRow(row.rowId, { unit: e.target.value })}
+                            onChange={(e) =>
+                              updateRow(row.rowId, { unit: e.target.value })
+                            }
                             className="w-full h-9 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
@@ -2623,8 +3537,12 @@ export default function CreateOutboundOrderPage({
                           <input
                             type="number"
                             min="1"
-                            value={row.qty === 0 ? '' : row.qty}
-                            onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
+                            value={row.qty === 0 ? "" : row.qty}
+                            onChange={(e) =>
+                              updateRow(row.rowId, {
+                                qty: Number(e.target.value),
+                              })
+                            }
                             placeholder="1"
                             className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
@@ -2634,9 +3552,15 @@ export default function CreateOutboundOrderPage({
                         <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40">
                           <input
                             type="text"
-                            value={row.price === 0 ? '' : formatNumberWithCommas(row.price)}
+                            value={
+                              row.price === 0
+                                ? ""
+                                : formatNumberWithCommas(row.price)
+                            }
                             onChange={(e) => {
-                              const parsed = parseFormattedNumber(e.target.value);
+                              const parsed = parseFormattedNumber(
+                                e.target.value,
+                              );
                               updateRow(row.rowId, { price: parsed });
                             }}
                             placeholder="0"
@@ -2652,8 +3576,16 @@ export default function CreateOutboundOrderPage({
                                 type="number"
                                 min="0"
                                 max="100"
-                                value={row.discountPercent === 0 ? '' : row.discountPercent}
-                                onChange={(e) => updateRow(row.rowId, { discountPercent: Number(e.target.value) })}
+                                value={
+                                  row.discountPercent === 0
+                                    ? ""
+                                    : row.discountPercent
+                                }
+                                onChange={(e) =>
+                                  updateRow(row.rowId, {
+                                    discountPercent: Number(e.target.value),
+                                  })
+                                }
                                 placeholder="0"
                                 className="w-full h-9 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                               />
@@ -2665,8 +3597,14 @@ export default function CreateOutboundOrderPage({
                                 type="number"
                                 min="0"
                                 max="100"
-                                value={row.vatPercent === 0 ? '' : row.vatPercent}
-                                onChange={(e) => updateRow(row.rowId, { vatPercent: Number(e.target.value) })}
+                                value={
+                                  row.vatPercent === 0 ? "" : row.vatPercent
+                                }
+                                onChange={(e) =>
+                                  updateRow(row.rowId, {
+                                    vatPercent: Number(e.target.value),
+                                  })
+                                }
                                 placeholder="0"
                                 className="w-full h-9 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                               />
@@ -2679,9 +3617,22 @@ export default function CreateOutboundOrderPage({
                           {isDisposal ? (
                             <input
                               type="text"
-                              value={row.lossAmount !== undefined && row.lossAmount !== null ? (row.lossAmount === 0 && row.qty === 0 ? '' : formatNumberWithCommas(row.lossAmount)) : (row.qty * row.price === 0 ? '' : formatNumberWithCommas(row.qty * row.price))}
+                              value={
+                                row.lossAmount !== undefined &&
+                                row.lossAmount !== null
+                                  ? row.lossAmount === 0 && row.qty === 0
+                                    ? ""
+                                    : formatNumberWithCommas(row.lossAmount)
+                                  : row.qty * row.price === 0
+                                    ? ""
+                                    : formatNumberWithCommas(
+                                        row.qty * row.price,
+                                      )
+                              }
                               onChange={(e) => {
-                                const parsed = parseFormattedNumber(e.target.value);
+                                const parsed = parseFormattedNumber(
+                                  e.target.value,
+                                );
                                 updateRow(row.rowId, { lossAmount: parsed });
                               }}
                               placeholder="0"
@@ -2689,7 +3640,7 @@ export default function CreateOutboundOrderPage({
                             />
                           ) : (
                             <div className="w-full h-9 px-2 flex items-center justify-end font-extrabold text-cyan-900 dark:text-indigo-300 bg-cyan-50/40 dark:bg-indigo-950/40">
-                              {row.totalAmount.toLocaleString('vi-VN')}
+                              {row.totalAmount.toLocaleString("vi-VN")}
                             </div>
                           )}
                         </td>
@@ -2697,7 +3648,15 @@ export default function CreateOutboundOrderPage({
                         {/* TỔNG = GIÁ NHẬP + THẤT THOÁT */}
                         {isDisposal && (
                           <td className="p-1.5 text-right font-black text-rose-600 dark:text-rose-400 border-r border-slate-200 dark:border-indigo-900/40 bg-rose-50/40 dark:bg-rose-950/30 whitespace-nowrap">
-                            {(Number(row.price || 0) + Number(row.lossAmount !== undefined && row.lossAmount !== null ? row.lossAmount : (row.qty * row.price))).toLocaleString('vi-VN')}
+                            {(
+                              Number(row.price || 0) +
+                              Number(
+                                row.lossAmount !== undefined &&
+                                  row.lossAmount !== null
+                                  ? row.lossAmount
+                                  : row.qty * row.price,
+                              )
+                            ).toLocaleString("vi-VN")}
                           </td>
                         )}
 
@@ -2706,8 +3665,14 @@ export default function CreateOutboundOrderPage({
                           <input
                             type="text"
                             value={row.note}
-                            onChange={(e) => updateRow(row.rowId, { note: e.target.value })}
-                            placeholder={isDisposal ? "Lý do: Hết hạn, vỡ móp, mốc ẩm, biên bản số..." : "Ghi chú..."}
+                            onChange={(e) =>
+                              updateRow(row.rowId, { note: e.target.value })
+                            }
+                            placeholder={
+                              isDisposal
+                                ? "Lý do: Hết hạn, vỡ móp, mốc ẩm, biên bản số..."
+                                : "Ghi chú..."
+                            }
                             className="w-full h-9 px-2.5 rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>
@@ -2744,7 +3709,9 @@ export default function CreateOutboundOrderPage({
 
         {/* ── RIGHT COLUMN: SUMMARY & FINANCIAL / DISPOSAL FORM ── */}
         {isDisposal ? (
-          <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 dark:text-slate-200 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
+          <div
+            className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 dark:text-slate-200 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? "h-full" : "h-fit sticky top-4"}`}
+          >
             <div className="space-y-2">
               <div className="flex items-center gap-2 border-b-2 border-slate-100 dark:border-indigo-900/40 pb-1.5 text-cyan-800 dark:text-indigo-300 font-extrabold text-xs">
                 <FileText className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
@@ -2753,10 +3720,17 @@ export default function CreateOutboundOrderPage({
 
               {/* Người lập phiếu / Giám sát */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Người lập phiếu / Giám sát</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Người lập phiếu / Giám sát
+                </label>
                 <select
                   value={activeTab?.employeeName || currentUserName}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, employeeName: e.target.value }))}
+                  onChange={(e) =>
+                    updateActiveTab((t) => ({
+                      ...t,
+                      employeeName: e.target.value,
+                    }))
+                  }
                   className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 font-semibold text-slate-800 dark:text-slate-100 text-xs outline-none focus:border-cyan-600 focus:dark:border-indigo-500 cursor-pointer"
                 >
                   <option value={currentUserName}>{currentUserName}</option>
@@ -2770,27 +3744,44 @@ export default function CreateOutboundOrderPage({
 
               {/* Phương án xử lý tiêu hủy */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Phương án xử lý tiêu hủy</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Phương án xử lý tiêu hủy
+                </label>
                 <select
                   value={disposalMethod}
                   onChange={(e) => setDisposalMethod(e.target.value)}
                   className="h-8 w-full px-2 rounded-lg border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 font-semibold text-slate-800 dark:text-slate-100 text-xs outline-none focus:border-cyan-600 focus:dark:border-indigo-500 cursor-pointer"
                 >
-                  <option value="Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)">Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)</option>
-                  <option value="Bán phế liệu / Ve chai">Bán phế liệu / Ve chai</option>
-                  <option value="Thanh lý phế phẩm giảm giá">Thanh lý phế phẩm giảm giá</option>
-                  <option value="Chuyển kho cách ly xử lý sau">Chuyển kho cách ly xử lý sau</option>
+                  <option value="Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)">
+                    Tiêu hủy hoàn toàn (đốt / rác thải / chôn lấp)
+                  </option>
+                  <option value="Bán phế liệu / Ve chai">
+                    Bán phế liệu / Ve chai
+                  </option>
+                  <option value="Thanh lý phế phẩm giảm giá">
+                    Thanh lý phế phẩm giảm giá
+                  </option>
+                  <option value="Chuyển kho cách ly xử lý sau">
+                    Chuyển kho cách ly xử lý sau
+                  </option>
                   <option value="Khác">Khác</option>
                 </select>
               </div>
 
               {/* Ghi chú biên bản / Căn cứ quyết định */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Ghi chú biên bản / Căn cứ</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Ghi chú biên bản / Căn cứ
+                </label>
                 <textarea
                   rows={2}
-                  value={activeTab?.description || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
+                  value={activeTab?.description || ""}
+                  onChange={(e) =>
+                    updateActiveTab((t) => ({
+                      ...t,
+                      description: e.target.value,
+                    }))
+                  }
                   placeholder="Biên bản kiểm kê số..., Quyết định tiêu hủy..."
                   className="w-full rounded-lg border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-950 p-2 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500"
                 />
@@ -2800,18 +3791,22 @@ export default function CreateOutboundOrderPage({
               <div className="rounded-xl border-2 border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/70 dark:bg-indigo-950/40 p-3 shadow-xs space-y-2 text-slate-800 dark:text-slate-200">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Số mặt hàng hủy:</span>
-                  <span className="font-extrabold text-slate-900 dark:text-slate-100">{activeValidItems.length} mặt hàng</span>
+                  <span className="font-extrabold text-slate-900 dark:text-slate-100">
+                    {activeValidItems.length} mặt hàng
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Tổng số lượng hủy:</span>
-                  <span className="font-extrabold text-cyan-800 dark:text-indigo-300">{totalQty} SP</span>
+                  <span className="font-extrabold text-cyan-800 dark:text-indigo-300">
+                    {totalQty} SP
+                  </span>
                 </div>
                 <div className="border-t border-cyan-200/80 dark:border-indigo-900/60 pt-2 flex items-center justify-between">
                   <span className="text-xs font-extrabold uppercase tracking-wide text-cyan-950 dark:text-indigo-200">
                     TỔNG THẤT THOÁT:
                   </span>
                   <span className="text-sm font-black text-rose-600 dark:text-rose-400 tracking-tight">
-                    {subtotal.toLocaleString('vi-VN')} đ
+                    {subtotal.toLocaleString("vi-VN")} đ
                   </span>
                 </div>
                 <div className="border-t border-cyan-200/80 dark:border-indigo-900/60 pt-2 flex items-center justify-between">
@@ -2819,7 +3814,20 @@ export default function CreateOutboundOrderPage({
                     TỔNG CỘNG:
                   </span>
                   <span className="text-sm font-black text-rose-700 dark:text-rose-300 tracking-tight">
-                    {activeValidItems.reduce((s, r) => s + Number(r.price || 0) + Number(r.lossAmount !== undefined && r.lossAmount !== null ? r.lossAmount : (r.qty * r.price)), 0).toLocaleString('vi-VN')} đ
+                    {activeValidItems
+                      .reduce(
+                        (s, r) =>
+                          s +
+                          Number(r.price || 0) +
+                          Number(
+                            r.lossAmount !== undefined && r.lossAmount !== null
+                              ? r.lossAmount
+                              : r.qty * r.price,
+                          ),
+                        0,
+                      )
+                      .toLocaleString("vi-VN")}{" "}
+                    đ
                   </span>
                 </div>
               </div>
@@ -2829,29 +3837,39 @@ export default function CreateOutboundOrderPage({
             <div className="space-y-2.5 pt-3 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(true, 'OFFICIAL')}
+                onClick={() => handleSaveOutboundOrder(true, "OFFICIAL")}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 dark:hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
-                <span>{isEditingDraft ? 'XUẤT HỦY & IN BIÊN BẢN' : 'LƯU & IN BIÊN BẢN HỦY'}</span>
+                <span>
+                  {isEditingDraft
+                    ? "XUẤT HỦY & IN BIÊN BẢN"
+                    : "LƯU & IN BIÊN BẢN HỦY"}
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(false, 'OFFICIAL')}
+                onClick={() => handleSaveOutboundOrder(false, "OFFICIAL")}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] dark:bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 dark:hover:bg-indigo-700 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
-                <span>{isEditingDraft ? 'XUẤT HỦY CHÍNH THỨC' : 'LƯU PHIẾU XUẤT HỦY'}</span>
+                <span>
+                  {isEditingDraft
+                    ? "XUẤT HỦY CHÍNH THỨC"
+                    : "LƯU PHIẾU XUẤT HỦY"}
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(false, 'DRAFT')}
+                onClick={() => handleSaveOutboundOrder(false, "DRAFT")}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md transition active:scale-95 cursor-pointer"
               >
                 <FileText size={18} strokeWidth={2.2} />
-                <span>{isEditingDraft ? 'CẬP NHẬT LƯU NHÁP' : 'LƯU TẠM (NHÁP)'}</span>
+                <span>
+                  {isEditingDraft ? "CẬP NHẬT LƯU NHÁP" : "LƯU TẠM (NHÁP)"}
+                </span>
               </button>
 
               <button
@@ -2865,7 +3883,9 @@ export default function CreateOutboundOrderPage({
             </div>
           </div>
         ) : (
-          <div className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 dark:text-slate-200 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? 'h-full' : 'h-fit sticky top-4'}`}>
+          <div
+            className={`w-full lg:w-[310px] xl:w-[320px] flex-shrink-0 rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 p-3 shadow-sm flex flex-col justify-between text-xs font-semibold text-slate-800 dark:text-slate-200 overflow-y-auto custom-scrollbar space-y-2.5 ${isFullScreen ? "h-full" : "h-fit sticky top-4"}`}
+          >
             <div className="space-y-2">
               <div className="flex items-center gap-2 border-b-2 border-slate-100 dark:border-indigo-900/40 pb-1.5 text-cyan-800 dark:text-indigo-300 font-extrabold text-xs">
                 <DollarSign className="h-4 w-4 text-cyan-600 dark:text-indigo-400" />
@@ -2874,17 +3894,23 @@ export default function CreateOutboundOrderPage({
 
               {/* Nhân viên xuất kho */}
               <div className="relative employee-dropdown-box">
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Nhân viên xuất kho</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Nhân viên xuất kho
+                </label>
                 <div className="relative">
                   <input
                     type="text"
-                    value={showEmployeeDropdown ? employeeSearch : (activeTab?.employeeName || currentUserName)}
+                    value={
+                      showEmployeeDropdown
+                        ? employeeSearch
+                        : activeTab?.employeeName || currentUserName
+                    }
                     onChange={(e) => {
                       setEmployeeSearch(e.target.value);
                       setShowEmployeeDropdown(true);
                     }}
                     onFocus={() => {
-                      setEmployeeSearch('');
+                      setEmployeeSearch("");
                       setShowEmployeeDropdown(true);
                     }}
                     onClick={() => setShowEmployeeDropdown(true)}
@@ -2897,19 +3923,25 @@ export default function CreateOutboundOrderPage({
                 {showEmployeeDropdown && (
                   <div className="absolute left-0 top-full z-[100] mt-1 w-full max-h-48 overflow-y-auto rounded-xl border-2 border-slate-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 shadow-xl custom-scrollbar p-1">
                     {filteredEmployees.length === 0 ? (
-                      <div className="p-2 text-center text-xs text-slate-400 font-medium">Không tìm thấy nhân viên</div>
+                      <div className="p-2 text-center text-xs text-slate-400 font-medium">
+                        Không tìm thấy nhân viên
+                      </div>
                     ) : (
                       filteredEmployees.map((emp) => (
                         <div
                           key={emp.id}
                           onClick={() => {
-                            updateActiveTab((t) => ({ ...t, employeeName: emp.name }));
+                            updateActiveTab((t) => ({
+                              ...t,
+                              employeeName: emp.name,
+                            }));
                             setShowEmployeeDropdown(false);
                           }}
                           className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                            (activeTab?.employeeName || currentUserName) === emp.name
-                              ? 'bg-cyan-600 dark:bg-indigo-600 text-white'
-                              : 'text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-900 dark:hover:text-indigo-300'
+                            (activeTab?.employeeName || currentUserName) ===
+                            emp.name
+                              ? "bg-cyan-600 dark:bg-indigo-600 text-white"
+                              : "text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-900 dark:hover:text-indigo-300"
                           }`}
                         >
                           <span>{emp.name}</span>
@@ -2922,11 +3954,18 @@ export default function CreateOutboundOrderPage({
 
               {/* Ghi chú phiếu xuất */}
               <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Ghi chú phiếu xuất</label>
+                <label className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Ghi chú phiếu xuất
+                </label>
                 <textarea
                   rows={2}
-                  value={activeTab?.description || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, description: e.target.value }))}
+                  value={activeTab?.description || ""}
+                  onChange={(e) =>
+                    updateActiveTab((t) => ({
+                      ...t,
+                      description: e.target.value,
+                    }))
+                  }
                   placeholder="Ghi chú phiếu xuất..."
                   className="w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 p-2 text-xs font-medium text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 shadow-2xs"
                 />
@@ -2941,8 +3980,15 @@ export default function CreateOutboundOrderPage({
                       type="radio"
                       name="paymentMethodRadio"
                       value="Tiền mặt"
-                      checked={(activeTab?.paymentMethod || 'Tiền mặt') === 'Tiền mặt'}
-                      onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
+                      checked={
+                        (activeTab?.paymentMethod || "Tiền mặt") === "Tiền mặt"
+                      }
+                      onChange={(e) =>
+                        updateActiveTab((t) => ({
+                          ...t,
+                          paymentMethod: e.target.value,
+                        }))
+                      }
                       className="h-3.5 w-3.5 text-cyan-600 dark:text-indigo-500 focus:ring-cyan-500 cursor-pointer"
                     />
                     <span>Tiền mặt</span>
@@ -2952,8 +3998,13 @@ export default function CreateOutboundOrderPage({
                       type="radio"
                       name="paymentMethodRadio"
                       value="Chuyển khoản"
-                      checked={activeTab?.paymentMethod === 'Chuyển khoản'}
-                      onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
+                      checked={activeTab?.paymentMethod === "Chuyển khoản"}
+                      onChange={(e) =>
+                        updateActiveTab((t) => ({
+                          ...t,
+                          paymentMethod: e.target.value,
+                        }))
+                      }
                       className="h-3.5 w-3.5 text-cyan-600 dark:text-indigo-500 focus:ring-cyan-500 cursor-pointer"
                     />
                     <span>Chuyển khoản</span>
@@ -2963,20 +4014,32 @@ export default function CreateOutboundOrderPage({
                       type="radio"
                       name="paymentMethodRadio"
                       value="ATM"
-                      checked={activeTab?.paymentMethod === 'ATM'}
-                      onChange={(e) => updateActiveTab((t) => ({ ...t, paymentMethod: e.target.value }))}
+                      checked={activeTab?.paymentMethod === "ATM"}
+                      onChange={(e) =>
+                        updateActiveTab((t) => ({
+                          ...t,
+                          paymentMethod: e.target.value,
+                        }))
+                      }
                       className="h-3.5 w-3.5 text-cyan-600 dark:text-indigo-500 focus:ring-cyan-500 cursor-pointer"
                     />
                     <span>ATM</span>
                   </label>
                 </div>
                 <select
-                  value={activeTab?.paymentAccount || ''}
-                  onChange={(e) => updateActiveTab((t) => ({ ...t, paymentAccount: e.target.value }))}
+                  value={activeTab?.paymentAccount || ""}
+                  onChange={(e) =>
+                    updateActiveTab((t) => ({
+                      ...t,
+                      paymentAccount: e.target.value,
+                    }))
+                  }
                   className="h-9 w-full rounded-xl border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 cursor-pointer shadow-2xs"
                 >
                   <option value="">Chọn tài khoản thanh toán-</option>
-                  <option value="TK-01">Vietcombank - 1012345678 (Hà Nội)</option>
+                  <option value="TK-01">
+                    Vietcombank - 1012345678 (Hà Nội)
+                  </option>
                   <option value="TK-02">Techcombank - 1903456789 (HCM)</option>
                   <option value="TK-03">MBBank - 999988887777 (Công ty)</option>
                 </select>
@@ -2986,20 +4049,22 @@ export default function CreateOutboundOrderPage({
               <div className="rounded-xl border-2 border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/60 dark:bg-indigo-950/40 p-2.5 shadow-sm space-y-1.5 text-slate-800 dark:text-slate-200">
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Thành tiền hàng:</span>
-                  <span className="font-extrabold text-slate-900 dark:text-slate-100">{baseSubtotal.toLocaleString('vi-VN')} đ</span>
+                  <span className="font-extrabold text-slate-900 dark:text-slate-100">
+                    {baseSubtotal.toLocaleString("vi-VN")} đ
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Chiết khấu:</span>
                   <span className="font-extrabold text-rose-600 dark:text-rose-400 text-xs">
-                    - {totalDiscount.toLocaleString('vi-VN')} đ
+                    - {totalDiscount.toLocaleString("vi-VN")} đ
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
                   <span>Thuế VAT:</span>
                   <span className="font-extrabold text-emerald-600 dark:text-emerald-400 text-xs">
-                    + {totalVat.toLocaleString('vi-VN')} đ
+                    + {totalVat.toLocaleString("vi-VN")} đ
                   </span>
                 </div>
 
@@ -3008,7 +4073,7 @@ export default function CreateOutboundOrderPage({
                     TỔNG THÀNH TOÁN:
                   </span>
                   <span className="text-sm font-black text-cyan-700 dark:text-indigo-300 tracking-tight">
-                    {grandTotal.toLocaleString('vi-VN')} đ
+                    {grandTotal.toLocaleString("vi-VN")} đ
                   </span>
                 </div>
 
@@ -3017,8 +4082,13 @@ export default function CreateOutboundOrderPage({
                   <input
                     type="number"
                     min="0"
-                    value={activeTab?.amountPaid || ''}
-                    onChange={(e) => updateActiveTab((t) => ({ ...t, amountPaid: Number(e.target.value) }))}
+                    value={activeTab?.amountPaid || ""}
+                    onChange={(e) =>
+                      updateActiveTab((t) => ({
+                        ...t,
+                        amountPaid: Number(e.target.value),
+                      }))
+                    }
                     placeholder={grandTotal.toString()}
                     className="h-8 w-28 rounded-xl bg-white dark:bg-slate-950 px-2.5 text-right font-extrabold text-emerald-700 dark:text-emerald-400 text-xs outline-none border-2 border-slate-300 dark:border-indigo-900/60 focus:border-cyan-600 focus:dark:border-indigo-500 shadow-2xs"
                   />
@@ -3027,7 +4097,9 @@ export default function CreateOutboundOrderPage({
                 {remainingDebt > 0 && (
                   <div className="flex items-center justify-between text-xs font-bold text-red-600 dark:text-rose-400 pt-1 border-t border-slate-200 dark:border-indigo-900/60">
                     <span>Ghi nợ lại:</span>
-                    <span className="font-extrabold">{remainingDebt.toLocaleString('vi-VN')} đ</span>
+                    <span className="font-extrabold">
+                      {remainingDebt.toLocaleString("vi-VN")} đ
+                    </span>
                   </div>
                 )}
               </div>
@@ -3037,29 +4109,43 @@ export default function CreateOutboundOrderPage({
             <div className="space-y-2.5 pt-3 flex-shrink-0">
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(true, 'OFFICIAL')}
+                onClick={() => handleSaveOutboundOrder(true, "OFFICIAL")}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-emerald-600 dark:bg-emerald-700 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-emerald-700 dark:hover:bg-emerald-600 transition active:scale-95 cursor-pointer"
               >
                 <Printer size={18} strokeWidth={2.2} />
-                <span>{isEditingDraft ? 'XUẤT KHO & IN PHIẾU' : (isReturnSupplier ? 'LƯU & IN PHIẾU XUẤT TRẢ' : 'LƯU & IN PHIẾU XUẤT')}</span>
+                <span>
+                  {isEditingDraft
+                    ? "XUẤT KHO & IN PHIẾU"
+                    : isReturnSupplier
+                      ? "LƯU & IN PHIẾU XUẤT TRẢ"
+                      : "LƯU & IN PHIẾU XUẤT"}
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(false, 'OFFICIAL')}
+                onClick={() => handleSaveOutboundOrder(false, "OFFICIAL")}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-[#008099] dark:bg-indigo-600 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md hover:bg-cyan-800 dark:hover:bg-indigo-700 transition active:scale-95 cursor-pointer"
               >
                 <Save size={18} strokeWidth={2.2} />
-                <span>{isEditingDraft ? 'XUẤT KHO CHÍNH THỨC' : (isReturnSupplier ? 'LƯU PHIẾU XUẤT TRẢ NCC' : 'LƯU PHIẾU XUẤT HÀNG')}</span>
+                <span>
+                  {isEditingDraft
+                    ? "XUẤT KHO CHÍNH THỨC"
+                    : isReturnSupplier
+                      ? "LƯU PHIẾU XUẤT TRẢ NCC"
+                      : "LƯU PHIẾU XUẤT HÀNG"}
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSaveOutboundOrder(false, 'DRAFT')}
+                onClick={() => handleSaveOutboundOrder(false, "DRAFT")}
                 className="w-full h-11 flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 px-4 py-2.5 text-xs sm:text-sm font-black uppercase tracking-wide text-white shadow-md transition active:scale-95 cursor-pointer"
               >
                 <FileText size={18} strokeWidth={2.2} />
-                <span>{isEditingDraft ? 'CẬP NHẬT LƯU NHÁP' : 'LƯU TẠM (NHÁP)'}</span>
+                <span>
+                  {isEditingDraft ? "CẬP NHẬT LƯU NHÁP" : "LƯU TẠM (NHÁP)"}
+                </span>
               </button>
 
               <button
@@ -3079,7 +4165,7 @@ export default function CreateOutboundOrderPage({
         isOpen={pickBinModalOpen}
         onClose={() => setPickBinModalOpen(false)}
         mode="OUTBOUND_TRANSFER"
-        warehouseCode={activeTab?.branchCode || 'KHO-TONG'}
+        warehouseCode={activeTab?.branchCode || "KHO-TONG"}
         items={activeTab?.details || []}
         targetRowId={activePickBinRowId}
         products={products}
@@ -3088,7 +4174,10 @@ export default function CreateOutboundOrderPage({
             ...t,
             details: updatedRows,
           }));
-          setToast({ message: 'Đã cập nhật vị trí kệ xuất hàng!', type: 'success' });
+          setToast({
+            message: "Đã cập nhật vị trí kệ xuất hàng!",
+            type: "success",
+          });
         }}
       />
 
@@ -3118,16 +4207,23 @@ export default function CreateOutboundOrderPage({
                 value={newReasonInput}
                 onChange={(e) => setNewReasonInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newReasonInput.trim()) {
+                  if (e.key === "Enter" && newReasonInput.trim()) {
                     const added = newReasonInput.trim();
                     if (!disposalReasons.includes(added)) {
                       setDisposalReasons((prev) => [...prev, added]);
                     }
                     setDisposalReasonSelect(added);
-                    updateActiveTab((t) => ({ ...t, customer: added, description: added }));
-                    setNewReasonInput('');
+                    updateActiveTab((t) => ({
+                      ...t,
+                      customer: added,
+                      description: added,
+                    }));
+                    setNewReasonInput("");
                     setShowAddReasonModal(false);
-                    setToast({ message: `Đã thêm lý do: "${added}"`, type: 'success' });
+                    setToast({
+                      message: `Đã thêm lý do: "${added}"`,
+                      type: "success",
+                    });
                   }
                 }}
                 placeholder="Ví dụ: Hàng cấn móp nhẹ, thanh lý nội bộ..."
@@ -3152,10 +4248,17 @@ export default function CreateOutboundOrderPage({
                       setDisposalReasons((prev) => [...prev, added]);
                     }
                     setDisposalReasonSelect(added);
-                    updateActiveTab((t) => ({ ...t, customer: added, description: added }));
-                    setNewReasonInput('');
+                    updateActiveTab((t) => ({
+                      ...t,
+                      customer: added,
+                      description: added,
+                    }));
+                    setNewReasonInput("");
                     setShowAddReasonModal(false);
-                    setToast({ message: `Đã thêm lý do: "${added}"`, type: 'success' });
+                    setToast({
+                      message: `Đã thêm lý do: "${added}"`,
+                      type: "success",
+                    });
                   }
                 }}
                 className="rounded-xl bg-cyan-600 dark:bg-indigo-600 px-4 py-2 text-xs font-extrabold text-white hover:bg-cyan-700 dark:hover:bg-indigo-700 cursor-pointer shadow-sm"
