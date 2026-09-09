@@ -9,6 +9,8 @@ import {
   FileText,
   Home,
   Layers,
+  Boxes,
+  Clock,
   Package,
   Search,
   Settings,
@@ -106,16 +108,66 @@ const menuItems: MenuItem[] = [
     path: "/nhap-xuat",
     allowedRoles: ["admin", "manager", "staff"],
     children: [
-      { id: 'outbound-orders', icon: ArrowUpFromLine, label: 'Xuất bán', path: '/outbound/orders' },
-      { id: 'outbound-retail', icon: Receipt, label: 'Xuất bán lẻ', path: '/outbound/retail' },
-      { id: 'inbound-stock-in-orders', icon: ArrowDownToLine, label: 'Nhập hàng', path: '/inbound/stock-in-orders' },
-      { id: 'inbound-return-requests', icon: CornerUpRight, label: 'Xuất trả Nhà cung cấp', path: '/inbound/return-requests' },
-      { id: 'inbound-return-customers', icon: CornerDownLeft, label: 'Nhập hàng Khách trả lại', path: '/inbound/return-customers' },
-      { id: 'delivery-transfer-orders', icon: Send, label: 'Xuất kho nội bộ', path: '/delivery/transfer-orders' },
-      { id: 'delivery-transfer-requests', icon: Repeat, label: 'Nhập kho nội bộ', path: '/delivery/transfer-requests' },
-      { id: 'inventory-stocktake', icon: FileCheck, label: 'Kiểm kho', path: '/inventory/stocktake' },
-      { id: 'outbound-sales-orders', icon: ShoppingCart, label: 'Đơn đặt hàng', path: '/outbound/sales-orders' },
-      { id: 'outbound-disposal', icon: FileX, label: 'Xuất hủy', path: '/outbound/disposal' },
+      {
+        id: "outbound-orders",
+        icon: ArrowUpFromLine,
+        label: "Xuất bán",
+        path: "/outbound/orders",
+      },
+      {
+        id: "outbound-retail",
+        icon: Receipt,
+        label: "Xuất bán lẻ",
+        path: "/outbound/retail",
+      },
+      {
+        id: "inbound-stock-in-orders",
+        icon: ArrowDownToLine,
+        label: "Nhập hàng",
+        path: "/inbound/stock-in-orders",
+      },
+      {
+        id: "inbound-return-requests",
+        icon: CornerUpRight,
+        label: "Xuất trả Nhà cung cấp",
+        path: "/inbound/return-requests",
+      },
+      {
+        id: "inbound-return-customers",
+        icon: CornerDownLeft,
+        label: "Nhập hàng Khách trả lại",
+        path: "/inbound/return-customers",
+      },
+      {
+        id: "delivery-transfer-orders",
+        icon: Send,
+        label: "Xuất kho nội bộ",
+        path: "/delivery/transfer-orders",
+      },
+      {
+        id: "delivery-transfer-requests",
+        icon: Repeat,
+        label: "Nhập kho nội bộ",
+        path: "/delivery/transfer-requests",
+      },
+      {
+        id: "inventory-stocktake",
+        icon: FileCheck,
+        label: "Kiểm kho",
+        path: "/inventory/stocktake",
+      },
+      {
+        id: "outbound-sales-orders",
+        icon: ShoppingCart,
+        label: "Đơn đặt hàng",
+        path: "/outbound/sales-orders",
+      },
+      {
+        id: "outbound-disposal",
+        icon: FileX,
+        label: "Xuất hủy",
+        path: "/outbound/disposal",
+      },
     ],
   },
   // 3. Thu chi
@@ -245,10 +297,10 @@ const menuItems: MenuItem[] = [
         path: "/reports/below-min-stock",
       },
       {
-        id: "report-revenue-huu",
-        icon: BarChart3,
-        label: "Báo cáo doanh thu - Huu",
-        path: "/reports/revenue-huu",
+        id: "report-stale-inventory",
+        icon: Clock,
+        label: "Báo cáo hàng hóa tồn đọng",
+        path: "/reports/stale-inventory",
       },
     ],
   },
@@ -518,7 +570,7 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
             <div
               className={`transition-all duration-300 ease-in-out overflow-hidden ${
                 isExpanded
-                  ? "max-h-[600px] opacity-100 my-1 pointer-events-auto"
+                  ? "max-h-[2500px] opacity-100 my-1 pointer-events-auto"
                   : "max-h-0 opacity-0 my-0 pointer-events-none"
               }`}
             >

@@ -98,4 +98,19 @@ export class DashboardController {
   getSalesByStaffReport(@Query() query: ReportFilterDto) {
     return this.dashboardService.getSalesByStaffReport(query.startDate, query.endDate);
   }
+
+  @Get('shelf-inventory')
+  getShelfInventoryReport(
+    @Query()
+    query: {
+      warehouseCode?: string;
+      zoneCode?: string;
+      rackCode?: string;
+      beforeDate?: string;
+      onlyWithStock?: boolean | string;
+      search?: string;
+    },
+  ) {
+    return this.dashboardService.getShelfInventoryReport(query);
+  }
 }

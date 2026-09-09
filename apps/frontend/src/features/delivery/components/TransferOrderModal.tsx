@@ -31,6 +31,7 @@ type Warehouse = {
   id: string;
   code: string;
   name: string;
+  isFrozen?: boolean;
 };
 
 type Row = {
@@ -285,11 +286,13 @@ export default function TransferOrderModal({
                   className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
                 >
                   <option value="">-- Chọn kho nguồn --</option>
-                  {warehouses.map((wh) => (
-                    <option key={wh.id} value={wh.code || wh.id}>
-                      {wh.name ? `${wh.name} (${wh.code})` : wh.code}
-                    </option>
-                  ))}
+                  {warehouses
+                    .filter((wh) => !wh.isFrozen)
+                    .map((wh) => (
+                      <option key={wh.id} value={wh.code || wh.id}>
+                        {wh.name ? `${wh.name} (${wh.code})` : wh.code}
+                      </option>
+                    ))}
                 </select>
               )}
             </div>
@@ -308,11 +311,13 @@ export default function TransferOrderModal({
                   className="h-11 w-full rounded-xl border-2 border-cyan-500 bg-white px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-sm"
                 >
                   <option value="">-- Chọn kho nhận --</option>
-                  {warehouses.map((wh) => (
-                    <option key={wh.id} value={wh.code || wh.id}>
-                      {wh.name ? `${wh.name} (${wh.code})` : wh.code}
-                    </option>
-                  ))}
+                  {warehouses
+                    .filter((wh) => !wh.isFrozen)
+                    .map((wh) => (
+                      <option key={wh.id} value={wh.code || wh.id}>
+                        {wh.name ? `${wh.name} (${wh.code})` : wh.code}
+                      </option>
+                    ))}
                 </select>
               )}
             </div>

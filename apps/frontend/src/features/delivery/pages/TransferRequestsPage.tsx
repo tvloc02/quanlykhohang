@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   Package,
-  Plus,
   Search,
   Filter,
   RefreshCw,
@@ -721,21 +720,9 @@ export default function TransferRequestsPage() {
           </div>
         </div>
 
-        {/* Toolbar Buttons Bar (Matching Image 2: + Thêm mới, Copy, Xóa, In báo cáo, Export Excel, Hiển thị, Maximize) */}
+        {/* Toolbar Buttons Bar (Copy, Xóa, In báo cáo, Export Excel, Hiển thị, Maximize) */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* 1. + Thêm mới */}
-          <button
-            type="button"
-            onClick={() => {
-              navigate('/delivery/receive-transfer-order', { state: { mode: 'receive', fromRequests: true } });
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-4 py-2 text-xs sm:text-sm font-extrabold text-cyan-700 shadow-2xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <Plus className="h-4 w-4 text-cyan-700" />
-            Thêm mới
-          </button>
-
-          {/* 2. Copy */}
+          {/* 1. Copy */}
           <button
             type="button"
             onClick={handleCopySelected}
@@ -1083,7 +1070,7 @@ export default function TransferRequestsPage() {
               ) : (
                 <tr>
                   <td colSpan={15} className="py-12 text-center text-slate-500 font-semibold text-sm">
-                    Chưa có phiếu nhập kho nội bộ. Hãy bấm nút "Thêm mới" để bắt đầu.
+                    Chưa có phiếu nhập kho nội bộ. Dữ liệu sẽ tự động đồng bộ khi có phiếu xuất kho nội bộ.
                   </td>
                 </tr>
               )}

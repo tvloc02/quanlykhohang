@@ -52,6 +52,7 @@ type WarehouseRecord = {
   status: 'active' | 'inactive';
   managerIds: string[];
   staffIds: string[];
+  isFrozen?: boolean;
 };
 
 type PurchaseOrderUser = {
@@ -493,7 +494,7 @@ export function PurchaseOrderFormModal({
                           onChange={(value) => {
                             onFormChange({ ...form, warehouseCode: value, approverId: '' });
                           }}
-                          options={warehouses.map((warehouse) => ({
+                          options={warehouses.filter((warehouse) => !warehouse.isFrozen).map((warehouse) => ({
                             value: warehouse.code,
                             label: `${warehouse.name} (${warehouse.code})`,
                           }))}

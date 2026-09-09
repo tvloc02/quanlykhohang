@@ -84,4 +84,27 @@ export const reportsApi = {
     if (!response.ok) throw new Error(`Không tải được dữ liệu báo cáo ${endpoint}`);
     return await response.json();
   },
+
+  getShelfInventoryReport: async (paramsObj?: {
+    warehouseCode?: string;
+    zoneCode?: string;
+    rackCode?: string;
+    beforeDate?: string;
+    onlyWithStock?: boolean;
+    search?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (paramsObj?.warehouseCode) params.append('warehouseCode', paramsObj.warehouseCode);
+    if (paramsObj?.zoneCode) params.append('zoneCode', paramsObj.zoneCode);
+    if (paramsObj?.rackCode) params.append('rackCode', paramsObj.rackCode);
+    if (paramsObj?.beforeDate) params.append('beforeDate', paramsObj.beforeDate);
+    if (paramsObj?.onlyWithStock !== undefined) params.append('onlyWithStock', String(paramsObj.onlyWithStock));
+    if (paramsObj?.search) params.append('search', paramsObj.search);
+
+    const response = await fetch(`${API_BASE_URL}/reports/shelf-inventory?${params.toString()}`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) throw new Error('Không tải được dữ liệu Báo cáo hàng tồn trên kệ');
+    return await response.json();
+  },
 };

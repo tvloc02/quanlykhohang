@@ -1644,10 +1644,22 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
 
                           const matchingSelectedCode = selectedBinCodes.find((s) => normalizeBinKey(s) === normFull);
                           let embeddedPct: number | undefined;
+                          let embeddedQty: number | undefined;
                           if (matchingSelectedCode) {
                             const match = matchingSelectedCode.match(/\((\d+(?:\.\d+)?)%\)/);
                             if (match) embeddedPct = Number(match[1]);
+                            const matchQty = matchingSelectedCode.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
+                            if (matchQty) embeddedQty = Number(matchQty[1]);
                           }
+
+                          const assignedBinQty: number | undefined = embeddedQty !== undefined
+                            ? embeddedQty
+                            : (binQtyMap ? (
+                                binQtyMap[fullBinCode] ??
+                                binQtyMap[binCodeShort] ??
+                                binQtyMap[normFull] ??
+                                binQtyMap[normShort]
+                              ) : undefined);
 
                           const customPct = (customConfig?.occupancyPct !== undefined && customConfig?.occupancyPct !== null && !isStagingUnselected && !isEmptyNote)
                             ? Number(customConfig.occupancyPct)
@@ -2000,8 +2012,15 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               {/* Bottom Status Pill */}
                               <div className="w-full z-10">
                                 {isSelected ? (
-                                  <span className="text-[9px] font-black bg-[#197e96] text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-wide">
-                                    {readOnly ? 'ĐÃ LƯU' : 'CHỌN'} ({occupancyPct > 0 ? occupancyPct : 100}%)
+                                  <span
+                                    title={assignedBinQty !== undefined && assignedBinQty > 0 ? `Đã chọn: ${assignedBinQty.toLocaleString('vi-VN')} cái (${occupancyPct > 0 ? occupancyPct : 100}%)` : `Đã chọn (${occupancyPct > 0 ? occupancyPct : 100}%)`}
+                                    className="text-[9px] font-black bg-[#197e96] text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-wide"
+                                  >
+                                    {assignedBinQty !== undefined && assignedBinQty > 0 ? (
+                                      `${assignedBinQty} cái (${occupancyPct > 0 ? occupancyPct : 100}%)`
+                                    ) : (
+                                      `${readOnly ? 'ĐÃ LƯU' : 'CHỌN'} (${occupancyPct > 0 ? occupancyPct : 100}%)`
+                                    )}
                                   </span>
                                 ) : isOtherItemFull ? (
                                   <span className="text-[8.5px] font-black bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300 px-1 py-0.5 rounded-md w-full block truncate shadow-2xs">
@@ -2054,11 +2073,13 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                   </div>
                   <div>
                     <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-                      {readOnly || !isOutbound
+                      {readOnly
                         ? `Chi Tiết Vị Trí & Hàng Hóa Ô Kệ ${editingBinConfig.shortCode}`
-                        : `Cài Đặt Độ Chứa & Khấu Trừ Xuất Kệ Ô ${editingBinConfig.shortCode}`}
+                        : isOutbound
+                          ? `Cài Đặt Độ Chứa & Khấu Trừ Xuất Kệ Ô ${editingBinConfig.shortCode}`
+                          : `Cài Đặt Độ Chứa / Số Lượng Ô ${editingBinConfig.shortCode}`}
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${readOnly ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200' : isOutbound ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200' : 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/60 dark:text-cyan-200'}`}>
-                        {readOnly ? 'Chế độ xem' : isOutbound ? 'Xuất kho / Xuất hủy' : 'Chi tiết ô'}
+                        {readOnly ? 'Chế độ xem' : isOutbound ? 'Xuất kho / Xuất hủy' : 'Nhập kho'}
                       </span>
                     </h4>
                     <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
@@ -2203,264 +2224,437 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                       </div>
                     </div>
 
-                    {/* 4. BOTTOM SECTION: ONLY SHOWN FOR OUTBOUND DEDUCTION */}
-                    {!readOnly && isOutbound && (
-                      <div className="rounded-2xl border-2 border-rose-300 dark:border-rose-900/70 bg-rose-50/60 dark:bg-rose-950/20 p-4 space-y-3 shadow-xs">
-                        <div className="flex items-center justify-between border-b border-rose-200 dark:border-rose-900/60 pb-2">
-                          <div className="flex items-center gap-2 text-xs font-black uppercase text-rose-800 dark:text-rose-300">
-                            <Package className="h-4 w-4 text-rose-600" />
-                            Khấu trừ xuất hàng / xuất hủy từ ô {editingBinConfig.shortCode} (Dòng trừ số lượng màu đỏ)
+                    {/* 4. BOTTOM SECTION: ONLY SHOWN WHEN EDITING (NOT IN READONLY VIEW MODE) */}
+                    {!readOnly && (
+                      isOutbound ? (
+                        <div className="rounded-2xl border-2 border-rose-300 dark:border-rose-900/70 bg-rose-50/60 dark:bg-rose-950/20 p-4 space-y-3 shadow-xs">
+                          <div className="flex items-center justify-between border-b border-rose-200 dark:border-rose-900/60 pb-2">
+                            <div className="flex items-center gap-2 text-xs font-black uppercase text-rose-800 dark:text-rose-300">
+                              <Package className="h-4 w-4 text-rose-600" />
+                              Khấu trừ xuất hàng / xuất hủy từ ô {editingBinConfig.shortCode} (Dòng trừ số lượng màu đỏ)
+                            </div>
+                            <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/50 px-2 py-0.5 rounded-md">
+                              Tự động tính % khấu trừ & cập nhật độ chứa
+                            </span>
                           </div>
-                          <span className="text-[11px] font-bold text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/50 px-2 py-0.5 rounded-md">
-                            Tự động tính % khấu trừ & cập nhật độ chứa
-                          </span>
-                        </div>
 
-                        {/* Deduction Table */}
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-xs text-left border-collapse">
-                            <thead>
-                              <tr className="text-rose-900 dark:text-rose-200 font-bold border-b border-rose-200 dark:border-rose-900/60">
-                                <th className="pb-2">Mặt hàng xuất / trừ</th>
-                                <th className="pb-2 text-center w-28">Tồn gốc ở ô</th>
-                                <th className="pb-2 text-right w-44">Số lượng lấy đi (Trừ)</th>
-                                <th className="pb-2 text-right w-40">Khấu trừ (% ô)</th>
-                                <th className="pb-2 text-right w-36">Còn lại trên kệ</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-rose-200/60 dark:divide-rose-900/40 font-medium">
-                              {editableBinItems.map((item, idx) => {
-                                const currentGood = allStoredGoods.find((g) =>
-                                  (item.matchedSku && g.sku === item.matchedSku) ||
-                                  (item.sku && g.sku === item.sku) ||
-                                  (g.productName === item.productName)
-                                ) || allStoredGoods[0];
+                          {/* Deduction Table */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs text-left border-collapse">
+                              <thead>
+                                <tr className="text-rose-900 dark:text-rose-200 font-bold border-b border-rose-200 dark:border-rose-900/60">
+                                  <th className="pb-2">Mặt hàng xuất / trừ</th>
+                                  <th className="pb-2 text-center w-28">Tồn gốc ở ô</th>
+                                  <th className="pb-2 text-right w-44">Số lượng lấy đi (Trừ)</th>
+                                  <th className="pb-2 text-right w-40">Khấu trừ (% ô)</th>
+                                  <th className="pb-2 text-right w-36">Còn lại trên kệ</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-rose-200/60 dark:divide-rose-900/40 font-medium">
+                                {editableBinItems.map((item, idx) => {
+                                  const currentGood = allStoredGoods.find((g) =>
+                                    (item.matchedSku && g.sku === item.matchedSku) ||
+                                    (item.sku && g.sku === item.sku) ||
+                                    (g.productName === item.productName)
+                                  ) || allStoredGoods[0];
 
-                                const stockQty = Number(item.stockQty !== undefined ? item.stockQty : (currentGood?.quantity || totalStoredQty || 0));
-                                const stockPct = Number(item.stockPct !== undefined ? item.stockPct : (currentGood?.occupancyPct !== undefined ? currentGood.occupancyPct : binOccupancyPct));
+                                  const stockQty = Number(item.stockQty !== undefined ? item.stockQty : (currentGood?.quantity || totalStoredQty || 0));
+                                  const stockPct = Number(item.stockPct !== undefined ? item.stockPct : (currentGood?.occupancyPct !== undefined ? currentGood.occupancyPct : binOccupancyPct));
 
-                                const currentDeductQty = Number(item.qty) || 0;
-                                const currentDeductPct = Number(item.occupancyPct) || 0;
+                                  const currentDeductQty = Number(item.qty) || 0;
+                                  const currentDeductPct = Number(item.occupancyPct) || 0;
 
-                                const remainingQty = Math.max(0, stockQty - currentDeductQty);
-                                const remainingPct = Math.max(0, Number((stockPct - currentDeductPct).toFixed(1)));
+                                  const remainingQty = Math.max(0, stockQty - currentDeductQty);
+                                  const remainingPct = Math.max(0, Number((stockPct - currentDeductPct).toFixed(1)));
 
-                                return (
-                                  <tr key={`deduct-${idx}`} className="align-middle">
-                                    <td className="py-2.5 pr-2">
-                                      {allStoredGoods.length > 1 ? (
-                                        <div className="space-y-1">
-                                          <select
-                                            value={item.matchedSku || currentGood?.sku || ''}
-                                            onChange={(e) => {
-                                              const chosenSku = e.target.value;
-                                              const chosenGood = allStoredGoods.find((g) => g.sku === chosenSku) || allStoredGoods[0];
-                                              if (chosenGood) {
-                                                const newStockQty = Number(chosenGood.quantity) || 0;
-                                                const newStockPct = Number(chosenGood.occupancyPct !== undefined ? chosenGood.occupancyPct : 100);
-                                                const newQty = Math.min(item.qty || 1, newStockQty);
-                                                let newPct = 0;
-                                                if (newStockQty > 0 && newStockPct > 0) {
-                                                  newPct = Number(((newQty / newStockQty) * newStockPct).toFixed(1));
-                                                  if (newPct === 0 && newQty > 0) newPct = 0.1;
+                                  return (
+                                    <tr key={`deduct-${idx}`} className="align-middle">
+                                      <td className="py-2.5 pr-2">
+                                        {allStoredGoods.length > 1 ? (
+                                          <div className="space-y-1">
+                                            <select
+                                              value={item.matchedSku || currentGood?.sku || ''}
+                                              onChange={(e) => {
+                                                const chosenSku = e.target.value;
+                                                const chosenGood = allStoredGoods.find((g) => g.sku === chosenSku) || allStoredGoods[0];
+                                                if (chosenGood) {
+                                                  const newStockQty = Number(chosenGood.quantity) || 0;
+                                                  const newStockPct = Number(chosenGood.occupancyPct !== undefined ? chosenGood.occupancyPct : 100);
+                                                  const newQty = Math.min(item.qty || 1, newStockQty);
+                                                  let newPct = 0;
+                                                  if (newStockQty > 0 && newStockPct > 0) {
+                                                    newPct = Number(((newQty / newStockQty) * newStockPct).toFixed(1));
+                                                    if (newPct === 0 && newQty > 0) newPct = 0.1;
+                                                  }
+                                                  setEditableBinItems((prev) =>
+                                                    prev.map((it, i) =>
+                                                      i === idx
+                                                        ? {
+                                                          ...it,
+                                                          productName: chosenGood.productName,
+                                                          sku: chosenGood.sku,
+                                                          matchedSku: chosenGood.sku,
+                                                          unit: chosenGood.unit || 'Cái',
+                                                          stockQty: newStockQty,
+                                                          stockPct: newStockPct,
+                                                          qty: newQty,
+                                                          occupancyPct: newPct,
+                                                        }
+                                                        : it
+                                                    )
+                                                  );
                                                 }
+                                              }}
+                                              className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-rose-500"
+                                            >
+                                              {allStoredGoods.map((g, gi) => (
+                                                <option key={gi} value={g.sku}>
+                                                  {g.productName} ({g.quantity} {g.unit || 'cái'} - {g.occupancyPct}%)
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 block">
+                                              Chọn mặt hàng cần trừ từ kệ này
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <div>
+                                            <span className="font-black text-slate-800 dark:text-slate-100">{item.productName}</span>
+                                            {item.sku && <div className="text-[10px] font-mono text-slate-500">SKU: {item.sku}</div>}
+                                          </div>
+                                        )}
+                                      </td>
+
+                                      <td className="py-2.5 px-2 text-center">
+                                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                                          {stockQty.toLocaleString('vi-VN')} {item.unit || 'cái'}
+                                        </span>
+                                        <div className="text-[10px] text-slate-500">({stockPct}% dung tích)</div>
+                                      </td>
+
+                                      <td className="py-2.5 px-2 text-right">
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          <span className="text-base font-black text-rose-600 dark:text-rose-400">-</span>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            max={stockQty > 0 ? stockQty : undefined}
+                                            value={item.qty > 0 ? item.qty : ''}
+                                            placeholder="0"
+                                            onChange={(e) => {
+                                              const val = Number(e.target.value) || 0;
+                                              setEditableBinItems((prev) =>
+                                                prev.map((it, i) => {
+                                                  if (i !== idx) return it;
+                                                  let calculatedPct = 0;
+                                                  if (stockQty > 0 && stockPct > 0) {
+                                                    calculatedPct = Number(((val / stockQty) * stockPct).toFixed(1));
+                                                    if (calculatedPct === 0 && val > 0) calculatedPct = 0.1;
+                                                  }
+                                                  return {
+                                                    ...it,
+                                                    qty: val,
+                                                    occupancyPct: calculatedPct > 0 ? calculatedPct : 0,
+                                                  };
+                                                })
+                                              );
+                                            }}
+                                            className="w-24 px-2.5 py-1.5 text-right text-xs font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 rounded-xl focus:border-rose-600 focus:ring-2 focus:ring-rose-400/30 outline-none shadow-xs"
+                                          />
+                                          <span className="text-xs font-black text-rose-600 dark:text-rose-400">{item.unit || 'cái'}</span>
+                                        </div>
+                                      </td>
+
+                                      <td className="py-2.5 px-2 text-right">
+                                        <div className="relative inline-flex items-center justify-end w-28">
+                                          <span className="text-base font-black text-rose-600 dark:text-rose-400 mr-1">-</span>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            max={stockPct > 0 ? stockPct : 100}
+                                            step="0.1"
+                                            value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
+                                            placeholder="0"
+                                            onChange={(e) => {
+                                              const raw = e.target.value;
+                                              if (raw === '') {
                                                 setEditableBinItems((prev) =>
-                                                  prev.map((it, i) =>
-                                                    i === idx
-                                                      ? {
-                                                        ...it,
-                                                        productName: chosenGood.productName,
-                                                        sku: chosenGood.sku,
-                                                        matchedSku: chosenGood.sku,
-                                                        unit: chosenGood.unit || 'Cái',
-                                                        stockQty: newStockQty,
-                                                        stockPct: newStockPct,
-                                                        qty: newQty,
-                                                        occupancyPct: newPct,
-                                                      }
-                                                      : it
-                                                  )
+                                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
+                                                );
+                                                return;
+                                              }
+                                              const parsed = parseFloat(raw);
+                                              const val = isNaN(parsed) ? 0 : Math.min(stockPct || 100, Math.max(0, parsed));
+                                              setEditableBinItems((prev) =>
+                                                prev.map((it, i) => {
+                                                  if (i !== idx) return it;
+                                                  let calcQty = it.qty;
+                                                  if (stockPct > 0 && stockQty > 0) {
+                                                    calcQty = Math.round((stockQty * val) / stockPct);
+                                                  }
+                                                  return {
+                                                    ...it,
+                                                    occupancyPct: val,
+                                                    qty: calcQty,
+                                                  };
+                                                })
+                                              );
+                                            }}
+                                            onBlur={() => {
+                                              if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined) {
+                                                setEditableBinItems((prev) =>
+                                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
                                                 );
                                               }
                                             }}
-                                            className="w-full px-2 py-1 bg-white dark:bg-slate-900 border border-rose-300 dark:border-rose-800 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-rose-500"
-                                          >
-                                            {allStoredGoods.map((g, gi) => (
-                                              <option key={gi} value={g.sku}>
-                                                {g.productName} ({g.quantity} {g.unit || 'cái'} - {g.occupancyPct}%)
-                                              </option>
-                                            ))}
-                                          </select>
-                                          <span className="text-[10px] font-bold text-rose-700 dark:text-rose-400 block">
-                                            Chọn mặt hàng cần trừ từ kệ này
-                                          </span>
+                                            className="w-full px-2.5 py-1.5 pr-6 text-right text-xs font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 rounded-xl focus:border-rose-600 focus:ring-2 focus:ring-rose-400/30 outline-none shadow-xs"
+                                          />
+                                          <span className="absolute right-2 top-2 text-xs font-black text-rose-500">%</span>
                                         </div>
-                                      ) : (
-                                        <div>
-                                          <span className="font-black text-slate-800 dark:text-slate-100">{item.productName}</span>
-                                          {item.sku && <div className="text-[10px] font-mono text-slate-500">SKU: {item.sku}</div>}
+                                      </td>
+
+                                      <td className="py-2.5 pl-2 text-right">
+                                        <div className="font-black text-emerald-700 dark:text-emerald-400 text-xs">
+                                          {remainingQty.toLocaleString('vi-VN')} {item.unit || 'cái'}
                                         </div>
-                                      )}
-                                    </td>
+                                        <div className="text-[10px] font-bold text-slate-500">
+                                          Còn lại: {remainingPct}% ô
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
 
-                                    <td className="py-2.5 px-2 text-center">
-                                      <span className="font-bold text-slate-700 dark:text-slate-300">
-                                        {stockQty.toLocaleString('vi-VN')} {item.unit || 'cái'}
-                                      </span>
-                                      <div className="text-[10px] text-slate-500">({stockPct}% dung tích)</div>
-                                    </td>
+                          {/* Summary calculation of bin capacity after export */}
+                          {(() => {
+                            const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
+                            const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
+                            const initialBinPct = binOccupancyPct > 0 ? binOccupancyPct : (editingBinConfig.currentPct || 100);
+                            const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
+                            const remainingEmptyPct = Math.max(0, Number((100 - remainingAfterExport).toFixed(1)));
 
-                                    <td className="py-2.5 px-2 text-right">
-                                      <div className="flex items-center justify-end gap-1.5">
-                                        <span className="text-base font-black text-rose-600 dark:text-rose-400">-</span>
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          max={stockQty > 0 ? stockQty : undefined}
-                                          value={item.qty > 0 ? item.qty : ''}
-                                          placeholder="0"
-                                          onChange={(e) => {
-                                            const val = Number(e.target.value) || 0;
-                                            setEditableBinItems((prev) =>
-                                              prev.map((it, i) => {
-                                                if (i !== idx) return it;
-                                                let calculatedPct = 0;
-                                                if (stockQty > 0 && stockPct > 0) {
-                                                  calculatedPct = Number(((val / stockQty) * stockPct).toFixed(1));
-                                                  if (calculatedPct === 0 && val > 0) calculatedPct = 0.1;
-                                                }
-                                                return {
-                                                  ...it,
-                                                  qty: val,
-                                                  occupancyPct: calculatedPct > 0 ? calculatedPct : 0,
-                                                };
-                                              })
-                                            );
-                                          }}
-                                          className="w-24 px-2.5 py-1.5 text-right text-xs font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 rounded-xl focus:border-rose-600 focus:ring-2 focus:ring-rose-400/30 outline-none shadow-xs"
-                                        />
-                                        <span className="text-xs font-black text-rose-600 dark:text-rose-400">{item.unit || 'cái'}</span>
-                                      </div>
-                                    </td>
+                            return (
+                              <div className="mt-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 shadow-xs space-y-2">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                                  <div className="p-2 bg-rose-50 dark:bg-rose-950/50 rounded-lg border border-rose-200 dark:border-rose-900/60 flex flex-col">
+                                    <span className="text-[11px] font-bold text-rose-800 dark:text-rose-300">Khấu trừ xuất kho:</span>
+                                    <span className="text-sm font-black text-rose-600 dark:text-rose-400 mt-0.5">
+                                      -{totalExportQty.toLocaleString('vi-VN')} cái (-{totalExportPct}%)
+                                    </span>
+                                  </div>
+                                  <div className="p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-lg border border-cyan-200 dark:border-cyan-900/60 flex flex-col">
+                                    <span className="text-[11px] font-bold text-cyan-800 dark:text-cyan-300">Sức chứa ô còn lại (Đã chứa):</span>
+                                    <span className="text-sm font-black text-cyan-700 dark:text-cyan-300 mt-0.5">
+                                      {remainingAfterExport}% dung tích
+                                    </span>
+                                  </div>
+                                  <div className="p-2 bg-emerald-50 dark:bg-emerald-950/50 rounded-lg border border-emerald-200 dark:border-emerald-900/60 flex flex-col">
+                                    <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">Dung tích ô còn trống:</span>
+                                    <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                      {remainingEmptyPct}% ô kệ
+                                    </span>
+                                  </div>
+                                </div>
 
-                                    <td className="py-2.5 px-2 text-right">
-                                      <div className="relative inline-flex items-center justify-end w-28">
-                                        <span className="text-base font-black text-rose-600 dark:text-rose-400 mr-1">-</span>
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          max={stockPct > 0 ? stockPct : 100}
-                                          step="0.1"
-                                          value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
-                                          placeholder="0"
-                                          onChange={(e) => {
-                                            const raw = e.target.value;
-                                            if (raw === '') {
-                                              setEditableBinItems((prev) =>
-                                                prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
-                                              );
-                                              return;
-                                            }
-                                            const parsed = parseFloat(raw);
-                                            const val = isNaN(parsed) ? 0 : Math.min(stockPct || 100, Math.max(0, parsed));
-                                            setEditableBinItems((prev) =>
-                                              prev.map((it, i) => {
-                                                if (i !== idx) return it;
-                                                let calcQty = it.qty;
-                                                if (stockPct > 0 && stockQty > 0) {
-                                                  calcQty = Math.round((stockQty * val) / stockPct);
-                                                }
-                                                return {
-                                                  ...it,
-                                                  occupancyPct: val,
-                                                  qty: calcQty,
-                                                };
-                                              })
-                                            );
-                                          }}
-                                          onBlur={() => {
-                                            if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined) {
-                                              setEditableBinItems((prev) =>
-                                                prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
-                                              );
-                                            }
-                                          }}
-                                          className="w-full px-2.5 py-1.5 pr-6 text-right text-xs font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-900 border-2 border-rose-300 dark:border-rose-800 rounded-xl focus:border-rose-600 focus:ring-2 focus:ring-rose-400/30 outline-none shadow-xs"
-                                        />
-                                        <span className="absolute right-2 top-2 text-xs font-black text-rose-500">%</span>
-                                      </div>
-                                    </td>
-
-                                    <td className="py-2.5 pl-2 text-right">
-                                      <div className="font-black text-emerald-700 dark:text-emerald-400 text-xs">
-                                        {remainingQty.toLocaleString('vi-VN')} {item.unit || 'cái'}
-                                      </div>
-                                      <div className="text-[10px] font-bold text-slate-500">
-                                        Còn lại: {remainingPct}% ô
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
+                                {/* Dual-color Progress bar visual */}
+                                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden flex">
+                                  <div
+                                    className="bg-cyan-600 h-2.5 transition-all duration-300"
+                                    style={{ width: `${Math.min(100, remainingAfterExport)}%` }}
+                                    title={`Còn lưu trữ: ${remainingAfterExport}%`}
+                                  />
+                                  <div
+                                    className="bg-rose-500 h-2.5 transition-all duration-300"
+                                    style={{ width: `${Math.min(100 - remainingAfterExport, totalExportPct)}%` }}
+                                    title={`Khấu trừ xuất: ${totalExportPct}%`}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
-
-                        {/* Summary calculation of bin capacity after export */}
-                        {(() => {
-                          const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
-                          const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
-                          const initialBinPct = binOccupancyPct > 0 ? binOccupancyPct : (editingBinConfig.currentPct || 100);
-                          const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
-                          const remainingEmptyPct = Math.max(0, Number((100 - remainingAfterExport).toFixed(1)));
-
-                          return (
-                            <div className="mt-2 p-3 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 shadow-xs space-y-2">
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                                <div className="p-2 bg-rose-50 dark:bg-rose-950/50 rounded-lg border border-rose-200 dark:border-rose-900/60 flex flex-col">
-                                  <span className="text-[11px] font-bold text-rose-800 dark:text-rose-300">Khấu trừ xuất kho:</span>
-                                  <span className="text-sm font-black text-rose-600 dark:text-rose-400 mt-0.5">
-                                    -{totalExportQty.toLocaleString('vi-VN')} cái (-{totalExportPct}%)
-                                  </span>
-                                </div>
-                                <div className="p-2 bg-cyan-50 dark:bg-cyan-950/50 rounded-lg border border-cyan-200 dark:border-cyan-900/60 flex flex-col">
-                                  <span className="text-[11px] font-bold text-cyan-800 dark:text-cyan-300">Sức chứa ô còn lại (Đã chứa):</span>
-                                  <span className="text-sm font-black text-cyan-700 dark:text-cyan-300 mt-0.5">
-                                    {remainingAfterExport}% dung tích
-                                  </span>
-                                </div>
-                                <div className="p-2 bg-emerald-50 dark:bg-emerald-950/50 rounded-lg border border-emerald-200 dark:border-emerald-900/60 flex flex-col">
-                                  <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">Dung tích ô còn trống:</span>
-                                  <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                    {remainingEmptyPct}% ô kệ
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Dual-color Progress bar visual */}
-                              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2.5 overflow-hidden flex">
-                                <div
-                                  className="bg-cyan-600 h-2.5 transition-all duration-300"
-                                  style={{ width: `${Math.min(100, remainingAfterExport)}%` }}
-                                  title={`Còn lưu trữ: ${remainingAfterExport}%`}
-                                />
-                                <div
-                                  className="bg-rose-500 h-2.5 transition-all duration-300"
-                                  style={{ width: `${Math.min(100 - remainingAfterExport, totalExportPct)}%` }}
-                                  title={`Khấu trừ xuất: ${totalExportPct}%`}
-                                />
-                              </div>
+                      ) : (
+                        /* Inbound Mode Layout */
+                        <div className="rounded-2xl border-2 border-cyan-300 dark:border-cyan-900/70 bg-cyan-50/60 dark:bg-cyan-950/20 p-4 space-y-3 shadow-xs">
+                          <div className="flex items-center justify-between border-b border-cyan-200 dark:border-cyan-900/60 pb-2">
+                            <div className="flex items-center gap-2 text-xs font-black uppercase text-cyan-800 dark:text-cyan-300">
+                              <Package className="h-4 w-4 text-cyan-600" />
+                              Cài đặt số lượng & % độ chứa hàng nhập vào ô {editingBinConfig.shortCode}
                             </div>
-                          );
-                        })()}
-                      </div>
+                            <span className="text-[11px] font-bold text-cyan-700 dark:text-cyan-400 bg-cyan-100 dark:bg-cyan-900/50 px-2 py-0.5 rounded-md">
+                              Tự động tính % độ chứa & phân bổ số lượng
+                            </span>
+                          </div>
+
+                          {/* Inbound Table */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs text-left border-collapse">
+                              <thead className="sticky top-0 z-10 bg-cyan-100/70 dark:bg-cyan-950/80 text-cyan-950 dark:text-cyan-200 font-bold border-b border-cyan-200 dark:border-slate-700 shadow-2xs">
+                                <tr>
+                                  <th className="p-2.5">Mặt hàng & SKU nhập vào ô</th>
+                                  <th className="p-2.5 text-right w-44">Số lượng nhập</th>
+                                  <th className="p-2.5 text-right w-40">Độ chứa (% ô)</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-cyan-200/60 dark:divide-cyan-900/40 bg-white dark:bg-slate-900 font-medium">
+                                {editableBinItems.map((item, idx) => {
+                                  const isExisting = Boolean(item.isExistingStock);
+                                  return (
+                                    <tr key={`inbound-row-${idx}`} className={isExisting ? "bg-cyan-50/40 dark:bg-slate-800/40 hover:bg-cyan-50/70 border-l-4 border-cyan-500" : "hover:bg-emerald-50/40 dark:hover:bg-slate-800/50 transition border-l-4 border-emerald-500"}>
+                                      <td className="p-2.5">
+                                        <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 flex-wrap">
+                                          <span>{item.productName}</span>
+                                          {item.sku && (
+                                            <span className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                                              SKU: {item.sku}
+                                            </span>
+                                          )}
+                                          {isExisting ? (
+                                            <span className="text-[10px] font-black bg-cyan-200 text-cyan-900 dark:bg-cyan-900 dark:text-cyan-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                              TỒN TẠI KỆ
+                                            </span>
+                                          ) : (
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                              <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200 px-2 py-0.5 rounded-md tracking-tight uppercase">
+                                                LÔ NHẬP MỚI
+                                              </span>
+                                              {item.isCustomQty ? (
+                                                <span className="text-[9.5px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded-md border border-amber-300 dark:border-amber-800">
+                                                  Cố định {item.qty} {item.unit || 'cái'}
+                                                </span>
+                                              ) : (
+                                                <span className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded-md">
+                                                  Tự chia đều
+                                                </span>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="p-2.5 text-right">
+                                        {isExisting ? (
+                                          <span className="text-xs font-black text-cyan-900 dark:text-cyan-200 px-2 py-1 inline-block">
+                                            {item.qty.toLocaleString('vi-VN')} {item.unit || 'cái'}
+                                          </span>
+                                        ) : (
+                                          <div className="flex items-center justify-end gap-1.5">
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              value={item.qty > 0 ? item.qty : ''}
+                                              placeholder="0"
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value) || 0;
+                                                setEditableBinItems((prev) =>
+                                                  prev.map((it, i) => (i === idx ? { ...it, qty: val, isCustomQty: val > 0 } : it))
+                                                );
+                                              }}
+                                              className="w-24 px-2.5 py-1.5 text-right text-xs font-black text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 border-2 border-emerald-300 dark:border-emerald-800 rounded-xl focus:border-emerald-600 focus:ring-2 focus:ring-emerald-400/30 outline-none shadow-xs"
+                                            />
+                                            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">{item.unit || 'cái'}</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="p-2.5 text-right">
+                                        {isExisting ? (
+                                          <span className="text-xs font-black text-cyan-900 dark:text-cyan-200 px-2 py-1 inline-block">
+                                            {item.occupancyPct}%
+                                          </span>
+                                        ) : (
+                                          <div className="relative inline-flex items-center justify-end w-28">
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              max={100}
+                                              step="0.1"
+                                              value={item.occupancyPct !== undefined && item.occupancyPct !== null ? item.occupancyPct : ''}
+                                              placeholder="0"
+                                              onChange={(e) => {
+                                                const raw = e.target.value;
+                                                if (raw === '') {
+                                                  setEditableBinItems((prev) =>
+                                                    prev.map((it, i) => (i === idx ? { ...it, occupancyPct: '' as any } : it))
+                                                  );
+                                                  return;
+                                                }
+                                                const parsed = parseFloat(raw);
+                                                const val = Number.isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
+                                                setEditableBinItems((prev) =>
+                                                  prev.map((it, i) => (i === idx ? { ...it, occupancyPct: val } : it))
+                                                );
+                                              }}
+                                              onBlur={() => {
+                                                if (item.occupancyPct === ('' as any) || item.occupancyPct === undefined) {
+                                                  setEditableBinItems((prev) =>
+                                                    prev.map((it, i) => (i === idx ? { ...it, occupancyPct: 0 } : it))
+                                                  );
+                                                }
+                                              }}
+                                              className="w-full px-2.5 py-1.5 pr-6 text-right text-xs font-black text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-900 border-2 border-emerald-300 dark:border-emerald-800 rounded-xl focus:border-emerald-600 focus:ring-2 focus:ring-emerald-400/30 outline-none shadow-xs"
+                                            />
+                                            <span className="absolute right-2 top-2 text-xs font-black text-emerald-500">%</span>
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Add New Line in Inbound */}
+                          <div className="flex items-center justify-between gap-2 pt-1">
+                            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                              Thêm sản phẩm khác vào ô {editingBinConfig.shortCode}:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+                                const remainingPct = Math.max(0, 100 - sumPct);
+                                setEditableBinItems((prev) => [
+                                  ...prev,
+                                  {
+                                    rowId: `custom-line-${Date.now()}`,
+                                    productName: `Mặt hàng bổ sung #${prev.length + 1} (Lô nhập mới)`,
+                                    qty: 10,
+                                    occupancyPct: remainingPct > 0 ? remainingPct : 10,
+                                    isExistingStock: false,
+                                    unit: 'Cái',
+                                  },
+                                ]);
+                              }}
+                              className="text-[11px] font-black text-cyan-700 hover:text-cyan-900 dark:text-cyan-300 bg-cyan-100/70 hover:bg-cyan-200/80 dark:bg-cyan-950/60 border border-cyan-300 dark:border-cyan-800 px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-2xs active:scale-95"
+                            >
+                              + Thêm dòng sản phẩm (Dòng #{editableBinItems.length + 1})
+                            </button>
+                          </div>
+
+                          {/* Inbound Summary */}
+                          {(() => {
+                            const sumPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
+                            const remainingPct = Math.max(0, Number((100 - sumPct).toFixed(1)));
+                            const isOverCap = sumPct > 100;
+                            return (
+                              <div className={`p-3 rounded-xl border text-xs font-bold ${isOverCap ? 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 text-rose-900 dark:text-rose-200' : 'bg-cyan-100/60 dark:bg-cyan-950/60 border-cyan-200 text-cyan-900 dark:text-cyan-200'}`}>
+                                Tổng độ chứa ô = <strong className={`underline font-black ${isOverCap ? 'text-rose-700 dark:text-rose-300' : 'text-cyan-700 dark:text-cyan-300'}`}>{sumPct}%</strong>{' '}
+                                {isOverCap ? `(CẢNH BÁO: VƯỢT QUÁ SỨC CHỨA Ô ${Number((sumPct - 100).toFixed(1))}%!)` : `(Còn trống ${remainingPct}%)`}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )
                     )}
                   </>
                 );
               })()}
 
               {/* 5. Footer Buttons */}
-              {readOnly || !isOutbound ? (
+              {readOnly ? (
                 <div className="flex items-center justify-end w-full pt-3 border-t border-slate-200 dark:border-slate-800">
                   <button
                     type="button"
@@ -2475,7 +2669,15 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setEditableBinItems((prev) => prev.map((it) => ({ ...it, qty: 0, occupancyPct: 0 })));
+                      if (isOutbound) {
+                        setEditableBinItems((prev) => prev.map((it) => ({ ...it, qty: 0, occupancyPct: 0 })));
+                      } else {
+                        setEditableBinItems((prev) => prev.map((it) => ({ ...it, occupancyPct: 0, qty: 0 })));
+                        if (onUpdateBinCapacity) {
+                          onUpdateBinCapacity(editingBinConfig.binCode, 0, undefined, undefined, 0);
+                        }
+                        setEditingBinConfig(null);
+                      }
                     }}
                     className="h-9 px-3.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-bold rounded-xl transition cursor-pointer border border-rose-200 dark:border-rose-900/60"
                   >
@@ -2493,19 +2695,41 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
-                        const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
-                        const initialBinPct = editingBinConfig.currentPct || 100;
-                        const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
+                        if (isOutbound) {
+                          const totalExportQty = editableBinItems.reduce((acc, curr) => acc + (Number(curr.qty) || 0), 0);
+                          const totalExportPct = Number(editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0).toFixed(1));
+                          const initialBinPct = editingBinConfig.currentPct || 100;
+                          const remainingAfterExport = Math.max(0, Number((initialBinPct - totalExportPct).toFixed(1)));
+
+                          editableBinItems.forEach((item) => {
+                            if (onUpdateBinCapacity) {
+                              onUpdateBinCapacity(
+                                editingBinConfig.binCode,
+                                Number(item.occupancyPct) || 0,
+                                `REMAINING:${remainingAfterExport}`,
+                                item.rowId,
+                                item.qty !== undefined ? Number(item.qty) : undefined
+                              );
+                            }
+                          });
+                          setEditingBinConfig(null);
+                          return;
+                        }
+
+                        const sumPct = editableBinItems.reduce((acc, curr) => acc + (Number(curr.occupancyPct) || 0), 0);
+                        if (sumPct > 100) {
+                          alert(`Tổng % độ chứa (${sumPct}%) vượt quá 100%! Vui lòng điều chỉnh lại cho tổng các sản phẩm <= 100%.`);
+                          return;
+                        }
 
                         editableBinItems.forEach((item) => {
                           if (onUpdateBinCapacity) {
                             onUpdateBinCapacity(
                               editingBinConfig.binCode,
                               Number(item.occupancyPct) || 0,
-                              `REMAINING:${remainingAfterExport}`,
+                              undefined,
                               item.rowId,
-                              item.qty !== undefined ? Number(item.qty) : undefined
+                              item.qty !== undefined && Number(item.qty) > 0 ? Number(item.qty) : undefined
                             );
                           }
                         });

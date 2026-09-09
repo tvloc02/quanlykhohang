@@ -256,8 +256,10 @@ function isWarehouseAssignedToUser(userId: string, warehouse: WarehouseRecord) {
 }
 
 function getWarehouseOptionsForUser(userId: string, warehouses: WarehouseRecord[]) {
-  if (!userId) return warehouses || [];
-  return (warehouses || []).filter((warehouse) => isWarehouseAssignedToUser(userId, warehouse));
+  const unfrozen = (warehouses || []).filter((warehouse) => !warehouse.isFrozen);
+  if (!userId) return unfrozen;
+  const assigned = unfrozen.filter((warehouse) => isWarehouseAssignedToUser(userId, warehouse));
+  return assigned.length > 0 ? assigned : unfrozen;
 }
 
 function getApproversForWarehouse(warehouse: WarehouseRecord | null, users: PurchaseOrderUser[]) {

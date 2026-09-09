@@ -14,24 +14,34 @@ import { User } from '../entities/user.entity';
 import { Warehouse } from '../entities/warehouse.entity';
 import { calculateAggregatedStock } from '../products/products.service';
 
-function parseSafeDate(dateStr?: string): Date | null {
+function parseSafeDate(dateStr?: string, isEndOfDay = false): Date | null {
   if (!dateStr || typeof dateStr !== 'string') return null;
   const s = dateStr.trim();
   if (!s) return null;
 
-  if (s.includes('/')) {
+  let d: Date | null = null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [year, month, day] = s.split('-').map(Number);
+    d = new Date(year, month - 1, day);
+  } else if (s.includes('/')) {
     const parts = s.split('/');
     if (parts.length === 3) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
       const year = parseInt(parts[2], 10);
-      const d = new Date(year, month, day);
-      if (!isNaN(d.getTime())) return d;
+      d = new Date(year, month, day);
     }
+  } else {
+    d = new Date(s);
   }
 
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d;
+  if (!d || isNaN(d.getTime())) return null;
+  if (isEndOfDay) {
+    d.setHours(23, 59, 59, 999);
+  } else {
+    d.setHours(0, 0, 0, 0);
+  }
+  return d;
 }
 
 @Injectable()
@@ -334,41 +344,227 @@ export class DashboardService {
    * BÁO CÁO BÁN HÀNG (REAL DATABASE QUERY)
    */
   /**
-   * BÁO CÁO BÁN HÀNG (REAL DATABASE QUERY)
+   * BÁO CÁO BÁN HÀNG TỔNG HỢP (REAL DATABASE QUERY WITH PROPER GROUPING, IMPORT-PRICE RETURN & NET REVENUE)
    */
   async getSalesReport(startDate?: string, endDate?: string, groupBy: string = 'day') {
-    const qb = this.outboundRepo.createQueryBuilder('o')
-      .leftJoin('o.details', 'd')
+    const sDate = parseSafeDate(startDate, false);
+    const eDate = parseSafeDate(endDate, true);
+
+    // 1. Query Outbound Orders (sales & returns)
+    const obQb = this.outboundRepo.createQueryBuilder('o')
+      .leftJoinAndSelect('o.details', 'd')
+      .leftJoinAndSelect('d.product', 'p')
+      .leftJoinAndSelect('o.customer', 'c')
       .where('(o.orderType IS NULL OR o.orderType != :disposalType)', { disposalType: 'disposal' })
       .andWhere('(o.orderNo IS NULL OR o.orderNo NOT LIKE :xhPrefix)', { xhPrefix: 'XH%' })
-      .select('DATE(o.createdAt)', 'date')
-      .addSelect('COUNT(DISTINCT o.id)', 'salesOrderCount')
-      .addSelect('COALESCE(SUM(CAST(d.totalLineAmount AS DECIMAL(14,2))), 0)', 'revenue')
-      .groupBy('DATE(o.createdAt)')
-      .orderBy('DATE(o.createdAt)', 'DESC');
+      .andWhere('(o.status IS NULL OR o.status NOT IN (:...cancelledStatuses))', {
+        cancelledStatuses: ['Đã hủy', 'CANCELLED', 'cancelled'],
+      });
 
-    const sDate = parseSafeDate(startDate);
-    const eDate = parseSafeDate(endDate);
     if (sDate) {
-      qb.andWhere('o.createdAt >= :sDate', { sDate });
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) >= :sDate', { sDate });
     }
     if (eDate) {
-      const endOfDay = new Date(eDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      qb.andWhere('o.createdAt <= :eDate', { eDate: endOfDay });
+      obQb.andWhere('COALESCE(o.orderDate, o.createdAt) <= :eDate', { eDate });
     }
 
-    const rows = await qb.getRawMany().catch(() => []);
-    return rows.map((r, idx) => ({
-      id: String(idx + 1),
-      dateOrName: r.date ? new Date(r.date).toLocaleDateString('vi-VN') : 'Hôm nay',
-      salesOrderCount: Number(r.salesOrderCount || 0),
-      revenue: Number(r.revenue || 0),
-      discount: 0,
-      returnOrderCount: 0,
-      returnAmount: 0,
-      netRevenue: Number(r.revenue || 0),
-    }));
+    const outbounds = await obQb.getMany().catch((err) => {
+      console.error('Error fetching outbounds for sales report:', err);
+      return [];
+    });
+
+    // 2. Query Inbound Customer Returns
+    const ibQb = this.inboundRepo.createQueryBuilder('i')
+      .leftJoinAndSelect('i.details', 'd')
+      .leftJoinAndSelect('d.product', 'p')
+      .where('(i.receiptType IN (:...returnTypes) OR i.poNumber LIKE :nhktPrefix)', {
+        returnTypes: ['return-customer', 'RETURNED_GOODS', 'return', 'return_customer'],
+        nhktPrefix: 'NHKT%',
+      })
+      .andWhere('(i.status IS NULL OR i.status NOT IN (:...cancelledStatuses))', {
+        cancelledStatuses: ['Đã hủy', 'CANCELLED', 'cancelled'],
+      });
+
+    if (sDate) {
+      ibQb.andWhere('COALESCE(i.orderDate, i.expectedDate) >= :sDate', { sDate });
+    }
+    if (eDate) {
+      ibQb.andWhere('COALESCE(i.orderDate, i.expectedDate) <= :eDate', { eDate });
+    }
+
+    const inboundReturns = await ibQb.getMany().catch((err) => {
+      console.error('Error fetching inbound returns for sales report:', err);
+      return [];
+    });
+
+    // 3. Warehouses for branch names
+    const warehouses = await this.warehouseRepo.find().catch(() => []);
+    const whMap = new Map<string, string>();
+    warehouses.forEach((w) => {
+      if (w.code) whMap.set(w.code.toUpperCase(), w.name || w.code);
+    });
+
+    // Map to aggregate groups
+    const groupMap = new Map<string, {
+      id: string;
+      dateOrName: string;
+      salesOrderCount: number;
+      revenue: number;
+      discount: number;
+      vatAmount: number;
+      returnOrderCount: number;
+      returnAmount: number;
+      netRevenue: number;
+      orders: any[];
+    }>();
+
+    const getGroupKeyAndLabel = (rawDate: any, employeeName?: string, customerName?: string, branchCode?: string) => {
+      let dStr = '';
+      if (rawDate) {
+        const dObj = new Date(rawDate);
+        if (!isNaN(dObj.getTime())) {
+          const y = dObj.getFullYear();
+          const m = String(dObj.getMonth() + 1).padStart(2, '0');
+          const d = String(dObj.getDate()).padStart(2, '0');
+          dStr = `${y}-${m}-${d}`;
+        }
+      }
+
+      if (groupBy === 'day') {
+        const key = dStr || 'Không xác định';
+        return { key, label: key };
+      }
+      if (groupBy === 'month') {
+        const key = dStr ? dStr.substring(0, 7) : 'Không xác định';
+        const label = dStr ? `Tháng ${dStr.substring(5, 7)}/${dStr.substring(0, 4)}` : 'Không xác định';
+        return { key, label };
+      }
+      if (groupBy === 'year') {
+        const key = dStr ? dStr.substring(0, 4) : 'Không xác định';
+        const label = dStr ? `Năm ${dStr.substring(0, 4)}` : 'Không xác định';
+        return { key, label };
+      }
+      if (groupBy === 'staff') {
+        const key = (employeeName || '').trim() || 'NV Chưa rõ';
+        return { key, label: key };
+      }
+      if (groupBy === 'customer') {
+        const key = (customerName || '').trim() || 'Khách lẻ / vãng lai';
+        return { key, label: key };
+      }
+      if (groupBy === 'branch') {
+        const code = (branchCode || '').trim().toUpperCase();
+        const label = whMap.get(code) || (code ? `Kho ${code}` : 'Kho Tổng');
+        return { key: code || 'KHO-TONG', label };
+      }
+      const key = dStr || 'Không xác định';
+      return { key, label: key };
+    };
+
+    const getOrCreateGroup = (key: string, label: string) => {
+      let g = groupMap.get(key);
+      if (!g) {
+        g = {
+          id: key,
+          dateOrName: label,
+          salesOrderCount: 0,
+          revenue: 0,
+          discount: 0,
+          vatAmount: 0,
+          returnOrderCount: 0,
+          returnAmount: 0,
+          netRevenue: 0,
+          orders: [],
+        };
+        groupMap.set(key, g);
+      }
+      return g;
+    };
+
+    // Process Outbound Orders
+    for (const o of outbounds) {
+      const isReturn = o.orderType === 'return' || o.orderType === 'return_customer' || o.orderType === 'return-supplier';
+      const rawDate = o.orderDate || o.createdAt;
+      const { key, label } = getGroupKeyAndLabel(rawDate, o.employeeName, o.customerName || o.customer?.name, o.branchCode);
+      const group = getOrCreateGroup(key, label);
+
+      if (isReturn) {
+        group.returnOrderCount += 1;
+        // Tiền hàng trả tính theo GIÁ NHẬP của sản phẩm
+        let returnVal = 0;
+        if (o.details && o.details.length > 0) {
+          for (const d of o.details) {
+            const qty = Number(d.pickedQty || d.requiredQty || 0);
+            const importPrice = Number(d.product?.importPrice || 0);
+            returnVal += qty * (importPrice > 0 ? importPrice : Number(d.unitPrice || 0));
+          }
+        }
+        if (returnVal === 0) {
+          returnVal = Number(o.totalAmount || o.subtotal || 0);
+        }
+        group.returnAmount += returnVal;
+      } else {
+        group.salesOrderCount += 1;
+        const subtotal = Number(o.subtotal || 0) || (o.details || []).reduce((sum, d) => sum + Number(d.totalLineAmount || 0), 0);
+        const disc = Number(o.discount || 0);
+        const vat = Number(o.vatAmount || 0);
+        const total = Number(o.totalAmount || (subtotal - disc + vat));
+
+        group.revenue += subtotal;
+        group.discount += disc;
+        group.vatAmount += vat;
+
+        group.orders.push({
+          id: o.id,
+          orderNo: o.orderNo,
+          orderDate: o.orderDate || o.createdAt,
+          customerName: o.customerName || o.customer?.name,
+          employeeName: o.employeeName,
+          subtotal,
+          discount: disc,
+          vatAmount: vat,
+          totalAmount: total,
+          status: o.status || 'Hoàn thành',
+        });
+      }
+    }
+
+    // Process Inbound Customer Returns
+    for (const i of inboundReturns) {
+      const rawDate = i.orderDate || i.expectedDate;
+      const { key, label } = getGroupKeyAndLabel(rawDate, i.creatorName, i.supplierName, i.warehouseCode || i.branchCode);
+      const group = getOrCreateGroup(key, label);
+
+      group.returnOrderCount += 1;
+      // Tiền hàng trả tính theo GIÁ NHẬP của sản phẩm
+      let returnVal = 0;
+      if (i.details && i.details.length > 0) {
+        for (const d of i.details) {
+          const qty = Number(d.receivedQty || d.expectedQty || 0);
+          const importPrice = Number(d.product?.importPrice || 0);
+          returnVal += qty * (importPrice > 0 ? importPrice : Number(d.unitPrice || 0));
+        }
+      }
+      if (returnVal === 0) {
+        returnVal = Number(i.totalAmount || i.subtotal || 0);
+      }
+      group.returnAmount += returnVal;
+    }
+
+    // CỘT CUỐI MỚI TỔNG LẠI: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
+    const results = Array.from(groupMap.values()).map((g) => {
+      g.netRevenue = Math.max(0, g.revenue - g.discount - g.returnAmount + g.vatAmount);
+      return g;
+    });
+
+    // Sorting
+    if (['day', 'month', 'year'].includes(groupBy)) {
+      results.sort((a, b) => b.id.localeCompare(a.id));
+    } else {
+      results.sort((a, b) => b.netRevenue - a.netRevenue);
+    }
+
+    return results;
   }
 
   /**
@@ -934,5 +1130,200 @@ export class DashboardService {
       discount: stat.discount,
       netRevenue: stat.revenue - stat.discount,
     }));
+  }
+
+  /** BÁO CÁO HÀNG TỒN TRÊN KỆ THEO PHÂN KHU VÀ THỜI GIAN NHẬP */
+  async getShelfInventoryReport(query: {
+    warehouseCode?: string;
+    zoneCode?: string;
+    rackCode?: string;
+    beforeDate?: string;
+    onlyWithStock?: boolean | string;
+    search?: string;
+  }) {
+    const rawWarehouses = await this.warehouseRepo.find().catch(() => []);
+    const allWarehouses = rawWarehouses.filter((w) => w.status !== 'inactive');
+
+    const stockQuery = this.stockRepo.createQueryBuilder('sb')
+      .leftJoinAndSelect('sb.product', 'p')
+      .leftJoinAndSelect('p.category', 'c')
+      .where('sb.locationCode LIKE :zonePattern', { zonePattern: '%-ZONE-%' });
+
+    if (query.onlyWithStock === undefined || query.onlyWithStock === true || query.onlyWithStock === 'true') {
+      stockQuery.andWhere('sb.totalPhysical > 0');
+    }
+
+    const stockBalances = await stockQuery.getMany().catch(() => []);
+
+    // Lấy thông tin phiếu nhập để xác định ngày nhập và mã phiếu đưa hàng vào kệ
+    const inbounds: any[] = await this.inboundRepo.manager.query(`
+      SELECT 
+        ir.poNumber,
+        COALESCE(ir.orderDate, ir.expectedDate) as orderDate,
+        id.productId,
+        id.receivedQty,
+        id.warehouseCode,
+        id.note
+      FROM inbound_details id
+      JOIN inbound_receipts ir ON ir.id = id.inboundReceiptId
+      ORDER BY COALESCE(ir.orderDate, ir.expectedDate) DESC
+    `).catch(() => []);
+
+    const extractCleanLoc = (str: string) => {
+      if (!str) return '';
+      const m = str.match(/([A-Z0-9]+-ZONE-[A-Z0-9]+-R\d+-[A-Z0-9]+)/i);
+      return m ? m[1].toUpperCase() : '';
+    };
+
+    const parseLocComponents = (locStr: string) => {
+      const clean = extractCleanLoc(locStr);
+      if (!clean) return null;
+      const parts = clean.split('-');
+      return {
+        warehouseCode: parts[0] || '',
+        zoneCode: parts.length >= 3 ? `${parts[1]}-${parts[2]}` : '',
+        rackCode: parts.length >= 4 ? parts[3] : '',
+        binCode: parts.length >= 5 ? parts[4] : '',
+        cleanLocation: clean,
+      };
+    };
+
+    const items: any[] = [];
+    const now = new Date();
+
+    for (const sb of stockBalances) {
+      const comp = parseLocComponents(sb.locationCode);
+      if (!comp) continue;
+
+      if (query.warehouseCode && query.warehouseCode !== 'ALL' && query.warehouseCode !== 'all') {
+        if (comp.warehouseCode !== query.warehouseCode) continue;
+      }
+
+      if (query.zoneCode && query.zoneCode !== 'ALL' && query.zoneCode !== 'all') {
+        if (comp.zoneCode !== query.zoneCode) continue;
+      }
+
+      if (query.rackCode && query.rackCode !== 'ALL' && query.rackCode !== 'all') {
+        if (comp.rackCode !== query.rackCode) continue;
+      }
+
+      const wh = allWarehouses.find((w) => w.code === comp.warehouseCode) || {
+        code: comp.warehouseCode,
+        name: `Kho ${comp.warehouseCode}`,
+      };
+
+      const product = sb.product;
+      const prodId = product?.id || (sb as any).productId;
+      const productName = product?.name || 'Sản phẩm';
+      const productSku = product?.internalSku || product?.supplierBarcode || `SP${prodId}`;
+      const unit = product?.unit || 'Cái';
+      const categoryName = product?.category?.name || 'Mặc định';
+      const importPrice = Number(product?.importPrice || product?.price || 0);
+      const qty = Number(sb.totalPhysical || 0);
+      const available = Number(sb.available !== undefined ? sb.available : qty);
+      const totalValue = Math.round(qty * importPrice);
+
+      if (query.search) {
+        const s = query.search.trim().toLowerCase();
+        const matchName = productName.toLowerCase().includes(s);
+        const matchSku = productSku.toLowerCase().includes(s);
+        const matchLoc = sb.locationCode.toLowerCase().includes(s);
+        const matchWh = (wh.name || '').toLowerCase().includes(s);
+        if (!matchName && !matchSku && !matchLoc && !matchWh) continue;
+      }
+
+      // Khớp phiếu nhập theo vị trí ô kệ và productId (ưu tiên khớp chính xác ô kệ, fallback theo kho hoặc productId)
+      const matchIb = inbounds.find((ib: any) => {
+        if (Number(ib.productId) !== Number(prodId)) return false;
+        const note = String(ib.note || '');
+        return note.includes(comp.cleanLocation) || note.includes(comp.binCode);
+      }) || inbounds.find((ib: any) => {
+        return Number(ib.productId) === Number(prodId) && (!ib.warehouseCode || ib.warehouseCode === comp.warehouseCode);
+      }) || inbounds.find((ib: any) => Number(ib.productId) === Number(prodId));
+
+      const inboundDate = matchIb?.orderDate ? new Date(matchIb.orderDate) : null;
+      const poNumber = matchIb?.poNumber || null;
+
+      const daysInStock = inboundDate
+        ? Math.max(0, Math.floor((now.getTime() - inboundDate.getTime()) / (1000 * 60 * 60 * 24)))
+        : 0;
+
+      // Lọc theo mốc thời gian: Hàng được nhập trước ngày X mà hiện tại vẫn nằm trên kệ
+      if (query.beforeDate) {
+        const bDate = new Date(query.beforeDate);
+        if (!isNaN(bDate.getTime())) {
+          bDate.setHours(23, 59, 59, 999);
+          if (!inboundDate || inboundDate.getTime() > bDate.getTime()) {
+            continue;
+          }
+        }
+      }
+
+      let occupancyPct = 0;
+      let notes = '';
+      const parenMatch = sb.locationCode.match(/\((.*?)\)/);
+      if (parenMatch) {
+        notes = parenMatch[1];
+        const pctMatch = notes.match(/(\d+)%/);
+        if (pctMatch) occupancyPct = parseInt(pctMatch[1], 10);
+      }
+
+      items.push({
+        id: `shelf_${sb.id}`,
+        balanceId: sb.id,
+        warehouseCode: comp.warehouseCode,
+        warehouseName: wh.name,
+        zoneCode: comp.zoneCode,
+        zoneName: `Phân khu ${comp.zoneCode.replace('ZONE-', '')}`,
+        rackCode: comp.rackCode,
+        rackName: `Kệ ${comp.rackCode}`,
+        binCode: comp.binCode,
+        fullLocationCode: sb.locationCode,
+        cleanLocationCode: comp.cleanLocation,
+        productId: prodId,
+        productSku,
+        productName,
+        unit,
+        categoryName,
+        quantity: qty,
+        available,
+        importPrice,
+        totalValue,
+        inboundDate: inboundDate ? inboundDate.toISOString() : null,
+        poNumber,
+        daysInStock,
+        occupancyPct: occupancyPct || (qty > 0 ? 100 : 0),
+        notes: notes || (qty > 0 ? `Chứa: ${qty} ${unit}` : 'Kệ trống'),
+      });
+    }
+
+    items.sort((a, b) => {
+      if (a.warehouseCode !== b.warehouseCode) return a.warehouseCode.localeCompare(b.warehouseCode);
+      if (a.zoneCode !== b.zoneCode) return a.zoneCode.localeCompare(b.zoneCode);
+      if (a.rackCode !== b.rackCode) return a.rackCode.localeCompare(b.rackCode);
+      return a.binCode.localeCompare(b.binCode);
+    });
+
+    const distinctWhs = new Set(items.map((i) => i.warehouseCode));
+    const distinctZones = new Set(items.map((i) => `${i.warehouseCode}_${i.zoneCode}`));
+    const distinctRacks = new Set(items.map((i) => `${i.warehouseCode}_${i.zoneCode}_${i.rackCode}`));
+    const distinctBins = new Set(items.map((i) => i.cleanLocationCode));
+    const totalQty = items.reduce((s, i) => s + i.quantity, 0);
+    const totalVal = items.reduce((s, i) => s + i.totalValue, 0);
+    const staleCount = items.filter((i) => i.daysInStock >= 15).length;
+
+    return {
+      summary: {
+        totalWarehouses: distinctWhs.size,
+        totalZones: distinctZones.size,
+        totalRacks: distinctRacks.size,
+        totalBins: distinctBins.size,
+        totalProductsCount: items.length,
+        totalQuantity: totalQty,
+        totalValue: totalVal,
+        staleStockCount: staleCount,
+      },
+      items,
+    };
   }
 }

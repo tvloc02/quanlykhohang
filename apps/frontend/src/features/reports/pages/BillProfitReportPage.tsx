@@ -14,10 +14,6 @@ import {
   Settings,
   Maximize2,
   Minimize2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
@@ -66,9 +62,6 @@ export default function BillProfitReportPage() {
   const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Pagination states
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Fullscreen state
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -214,9 +207,6 @@ export default function BillProfitReportPage() {
     });
   }, [reportData, searchQuery, fromDate, toDate]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, fromDate, toDate]);
 
   // Totals calculations
   const totalExportQty = filteredData.reduce((sum, i) => sum + i.exportQty, 0);
@@ -232,14 +222,7 @@ export default function BillProfitReportPage() {
     (columnVis.productCode ? 1 : 0) +
     (columnVis.productName ? 1 : 0);
 
-  const totalItems = filteredData.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const endIndex = Math.min(currentPage * pageSize, totalItems);
-  const paginatedData = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredData.slice(start, start + pageSize);
-  }, [filteredData, currentPage, pageSize]);
+  const paginatedData = filteredData;
 
   const handleExportExcel = () => {
     if (filteredData.length === 0) return;
@@ -372,10 +355,7 @@ export default function BillProfitReportPage() {
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setSearchQuery(e.target.value)}
               className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
               placeholder="Tìm theo mã HĐ, chi nhánh, mã SP, tên sản phẩm..."
             />
@@ -392,20 +372,14 @@ export default function BillProfitReportPage() {
               <input
                 type="date"
                 value={fromDate}
-                onChange={(e) => {
-                  setFromDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setFromDate(e.target.value)}
                 className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
               <span className="text-xs font-bold text-slate-600">Đến</span>
               <input
                 type="date"
                 value={toDate}
-                onChange={(e) => {
-                  setToDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setToDate(e.target.value)}
                 className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
             </div>
@@ -500,7 +474,7 @@ export default function BillProfitReportPage() {
                 </tr>
               ) : (
                 paginatedData.map((item, index) => {
-                  const globalIndex = (currentPage - 1) * pageSize + index + 1;
+                  const globalIndex = index + 1;
                   const isNegative = item.profit < 0;
 
                   return (
@@ -628,71 +602,11 @@ export default function BillProfitReportPage() {
           </table>
         </div>
 
-        {/* PAGINATION FOOTER ATTACHED */}
-        {totalItems > 0 && (
-          <div className="flex flex-col items-center justify-between border-t-2 border-slate-200 bg-white px-5 py-3 sm:flex-row text-xs font-bold text-slate-700">
-            <div className="font-semibold text-slate-600">
-              Hiển thị <span className="font-bold text-slate-900">{startIndex} - {endIndex}</span> trong tổng số <span className="font-bold text-slate-900">{totalItems}</span> bản ghi
-            </div>
-            <div className="mt-3 flex items-center gap-3 sm:mt-0">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 font-bold">Hiển thị:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none cursor-pointer"
-                >
-                  <option value={10}>10 dòng/trang</option>
-                  <option value={20}>20 dòng/trang</option>
-                  <option value={50}>50 dòng/trang</option>
-                  <option value={100}>100 dòng/trang</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  title="Trang đầu"
-                >
-                  <ChevronsLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  title="Trang trước"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="px-3 py-1 font-bold text-slate-800 bg-slate-100 rounded-lg text-xs">
-                  {currentPage} / {totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  title="Trang sau"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
-                  title="Trang cuối"
-                >
-                  <ChevronsRight className="h-4 w-4" />
-                </button>
-              </div>
+        {/* SUMMARY FOOTER */}
+        {filteredData.length > 0 && (
+          <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-500 print:hidden">
+            <div>
+              Tổng cộng <span className="font-bold text-slate-900">{filteredData.length}</span> bản ghi
             </div>
           </div>
         )}

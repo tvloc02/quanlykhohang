@@ -13,10 +13,6 @@ import {
   Settings,
   Maximize2,
   Minimize2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   SlidersHorizontal,
   UserCheck,
   Users,
@@ -188,9 +184,6 @@ export default function SalesReportPage() {
   const [chartTimeGroup, setChartTimeGroup] = useState<'day' | 'month' | 'year'>('day');
   const [hoveredPoint, setHoveredPoint] = useState<SalesGroupItem | null>(null);
 
-  // Pagination states matching Outbound
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
 
   // Fullscreen state
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -232,123 +225,36 @@ export default function SalesReportPage() {
     setLoading(true);
     setError('');
     try {
-      // 1. Fetch live Outbound Orders for full accuracy
-      let liveOutbounds: any[] = [];
-      try {
-        const obRes = await fetch(`${API_BASE_URL}/outbounds`, { headers: authHeaders() });
-        if (obRes.ok) {
-          const raw = await obRes.json();
-          liveOutbounds = Array.isArray(raw) ? raw : raw.data || [];
-        }
-      } catch (err) {
-        console.warn('Could not fetch live outbounds directly:', err);
-      }
+      const activeGroup = groupBy === 'chart' ? chartTimeGroup : groupBy;
+      const res = await reportsApi.getSalesReport(startDate, endDate, activeGroup);
+      const items = Array.isArray(res) ? res : [];
+      setData(
+        items.map((item: any, idx: number) => {
+          const rev = Number(item.revenue || 0);
+          const disc = Number(item.discount || 0);
+          const vat = Number(item.vatAmount || 0);
+          const ret = Number(item.returnAmount || 0);
+          // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
+          const net = item.netRevenue !== undefined && item.netRevenue !== null
+            ? Number(item.netRevenue)
+            : Math.max(0, rev - disc - ret + vat);
 
-      // 2. Fetch report API summary
-      let apiSummary: any[] = [];
-      try {
-        const activeGroup = groupBy === 'chart' ? chartTimeGroup : groupBy;
-        const res = await reportsApi.getSalesReport(startDate, endDate, activeGroup);
-        apiSummary = Array.isArray(res) ? res : [];
-      } catch (err) {
-        console.warn('Reports API fallback triggered');
-      }
-
-      // 3. Process live Outbounds if available
-      if (liveOutbounds.length > 0) {
-        const startTimestamp = startDate ? new Date(`${startDate}T00:00:00`).getTime() : 0;
-        const endTimestamp = endDate ? new Date(`${endDate}T23:59:59`).getTime() : Date.now();
-
-        const filtered = liveOutbounds.filter((o) => {
-          if (o.status === 'Đã hủy' || o.orderType === 'disposal') return false;
-          const orderDateStr = o.orderDate || o.createdAt;
-          if (!orderDateStr) return true;
-          const t = new Date(orderDateStr).getTime();
-          return t >= startTimestamp && t <= endTimestamp;
-        });
-
-        const activeGroup = groupBy === 'chart' ? chartTimeGroup : groupBy;
-        const groupMap = new Map<string, SalesGroupItem>();
-
-        filtered.forEach((o) => {
-          let groupKey = '';
-          const rawDateStr = (o.orderDate || o.createdAt || '').split('T')[0];
-
-          if (activeGroup === 'day') {
-            groupKey = rawDateStr || 'Không xác định';
-          } else if (activeGroup === 'month') {
-            groupKey = rawDateStr ? rawDateStr.substring(0, 7) : 'Không xác định';
-          } else if (activeGroup === 'year') {
-            groupKey = rawDateStr ? rawDateStr.substring(0, 4) : 'Không xác định';
-          } else if (activeGroup === 'staff') {
-            groupKey = o.employeeName || o.creatorName || o.createdByName || 'NV Chưa rõ';
-          } else if (activeGroup === 'customer') {
-            groupKey = o.customerName || o.customer?.name || 'Khách lẻ / vãng lai';
-          } else if (activeGroup === 'branch') {
-            groupKey = o.branchCode || o.warehouseCode || 'Kho Tổng';
-          }
-
-          const existing = groupMap.get(groupKey) || {
-            id: groupKey,
-            dateOrName: groupKey,
-            salesOrderCount: 0,
-            revenue: 0,
-            discount: 0,
-            vatAmount: 0,
-            returnOrderCount: 0,
-            returnAmount: 0,
-            netRevenue: 0,
-            orders: [],
-          };
-
-          const isReturn = o.orderType === 'return_customer' || o.orderType === 'return';
-          const subtotal = Number(o.subtotal || o.totalAmount || 0);
-          const disc = Number(o.discount || 0);
-          const vat = Number(o.vatAmount || 0);
-          const total = Number(o.totalAmount || subtotal - disc + vat);
-
-          if (isReturn) {
-            existing.returnOrderCount += 1;
-            existing.returnAmount += total;
-          } else {
-            existing.salesOrderCount += 1;
-            existing.revenue += subtotal;
-            existing.discount += disc;
-            existing.vatAmount += vat;
-            existing.netRevenue += total;
-          }
-
-          existing.orders.push(o);
-          groupMap.set(groupKey, existing);
-        });
-
-        const items = Array.from(groupMap.values());
-        if (activeGroup === 'day' || activeGroup === 'month' || activeGroup === 'year') {
-          items.sort((a, b) => a.dateOrName.localeCompare(b.dateOrName));
-        } else {
-          items.sort((a, b) => b.netRevenue - a.netRevenue);
-        }
-
-        setData(items);
-      } else if (apiSummary.length > 0) {
-        setData(
-          apiSummary.map((item: any, idx: number) => ({
-            id: String(idx + 1),
+          return {
+            id: String(item.id || idx + 1),
             dateOrName: item.dateOrName || item.groupName || item.date || `Nhóm ${idx + 1}`,
             salesOrderCount: Number(item.salesOrderCount || item.ordersCount || 0),
-            revenue: Number(item.revenue || 0),
-            discount: Number(item.discount || 0),
-            vatAmount: Number(item.vatAmount || 0),
+            revenue: rev,
+            discount: disc,
+            vatAmount: vat,
             returnOrderCount: Number(item.returnOrderCount || 0),
-            returnAmount: Number(item.returnAmount || 0),
-            netRevenue: Number(item.netRevenue || (item.revenue || 0) - (item.discount || 0)),
-            orders: [],
-          }))
-        );
-      } else {
-        setData([]);
-      }
+            returnAmount: ret,
+            netRevenue: net,
+            orders: Array.isArray(item.orders) ? item.orders : [],
+          };
+        })
+      );
     } catch (err: any) {
+      console.error('Không thể kết nối dữ liệu báo cáo bán hàng:', err);
       setError(err?.message || 'Không thể kết nối dữ liệu báo cáo bán hàng');
       setData([]);
     } finally {
@@ -367,16 +273,11 @@ export default function SalesReportPage() {
     return data.filter((item) => item.dateOrName.toLowerCase().includes(term));
   }, [data, searchTerm]);
 
-  // Pagination calculation
-  const totalPages = Math.ceil(filteredData.length / pageSize) || 1;
-  const paginatedData = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredData.slice(start, start + pageSize);
-  }, [filteredData, currentPage, pageSize]);
+  const paginatedData = filteredData;
 
-  // Totals calculations
+  // Totals calculations: cột cuối mới tổng lại
   const totals = useMemo(() => {
-    return filteredData.reduce(
+    const sum = filteredData.reduce(
       (acc, item) => ({
         orders: acc.orders + (item.salesOrderCount || 0),
         revenue: acc.revenue + (item.revenue || 0),
@@ -384,10 +285,13 @@ export default function SalesReportPage() {
         vatAmount: acc.vatAmount + (item.vatAmount || 0),
         returnOrders: acc.returnOrders + (item.returnOrderCount || 0),
         returnAmount: acc.returnAmount + (item.returnAmount || 0),
-        netRevenue: acc.netRevenue + (item.netRevenue || 0),
+        netRevenue: 0,
       }),
       { orders: 0, revenue: 0, discount: 0, vatAmount: 0, returnOrders: 0, returnAmount: 0, netRevenue: 0 }
     );
+    // Cột cuối mới tổng lại: Doanh thu thuần = Thành tiền - Chiết khấu - Tiền hàng trả + Thuế VAT
+    sum.netRevenue = sum.revenue - sum.discount - sum.returnAmount + sum.vatAmount;
+    return sum;
   }, [filteredData]);
 
   // Build full timeline for Chart mode
@@ -584,10 +488,7 @@ export default function SalesReportPage() {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="h-12 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
               placeholder="Tìm theo mã nhóm, tên nhân viên, khách hàng, kho..."
             />
@@ -604,20 +505,14 @@ export default function SalesReportPage() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => {
-                  setStartDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setStartDate(e.target.value)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
               <span className="text-xs font-bold text-slate-600">Đến</span>
               <input
                 type="date"
                 value={endDate}
-                onChange={(e) => {
-                  setEndDate(e.target.value);
-                  setCurrentPage(1);
-                }}
+                onChange={(e) => setEndDate(e.target.value)}
                 className="h-9 rounded-lg border-2 border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
               />
             </div>
@@ -647,10 +542,7 @@ export default function SalesReportPage() {
                 <button
                   key={opt.id}
                   type="button"
-                  onClick={() => {
-                    setGroupBy(opt.id as any);
-                    setCurrentPage(1);
-                  }}
+                  onClick={() => setGroupBy(opt.id as any)}
                   className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition cursor-pointer ${
                     isActive
                       ? 'bg-cyan-600 text-white shadow-md border-2 border-cyan-600'
@@ -996,7 +888,7 @@ export default function SalesReportPage() {
                   </tr>
                 ) : paginatedData.length > 0 ? (
                   paginatedData.map((row, idx) => {
-                    const realIndex = (currentPage - 1) * pageSize + idx + 1;
+                    const realIndex = idx + 1;
                     return (
                       <tr key={row.id || idx} className="hover:bg-cyan-50/60 transition group">
                         <td className="py-3.5 px-3 text-center border-r border-slate-200 font-semibold text-slate-600">
@@ -1051,73 +943,9 @@ export default function SalesReportPage() {
             </table>
           </div>
 
-          {/* Pagination Footer matching Outbound Orders */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
-            <div className="flex items-center gap-2">
-              <span>Hiển thị:</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                className="h-8 px-2 rounded-lg border-2 border-slate-300 bg-white font-bold text-slate-800 outline-none focus:border-cyan-500 cursor-pointer"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-              <span>dòng/trang</span>
-              <span className="mx-2 text-slate-300">|</span>
-              <span>
-                Hiển thị {filteredData.length > 0 ? (currentPage - 1) * pageSize + 1 : 0} -{' '}
-                {Math.min(currentPage * pageSize, filteredData.length)} trên tổng {filteredData.length} nhóm
-              </span>
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setCurrentPage(1)}
-                disabled={currentPage === 1}
-                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-                title="Trang đầu"
-              >
-                <ChevronsLeft className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-                title="Trang trước"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="px-3 py-1 font-extrabold text-slate-800 bg-slate-100 rounded-lg">
-                Trang {currentPage} / {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                disabled={currentPage === totalPages}
-                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-                title="Trang tiếp"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage(totalPages)}
-                disabled={currentPage === totalPages}
-                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-cyan-50 disabled:opacity-40 cursor-pointer"
-                title="Trang cuối"
-              >
-                <ChevronsRight className="h-4 w-4" />
-              </button>
-            </div>
+          {/* Table Summary Footer */}
+          <div className="flex items-center justify-between px-4 py-3 bg-white border-t-2 border-slate-200 text-xs font-extrabold text-slate-700 print:hidden">
+            <span>Tổng cộng: {filteredData.length} nhóm</span>
           </div>
         </div>
       )}

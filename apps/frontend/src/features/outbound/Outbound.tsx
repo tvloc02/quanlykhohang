@@ -91,6 +91,9 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   'Đã xuất hủy': { label: 'Đã hoàn thành', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50 dark:bg-emerald-950/60', border: 'border-emerald-200 dark:border-emerald-800' },
   'Đã giao hàng': { label: 'Đã giao hàng', color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-50 dark:bg-blue-950/60', border: 'border-blue-200 dark:border-blue-800' },
   'shipped': { label: 'Đã giao hàng', color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-50 dark:bg-blue-950/60', border: 'border-blue-200 dark:border-blue-800' },
+  'DRAFT': { label: 'Lưu tạm', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'draft': { label: 'Lưu tạm', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
+  'Lưu tạm': { label: 'Lưu tạm', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
   'pending': { label: 'Chờ xử lý', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
   'Chờ xử lý': { label: 'Chờ xử lý', color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-50 dark:bg-amber-950/60', border: 'border-amber-200 dark:border-amber-800' },
   'picking': { label: 'Đang lấy hàng', color: 'text-violet-700 dark:text-violet-300', bg: 'bg-violet-50 dark:bg-violet-950/60', border: 'border-violet-200 dark:border-violet-800' },
@@ -101,7 +104,15 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
 };
 
 function StatusBadge({ status, isDisposal }: { status?: string; isDisposal?: boolean }) {
-  let normalizedStatus = status || (isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng');
+  const rawStatus = (status || '').trim();
+  if (['draft', 'lưu tạm'].includes(rawStatus.toLowerCase())) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-xs font-bold border whitespace-nowrap text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800">
+        Lưu tạm
+      </span>
+    );
+  }
+  let normalizedStatus = rawStatus || (isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng');
   if (isDisposal && ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed', 'đã hoàn thành'].includes(normalizedStatus.toLowerCase())) {
     normalizedStatus = 'Đã hoàn thành';
   }
@@ -988,25 +999,29 @@ export default function Outbound({
 
   const handleEditOrder = (ord: OutboundOrder) => {
     const statusLower = (ord.status || '').toLowerCase();
-    if (['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed'].includes(statusLower)) {
-      setToast({ message: 'Phiếu đã giao hàng / xuất hủy không thể chỉnh sửa!', type: 'error' });
+    const isDraft = ['draft', 'lưu tạm'].includes(statusLower);
+    if (!isDraft) {
+      setToast({ message: 'Chỉ phiếu ở trạng thái Lưu nháp mới có quyền chỉnh sửa! Phiếu đã tạo mới/xuất kho không thể sửa.', type: 'error' });
       return;
     }
     const existingDetails: FormDetailRow[] = ord.details && ord.details.length > 0
-      ? ord.details.map((d, idx) => ({
+      ? ord.details.map((d: any, idx) => ({
         rowId: `row-edit-${idx}-${Date.now()}`,
-        productId: d.productId,
-        productSku: d.productSku || '',
-        productName: d.productName || '',
+        productId: d.productId || d.product?.id || '',
+        productSku: d.productSku || d.product?.internalSku || '',
+        productName: d.productName || d.product?.name || '',
+        warehouseCode: d.warehouseCode || ord.branchCode || 'KHO-TONG',
+        locationBin: d.locationBin || (Array.isArray(d.assignedBins) ? d.assignedBins.join(', ') : ''),
+        assignedBins: Array.isArray(d.assignedBins) ? d.assignedBins : (d.locationBin ? [d.locationBin] : []),
         unit: d.unit || 'Cái',
-        qty: d.qty,
-        price: d.price,
-        discountPercent: 0,
-        discountAmount: 0,
-        vatPercent: 0,
-        vatAmount: 0,
-        totalAmount: d.totalLineAmount || (d.qty * d.price),
-        note: '',
+        qty: d.qty || d.requiredQty || 1,
+        price: d.price || d.unitPrice || 0,
+        discountPercent: Number(d.discountPercent || 0),
+        discountAmount: Number(d.discountAmount || 0),
+        vatPercent: Number(d.vatPercent || 0),
+        vatAmount: Number(d.vatAmount || 0),
+        totalAmount: d.totalLineAmount || d.totalAmount || ((d.qty || 1) * (d.price || 0)),
+        note: d.note || '',
       }))
       : [];
 
@@ -1230,8 +1245,10 @@ export default function Outbound({
       if (!matchStatus) {
         const lowerFilter = statusFilter.toLowerCase();
         const lowerStatus = (o.status || '').toLowerCase();
-        if (isDisposal && (lowerFilter === 'đã hoàn thành' || lowerFilter === 'đã xuất hủy' || lowerFilter === 'đã giao hàng')) {
-          matchStatus = ['đã hoàn thành', 'đã xuất hủy', 'đã giao hàng', 'shipped', 'completed', ''].includes(lowerStatus) || !o.status;
+        if (lowerFilter === 'lưu tạm' || lowerFilter === 'draft') {
+          matchStatus = ['draft', 'lưu tạm'].includes(lowerStatus);
+        } else if (isDisposal && (lowerFilter === 'đã hoàn thành' || lowerFilter === 'đã xuất hủy' || lowerFilter === 'đã giao hàng')) {
+          matchStatus = (['đã hoàn thành', 'đã xuất hủy', 'đã giao hàng', 'shipped', 'completed'].includes(lowerStatus) || !o.status) && !['draft', 'lưu tạm'].includes(lowerStatus);
         } else {
           matchStatus = lowerStatus === lowerFilter;
         }
@@ -1338,11 +1355,12 @@ export default function Outbound({
   };
 
   return (
-    <div className={isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''}>
+    <div className={`${isFullScreen ? 'fixed inset-0 z-[9000] bg-white dark:bg-[#030712] overflow-y-auto p-6 space-y-6' : ''} ${showPrintModal ? 'print:hidden' : ''}`}>
       <Toast message={toast.message} type={toast.type} onClose={() => setToast({ message: '', type: 'success' })} />
 
-      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (LUÔN IN KHỔ NGANG, TỰ ĐỘNG CO DÃN VỪA KHÍT) ─── */}
-      <style>{`
+      {/* ─── STYLE CHO IN BÁO CÁO DANH SÁCH (CHỈ ÁP DỤNG KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+      {!showPrintModal && (
+        <style>{`
         @page {
           size: landscape;
           margin: 5mm 6mm;
@@ -1499,36 +1517,39 @@ export default function Outbound({
           }
         }
       `}</style>
+      )}
 
-      {/* ─── HEADER BÁO CÁO KHI IN ─── */}
-      <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
-        <div className="flex justify-between items-start mb-2 text-xs">
-          <div>
-            <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
-            <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+      {/* ─── HEADER BÁO CÁO KHI IN (CHỈ HIỂN THỊ KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+      {!showPrintModal && (
+        <div className="hidden print:block mb-4 border-b-2 border-slate-900 pb-2 text-slate-900 bg-white">
+          <div className="flex justify-between items-start mb-2 text-xs">
+            <div>
+              <p className="font-extrabold uppercase text-slate-900 text-sm">CÔNG TY TNHH HỆ THỐNG QUẢN LÝ KHO SMART WMS</p>
+              <p className="text-[11px] text-slate-600">Hệ thống Quản lý kho hàng chuyên nghiệp</p>
+            </div>
+            <div className="text-right text-[11px] text-slate-600">
+              <p>Mẫu biểu báo cáo hệ thống</p>
+              <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+            </div>
           </div>
-          <div className="text-right text-[11px] text-slate-600">
-            <p>Mẫu biểu báo cáo hệ thống</p>
-            <p>Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN')}</p>
+          <div className="text-center my-2">
+            <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
+              {isDisposal ? 'LẬP BÁO CÁO PHIẾU XUẤT HỦY HÀNG HÓA' : 'LẬP BÁO CÁO PHIẾU XUẤT KHO'}
+            </h1>
+            <p className="text-xs text-slate-600 italic mt-0.5">
+              {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
+            </p>
+          </div>
+          <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
+            <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
+            <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
           </div>
         </div>
-        <div className="text-center my-2">
-          <h1 className="text-xl font-black uppercase tracking-wider text-slate-950">
-            {isDisposal ? 'LẬP BÁO CÁO PHIẾU XUẤT HỦY HÀNG HÓA' : 'LẬP BÁO CÁO PHIẾU XUẤT KHO'}
-          </h1>
-          <p className="text-xs text-slate-600 italic mt-0.5">
-            {dateFrom && dateTo ? `Kỳ báo cáo: Từ ngày ${dateFrom} đến ngày ${dateTo}` : `Ngày lập: ${new Date().toLocaleDateString('vi-VN')}`}
-          </p>
-        </div>
-        <div className="flex justify-between text-xs font-semibold pt-1 border-t border-slate-400">
-          <span>Người lập báo cáo: <strong className="text-slate-950 font-black">{currentUserName}</strong></span>
-          <span>Tổng số phiếu: <strong className="text-slate-950 font-black">{paginatedOrders.length} phiếu</strong></span>
-        </div>
-      </div>
+      )}
 
       {/* ═══ WHEN FORM IS CLOSED: SHOW TITLE, ACTION BUTTONS, KPI CARDS & ORDER LIST TABLE ═══ */}
       {!showFormModal ? (
-        <div className="space-y-6 animate-in fade-in duration-200">
+        <div className={`space-y-6 animate-in fade-in duration-200 ${showPrintModal ? 'print:hidden' : ''}`}>
           {/* Top Header Section matching PurchaseOrdersPage */}
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between print:hidden">
             <div>
@@ -1690,6 +1711,7 @@ export default function Outbound({
                     className="h-9 rounded-lg border-2 border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-950 px-2.5 text-xs font-bold text-slate-800 dark:text-slate-100 outline-none transition focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer"
                   >
                     <option value="all">Tất cả</option>
+                    <option value="Lưu tạm">Lưu tạm (Nháp)</option>
                     <option value={isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng'}>{isDisposal ? 'Đã hoàn thành' : 'Đã giao hàng'}</option>
                     <option value="Chờ xử lý">Chờ xử lý</option>
                     <option value="Đã hủy">Đã hủy</option>
@@ -1827,17 +1849,17 @@ export default function Outbound({
                             <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                               <div className="flex items-center justify-center gap-1.5">
                                 {canEdit && (() => {
-                                  const isFinalized = ['đã giao hàng', 'shipped', 'đã xuất hủy', 'completed'].includes((ord.status || '').toLowerCase());
+                                  const isDraft = ['draft', 'lưu tạm'].includes((ord.status || '').toLowerCase());
                                   return (
                                     <button
                                       type="button"
-                                      disabled={isFinalized}
+                                      disabled={!isDraft}
                                       onClick={() => handleEditOrder(ord)}
-                                      title={isFinalized ? 'Phiếu đã giao hàng - Không được phép sửa' : isDisposal ? 'Sửa phiếu xuất hủy' : 'Sửa phiếu xuất'}
+                                      title={!isDraft ? 'Chỉ phiếu lưu nháp mới có quyền chỉnh sửa. Phiếu đã tạo mới/xuất kho không thể sửa!' : isDisposal ? 'Sửa phiếu xuất hủy (Lưu nháp)' : 'Sửa phiếu xuất (Lưu nháp)'}
                                       className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
-                                        isFinalized
+                                        !isDraft
                                           ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-40'
-                                          : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
+                                          : 'border-amber-500 dark:border-amber-500 bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer'
                                       }`}
                                     >
                                       <Pencil size={16} strokeWidth={2.5} />
@@ -2061,27 +2083,29 @@ export default function Outbound({
             </div>
           </div>
 
-          {/* ─── CHỮ KÝ BÁO CÁO KHI IN ─── */}
-          <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
-              <div className="h-20" />
-              <p className="font-bold text-slate-900">{currentUserName}</p>
+          {/* ─── CHỮ KÝ BÁO CÁO KHI IN (CHỈ HIỂN THỊ KHI KHÔNG IN PHIẾU ĐƠN LẺ) ─── */}
+          {!showPrintModal && (
+            <div className="hidden print:grid grid-cols-3 gap-8 mt-10 pt-4 text-center text-xs text-slate-900 page-break-inside-avoid">
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Người Lập Báo Cáo</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+                <div className="h-20" />
+                <p className="font-bold text-slate-900">{currentUserName}</p>
+              </div>
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
+                <div className="h-20" />
+                <p className="text-slate-400 italic font-medium">................................................</p>
+              </div>
+              <div>
+                <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
+                <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
+                <div className="h-20" />
+                <p className="text-slate-400 italic font-medium">................................................</p>
+              </div>
             </div>
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Kế Toán Trưởng</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, họ tên)</p>
-              <div className="h-20" />
-              <p className="text-slate-400 italic font-medium">................................................</p>
-            </div>
-            <div>
-              <p className="font-extrabold uppercase text-slate-900">Thủ Trưởng Đơn Vị</p>
-              <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký, đóng dấu, họ tên)</p>
-              <div className="h-20" />
-              <p className="text-slate-400 italic font-medium">................................................</p>
-            </div>
-          </div>
+          )}
         </div>
       ) : (
         <CreateOutboundOrderPage
@@ -2091,6 +2115,7 @@ export default function Outbound({
           title={title}
           codePrefix={codePrefix}
           partnerLabel={partnerLabel}
+          editOrderId={searchParams.get('id') || undefined}
         />
       )}
         {/* ─── MODAL ADD CUSTOMER ─────────────────────────────────────── */}
