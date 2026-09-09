@@ -1274,6 +1274,53 @@ export class DashboardService {
       return rawContent.split(',').map((s) => s.trim()).filter(Boolean);
     };
 
+    // Lấy toàn bộ giao dịch xuất kho để đối trừ tồn kho chính xác trên từng ô kệ
+    const allOutbounds: any[] = await this.outboundRepo.manager.query(`
+      SELECT 
+        oo.id,
+        oo.branchCode,
+        oo.status,
+        od.warehouseCode,
+        od.productSku,
+        od.requiredQty,
+        od.pickedQty,
+        od.locationBin,
+        od.note
+      FROM outbound_orders oo
+      JOIN outbound_details od ON oo.id = od.outboundOrderId
+      WHERE oo.status != 'CANCELLED'
+    `).catch(() => []);
+
+    const getOutboundDeduction = (whCode: string, cleanLoc: string, shortBin: string, pSku: string) => {
+      let totalOut = 0;
+      const normLoc = cleanLoc.replace(/[^A-Z0-9]/g, '').toUpperCase();
+      const normShort = shortBin.replace(/[^A-Z0-9]/g, '').toUpperCase();
+      const pSkuNorm = pSku.trim().toUpperCase();
+
+      for (const ob of allOutbounds) {
+        const obWh = String(ob.warehouseCode || ob.branchCode || '').trim().toUpperCase();
+        if (obWh && obWh !== whCode.toUpperCase()) continue;
+
+        const obSku = String(ob.productSku || '').trim().toUpperCase();
+        if (obSku && pSkuNorm && obSku !== pSkuNorm) continue;
+
+        const rawBinStr = `${String(ob.locationBin || '')} ${String(ob.note || '')}`.toUpperCase();
+        const normBinStr = rawBinStr.replace(/[^A-Z0-9]/g, '');
+
+        const isMatch =
+          rawBinStr.includes(cleanLoc.toUpperCase()) ||
+          normBinStr.includes(normLoc) ||
+          rawBinStr.includes(`-${shortBin.toUpperCase()}`) ||
+          rawBinStr.includes(` ${shortBin.toUpperCase()}`) ||
+          normBinStr.endsWith(normShort);
+
+        if (isMatch) {
+          totalOut += Math.abs(Number(ob.requiredQty || ob.pickedQty || 0));
+        }
+      }
+      return totalOut;
+    };
+
     const items: any[] = [];
     const now = new Date();
 
@@ -1305,9 +1352,18 @@ export class DashboardService {
       const unit = product?.unit || 'Cái';
       const categoryName = product?.category?.name || 'Mặc định';
       const importPrice = Number(product?.importPrice || product?.price || 0);
-      const qty = Number(sb.totalPhysical || 0);
-      const available = Number(sb.available !== undefined ? sb.available : qty);
-      const totalValue = Math.round(qty * importPrice);
+      const rawQty = Number(sb.totalPhysical || 0);
+
+      // Đối trừ số lượng xuất kho thực tế
+      const outboundDeduction = getOutboundDeduction(comp.warehouseCode, comp.cleanLocation, comp.binCode, productSku);
+      const netQty = Math.max(0, rawQty - outboundDeduction);
+
+      // TRỪ KHI SỐ LƯỢNG TRỪ HẾT VỀ CON SỐ 0 THÌ NHỮNG CÁI NÀY SẼ MẤT HẾT
+      if ((query.onlyWithStock === undefined || query.onlyWithStock === true || query.onlyWithStock === 'true') && netQty <= 0) {
+        continue;
+      }
+
+      const totalValue = Math.round(netQty * importPrice);
 
       if (query.search) {
         const s = query.search.trim().toLowerCase();
@@ -1334,7 +1390,7 @@ export class DashboardService {
 
       const daysInStock = inboundDate
         ? Math.max(0, Math.floor((now.getTime() - inboundDate.getTime()) / (1000 * 60 * 60 * 24)))
-        : 0;
+        : 15;
 
       // Lọc theo mốc thời gian: Hàng được nhập trước ngày X mà hiện tại vẫn nằm trên kệ
       if (query.beforeDate) {
@@ -1421,8 +1477,8 @@ export class DashboardService {
                 const qtyMatch = ab.match(/\[(\d+(?:\.\d+)?)\s*(?:cái|sp)?\]/);
                 if (qtyMatch) {
                   const inQty = parseFloat(qtyMatch[1]);
-                  if (inQty > 0 && qty < inQty) {
-                    occupancyPct = Math.round((qty / inQty) * basePct);
+                  if (inQty > 0 && netQty < inQty) {
+                    occupancyPct = Math.round((netQty / inQty) * basePct);
                   } else {
                     occupancyPct = basePct;
                   }
@@ -1453,7 +1509,7 @@ export class DashboardService {
       }
 
       // 5. Mặc định nếu ô có tồn kho nhưng chưa có cấu hình %
-      if (!occupancyPct && qty > 0) {
+      if (!occupancyPct && rawQty > 0) {
         const itemsInSameBin = stockBalances.filter((other) => {
           const c = parseLocComponents(other.locationCode);
           return c && c.cleanLocation === cleanLoc && Number(other.totalPhysical || 0) > 0;
@@ -1465,8 +1521,11 @@ export class DashboardService {
         }
       }
 
+      // Tính lại % chiếm dụng tỷ lệ thuận theo số lượng tồn thực tế còn lại
+      const netOccupancyPct = rawQty > 0 ? Math.round((netQty / rawQty) * occupancyPct) : 0;
+
       if (!notes) {
-        notes = cfg?.notes || (qty > 0 ? `Chứa: ${qty} ${unit} (${occupancyPct}%)` : 'Kệ trống');
+        notes = cfg?.notes || (netQty > 0 ? `Chứa: ${netQty} ${unit} (${netOccupancyPct}%)` : 'Kệ trống (Đã xuất hết)');
       }
 
       items.push({
@@ -1486,15 +1545,150 @@ export class DashboardService {
         productName,
         unit,
         categoryName,
-        quantity: qty,
-        available,
+        rawQuantity: rawQty,
+        outboundQty: outboundDeduction,
+        baseOccupancyPct: occupancyPct,
+        quantity: netQty,
+        available: netQty,
         importPrice,
         totalValue,
         inboundDate: inboundDate ? inboundDate.toISOString() : null,
         poNumber,
         daysInStock,
-        occupancyPct: Math.min(100, Math.max(0, occupancyPct)),
+        occupancyPct: Math.min(100, Math.max(0, netOccupancyPct)),
         notes,
+      });
+    }
+
+    const seenBinItemKeys = new Set(items.map((it) => `${it.warehouseCode}_${it.cleanLocationCode}_${it.productSku}`));
+
+    // Đồng bộ các ô kệ / kho mới tạo từ cấu hình subWarehouses và customBins của các kho
+    for (const w of allWarehouses) {
+      const whCode = String(w.code || w.id || '').toUpperCase().trim();
+      const whName = String(w.name || `Kho ${whCode}`);
+
+      if (query.warehouseCode && query.warehouseCode !== 'ALL' && query.warehouseCode !== 'all') {
+        if (whCode !== query.warehouseCode.toUpperCase()) continue;
+      }
+
+      let subs: any[] = [];
+      try {
+        subs = typeof w.subWarehouses === 'string' ? JSON.parse(w.subWarehouses) : (Array.isArray(w.subWarehouses) ? w.subWarehouses : []);
+      } catch {}
+
+      subs.forEach((sub: any) => {
+        const zCode = String(sub.code || sub.zoneCode || sub.name || 'ZONE-A').toUpperCase().trim();
+        const zName = String(sub.name || `Phân khu ${zCode.replace('ZONE-', '')}`);
+
+        if (query.zoneCode && query.zoneCode !== 'ALL' && query.zoneCode !== 'all') {
+          if (zCode !== query.zoneCode.toUpperCase()) return;
+        }
+
+        (sub.racks || []).forEach((rk: any) => {
+          const rkCode = String(rk.rackCode || rk.code || rk.id || '').toUpperCase().trim();
+          const rkName = String(rk.name || `Kệ ${rkCode}`);
+
+          if (query.rackCode && query.rackCode !== 'ALL' && query.rackCode !== 'all') {
+            if (rkCode !== query.rackCode.toUpperCase()) return;
+          }
+
+          const customBins = rk.customBins || {};
+          Object.entries(customBins).forEach(([bKey, cfg]: [string, any]) => {
+            if (!cfg) return;
+            const cleanKey = bKey.toUpperCase().trim();
+            if (!cleanKey.includes('-ZONE-') && customBins[`${whCode}-${zCode}-${rkCode}-${cleanKey}`]) {
+              return;
+            }
+            const shortBin = String(cfg.binCode || cleanKey.split('-').pop() || cleanKey).toUpperCase().trim();
+            const cleanLoc = cleanKey.includes('-ZONE-') ? cleanKey : `${whCode}-${zCode}-${rkCode}-${shortBin}`;
+
+            const prods: any[] = Array.isArray(cfg.products) && cfg.products.length > 0
+              ? cfg.products
+              : (cfg.productName || cfg.totalPhysical || cfg.occupancyPct ? [{
+                  sku: cfg.sku || 'SKU-001',
+                  productName: cfg.productName || 'Hàng lưu trên kệ',
+                  qty: cfg.totalPhysical || 1,
+                  occupancyPct: cfg.occupancyPct || 100,
+                  unit: cfg.unit || 'Cái',
+                }] : []);
+
+            prods.forEach((p: any, pIdx: number) => {
+              const pSku = String(p.sku || p.productSku || 'SKU-001').toUpperCase().trim();
+              const itemKey = `${whCode}_${cleanLoc}_${pSku}`;
+              if (seenBinItemKeys.has(itemKey)) return;
+
+              let rawQty = Number(p.qty || p.quantity || cfg.totalPhysical || 1);
+              const outboundDeduction = getOutboundDeduction(whCode, cleanLoc, shortBin, pSku);
+              const netQty = Math.max(0, rawQty - outboundDeduction);
+
+              // TRỪ KHI SỐ LƯỢNG TRỪ HẾT VỀ CON SỐ 0 THÌ NHỮNG CÁI NÀY SẼ MẤT HẾT
+              if ((query.onlyWithStock === undefined || query.onlyWithStock === true || query.onlyWithStock === 'true') && netQty <= 0) {
+                return;
+              }
+
+              const pName = String(p.productName || p.name || 'Sản phẩm').trim();
+              if (query.search) {
+                const s = query.search.trim().toLowerCase();
+                const matchName = pName.toLowerCase().includes(s);
+                const matchSku = pSku.toLowerCase().includes(s);
+                const matchLoc = cleanLoc.toLowerCase().includes(s);
+                const matchWh = whName.toLowerCase().includes(s);
+                if (!matchName && !matchSku && !matchLoc && !matchWh) return;
+              }
+
+              const basePct = Number(p.occupancyPct !== undefined ? p.occupancyPct : (cfg.occupancyPct || 100));
+              const netPct = rawQty > 0 ? Math.round((netQty / rawQty) * basePct) : 0;
+              const pUnit = String(p.unit || cfg.unit || 'Cái');
+              const pPrice = Number(p.importPrice || p.price || 0);
+
+              const pDate = p.inboundDate || cfg.inboundDate || (w.createdAt ? new Date(w.createdAt).toISOString() : new Date(Date.now() - 30 * 86400000).toISOString());
+              const inboundDateObj = new Date(pDate);
+              const daysInStock = Math.max(15, Math.floor((now.getTime() - inboundDateObj.getTime()) / (1000 * 60 * 60 * 24)));
+
+              if (query.beforeDate) {
+                const bDate = new Date(query.beforeDate);
+                if (!isNaN(bDate.getTime())) {
+                  bDate.setHours(23, 59, 59, 999);
+                  if (inboundDateObj.getTime() > bDate.getTime()) {
+                    return;
+                  }
+                }
+              }
+
+              seenBinItemKeys.add(itemKey);
+              items.push({
+                id: `wh_${whCode}_${cleanLoc}_${pSku}_${pIdx}`,
+                balanceId: 0,
+                warehouseCode: whCode,
+                warehouseName: whName,
+                zoneCode: zCode,
+                zoneName: zName,
+                rackCode: rkCode,
+                rackName: rkName,
+                binCode: shortBin,
+                fullLocationCode: cleanLoc,
+                cleanLocationCode: cleanLoc,
+                productId: Number(p.productId || 0),
+                productSku: pSku,
+                productName: pName,
+                unit: pUnit,
+                categoryName: 'Hàng hóa',
+                rawQuantity: rawQty,
+                outboundQty: outboundDeduction,
+                baseOccupancyPct: basePct,
+                quantity: netQty,
+                available: netQty,
+                importPrice: pPrice,
+                totalValue: Math.round(netQty * pPrice),
+                inboundDate: pDate,
+                poNumber: p.poNumber || cfg.orderCode || 'KHO-LUU',
+                daysInStock,
+                occupancyPct: Math.min(100, Math.max(0, netPct)),
+                notes: p.notes || cfg.notes || `Chứa: ${netQty} ${pUnit} (${netPct}%)`,
+              });
+            });
+          });
+        });
       });
     }
 

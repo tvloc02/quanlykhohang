@@ -45,8 +45,6 @@ import { SmartSlottingGridModal, clearSmartSlottingCache } from '../../warehouse
 import { clearWarehouseBinsCache } from '../../warehouses/components/WarehouseSlottingGrid';
 import { toDatetimeLocalValue, parseAnyDate } from '../../../shared/utils/dateUtils';
 
-
-
 // ─── TYPES & INTERFACES ────────────────────────────────────────
 
 export interface ProductOption {
@@ -98,12 +96,40 @@ export function getProductWarehouseStock(p?: ProductOption | null, whCode?: stri
       });
 
       if (match) {
+        let baseBal = 0;
         if (match.available !== undefined && match.available !== null) {
-          return Number(match.available);
+          baseBal = Number(match.available);
+        } else if (match.totalPhysical !== undefined && match.totalPhysical !== null) {
+          baseBal = Number(match.totalPhysical);
         }
-        if (match.totalPhysical !== undefined && match.totalPhysical !== null) {
-          return Number(match.totalPhysical);
-        }
+        // Deduct any recently created local outbound orders for this warehouse & product
+        let localOutDeduct = 0;
+        try {
+          const rawOutbound = localStorage.getItem('stored_outbound_orders');
+          if (rawOutbound) {
+            const outboundList = JSON.parse(rawOutbound);
+            if (Array.isArray(outboundList)) {
+              outboundList.forEach((ord: any) => {
+                const oWh = (ord.warehouseCode || ord.branchCode || '').trim().toLowerCase();
+                const normOWh = oWh.replace(/[^a-z0-9]/g, '');
+                const isWhMatch = !targetCode || oWh === targetCode || (normOWh && normTarget && (normOWh === normTarget || normOWh.includes(normTarget) || normTarget.includes(normOWh)));
+                if (!isWhMatch) return;
+                const details = ord.details || ord.items || [];
+                details.forEach((item: any) => {
+                  const itemProdId = String(item.productId || item.product?.id || '');
+                  const itemSku = String(item.productSku || item.sku || item.product?.internalSku || '').toLowerCase();
+                  if (
+                    (itemProdId && itemProdId === String(p.id)) ||
+                    (itemSku && p.internalSku && itemSku === p.internalSku.toLowerCase())
+                  ) {
+                    localOutDeduct += Number(item.qty ?? item.quantity ?? 0);
+                  }
+                });
+              });
+            }
+          }
+        } catch { }
+        return Math.max(0, baseBal - localOutDeduct);
       }
     }
   }
@@ -450,7 +476,7 @@ function generateOutboundCode(prefix = 'PXK'): string {
 
 function createNewOutboundTab(tabIndex = 1, currentUserName = 'System Administrator', isDisposal = false, isReturnSupplier = false, codePrefix = 'PXK'): OutboundTab {
   const dateFormatted = toDatetimeLocalValue(new Date());
-  const defaultPrefix = isDisposal ? 'XH' : (isReturnSupplier ? 'XTR' : (codePrefix || 'PXK'));
+  const defaultPrefix = isDisposal ? 'XH' : (isReturnSupplier ? (codePrefix || 'XNCC') : (codePrefix || 'PXK'));
   const defaultOrderNo = generateOutboundCode(defaultPrefix);
 
   return {
@@ -613,7 +639,7 @@ export default function CreateOutboundOrderPage({
         }
       }
     } catch { }
-    return [createNewOutboundTab(1, currentUserName, isDisposal, isReturnSupplier)];
+    return [createNewOutboundTab(1, currentUserName, isDisposal, isReturnSupplier, codePrefix)];
   });
 
   const [activeTabId, setActiveTabId] = useState<string>(() => {
@@ -634,11 +660,11 @@ export default function CreateOutboundOrderPage({
 
   const handleAddNewTab = useCallback(() => {
     const newTabIndex = tabs.length + 1;
-    const newTab = createNewOutboundTab(newTabIndex, currentUserName, isDisposal, isReturnSupplier);
+    const newTab = createNewOutboundTab(newTabIndex, currentUserName, isDisposal, isReturnSupplier, codePrefix);
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.tabId);
     setToast({ message: `Đã mở tab tạo phiếu xuất mới (#${newTabIndex})`, type: 'success' });
-  }, [tabs.length, currentUserName, isDisposal, isReturnSupplier]);
+  }, [tabs.length, currentUserName, isDisposal, isReturnSupplier, codePrefix]);
 
   const handleCloseTab = useCallback((tabIdToClose: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -1347,11 +1373,16 @@ export default function CreateOutboundOrderPage({
       }
       : {
         orderNo: finalOrderNo,
-        orderType: isRetail ? 'retail' : 'orders',
+        orderType: isReturnSupplier ? 'return-supplier' : (isRetail ? 'retail' : 'orders'),
+        receiptType: isReturnSupplier ? 'return-supplier' : undefined,
+        partnerLabel: isReturnSupplier ? 'Nhà cung cấp' : undefined,
+        partnerType: isReturnSupplier ? 'supplier' : 'customer',
         branchCode: activeTab.branchCode || 'KHO-NVL',
         employeeName: activeTab.employeeName || currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Quản trị viên hệ thống',
         customerId: activeTab.customerId,
-        customerName: activeTab.customer?.trim() || (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ'),
+        customerName: activeTab.customer?.trim() || (isReturnSupplier ? 'Nhà cung cấp' : (isRetail ? 'Khách hàng bán lẻ' : '888 - Khách lẻ')),
+        supplierId: activeTab.customerId,
+        supplierName: activeTab.customer?.trim() || (isReturnSupplier ? 'Nhà cung cấp' : undefined),
         customerPhone: activeTab.customerPhone?.trim() || undefined,
         customerAddress: activeTab.customerAddress?.trim() || undefined,
         orderDate: activeTab.orderDate,
@@ -1433,14 +1464,17 @@ export default function CreateOutboundOrderPage({
                             }];
                           }
 
+                          const norm = (s: string) =>
+                            s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim() : '';
+
                           const curSku = (r.productSku || '').trim().toUpperCase();
-                          const curName = (r.productName || '').trim().toLowerCase();
+                          const curNameNorm = norm(r.productName || '');
                           const exportQty = Number(r.qty || 0);
 
                           let matchIdx = existingProds.findIndex((p) => {
                             const pSku = (p.sku || '').trim().toUpperCase();
-                            const pName = (p.productName || '').trim().toLowerCase();
-                            return (curSku && pSku && curSku === pSku) || (curName && pName && (curName.includes(pName) || pName.includes(curName)));
+                            const pNameNorm = norm(p.productName || '');
+                            return (curSku && pSku && curSku === pSku) || (curNameNorm && pNameNorm && (curNameNorm.includes(pNameNorm) || pNameNorm.includes(curNameNorm)));
                           });
 
                           if (matchIdx >= 0) {
@@ -1504,6 +1538,19 @@ export default function CreateOutboundOrderPage({
 
           if (changed) {
             saveStoredWarehouses(localWhs);
+            // Đồng bộ trực tiếp cấu trúc kho & ô kệ lên CSDL Backend
+            const currentBranchWh = localWhs.find(
+              (w) => w.code === (activeTab.branchCode || 'KHO-TONG') || w.id === (activeTab.branchCode || 'KHO-TONG')
+            );
+            if (currentBranchWh) {
+              fetch(`${API_BASE_URL}/warehouses/${currentBranchWh.id}`, {
+                method: 'PUT',
+                headers: authHeaders(),
+                body: JSON.stringify({
+                  subWarehouses: currentBranchWh.subWarehouses,
+                }),
+              }).catch((errWh) => console.warn('Lỗi đồng bộ cấu trúc ô kệ kho lên backend:', errWh));
+            }
           }
 
           try {
@@ -1512,10 +1559,19 @@ export default function CreateOutboundOrderPage({
             const savedOutboundEntry = {
               id: activeTab.id || `PXK-${Date.now()}`,
               orderNo: activeTab.orderNo || `PXK-${Date.now()}`,
+              orderType: isReturnSupplier ? 'return-supplier' : (isRetail ? 'retail' : (isDisposal ? 'disposal' : 'orders')),
+              receiptType: isReturnSupplier ? 'return-supplier' : undefined,
+              partnerLabel: isReturnSupplier ? 'Nhà cung cấp' : undefined,
+              partnerType: isReturnSupplier ? 'supplier' : 'customer',
+              customer: activeTab.customer || (isReturnSupplier ? 'Nhà cung cấp' : undefined),
+              customerName: activeTab.customer || (isReturnSupplier ? 'Nhà cung cấp' : undefined),
+              supplier: activeTab.customer || (isReturnSupplier ? 'Nhà cung cấp' : undefined),
+              supplierName: activeTab.customer || (isReturnSupplier ? 'Nhà cung cấp' : undefined),
               warehouseCode: activeTab.branchCode || 'KHO-NVL',
               orderDate: activeTab.orderDate,
               status: targetStatus,
               items: payload.details,
+              details: payload.details,
             };
             localOutboundOrders = [savedOutboundEntry, ...localOutboundOrders.filter((o: any) => o.id !== savedOutboundEntry.id)];
             localStorage.setItem('stored_outbound_orders', JSON.stringify(localOutboundOrders));

@@ -39,6 +39,7 @@ export type BinOccupiedInfo = {
   unit?: string;
   occupancyPct?: number;
   isOutbound?: boolean;
+  isDisposal?: boolean;
 };
 
 export type BinGoodsDetail = {
@@ -53,6 +54,7 @@ export type BinGoodsDetail = {
   unit: string;
   occupancyPct?: number;
   isOutbound?: boolean;
+  isDisposal?: boolean;
 };
 
 export interface WarehouseSlottingGridProps {
@@ -142,9 +144,12 @@ export function computeActiveStoredGoods(
   }>();
 
   valid.forEach((item) => {
-    const pSku = item.sku || 'SKU-001';
+    const pSku = (item.sku || '').trim().toUpperCase();
+    const normStr = (s: string) =>
+      s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim() : '';
     const pName = item.productName || 'Sản phẩm';
-    const key = `${pSku}___${pName}`;
+    const normName = normStr(pName);
+    const key = pSku ? pSku : `${pSku}___${normName}`;
     const qty = Number(item.quantity || 0);
     const isOut = item.isOutbound === true || qty < 0;
 
@@ -520,6 +525,7 @@ export async function fetchWarehouseOccupiedBins(
         unit: updatedInfo.unit!,
         occupancyPct: extractedPct !== undefined ? extractedPct : (info.occupancyPct !== undefined ? info.occupancyPct : 100),
         isOutbound: updatedInfo.isOutbound,
+        isDisposal: updatedInfo.isDisposal,
       };
 
       const appendGoods = (key: string) => {
@@ -530,6 +536,7 @@ export async function fetchWarehouseOccupiedBins(
           (x) =>
             x.sku === detail.sku &&
             x.productName === detail.productName &&
+            Boolean(x.isOutbound) === Boolean(detail.isOutbound) &&
             (x.orderCode === detail.orderCode || (!x.orderCode && !detail.orderCode))
         );
         if (existingIdx >= 0) {
@@ -911,18 +918,33 @@ export async function fetchWarehouseOccupiedBins(
             if (pctMatch) {
               itemPct = Number(pctMatch[2]);
             }
+            const orderCodeUpper = (orderCode || '').toUpperCase();
+            const isDisposal = ord.orderType === 'disposal' || orderCodeUpper.startsWith('PXH') || orderCodeUpper.includes('HUY') || orderCodeUpper.includes('HỦY');
+            const isTransfer = ord.orderType === 'transfer' || orderCodeUpper.startsWith('CK') || orderCodeUpper.startsWith('PCK');
+            const isRetail = ord.orderType === 'retail' || ord.orderType === 'RETAIL' || orderCodeUpper.startsWith('XBL');
+            const isReturn = ord.orderType === 'return-supplier' || ord.orderType === 'return' || orderCodeUpper.startsWith('XTR');
+
+            const partnerName = isDisposal
+              ? (ord.description || 'Xuất hủy nội bộ')
+              : isTransfer
+              ? (ord.customerName || ord.receiver || 'Chuyển kho nội bộ')
+              : isReturn
+              ? (ord.customerName || ord.supplierName || 'Nhà cung cấp')
+              : (ord.customerName || ord.customer || ord.receiver || supplierName || 'Khách hàng');
+
             const info: BinOccupiedInfo = {
               totalPhysical: exportQty,
               allocated: 0,
               productsCount: 1,
               productName: pName,
               sku: pSku,
-              supplierName,
+              supplierName: partnerName,
               inboundDate: outboundDate,
               orderCode,
               unit: pUnit,
               occupancyPct: itemPct,
               isOutbound: true,
+              isDisposal,
             };
             addBinOccupied(bCode, info);
           });
@@ -1080,7 +1102,9 @@ export async function fetchWarehouseOccupiedBins(
                           });
                         }
                         if (goodsList.length > 0) {
-                          gMap.set(k, goodsList);
+                          const existingList = gMap.get(k) || [];
+                          const outboundEntries = existingList.filter((x) => x.isOutbound === true || Number(x.quantity || 0) < 0);
+                          gMap.set(k, [...goodsList, ...outboundEntries]);
                         }
                       });
                     }
@@ -1107,7 +1131,7 @@ export async function fetchWarehouseOccupiedBins(
             occupancyPct: 0,
           });
           dMap.delete(binKey);
-          gMap.set(binKey, []);
+          // Giữ rawGoods trong gMap để phục vụ hiển thị đầy đủ nhật ký lịch sử giao dịch xuất nhập ô kệ
         } else {
           map.set(binKey, {
             ...info,
@@ -1116,7 +1140,7 @@ export async function fetchWarehouseOccupiedBins(
           });
           if (activeGoods.length > 0) {
             dMap.set(binKey, activeGoods[0]);
-            gMap.set(binKey, activeGoods);
+            // Giữ lại toàn bộ rawGoods trong gMap (bao gồm cả dòng nhập kho và xuất kho/xuất hủy)
           }
         }
       } else if (info.isOutbound && (info.totalPhysical === 0 || info.occupancyPct === 0)) {
@@ -1576,26 +1600,34 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
       if (!item) return;
       const skuStr = (item.sku || '').trim().toUpperCase();
       const nameStr = (item.productName || '').trim().toLowerCase();
-      const dedupeKey = `${skuStr}___${nameStr}`;
+      const isOut = Boolean(item.isOutbound || Number(item.quantity || 0) < 0);
+      const isDis = Boolean(
+        item.isDisposal ||
+        (item.orderCode && (item.orderCode.startsWith('PXH') || item.orderCode.toUpperCase().includes('HUY') || item.orderCode.toUpperCase().includes('HỦY')))
+      );
+      const oCode = (item.orderCode || '').trim().toUpperCase();
+      const dedupeKey = `${skuStr}___${nameStr}___${isOut ? (isDis ? 'DISPOSAL' : 'OUT') : 'IN'}___${oCode}`;
+
       if (seenProductKeys.has(dedupeKey)) {
-        const existing = resultList.find(x => `${(x.sku || '').trim().toUpperCase()}___${(x.productName || '').trim().toLowerCase()}` === dedupeKey);
+        const existing = resultList.find(x => {
+          const xIsOut = Boolean(x.isOutbound || Number(x.quantity || 0) < 0);
+          const xIsDis = Boolean(
+            x.isDisposal ||
+            (x.orderCode && (x.orderCode.startsWith('PXH') || x.orderCode.toUpperCase().includes('HUY') || x.orderCode.toUpperCase().includes('HỦY')))
+          );
+          const xCode = (x.orderCode || '').trim().toUpperCase();
+          return `${(x.sku || '').trim().toUpperCase()}___${(x.productName || '').trim().toLowerCase()}___${xIsOut ? (xIsDis ? 'DISPOSAL' : 'OUT') : 'IN'}___${xCode}` === dedupeKey;
+        });
         if (existing) {
-          if (item.orderCode && existing.orderCode && (item.orderCode === existing.orderCode || item.orderCode === 'KHO-LUU' || existing.orderCode === 'KHO-LUU')) {
-            existing.quantity = Math.max(existing.quantity || 0, item.quantity || 0);
-            if (item.occupancyPct !== undefined) {
-              existing.occupancyPct = item.occupancyPct;
-            }
-          } else {
-            existing.quantity = (existing.quantity || 0) + (item.quantity || 0);
-            if (item.occupancyPct !== undefined && existing.occupancyPct !== undefined) {
-              existing.occupancyPct = Math.min(100, existing.occupancyPct + item.occupancyPct);
-            }
+          existing.quantity = Math.max(existing.quantity || 0, item.quantity || 0);
+          if (item.occupancyPct !== undefined) {
+            existing.occupancyPct = item.occupancyPct;
           }
         }
         return;
       }
       seenProductKeys.add(dedupeKey);
-      resultList.push({ ...item });
+      resultList.push({ ...item, isDisposal: isDis });
     };
 
     const isMatchBin = (b: string) => {
@@ -2277,7 +2309,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                   : isBinDisabled
                                     ? 'border-2 border-slate-300 dark:border-slate-800 bg-slate-100/90 dark:bg-slate-900/90 text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed select-none'
                                     : isSelected
-                                      ? 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] cursor-pointer z-20'
+                                      ? isOutbound
+                                        ? 'border-2 border-rose-600 bg-rose-50 dark:bg-rose-950/80 text-rose-950 dark:text-rose-100 shadow-lg ring-4 ring-rose-400/60 font-black scale-[1.03] cursor-pointer z-20'
+                                        : 'border-2 border-emerald-600 bg-emerald-500 text-white shadow-lg ring-4 ring-emerald-400/60 font-black scale-[1.03] cursor-pointer z-20'
                                       : isSuggested
                                         ? 'border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-300/60 font-black cursor-pointer'
                                         : isFull || hasGoods
@@ -2412,7 +2446,9 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                                         className={`p-1 rounded-md transition flex items-center justify-center border shadow-xs cursor-pointer ${isBinDisabled || isOtherItemFull
                                           ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700 opacity-50 cursor-not-allowed'
                                           : isSelected
-                                            ? 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
+                                            ? isOutbound
+                                              ? 'bg-rose-600 text-white border-rose-600 cursor-pointer shadow-xs'
+                                              : 'bg-[#197e96] text-white border-[#197e96] cursor-pointer'
                                             : isSuggested
                                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm cursor-pointer'
                                               : isFull
@@ -2447,10 +2483,22 @@ export const WarehouseSlottingGrid: React.FC<WarehouseSlottingGridProps> = ({
                               <div className="w-full z-10">
                                 {isSelected ? (
                                   <span
-                                    title={assignedBinQty !== undefined && assignedBinQty > 0 ? `Đã chọn: ${assignedBinQty.toLocaleString('vi-VN')} cái (${occupancyPct > 0 ? occupancyPct : 100}%)` : `Đã chọn (${occupancyPct > 0 ? occupancyPct : 100}%)`}
-                                    className="text-[9px] font-black bg-[#197e96] text-white px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-wide"
+                                    title={
+                                      isOutbound
+                                        ? `Xuất: ${assignedBinQty !== undefined && assignedBinQty > 0 ? assignedBinQty : 1} cái (Có sẵn: ${occupiedInfo?.totalPhysical || customConfig?.totalPhysical || 0} cái)`
+                                        : assignedBinQty !== undefined && assignedBinQty > 0
+                                          ? `Đã chọn: ${assignedBinQty.toLocaleString('vi-VN')} cái (${occupancyPct > 0 ? occupancyPct : 100}%)`
+                                          : `Đã chọn (${occupancyPct > 0 ? occupancyPct : 100}%)`
+                                    }
+                                    className={`text-[9px] font-black px-1.5 py-0.5 rounded-md w-full block truncate shadow-2xs tracking-wide ${
+                                      isOutbound
+                                        ? 'bg-rose-600 dark:bg-rose-700 text-white shadow-xs ring-1 ring-rose-400'
+                                        : 'bg-[#197e96] text-white'
+                                    }`}
                                   >
-                                    {assignedBinQty !== undefined && assignedBinQty > 0 ? (
+                                    {isOutbound ? (
+                                      `Xuất: ${assignedBinQty !== undefined && assignedBinQty > 0 ? assignedBinQty : 1} cái`
+                                    ) : assignedBinQty !== undefined && assignedBinQty > 0 ? (
                                       `${assignedBinQty} cái (${occupancyPct > 0 ? occupancyPct : 100}%)`
                                     ) : (
                                       `${readOnly ? 'ĐÃ LƯU' : 'CHỌN'} (${occupancyPct > 0 ? occupancyPct : 100}%)`

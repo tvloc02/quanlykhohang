@@ -25,6 +25,7 @@ import {
 import { reportsApi } from '../api/reportsApi';
 import { ReportPrintHeader } from '../components/ReportPrintHeader';
 import { ReportPrintFooter } from '../components/ReportPrintFooter';
+import { getStoredWarehouses, mergeStoredWarehouses } from '../../../shared/utils/warehouseAssignments';
 
 const fmt = (v: number) => {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(v || 0);
@@ -72,6 +73,9 @@ interface ShelfInventoryItem {
   productName: string;
   unit: string;
   categoryName: string;
+  rawQuantity?: number;
+  outboundQty?: number;
+  baseOccupancyPct?: number;
   quantity: number;
   available: number;
   importPrice: number;
@@ -215,10 +219,10 @@ export default function ShelfInventoryReportPage({
 
   const toggleBrowserFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
       setIsFullScreen(true);
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
       setIsFullScreen(false);
     }
   };
@@ -229,38 +233,43 @@ export default function ShelfInventoryReportPage({
     return () => document.removeEventListener('fullscreenchange', handleFSChange);
   }, []);
 
-  // Fetch warehouse list & structure
+  // Fetch warehouse list & structure (merging remote API and locally stored warehouses)
   const loadWarehouses = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const list: WarehouseOption[] = data.map((w: any) => {
-            let zonesList: { code: string; name: string; racks: string[] }[] = [];
-            if (w.subWarehouses) {
-              const sw = typeof w.subWarehouses === 'string' ? JSON.parse(w.subWarehouses) : w.subWarehouses;
-              if (Array.isArray(sw)) {
-                zonesList = sw.map((z: any) => ({
-                  code: String(z.code || z.zoneCode || z.name || 'ZONE-A'),
-                  name: String(z.name || z.code || 'Phân khu A'),
-                  racks: Array.isArray(z.racks)
-                    ? z.racks.map((r: any) => String(r.code || r.rackCode || r.name || ''))
-                    : [],
-                }));
-              }
-            }
-            return {
-              code: String(w.code || w.id),
-              name: String(w.name || w.code),
-              zones: zonesList,
-            };
-          });
-          setWarehouses(list);
+      const localWhs = getStoredWarehouses();
+      let remoteWhs: any[] = [];
+      try {
+        const res = await fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) remoteWhs = data;
         }
-      }
-    } catch {
-      // Fallback if warehouses api fails
+      } catch { }
+
+      const merged = mergeStoredWarehouses(remoteWhs, localWhs);
+      const list: WarehouseOption[] = merged.map((w: any) => {
+        let zonesList: { code: string; name: string; racks: string[] }[] = [];
+        if (w.subWarehouses) {
+          const sw = typeof w.subWarehouses === 'string' ? JSON.parse(w.subWarehouses) : w.subWarehouses;
+          if (Array.isArray(sw)) {
+            zonesList = sw.map((z: any) => ({
+              code: String(z.code || z.zoneCode || z.name || 'ZONE-A'),
+              name: String(z.name || z.code || 'Phân khu A'),
+              racks: Array.isArray(z.racks)
+                ? z.racks.map((r: any) => String(r.code || r.rackCode || r.name || ''))
+                : [],
+            }));
+          }
+        }
+        return {
+          code: String(w.code || w.id),
+          name: String(w.name || w.warehouseName || w.code),
+          zones: zonesList,
+        };
+      });
+      setWarehouses(list);
+    } catch (e) {
+      console.error('Error loading warehouses in ShelfInventoryReportPage:', e);
     }
   };
 
@@ -269,102 +278,309 @@ export default function ShelfInventoryReportPage({
     setLoading(true);
     setError('');
     try {
-      const res = await reportsApi.getShelfInventoryReport({
-        warehouseCode: selectedWarehouse !== 'ALL' ? selectedWarehouse : undefined,
-        zoneCode: selectedZone !== 'ALL' ? selectedZone : undefined,
-        rackCode: selectedRack !== 'ALL' ? selectedRack : undefined,
-        beforeDate: filterBeforeDateEnabled && beforeDate ? beforeDate : undefined,
-        onlyWithStock,
-        search: searchTerm.trim() || undefined,
+      const [res, whRes, outRes, obsRes] = await Promise.all([
+        reportsApi.getShelfInventoryReport({
+          warehouseCode: selectedWarehouse !== 'ALL' ? selectedWarehouse : undefined,
+          zoneCode: selectedZone !== 'ALL' ? selectedZone : undefined,
+          rackCode: selectedRack !== 'ALL' ? selectedRack : undefined,
+          beforeDate: filterBeforeDateEnabled && beforeDate ? beforeDate : undefined,
+          onlyWithStock,
+          search: searchTerm.trim() || undefined,
+        }),
+        fetch(`${API_BASE_URL}/warehouses`, { headers: authHeaders() }).catch(() => null),
+        fetch(`${API_BASE_URL}/outbound/orders`, { headers: authHeaders() }).catch(() => null),
+        fetch(`${API_BASE_URL}/outbounds`, { headers: authHeaders() }).catch(() => null),
+      ]);
+
+      // Đồng bộ danh sách kho từ database và localStorage
+      let remoteWhs: any[] = [];
+      if (whRes && whRes.ok) {
+        const d = await whRes.json().catch(() => []);
+        if (Array.isArray(d)) remoteWhs = d;
+      }
+      const localWhs = mergeStoredWarehouses(remoteWhs, getStoredWarehouses());
+
+      // Cập nhật warehouses dropdown list nếu có kho mới tạo
+      const updatedWhList: WarehouseOption[] = localWhs.map((w: any) => {
+        let zonesList: { code: string; name: string; racks: string[] }[] = [];
+        if (w.subWarehouses) {
+          const sw = typeof w.subWarehouses === 'string' ? JSON.parse(w.subWarehouses) : w.subWarehouses;
+          if (Array.isArray(sw)) {
+            zonesList = sw.map((z: any) => ({
+              code: String(z.code || z.zoneCode || z.name || 'ZONE-A'),
+              name: String(z.name || z.code || 'Phân khu A'),
+              racks: Array.isArray(z.racks)
+                ? z.racks.map((r: any) => String(r.code || r.rackCode || r.name || ''))
+                : [],
+            }));
+          }
+        }
+        return {
+          code: String(w.code || w.id),
+          name: String(w.name || w.warehouseName || w.code),
+          zones: zonesList,
+        };
       });
+      setWarehouses(updatedWhList);
+
+      // Lấy toàn bộ phiếu xuất kho & xuất hủy để đối trừ chính xác số lượng tồn thực tế trên từng ô kệ (khử trùng lặp)
+      const rawOutbounds: any[] = [];
+      if (outRes && outRes.ok) {
+        const d = await outRes.json().catch(() => []);
+        rawOutbounds.push(...(Array.isArray(d) ? d : d?.data || []));
+      } else if (obsRes && obsRes.ok) {
+        const d = await obsRes.json().catch(() => []);
+        rawOutbounds.push(...(Array.isArray(d) ? d : d?.data || []));
+      }
+      const localOut = JSON.parse(localStorage.getItem('stored_outbound_orders') || '[]');
+      if (Array.isArray(localOut)) rawOutbounds.push(...localOut);
+
+      const seenOrderIds = new Set<string>();
+      const allOutbounds: any[] = [];
+      rawOutbounds.forEach((ord: any) => {
+        const k = String(ord.id || ord.orderNo || '');
+        if (k && seenOrderIds.has(k)) return;
+        if (k) seenOrderIds.add(k);
+        allOutbounds.push(ord);
+      });
+
+      const getBinOutboundQty = (whCode: string, cleanLoc: string, shortBin: string, pSku: string) => {
+        const normLoc = cleanLoc.replace(/[^A-Z0-9]/g, '').toUpperCase();
+        const normShort = shortBin.replace(/[^A-Z0-9]/g, '').toUpperCase();
+        let totalOut = 0;
+
+        allOutbounds.forEach((ord: any) => {
+          if (ord.status === 'CANCELLED') return;
+          const ordWh = String(ord.branchCode || ord.warehouseCode || ord.warehouse?.code || '').trim().toUpperCase();
+          if (ordWh && ordWh !== whCode.toUpperCase()) return;
+
+          const details = Array.isArray(ord.details) ? ord.details : (Array.isArray(ord.items) ? ord.items : []);
+          details.forEach((d: any) => {
+            const dSku = String(d.productSku || d.sku || d.product?.internalSku || '').trim().toUpperCase();
+            if (dSku && pSku && dSku !== pSku.toUpperCase()) return;
+
+            let rawBins: string[] = Array.isArray(d.assignedBins) ? d.assignedBins : [];
+            if (rawBins.length === 0 && d.locationBin) rawBins = String(d.locationBin).split(',').map((s: string) => s.trim());
+            if (rawBins.length === 0 && d.note) {
+              const noteMatches = [...d.note.matchAll(/\[(?:Vị trí Ô|Vị trí|Ô):\s*([^\]]+)\]/gi)];
+              noteMatches.forEach((m: any) => {
+                if (m[1]) rawBins.push(m[1].trim());
+              });
+            }
+
+            const isMatch = rawBins.some((b: string) => {
+              const clean = b.split('(')[0].trim().toUpperCase();
+              const normClean = clean.replace(/[^A-Z0-9]/g, '');
+              return clean === cleanLoc.toUpperCase() ||
+                normClean === normLoc ||
+                clean.endsWith(`-${shortBin.toUpperCase()}`) ||
+                clean === shortBin.toUpperCase() ||
+                normClean.endsWith(normShort);
+            });
+
+            if (isMatch) {
+              totalOut += Math.abs(Number(d.qty || d.quantity || d.requiredQty || 0));
+            }
+          });
+        });
+
+        return totalOut;
+      };
 
       if (res) {
         let reportItems: ShelfInventoryItem[] = res.items || [];
 
-        // Đồng bộ các cấu hình kệ/ô mới nhất từ localStorage quản lý kho (/warehouses/:id/edit)
-        try {
-          const localWhStr = localStorage.getItem('smart-wms-warehouses');
-          if (localWhStr) {
-            const localWhs = JSON.parse(localWhStr);
-            if (Array.isArray(localWhs) && localWhs.length > 0) {
-              const localBinMap = new Map<string, any>();
-              localWhs.forEach((wh: any) => {
-                const wCode = String(wh.code || wh.id || '').toUpperCase().trim();
-                (wh.subWarehouses || []).forEach((sub: any) => {
-                  (sub.racks || []).forEach((rk: any) => {
-                    const rCode = String(rk.rackCode || rk.code || rk.id || '').toUpperCase().trim();
-                    const cBins = rk.customBins || {};
-                    Object.entries(cBins).forEach(([bKey, cfg]: [string, any]) => {
-                      if (!cfg) return;
-                      const cleanK = bKey.toUpperCase().trim();
-                      const shortB = String(cfg.binCode || cleanK.split('-').pop() || cleanK).toUpperCase().trim();
-                      localBinMap.set(`${wCode}_${cleanK}`, cfg);
-                      localBinMap.set(`${wCode}_${cleanK.replace(/[^A-Z0-9]/g, '')}`, cfg);
-                      localBinMap.set(`${wCode}_${rCode}_${shortB}`, cfg);
-                      localBinMap.set(`${wCode}_${shortB}`, cfg);
-                      localBinMap.set(`${rCode}_${shortB}`, cfg);
-                    });
+        // Trích xuất cấu hình kệ từ các kho (bao gồm kho mới tạo)
+        const localBinMap = new Map<string, any>();
+        const synthesizedItems: ShelfInventoryItem[] = [];
+
+        localWhs.forEach((wh: any) => {
+          const wCode = String(wh.code || wh.id || '').toUpperCase().trim();
+          const wName = String(wh.name || wh.warehouseName || wh.code || `Kho ${wCode}`);
+
+          if (selectedWarehouse !== 'ALL' && selectedWarehouse.toUpperCase() !== wCode) {
+            return;
+          }
+
+          (wh.subWarehouses || []).forEach((sub: any) => {
+            const zCode = String(sub.code || sub.zoneCode || sub.name || 'ZONE-A').toUpperCase().trim();
+            const zName = String(sub.name || `Phân khu ${zCode.replace('ZONE-', '')}`);
+
+            if (selectedZone !== 'ALL' && selectedZone.toUpperCase() !== zCode) {
+              return;
+            }
+
+            (sub.racks || []).forEach((rk: any) => {
+              const rCode = String(rk.rackCode || rk.code || rk.id || '').toUpperCase().trim();
+              const rName = String(rk.name || `Kệ ${rCode}`);
+
+              if (selectedRack !== 'ALL' && selectedRack.toUpperCase() !== rCode) {
+                return;
+              }
+
+              const cBins = rk.customBins || {};
+              Object.entries(cBins).forEach(([bKey, cfg]: [string, any]) => {
+                if (!cfg) return;
+                const cleanK = bKey.toUpperCase().trim();
+                const shortB = String(cfg.binCode || cleanK.split('-').pop() || cleanK).toUpperCase().trim();
+                const cleanLoc = cleanK.includes('-ZONE-') ? cleanK : `${wCode}-${zCode}-${rCode}-${shortB}`;
+
+                localBinMap.set(`${wCode}_${cleanK}`, cfg);
+                localBinMap.set(`${wCode}_${cleanK.replace(/[^A-Z0-9]/g, '')}`, cfg);
+                localBinMap.set(`${wCode}_${rCode}_${shortB}`, cfg);
+                localBinMap.set(`${wCode}_${shortB}`, cfg);
+                localBinMap.set(`${rCode}_${shortB}`, cfg);
+
+                // Trích xuất các mặt hàng lưu trên ô này
+                const prods: any[] = Array.isArray(cfg.products) && cfg.products.length > 0
+                  ? cfg.products
+                  : (cfg.productName || cfg.totalPhysical || cfg.occupancyPct ? [{
+                    sku: cfg.sku || 'SKU-001',
+                    productName: cfg.productName || 'Hàng lưu trên kệ',
+                    qty: cfg.totalPhysical || 1,
+                    occupancyPct: cfg.occupancyPct || 100,
+                    unit: cfg.unit || 'Cái',
+                  }] : []);
+
+                prods.forEach((p: any, pIdx: number) => {
+                  const pSku = String(p.sku || p.productSku || 'SKU-001').toUpperCase().trim();
+                  const pName = String(p.productName || p.name || 'Sản phẩm').trim();
+                  const initialQty = Number(p.qty || p.quantity || cfg.totalPhysical || 1);
+                  const outQty = getBinOutboundQty(wCode, cleanLoc, shortB, pSku);
+                  const netQty = Math.max(0, initialQty - outQty);
+
+                  // TRỪ KHI SỐ LƯỢNG TRỪ HẾT VỀ CON SỐ 0 THÌ NHỮNG CÁI NÀY SẼ MẤT HẾT
+                  if (onlyWithStock && netQty <= 0) return;
+
+                  const basePct = Number(p.occupancyPct !== undefined ? p.occupancyPct : (cfg.occupancyPct || 100));
+                  const netPct = initialQty > 0 ? Math.round((netQty / initialQty) * basePct) : 0;
+                  const pUnit = String(p.unit || cfg.unit || 'Cái');
+                  const pPrice = Number(p.importPrice || p.price || 0);
+
+                  // Ngày nhập mặc định 30 ngày trước nếu chưa có để hiển thị trong báo cáo hàng tồn đọng
+                  const inDateStr = p.inboundDate || cfg.inboundDate || new Date(Date.now() - 30 * 86400000).toISOString();
+                  const inDateObj = new Date(inDateStr);
+                  const daysInStock = Math.max(15, Math.floor((Date.now() - inDateObj.getTime()) / (1000 * 60 * 60 * 24)));
+
+                  if (filterBeforeDateEnabled && beforeDate) {
+                    const bDate = new Date(beforeDate);
+                    if (!isNaN(bDate.getTime())) {
+                      bDate.setHours(23, 59, 59, 999);
+                      if (inDateObj.getTime() > bDate.getTime()) return;
+                    }
+                  }
+
+                  synthesizedItems.push({
+                    id: `local_${wCode}_${cleanLoc}_${pSku}_${pIdx}`,
+                    balanceId: 0,
+                    warehouseCode: wCode,
+                    warehouseName: wName,
+                    zoneCode: zCode,
+                    zoneName: zName,
+                    rackCode: rCode,
+                    rackName: rName,
+                    binCode: shortB,
+                    fullLocationCode: cleanLoc,
+                    cleanLocationCode: cleanLoc,
+                    productId: Number(p.productId || 0),
+                    productSku: pSku,
+                    productName: pName,
+                    unit: pUnit,
+                    categoryName: 'Hàng hóa',
+                    rawQuantity: initialQty,
+                    outboundQty: outQty,
+                    baseOccupancyPct: basePct,
+                    quantity: netQty,
+                    available: netQty,
+                    importPrice: pPrice,
+                    totalValue: Math.round(netQty * pPrice),
+                    inboundDate: inDateStr,
+                    poNumber: p.poNumber || cfg.orderCode || 'KHO-LUU',
+                    daysInStock,
+                    occupancyPct: Math.min(100, Math.max(0, netPct)),
+                    notes: netQty > 0 ? `Chứa: ${netQty} ${pUnit} (${netPct}%)` : 'Kệ trống (Đã xuất hết)',
                   });
                 });
               });
+            });
+          });
+        });
 
-              reportItems = reportItems.map((it) => {
-                const wCode = it.warehouseCode.toUpperCase().trim();
-                const cleanLoc = (it.cleanLocationCode || it.fullLocationCode).toUpperCase().trim();
-                const rCode = it.rackCode.toUpperCase().trim();
-                const bCode = it.binCode.toUpperCase().trim();
+        // 1. Áp dụng đối trừ xuất kho & cập nhật % chiếm dụng lên reportItems từ API
+        reportItems = reportItems.map((it) => {
+          const wCode = it.warehouseCode.toUpperCase().trim();
+          const cleanLoc = (it.cleanLocationCode || it.fullLocationCode).toUpperCase().trim();
+          const shortB = it.binCode.toUpperCase().trim();
+          const pSku = it.productSku.toUpperCase().trim();
 
-                const cfg =
-                  localBinMap.get(`${wCode}_${cleanLoc}`) ||
-                  localBinMap.get(`${wCode}_${cleanLoc.replace(/[^A-Z0-9]/g, '')}`) ||
-                  localBinMap.get(`${wCode}_${rCode}_${bCode}`) ||
-                  localBinMap.get(`${wCode}_${bCode}`) ||
-                  localBinMap.get(`${rCode}_${bCode}`);
+          const initialQty = (it as any).rawQuantity !== undefined ? Number((it as any).rawQuantity) : it.quantity;
+          const outQty = Math.max(getBinOutboundQty(wCode, cleanLoc, shortB, pSku), Number((it as any).outboundQty || 0));
+          const netQty = Math.max(0, initialQty - outQty);
 
-                if (cfg) {
-                  if (Array.isArray(cfg.products) && cfg.products.length > 0) {
-                    const matched = cfg.products.find(
-                      (p: any) =>
-                        (p.sku && it.productSku && p.sku.trim().toUpperCase() === it.productSku.trim().toUpperCase()) ||
-                        (p.productName && it.productName && p.productName.trim().toLowerCase() === it.productName.trim().toLowerCase()) ||
-                        (p.productId && Number(p.productId) === Number(it.productId))
-                    );
-                    if (matched && matched.occupancyPct !== undefined && Number(matched.occupancyPct) >= 0) {
-                      return {
-                        ...it,
-                        occupancyPct: Number(matched.occupancyPct),
-                        notes: matched.notes || cfg.notes || it.notes,
-                      };
-                    }
-                  }
-                  if (cfg.occupancyPct !== undefined && Number(cfg.occupancyPct) > 0) {
-                    return {
-                      ...it,
-                      occupancyPct: Number(cfg.occupancyPct),
-                      notes: cfg.notes || it.notes,
-                    };
-                  }
-                }
-                return it;
-              });
-            }
+          const cfg =
+            localBinMap.get(`${wCode}_${cleanLoc}`) ||
+            localBinMap.get(`${wCode}_${cleanLoc.replace(/[^A-Z0-9]/g, '')}`) ||
+            localBinMap.get(`${wCode}_${it.rackCode.toUpperCase()}_${shortB}`) ||
+            localBinMap.get(`${wCode}_${shortB}`) ||
+            localBinMap.get(`${it.rackCode.toUpperCase()}_${shortB}`);
+
+          let basePct = Number((it as any).baseOccupancyPct || it.occupancyPct || 100);
+          if (cfg && cfg.occupancyPct !== undefined && Number(cfg.occupancyPct) > 0) {
+            basePct = Number(cfg.occupancyPct);
           }
-        } catch (e) {
-          console.error('Error applying local warehouse bin overlays in ShelfInventoryReportPage:', e);
+          const netPct = initialQty > 0 ? Math.round((netQty / initialQty) * basePct) : 0;
+
+          return {
+            ...it,
+            rawQuantity: initialQty,
+            outboundQty: outQty,
+            quantity: netQty,
+            available: netQty,
+            totalValue: Math.round(netQty * it.importPrice),
+            occupancyPct: Math.min(100, Math.max(0, netPct)),
+            notes: netQty > 0 ? `Chứa: ${netQty} ${it.unit} (${netPct}%)` : 'Kệ trống (Đã xuất hết)',
+          };
+        });
+
+        // TRỪ KHI SỐ LƯỢNG TRỪ HẾT VỀ CON SỐ 0 THÌ NHỮNG CÁI NÀY SẼ MẤT HẾT:
+        if (onlyWithStock) {
+          reportItems = reportItems.filter((it) => it.quantity > 0);
         }
 
-        setSummary(
-          res.summary || {
-            totalWarehouses: 0,
-            totalZones: 0,
-            totalRacks: 0,
-            totalBins: 0,
-            totalProductsCount: 0,
-            totalQuantity: 0,
-            totalValue: 0,
-            staleStockCount: 0,
-          },
-        );
+        // 2. Thêm các dòng hàng tồn từ kho tạo mới/kệ mới nếu chưa có trong kết quả API
+        synthesizedItems.forEach((syn) => {
+          const alreadyExists = reportItems.some((it) => {
+            return (
+              it.warehouseCode.toUpperCase() === syn.warehouseCode.toUpperCase() &&
+              (it.cleanLocationCode.toUpperCase() === syn.cleanLocationCode.toUpperCase() ||
+                (it.rackCode.toUpperCase() === syn.rackCode.toUpperCase() && it.binCode.toUpperCase() === syn.binCode.toUpperCase())) &&
+              (it.productSku.toUpperCase() === syn.productSku.toUpperCase() ||
+                it.productName.toLowerCase() === syn.productName.toLowerCase())
+            );
+          });
+          if (!alreadyExists) {
+            reportItems.push(syn);
+          }
+        });
+
+        const distinctWhs = new Set(reportItems.map((i) => i.warehouseCode));
+        const distinctZones = new Set(reportItems.map((i) => `${i.warehouseCode}_${i.zoneCode}`));
+        const distinctRacks = new Set(reportItems.map((i) => `${i.warehouseCode}_${i.zoneCode}_${i.rackCode}`));
+        const distinctBins = new Set(reportItems.filter((i) => i.quantity > 0).map((i) => i.cleanLocationCode));
+        const totalQty = reportItems.reduce((s, i) => s + i.quantity, 0);
+        const totalVal = reportItems.reduce((s, i) => s + i.totalValue, 0);
+        const staleCount = reportItems.filter((i) => i.daysInStock >= 15 && i.quantity > 0).length;
+
+        setSummary({
+          totalWarehouses: distinctWhs.size,
+          totalZones: distinctZones.size,
+          totalRacks: distinctRacks.size,
+          totalBins: distinctBins.size,
+          totalProductsCount: reportItems.length,
+          totalQuantity: totalQty,
+          totalValue: totalVal,
+          staleStockCount: staleCount,
+        });
         setItems(reportItems);
       }
     } catch (err: any) {
@@ -376,6 +592,27 @@ export default function ShelfInventoryReportPage({
 
   useEffect(() => {
     loadWarehouses();
+
+    let syncTimer: any = null;
+    const handleSync = (e?: Event) => {
+      if (e instanceof StorageEvent && e.key && e.key !== 'smart-wms-warehouses' && e.key !== 'stored_outbound_orders') {
+        return;
+      }
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => {
+        loadWarehouses();
+        loadData();
+      }, 300);
+    };
+
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('warehouses-updated', handleSync);
+
+    return () => {
+      if (syncTimer) clearTimeout(syncTimer);
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('warehouses-updated', handleSync);
+    };
   }, []);
 
   useEffect(() => {
@@ -438,8 +675,19 @@ export default function ShelfInventoryReportPage({
       map.get(key)!.items.push(it);
     });
 
+    if (selectedWarehouse !== 'ALL') {
+      const targetWh = warehouses.find((w) => w.code.toUpperCase() === selectedWarehouse.toUpperCase());
+      if (targetWh && !map.has(targetWh.code)) {
+        map.set(targetWh.code, {
+          warehouseCode: targetWh.code,
+          warehouseName: targetWh.name,
+          items: [],
+        });
+      }
+    }
+
     return Array.from(map.values());
-  }, [filteredItems]);
+  }, [filteredItems, selectedWarehouse, warehouses]);
 
   // Quick preset filter for stale inventory
   const setDaysPreset = (days: number | null) => {
@@ -658,11 +906,10 @@ export default function ShelfInventoryReportPage({
                       setSelectedRack('ALL');
                       setIsWarehouseDropdownOpen(false);
                     }}
-                    className={`w-full text-left px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${
-                      selectedWarehouse === 'ALL'
+                    className={`w-full text-left px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 ${selectedWarehouse === 'ALL'
                         ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
                         : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
-                    }`}
+                      }`}
                   >
                     <span>Tất cả kho</span>
                     {selectedWarehouse === 'ALL' && <Check className="h-4 w-4 text-white shrink-0" />}
@@ -679,11 +926,10 @@ export default function ShelfInventoryReportPage({
                           setSelectedRack('ALL');
                           setIsWarehouseDropdownOpen(false);
                         }}
-                        className={`w-full text-left px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 last:mb-0 ${
-                          isSelected
+                        className={`w-full text-left px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center justify-between cursor-pointer mb-1 last:mb-0 ${isSelected
                             ? 'bg-cyan-600 text-white font-extrabold shadow-sm'
                             : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-800'
-                        }`}
+                          }`}
                       >
                         <span className="truncate">{w.name}</span>
                         {isSelected && <Check className="h-4 w-4 text-white shrink-0" />}
@@ -745,11 +991,10 @@ export default function ShelfInventoryReportPage({
               <button
                 type="button"
                 onClick={() => setDaysPreset(null)}
-                className={`h-8 rounded-lg px-2.5 text-xs font-bold transition cursor-pointer ${
-                  !filterBeforeDateEnabled
+                className={`h-8 rounded-lg px-2.5 text-xs font-bold transition cursor-pointer ${!filterBeforeDateEnabled
                     ? 'bg-cyan-600 text-white shadow-xs font-black'
                     : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 hover:text-cyan-700'
-                }`}
+                  }`}
               >
                 Tất cả
               </button>
@@ -760,11 +1005,10 @@ export default function ShelfInventoryReportPage({
                     key={p.days}
                     type="button"
                     onClick={() => setDaysPreset(p.days)}
-                    className={`h-8 rounded-lg px-2.5 text-xs font-bold transition cursor-pointer ${
-                      isActive
+                    className={`h-8 rounded-lg px-2.5 text-xs font-bold transition cursor-pointer ${isActive
                         ? 'bg-cyan-600 text-white shadow-xs font-black'
                         : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 hover:text-cyan-700'
-                    }`}
+                      }`}
                   >
                     {p.label}
                   </button>
@@ -848,7 +1092,7 @@ export default function ShelfInventoryReportPage({
             </thead>
 
             <tbody className="divide-y divide-slate-200 bg-white text-xs sm:text-sm font-normal text-slate-800">
-              {loading ? (
+              {loading && items.length === 0 ? (
                 <tr>
                   <td colSpan={15} className="py-14 text-center text-slate-400 font-bold text-sm">
                     <RefreshCw size={22} className="animate-spin inline-block mr-2 text-cyan-600" />
@@ -890,108 +1134,156 @@ export default function ShelfInventoryReportPage({
                         </td>
                       </tr>
 
-                      {/* LEVEL 2: SHELF ITEMS */}
-                      {g.items.map((it, idx) => {
-                        return (
-                          <tr
-                            key={it.id}
-                            onClick={() => setSelectedItemForModal(it)}
-                            className="hover:bg-slate-50 transition-colors border-b border-slate-200 cursor-pointer"
-                          >
-                            {columnVis.stt && (
-                              <td className="px-3 py-2.5 text-center font-normal text-slate-500 border-r border-slate-200 whitespace-nowrap">
-                                {idx + 1}
-                              </td>
-                            )}
+                      {/* LEVEL 2: SHELF ITEMS OR EMPTY WAREHOUSE NOTICE */}
+                      {g.items.length === 0 ? (
+                        <tr>
+                          <td colSpan={15} className="py-6 text-center text-slate-500 font-semibold bg-slate-50/50 dark:bg-slate-900/50">
+                            Kho hàng [{g.warehouseCode} - {g.warehouseName}] hiện chưa có sản phẩm tồn đọng phù hợp với điều kiện lọc (toàn bộ ô kệ đang trống hoặc đã xuất hết về 0).
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {(() => {
+                            const shelfMap = new Map<string, ShelfInventoryItem[]>();
+                            g.items.forEach((it) => {
+                              const loc = it.cleanLocationCode || it.fullLocationCode;
+                              if (!shelfMap.has(loc)) shelfMap.set(loc, []);
+                              shelfMap.get(loc)!.push(it);
+                            });
+                            const shelfGroups = Array.from(shelfMap.entries());
+                            let itemCounter = 0;
 
-                            {columnVis.location && (
-                              <td className="px-4 py-2.5 font-mono font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
-                                {it.cleanLocationCode || it.fullLocationCode}
-                              </td>
-                            )}
+                            return shelfGroups.map(([shelfLoc, shelfItems]) => {
+                              return (
+                                <React.Fragment key={shelfLoc}>
+                                  {shelfItems.map((it) => {
+                                    itemCounter++;
+                                    const currentIdx = itemCounter;
+                                    return (
+                                      <tr
+                                        key={it.id}
+                                        onClick={() => setSelectedItemForModal(it)}
+                                        className="hover:bg-slate-50 transition-colors border-b border-slate-200 cursor-pointer"
+                                      >
+                                        {columnVis.stt && (
+                                          <td className="px-3 py-2.5 text-center font-normal text-slate-500 border-r border-slate-200 whitespace-nowrap">
+                                            {currentIdx}
+                                          </td>
+                                        )}
 
-                            {columnVis.occupancy && (
-                              <td className="px-3 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                {it.occupancyPct ? `${it.occupancyPct}%` : '0%'}
-                              </td>
-                            )}
+                                        {columnVis.location && (
+                                          <td className="px-4 py-2.5 font-mono font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
+                                            {it.cleanLocationCode || it.fullLocationCode}
+                                          </td>
+                                        )}
 
-                            {columnVis.zone && (
-                              <td className="px-3 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                {it.zoneName}
-                              </td>
-                            )}
+                                        {columnVis.occupancy && (
+                                          <td className="px-3 py-2.5 text-center font-semibold text-cyan-700 dark:text-cyan-400 border-r border-slate-200 whitespace-nowrap">
+                                            {it.occupancyPct ? `${it.occupancyPct}%` : '0%'}
+                                          </td>
+                                        )}
 
-                            {columnVis.rack && (
-                              <td className="px-3 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                {it.rackName}
-                              </td>
-                            )}
+                                        {columnVis.zone && (
+                                          <td className="px-3 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                            {it.zoneName}
+                                          </td>
+                                        )}
 
-                            {columnVis.sku && (
-                              <td className="px-4 py-2.5 font-mono font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
-                                {it.productSku}
-                              </td>
-                            )}
+                                        {columnVis.rack && (
+                                          <td className="px-3 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                            {it.rackName}
+                                          </td>
+                                        )}
 
-                            {columnVis.name && (
-                              <td className="px-4 py-2.5 font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
-                                {it.productName}
-                              </td>
-                            )}
+                                        {columnVis.sku && (
+                                          <td className="px-4 py-2.5 font-mono font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
+                                            {it.productSku}
+                                          </td>
+                                        )}
 
-                            {columnVis.category && (
-                              <td className="px-4 py-2.5 font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                {it.categoryName || 'Mặc định'}
-                              </td>
-                            )}
+                                        {columnVis.name && (
+                                          <td className="px-4 py-2.5 font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
+                                            {it.productName}
+                                          </td>
+                                        )}
 
-                            {columnVis.unit && (
-                              <td className="px-3 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                {it.unit}
-                              </td>
-                            )}
+                                        {columnVis.category && (
+                                          <td className="px-4 py-2.5 font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                            {it.categoryName || 'Mặc định'}
+                                          </td>
+                                        )}
 
+                                        {columnVis.unit && (
+                                          <td className="px-3 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                            {it.unit}
+                                          </td>
+                                        )}
+
+                                        {columnVis.quantity && (
+                                          <td className="px-4 py-2.5 text-right font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap">
+                                            {fmt(it.quantity)}
+                                          </td>
+                                        )}
+
+                                        {columnVis.importPrice && (
+                                          <td className="px-4 py-2.5 text-right font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
+                                            {fmt(it.importPrice)} đ
+                                          </td>
+                                        )}
+
+                                        {columnVis.totalValue && (
+                                          <td className="px-4 py-2.5 text-right font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
+                                            {fmt(it.totalValue)} đ
+                                          </td>
+                                        )}
+
+                                        {columnVis.poNumber && (
+                                          <td className="px-4 py-2.5 font-mono font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                            {it.poNumber || '—'}
+                                          </td>
+                                        )}
+
+                                        {columnVis.inboundDate && (
+                                          <td className="px-4 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
+                                            {formatDate(it.inboundDate)}
+                                          </td>
+                                        )}
+
+                                        {columnVis.daysInStock && (
+                                          <td className="px-3 py-2.5 text-center font-normal text-slate-700 whitespace-nowrap">
+                                            <span className={it.daysInStock >= 15 ? 'text-amber-700 font-medium' : ''}>
+                                              {it.daysInStock} ngày
+                                            </span>
+                                          </td>
+                                        )}
+                                      </tr>
+                                    );
+                                  })}
+                                </React.Fragment>
+                              );
+                            });
+                          })()}
+
+                          {/* DÒNG TỔNG HỢP CUỐI CÙNG CHO TỪNG KHO HÀNG */}
+                          <tr className="bg-cyan-50/90 dark:bg-cyan-950/50 font-black text-xs text-cyan-950 dark:text-cyan-100 border-b-2 border-cyan-500">
+                            <td colSpan={9} className="px-4 py-2.5 text-right uppercase tracking-wider border-r border-slate-200">
+                              Tổng cộng kho [{g.warehouseCode} - {g.warehouseName}] ({g.items.length} vị trí / mặt hàng):
+                            </td>
                             {columnVis.quantity && (
-                              <td className="px-4 py-2.5 text-right font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
-                                {fmt(it.quantity)}
+                              <td className="px-4 py-2.5 text-right font-black text-sm text-cyan-900 dark:text-cyan-200 border-r border-slate-200 whitespace-nowrap bg-cyan-100/70 dark:bg-cyan-900/60">
+                                {fmt(warehouseTotalQty)}
                               </td>
                             )}
-
-                            {columnVis.importPrice && (
-                              <td className="px-4 py-2.5 text-right font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
-                                {fmt(it.importPrice)} đ
-                              </td>
-                            )}
-
+                            {columnVis.importPrice && <td className="px-4 py-2.5 border-r border-slate-200"></td>}
                             {columnVis.totalValue && (
-                              <td className="px-4 py-2.5 text-right font-normal text-slate-800 border-r border-slate-200 whitespace-nowrap">
-                                {fmt(it.totalValue)} đ
+                              <td className="px-4 py-2.5 text-right font-black text-sm text-cyan-900 dark:text-cyan-200 border-r border-slate-200 whitespace-nowrap bg-cyan-100/70 dark:bg-cyan-900/60">
+                                {fmt(warehouseTotalVal)} đ
                               </td>
                             )}
-
-                            {columnVis.poNumber && (
-                              <td className="px-4 py-2.5 font-mono font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                {it.poNumber || '—'}
-                              </td>
-                            )}
-
-                            {columnVis.inboundDate && (
-                              <td className="px-4 py-2.5 text-center font-normal text-slate-700 border-r border-slate-200 whitespace-nowrap">
-                                {formatDate(it.inboundDate)}
-                              </td>
-                            )}
-
-                            {columnVis.daysInStock && (
-                              <td className="px-3 py-2.5 text-center font-normal text-slate-700 whitespace-nowrap">
-                                <span className={it.daysInStock >= 15 ? 'text-amber-700 font-medium' : ''}>
-                                  {it.daysInStock} ngày
-                                </span>
-                              </td>
-                            )}
+                            <td colSpan={3} className="px-4 py-2.5"></td>
                           </tr>
-                        );
-                      })}
+                        </>
+                      )}
                     </React.Fragment>
                   );
                 })
