@@ -173,6 +173,10 @@ function RoleRoute({ children, allowedRoles, menuId }: { children: React.ReactNo
     );
   }
 
+  if (isAdmin) {
+    return <>{children}</>;
+  }
+
   if (menuId) {
     if (canViewMenu(menuId)) {
       return <>{children}</>;

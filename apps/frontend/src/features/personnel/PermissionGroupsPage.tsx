@@ -38,6 +38,7 @@ import {
   getFallbackPermissionGroups,
   readStoredPermissionGroups,
   saveStoredPermissionGroups,
+  sanitizeGroupPermissions,
 } from '../../shared/utils/permissionStorage';
 
 export {
@@ -642,14 +643,15 @@ export default function PermissionGroupsPage() {
 
   // Open Permission Matrix Modal (PHÂN QUYỀN DÙNG MENU)
   const openPermissionMatrixModal = (group: PermissionGroup) => {
-    setPermissionModalGroup(group);
+    const sanitizedGroup = sanitizeGroupPermissions(group);
+    setPermissionModalGroup(sanitizedGroup);
     setTempGeneralPermissions({
       ...getDefaultGeneralPermissions(),
-      ...(group.generalPermissions || {}),
+      ...(sanitizedGroup.generalPermissions || {}),
     });
     setTempMenuPermissions({
-      ...getDefaultMenuPermissions(true),
-      ...(group.menuPermissions || {}),
+      ...getDefaultMenuPermissions(false),
+      ...(sanitizedGroup.menuPermissions || {}),
     });
     setMatrixSearch('');
     setCollapsedHeaders({});
@@ -666,9 +668,15 @@ export default function PermissionGroupsPage() {
     setSaving(true);
     setError('');
 
-    const payload = {
+    const sanitizedGroup: PermissionGroup = sanitizeGroupPermissions({
+      ...permissionModalGroup,
       generalPermissions: tempGeneralPermissions,
       menuPermissions: tempMenuPermissions,
+    });
+
+    const payload = {
+      generalPermissions: sanitizedGroup.generalPermissions,
+      menuPermissions: sanitizedGroup.menuPermissions,
     };
 
     try {
@@ -680,20 +688,10 @@ export default function PermissionGroupsPage() {
 
       const targetNameLower = permissionModalGroup.name.trim().toLowerCase();
 
-      const updatedGroup: PermissionGroup = {
-        ...permissionModalGroup,
-        generalPermissions: tempGeneralPermissions,
-        menuPermissions: tempMenuPermissions,
-      };
-
       setGroups((prev) => {
         const next = prev.map((g) => {
           if (g.id === permissionModalGroup.id || (g.name && g.name.trim().toLowerCase() === targetNameLower)) {
-            return {
-              ...g,
-              generalPermissions: tempGeneralPermissions,
-              menuPermissions: tempMenuPermissions,
-            };
+            return sanitizedGroup;
           }
           return g;
         });
@@ -710,7 +708,7 @@ export default function PermissionGroupsPage() {
           groupName: permissionModalGroup.name,
           description: `Đã sửa quyền Menu cho nhóm "${permissionModalGroup.name}"`,
           previousGroup: JSON.parse(JSON.stringify(permissionModalGroup)),
-          updatedGroup: JSON.parse(JSON.stringify(updatedGroup)),
+          updatedGroup: JSON.parse(JSON.stringify(sanitizedGroup)),
         },
         ...prev,
       ]);
@@ -790,7 +788,7 @@ export default function PermissionGroupsPage() {
   // Toggle Header Row (Select All / Deselect All for Header Children)
   const toggleHeaderRowPermissions = (headerId: string, enable: boolean) => {
     const children = SYSTEM_MENU_TREE.filter((m) => m.parentId === headerId);
-    const actionKeys: Array<keyof ActionPermission> = ['view', 'create', 'edit', 'delete', 'print', 'import', 'export'];
+    const actionKeys: Array<keyof ActionPermission> = ['view', 'create', 'edit', 'delete', 'print', 'status', 'import', 'export'];
 
     setTempMenuPermissions((prev) => {
       const next = { ...prev };
@@ -1768,6 +1766,7 @@ export default function PermissionGroupsPage() {
                             { key: 'edit', label: 'SỬA' },
                             { key: 'delete', label: 'XÓA' },
                             { key: 'print', label: 'IN CHỨNG TỪ' },
+                            { key: 'status', label: 'DUYỆT / ĐỔI TT' },
                             { key: 'import', label: 'NHẬP FILE' },
                             { key: 'export', label: 'XUẤT FILE' },
                           ].map((col) => (
@@ -1820,7 +1819,7 @@ export default function PermissionGroupsPage() {
                                     </button>
                                   </div>
                                 </td>
-                                <td colSpan={7} className="bg-cyan-100/40"></td>
+                                <td colSpan={8} className="bg-cyan-100/40"></td>
                               </tr>
                             );
                           }
@@ -1846,6 +1845,7 @@ export default function PermissionGroupsPage() {
                             { key: 'edit', label: 'Sửa' },
                             { key: 'delete', label: 'Xóa' },
                             { key: 'print', label: 'In chứng từ' },
+                            { key: 'status', label: 'Duyệt / Đổi TT' },
                             { key: 'import', label: 'Nhập file' },
                             { key: 'export', label: 'Xuất file' },
                           ];

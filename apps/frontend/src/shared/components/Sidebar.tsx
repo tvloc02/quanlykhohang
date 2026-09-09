@@ -93,7 +93,7 @@ type MenuItem = {
 const menuItems: MenuItem[] = [
   // 1. Trang chủ
   {
-    id: 'pos',
+    id: 'dashboard',
     icon: Home,
     label: 'Trang chủ',
     path: '/dashboard',
