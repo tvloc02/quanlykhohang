@@ -303,9 +303,10 @@ export function findProductStockAndBinsByZone(
           bBins.forEach((bin) => bin && res.binsSet.add(bin));
         } else if (
           bLoc === normWh ||
-          bLoc === 'KH006' ||
-          bLoc === 'KHO-NVL' ||
-          bLoc === 'KHO-TONG'
+          bLoc.startsWith(normWh + '-') ||
+          bLoc.startsWith(normWh + '_') ||
+          ((normWh === 'KH006' || normWh === 'KHO-NVL' || normWh === 'KHO-TONG') &&
+            (bLoc === 'KH006' || bLoc === 'KHO-NVL' || bLoc === 'KHO-TONG'))
         ) {
           if (bBins.length > 0) {
             bBins.forEach((bin) => {
