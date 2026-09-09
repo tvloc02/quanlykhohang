@@ -7,7 +7,7 @@ import {
   type PermissionGroup,
   type ActionPermission,
   type GeneralPermissions,
-} from '../../features/personnel/PermissionGroupsPage';
+} from '../utils/permissionStorage';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 

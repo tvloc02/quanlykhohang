@@ -34,7 +34,7 @@ import {
   readStoredPermissionGroups,
   saveStoredPermissionGroups,
   type PermissionGroup,
-} from './PermissionGroupsPage';
+} from '../../shared/utils/permissionStorage';
 import { usePermissions } from '../../shared/hooks/usePermissions';
 
 const API_BASE_URL = 'http://localhost:3000/api';
@@ -376,6 +376,7 @@ export default function Personnel() {
       }
 
       setUsers(mergedUsers);
+      saveStoredPersonnelUsers(mergedUsers);
 
       if (wRes.ok) {
         const remoteWarehouses = (await wRes.json()) as WarehouseRecord[];

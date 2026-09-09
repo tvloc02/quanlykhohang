@@ -1677,11 +1677,49 @@ export default function CreateOutboundOrderPage({
     return { foundBin, foundPrice };
   }, [activeTab?.branchCode, activeTab?.customer, allInboundOrders, getProductPriceForMode]);
 
-  const getFilteredProductsForRow = (rowText: string) => {
-    const kw = (rowText || '').trim().toLowerCase();
+  const getFilteredProductsForRow = (rowText: string, currentRowId?: string) => {
+    const currentRow = (activeTab?.details || []).find((r) => r.rowId === currentRowId);
+    const isSelectedProductText = currentRow?.productId && (
+      rowText === `${currentRow.productSku ? currentRow.productSku + ' - ' : ''}${currentRow.productName}` ||
+      rowText === currentRow.productName ||
+      rowText === currentRow.productSku
+    );
+
+    const kw = isSelectedProductText ? '' : (rowText || '').trim().toLowerCase();
     const baseList = availableProductsForMode;
-    if (!kw) return baseList;
-    return baseList.filter(
+
+    // Collect products selected in OTHER rows to exclude them
+    const otherSelectedIds = new Set<string>();
+    const otherSelectedSkus = new Set<string>();
+    const otherSelectedNames = new Set<string>();
+
+    (activeTab?.details || []).forEach((r) => {
+      if (currentRowId && r.rowId === currentRowId) return;
+      if (r.productId && String(r.productId).trim()) {
+        otherSelectedIds.add(String(r.productId).trim().toLowerCase());
+      }
+      if (r.productSku && String(r.productSku).trim()) {
+        otherSelectedSkus.add(String(r.productSku).trim().toLowerCase());
+      }
+      if (r.productName && String(r.productName).trim()) {
+        otherSelectedNames.add(String(r.productName).trim().toLowerCase());
+      }
+    });
+
+    const unselectedProducts = baseList.filter((p) => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pSku = String(p.internalSku || '').trim().toLowerCase();
+      const pName = String(p.name || '').trim().toLowerCase();
+
+      if (pId && otherSelectedIds.has(pId)) return false;
+      if (pSku && otherSelectedSkus.has(pSku)) return false;
+      if (pName && otherSelectedNames.has(pName)) return false;
+      return true;
+    });
+
+    if (!kw) return unselectedProducts;
+
+    return unselectedProducts.filter(
       (p) =>
         p.name.toLowerCase().includes(kw) ||
         (p.internalSku || '').toLowerCase().includes(kw) ||
@@ -1692,13 +1730,42 @@ export default function CreateOutboundOrderPage({
   const filteredQuickProducts = useMemo(() => {
     const kw = quickProductSearch.trim().toLowerCase();
     const baseList = availableProductsForMode;
-    if (!kw) return baseList;
-    return baseList.filter(
+
+    const otherSelectedIds = new Set<string>();
+    const otherSelectedSkus = new Set<string>();
+    const otherSelectedNames = new Set<string>();
+
+    (activeTab?.details || []).forEach((r) => {
+      if (r.productId && String(r.productId).trim()) {
+        otherSelectedIds.add(String(r.productId).trim().toLowerCase());
+      }
+      if (r.productSku && String(r.productSku).trim()) {
+        otherSelectedSkus.add(String(r.productSku).trim().toLowerCase());
+      }
+      if (r.productName && String(r.productName).trim()) {
+        otherSelectedNames.add(String(r.productName).trim().toLowerCase());
+      }
+    });
+
+    const unselectedProducts = baseList.filter((p) => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pSku = String(p.internalSku || '').trim().toLowerCase();
+      const pName = String(p.name || '').trim().toLowerCase();
+
+      if (pId && otherSelectedIds.has(pId)) return false;
+      if (pSku && otherSelectedSkus.has(pSku)) return false;
+      if (pName && otherSelectedNames.has(pName)) return false;
+      return true;
+    });
+
+    if (!kw) return unselectedProducts;
+
+    return unselectedProducts.filter(
       (p) =>
         p.name.toLowerCase().includes(kw) ||
         (p.internalSku || '').toLowerCase().includes(kw)
     );
-  }, [availableProductsForMode, quickProductSearch]);
+  }, [availableProductsForMode, quickProductSearch, activeTab?.details]);
 
   const handleSelectQuickProduct = (p: ProductOption) => {
     if (!activeTab) return;
@@ -2376,7 +2443,11 @@ export default function CreateOutboundOrderPage({
                             value={row.productName ? `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` : ''}
                             onChange={(e) => {
                               const val = e.target.value;
-                              updateRow(row.rowId, { productName: val });
+                              const isExact = row.productId && (val === `${row.productSku ? row.productSku + ' - ' : ''}${row.productName}` || val === row.productName);
+                              updateRow(row.rowId, {
+                                productName: val,
+                                ...(isExact ? {} : { productId: '', productSku: '' }),
+                              });
                               setActiveProductDropdownRowId(row.rowId);
                             }}
                             onFocus={() => setActiveProductDropdownRowId(row.rowId)}
@@ -2399,12 +2470,12 @@ export default function CreateOutboundOrderPage({
                                   <div className="p-3 text-center text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40">
                                     ⚠️ Vui lòng chọn Nhà cung cấp ở mục thông tin phiếu trước khi chọn sản phẩm xuất trả!
                                   </div>
-                                ) : getFilteredProductsForRow(row.productName || row.productSku).length === 0 ? (
+                                ) : getFilteredProductsForRow(row.productName || row.productSku, row.rowId).length === 0 ? (
                                   <div className="p-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400">
                                     {isReturnSupplier ? `Không có hàng hóa nào thuộc Nhà cung cấp [${activeTab?.customer || ''}]` : 'Không tìm thấy hàng hóa'}
                                   </div>
                                 ) : (
-                                  getFilteredProductsForRow(row.productName || row.productSku).map((p) => {
+                                  getFilteredProductsForRow(row.productName || row.productSku, row.rowId).map((p) => {
                                     const rowWhCode = activeTab?.branchCode || row.warehouseCode || warehouses[0]?.code || 'KHO-TONG';
                                     const whStock = getProductWarehouseStock(p, rowWhCode, allInboundOrders);
                                     return (
