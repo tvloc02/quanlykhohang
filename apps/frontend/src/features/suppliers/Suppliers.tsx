@@ -154,10 +154,10 @@ function normalizeSupplier(supplier: Partial<Supplier>): Supplier {
 }
 
 export default function Suppliers() {
-  const { canPerformAction, isAdmin } = usePermissions();
-  const canCreate = isAdmin || canPerformAction('suppliers', 'create');
-  const canEdit = isAdmin || canPerformAction('suppliers', 'edit');
-  const canDelete = isAdmin || canPerformAction('suppliers', 'delete');
+  const { canPerformAction } = usePermissions();
+  const canCreate = canPerformAction('suppliers', 'create');
+  const canEdit = canPerformAction('suppliers', 'edit');
+  const canDelete = canPerformAction('suppliers', 'delete');
 
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [search, setSearch] = React.useState('');
@@ -477,26 +477,38 @@ export default function Suppliers() {
                         >
                           <Eye size={18} strokeWidth={2.5} />
                         </button>
-                        {canEdit && (
-                          <button
-                            type="button"
-                            onClick={() => openModal('edit', supplier)}
-                            title="Sửa nhà cung cấp"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                          >
-                            <Pencil size={18} strokeWidth={2.5} />
-                          </button>
-                        )}
-                        {canDelete && (
-                          <button
-                            type="button"
-                            onClick={() => openModal('delete', supplier)}
-                            title="Xóa nhà cung cấp"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 cursor-pointer"
-                          >
-                            <Trash2 size={18} strokeWidth={2.5} />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          disabled={!canEdit}
+                          onClick={() => {
+                            if (!canEdit) return;
+                            openModal('edit', supplier);
+                          }}
+                          title={!canEdit ? 'Không có quyền sửa' : 'Sửa nhà cung cấp'}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                            !canEdit
+                              ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                              : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 cursor-pointer'
+                          }`}
+                        >
+                          <Pencil size={18} strokeWidth={2.5} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!canDelete}
+                          onClick={() => {
+                            if (!canDelete) return;
+                            openModal('delete', supplier);
+                          }}
+                          title={!canDelete ? 'Không có quyền xóa' : 'Xóa nhà cung cấp'}
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                            !canDelete
+                              ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                              : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 cursor-pointer'
+                          }`}
+                        >
+                          <Trash2 size={18} strokeWidth={2.5} />
+                        </button>
                       </div>
                     </td>
                   </tr>

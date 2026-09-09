@@ -393,90 +393,107 @@ export const WarehouseGoodsPrintModal: React.FC<WarehouseGoodsPrintModalProps> =
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="warehouse-goods-print-modal fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-xs overflow-y-auto print:static print:block print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible font-sans">
+    <div
+      onClick={onClose}
+      className="warehouse-goods-print-modal fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 p-2 sm:p-4 backdrop-blur-xs overflow-y-auto print:static print:block print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible font-sans cursor-pointer"
+    >
       {/* Container Dialog */}
-      <div className="flex w-full max-w-6xl max-h-[96vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-300 print:block print:max-h-none print:h-auto print:shadow-none print:w-full print:rounded-none print:border-none print:m-0 print:p-0">
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex w-full max-w-6xl max-h-[96vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-300 print:block print:max-h-none print:h-auto print:shadow-none print:w-full print:rounded-none print:border-none print:m-0 print:p-0 cursor-default"
+      >
         {/* Top Control Bar (Hidden on Print) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-slate-800 print:hidden">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-700 text-white font-bold text-sm shadow-xs">
-              <Printer className="h-5 w-5" />
+        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-slate-800 print:hidden">
+          {/* Row 1: Title on left, Action buttons (In Báo Cáo & X) on the FAR RIGHT */}
+          <div className="flex items-center justify-between gap-3 w-full">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-700 text-white font-bold text-sm shadow-xs">
+                <Printer className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-extrabold uppercase tracking-tight text-slate-900 truncate">
+                  Xem Trước & In Báo Cáo Hàng Hóa Kệ Kho
+                </h2>
+                <p className="text-xs text-slate-500 font-medium truncate">
+                  Kho: <strong className="text-cyan-800">{warehouseName || 'Kho hàng'}</strong> ({warehouseCode || 'CHƯA ĐẶT'}) • Tự động căn chỉnh khổ giấy A4
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-extrabold uppercase tracking-tight text-slate-900">
-                Xem Trước & In Báo Cáo Hàng Hóa Kệ Kho
-              </h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Kho: <strong className="text-cyan-800">{warehouseName || 'Kho hàng'}</strong> ({warehouseCode || 'CHƯA ĐẶT'}) • Tự động căn chỉnh khổ giấy A4
-              </p>
+
+            {/* Right-aligned Action Buttons: In Báo Cáo & X */}
+            <div className="flex items-center gap-2.5 shrink-0 ml-auto">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-700 hover:bg-cyan-800 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition active:scale-95 cursor-pointer"
+                title="Mở hộp thoại in trình duyệt (Ctrl+P)"
+              >
+                <Printer className="h-4 w-4" />
+                <span>In Báo Cáo (Ctrl+P)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition cursor-pointer"
+                title="Đóng cửa sổ (hoặc bấm ra ngoài)"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Filter by Rack */}
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <Filter className="h-3.5 w-3.5 text-slate-500" />
-              <span>Dãy kệ:</span>
-              <select
-                value={selectedRackFilter}
-                onChange={(e) => setSelectedRackFilter(e.target.value)}
-                className="h-8 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-800 shadow-xs focus:border-cyan-600 focus:outline-hidden"
-              >
-                <option value="ALL">Tất cả dãy kệ ({availableRacks.length})</option>
-                {availableRacks.map((rk) => (
-                  <option key={rk} value={rk}>
-                    Dãy kệ {rk}
-                  </option>
-                ))}
-              </select>
+          {/* Row 2: Filter Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-200/80">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Filter by Rack */}
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                <Filter className="h-3.5 w-3.5 text-slate-500" />
+                <span>Dãy kệ:</span>
+                <select
+                  value={selectedRackFilter}
+                  onChange={(e) => setSelectedRackFilter(e.target.value)}
+                  className="h-8 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-bold text-slate-800 shadow-xs focus:border-cyan-600 focus:outline-hidden"
+                >
+                  <option value="ALL">Tất cả dãy kệ ({availableRacks.length})</option>
+                  {availableRacks.map((rk) => (
+                    <option key={rk} value={rk}>
+                      Dãy kệ {rk}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Filter Mode: All vs Occupied Only */}
+              <div className="flex items-center rounded-lg border border-slate-300 bg-white p-0.5 text-xs font-bold shadow-xs">
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('ALL_BINS')}
+                  className={`rounded-md px-2.5 py-1 transition ${
+                    filterMode === 'ALL_BINS'
+                      ? 'bg-cyan-700 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Toàn bộ sơ đồ kệ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('OCCUPIED_ONLY')}
+                  className={`rounded-md px-2.5 py-1 transition ${
+                    filterMode === 'OCCUPIED_ONLY'
+                      ? 'bg-cyan-700 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Chỉ ô đang có hàng ({rows.filter((r) => r.totalOccupancyPct > 0).length})
+                </button>
+              </div>
             </div>
 
-            {/* Filter Mode: All vs Occupied Only */}
-            <div className="flex items-center rounded-lg border border-slate-300 bg-white p-0.5 text-xs font-bold shadow-xs">
-              <button
-                type="button"
-                onClick={() => setFilterMode('ALL_BINS')}
-                className={`rounded-md px-2.5 py-1 transition ${
-                  filterMode === 'ALL_BINS'
-                    ? 'bg-cyan-700 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Toàn bộ sơ đồ kệ
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterMode('OCCUPIED_ONLY')}
-                className={`rounded-md px-2.5 py-1 transition ${
-                  filterMode === 'OCCUPIED_ONLY'
-                    ? 'bg-cyan-700 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Chỉ ô đang có hàng ({rows.filter((r) => r.totalOccupancyPct > 0).length})
-              </button>
+            <div className="text-xs text-slate-500 font-medium">
+              Hiển thị: <strong className="text-slate-800">{filteredRows.length}</strong> ô kệ ({stats.occupiedBins} ô có hàng, {stats.emptyBins} ô trống)
             </div>
-
-            {/* Print button */}
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-cyan-700 hover:bg-cyan-800 px-4 py-2 text-xs font-extrabold text-white shadow-sm transition active:scale-95 cursor-pointer"
-              title="Mở hộp thoại in trình duyệt (Ctrl+P)"
-            >
-              <Printer className="h-4 w-4" />
-              In Báo Cáo (Ctrl+P)
-            </button>
-
-            {/* Close button */}
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition cursor-pointer"
-              title="Đóng cửa sổ"
-            >
-              <X className="h-5 w-5" />
-            </button>
           </div>
         </div>
 

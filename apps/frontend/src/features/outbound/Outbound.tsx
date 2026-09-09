@@ -497,15 +497,15 @@ export default function Outbound({
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
 
-  const { canPerformAction, isAdmin } = usePermissions();
+  const { canPerformAction } = usePermissions();
   const currentMenuId = getOutboundMenuId(featureMode);
 
-  const canCreate = isAdmin || canPerformAction(currentMenuId, 'create');
-  const canEdit = isAdmin || canPerformAction(currentMenuId, 'edit');
-  const canDelete = isAdmin || canPerformAction(currentMenuId, 'delete');
-  const canPrint = isAdmin || canPerformAction(currentMenuId, 'print');
-  const canExport = isAdmin || canPerformAction(currentMenuId, 'export');
-  const canChangeStatus = isAdmin || canPerformAction(currentMenuId, 'status');
+  const canCreate = canPerformAction(currentMenuId, 'create');
+  const canEdit = canPerformAction(currentMenuId, 'edit');
+  const canDelete = canPerformAction(currentMenuId, 'delete');
+  const canPrint = canPerformAction(currentMenuId, 'print');
+  const canExport = canPerformAction(currentMenuId, 'export');
+  const canChangeStatus = canPerformAction(currentMenuId, 'status');
   const DEFAULT_COLUMN_VIS = {
     branch: true,
     nv: true,
@@ -1875,17 +1875,21 @@ export default function Outbound({
                             )}
                             <td className="sticky right-0 z-10 w-44 min-w-[170px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                               <div className="flex items-center justify-center gap-1.5">
-                                {canEdit && (() => {
+                                {(() => {
                                   const isDraft = ['draft', 'lưu tạm'].includes((ord.status || '').toLowerCase());
+                                  const isEditAllowed = canEdit && isDraft;
                                   return (
                                     <button
                                       type="button"
-                                      disabled={!isDraft}
-                                      onClick={() => handleEditOrder(ord)}
-                                      title={!isDraft ? 'Chỉ phiếu lưu nháp mới có quyền chỉnh sửa. Phiếu đã tạo mới/xuất kho không thể sửa!' : isDisposal ? 'Sửa phiếu xuất hủy (Lưu nháp)' : 'Sửa phiếu xuất (Lưu nháp)'}
+                                      disabled={!isEditAllowed}
+                                      onClick={() => {
+                                        if (!isEditAllowed) return;
+                                        handleEditOrder(ord);
+                                      }}
+                                      title={!canEdit ? 'Không có quyền sửa' : !isDraft ? 'Chỉ phiếu lưu nháp mới có quyền chỉnh sửa. Phiếu đã tạo mới/xuất kho không thể sửa!' : isDisposal ? 'Sửa phiếu xuất hủy (Lưu nháp)' : 'Sửa phiếu xuất (Lưu nháp)'}
                                       className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
-                                        !isDraft
-                                          ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-40'
+                                        !isEditAllowed
+                                          ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
                                           : 'border-amber-500 dark:border-amber-500 bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950 hover:text-amber-700 dark:hover:text-amber-300 cursor-pointer'
                                       }`}
                                     >
@@ -1904,32 +1908,40 @@ export default function Outbound({
                                 >
                                   <Eye size={16} strokeWidth={2.5} />
                                 </button>
-                                {canPrint && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedOrder(ord);
-                                      setShowPrintModal(true);
-                                    }}
-                                    title={isDisposal ? "In biên bản xuất hủy" : "In phiếu xuất"}
-                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
-                                  >
-                                    <Printer size={16} strokeWidth={2.5} />
-                                  </button>
-                                )}
-                                {canDelete && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteSingleOutboundOrder(ord);
-                                    }}
-                                    title="Xóa phiếu xuất"
-                                    className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm transition hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer"
-                                  >
-                                    <Trash2 size={16} strokeWidth={2.5} />
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  disabled={!canPrint}
+                                  onClick={() => {
+                                    if (!canPrint) return;
+                                    setSelectedOrder(ord);
+                                    setShowPrintModal(true);
+                                  }}
+                                  title={!canPrint ? 'Không có quyền in' : isDisposal ? 'In biên bản xuất hủy' : 'In phiếu xuất'}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                    !canPrint
+                                      ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                      : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
+                                  }`}
+                                >
+                                  <Printer size={16} strokeWidth={2.5} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!canDelete}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!canDelete) return;
+                                    handleDeleteSingleOutboundOrder(ord);
+                                  }}
+                                  title={!canDelete ? 'Không có quyền xóa' : 'Xóa phiếu xuất'}
+                                  className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                    !canDelete
+                                      ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                      : 'border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer'
+                                  }`}
+                                >
+                                  <Trash2 size={16} strokeWidth={2.5} />
+                                </button>
                               </div>
                             </td>
                           </tr>

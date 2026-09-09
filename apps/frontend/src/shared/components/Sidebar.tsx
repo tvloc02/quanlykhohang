@@ -236,14 +236,13 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     }
   }, []);
 
-  const { isAdmin, canViewMenu } = usePermissions();
+  const { canViewMenu } = usePermissions();
 
   const isMenuAllowed = useCallback(
     (item: { id: string; allowedRoles?: string[] }) => {
-      if (isAdmin) return true;
       return canViewMenu(item.id);
     },
-    [isAdmin, canViewMenu]
+    [canViewMenu]
   );
 
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {

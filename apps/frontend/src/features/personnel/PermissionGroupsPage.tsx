@@ -22,6 +22,7 @@ import {
   History,
 } from 'lucide-react';
 import { normalizeWarehouseRecord, type WarehouseRecord } from '../../shared/utils/warehouseAssignments';
+import { usePermissions } from '../../shared/hooks/usePermissions';
 
 const API_BASE_URL = 'http://localhost:3000/api';
 const STORAGE_KEY = 'smart-wms-permission-groups';
@@ -311,6 +312,11 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
 }
 
 export default function PermissionGroupsPage() {
+  const { canPerformAction } = usePermissions();
+  const canCreate = canPerformAction('permission-groups', 'create');
+  const canEdit = canPerformAction('permission-groups', 'edit');
+  const canDelete = canPerformAction('permission-groups', 'delete');
+
   const [groups, setGroups] = React.useState<PermissionGroup[]>(readStoredPermissionGroups);
   const [users, setUsers] = React.useState<PersonnelUser[]>([]);
   const [warehouses, setWarehouses] = React.useState<WarehouseRecord[]>([]);
@@ -1138,30 +1144,34 @@ export default function PermissionGroupsPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           {/* 1. Thêm mới */}
-          <button
-            type="button"
-            onClick={() => openGroupModal()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <PlusCircle className="h-4.5 w-4.5 text-cyan-700" />
-            Thêm mới
-          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => openGroupModal()}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <PlusCircle className="h-4.5 w-4.5 text-cyan-700" />
+              Thêm mới
+            </button>
+          )}
 
           {/* 2. Xóa */}
-          <button
-            type="button"
-            onClick={() => {
-              if (selectedGroupIds.length === 0) {
-                setError('Vui lòng tích chọn ít nhất 1 nhóm quyền trong bảng để xóa.');
-                return;
-              }
-              setIsBulkDeleteModalOpen(true);
-            }}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
-          >
-            <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
-            Xóa {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ''}
-          </button>
+          {canDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedGroupIds.length === 0) {
+                  setError('Vui lòng tích chọn ít nhất 1 nhóm quyền trong bảng để xóa.');
+                  return;
+                }
+                setIsBulkDeleteModalOpen(true);
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-cyan-700 bg-white px-5 py-2.5 text-sm font-extrabold text-cyan-700 shadow-xs transition hover:bg-cyan-50 active:scale-95 cursor-pointer"
+            >
+              <Trash2 className="h-4.5 w-4.5 text-cyan-700" />
+              Xóa {selectedGroupIds.length > 0 ? `(${selectedGroupIds.length})` : ''}
+            </button>
+          )}
 
           {/* 3. Export */}
           <button
@@ -1320,36 +1330,68 @@ export default function PermissionGroupsPage() {
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                            title="Phân quyền dùng Menu"
-                            onClick={() => openPermissionMatrixModal(group)}
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền phân quyền menu' : 'Phân quyền dùng Menu'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openPermissionMatrixModal(group);
+                            }}
                           >
                             <Sliders size={18} strokeWidth={2.5} />
                           </button>
 
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                            title="Gán nhân sự vào nhóm"
-                            onClick={() => openAssignPersonnelModal(group)}
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền gán nhân sự' : 'Gán nhân sự vào nhóm'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openAssignPersonnelModal(group);
+                            }}
                           >
                             <UserPlus size={18} strokeWidth={2.5} />
                           </button>
 
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                            title="Sửa nhóm"
-                            onClick={() => openGroupModal(group)}
+                            disabled={!canEdit}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canEdit
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền sửa' : 'Sửa nhóm'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openGroupModal(group);
+                            }}
                           >
                             <Pencil size={18} strokeWidth={2.5} />
                           </button>
 
                           <button
                             type="button"
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-cyan-500 bg-white text-cyan-600 shadow-sm transition hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer"
-                            title="Xóa nhóm"
-                            onClick={() => setDeletingGroupId(group.id)}
+                            disabled={!canDelete}
+                            className={`flex h-9 w-9 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                              !canDelete
+                                ? 'border-slate-200 bg-slate-100 text-slate-400 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-500 bg-white text-cyan-600 hover:bg-cyan-50 hover:text-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canDelete ? 'Không có quyền xóa' : 'Xóa nhóm'}
+                            onClick={() => {
+                              if (!canDelete) return;
+                              setDeletingGroupId(group.id);
+                            }}
                           >
                             <Trash2 size={18} strokeWidth={2.5} />
                           </button>

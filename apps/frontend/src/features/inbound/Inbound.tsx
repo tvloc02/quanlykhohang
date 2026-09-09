@@ -495,15 +495,15 @@ function getLocalDateString(d: Date = new Date()): string {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const currentUserName = currentUser.fullName || currentUser.email?.split('@')[0] || 'Quản lý kho';
 
-  const { canPerformAction, isAdmin } = usePermissions();
+  const { canPerformAction } = usePermissions();
   const currentMenuId = getInboundMenuId(featureMode);
 
-  const canCreate = isAdmin || canPerformAction(currentMenuId, 'create');
-  const canEdit = isAdmin || canPerformAction(currentMenuId, 'edit');
-  const canDelete = isAdmin || canPerformAction(currentMenuId, 'delete');
-  const canPrint = isAdmin || canPerformAction(currentMenuId, 'print');
-  const canExport = isAdmin || canPerformAction(currentMenuId, 'export');
-  const canChangeStatus = isAdmin || canPerformAction(currentMenuId, 'status');
+  const canCreate = canPerformAction(currentMenuId, 'create');
+  const canEdit = canPerformAction(currentMenuId, 'edit');
+  const canDelete = canPerformAction(currentMenuId, 'delete');
+  const canPrint = canPerformAction(currentMenuId, 'print');
+  const canExport = canPerformAction(currentMenuId, 'export');
+  const canChangeStatus = canPerformAction(currentMenuId, 'status');
 
   // ── Column Visibility Configuration ───────────────────────────
   const DEFAULT_COLUMN_VIS = {
@@ -2010,29 +2010,29 @@ function getLocalDateString(d: Date = new Date()): string {
                           )}
                           <td className="sticky right-0 z-10 w-56 min-w-[210px] bg-white dark:bg-slate-900 group-hover:bg-cyan-50/90 dark:group-hover:bg-indigo-950/90 px-3 py-3.5 text-center shadow-[-4px_0_12px_rgba(0,0,0,0.05)] border-l border-slate-200 dark:border-indigo-900/60 print:hidden">
                             <div className="flex items-center justify-center gap-1.5">
-                              {/* Nút Sửa: Nếu hoàn thành thì nút sửa chìm, còn nếu nháp thì nút sửa sáng và sửa được bình thường */}
-                              {isCompleted ? (
-                                <button
-                                  type="button"
-                                  disabled
-                                  title="Phiếu nhập kho đã hoàn thành, không thể chỉnh sửa"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 opacity-40 cursor-not-allowed shadow-none"
-                                >
-                                  <Pencil size={16} strokeWidth={2} />
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleEditOrder(ord);
-                                  }}
-                                  title="Chỉnh sửa phiếu nhập kho (Đơn nháp)"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 shadow-sm transition cursor-pointer"
-                                >
-                                  <Pencil size={16} strokeWidth={2.5} />
-                                </button>
-                              )}
+                              {/* Nút Sửa: Nếu hoàn thành hoặc không có quyền thì nút sửa in mờ */}
+                              {(() => {
+                                const isEditAllowed = canEdit && !isCompleted;
+                                return (
+                                  <button
+                                    type="button"
+                                    disabled={!isEditAllowed}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (!isEditAllowed) return;
+                                      handleEditOrder(ord);
+                                    }}
+                                    title={!canEdit ? 'Không có quyền sửa' : isCompleted ? 'Phiếu nhập kho đã hoàn thành, không thể chỉnh sửa' : 'Chỉnh sửa phiếu nhập kho (Đơn nháp)'}
+                                    className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                      !isEditAllowed
+                                        ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 opacity-30 cursor-not-allowed pointer-events-none'
+                                        : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
+                                    }`}
+                                  >
+                                    <Pencil size={16} strokeWidth={2.5} />
+                                  </button>
+                                );
+                              })()}
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2055,32 +2055,40 @@ function getLocalDateString(d: Date = new Date()): string {
                               >
                                 <Boxes size={16} strokeWidth={2.5} />
                               </button>
-                              {canPrint && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handlePrintOrder(ord);
-                                  }}
-                                  title="In phiếu nhập"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 shadow-sm transition hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer"
-                                >
-                                  <Printer size={16} strokeWidth={2.5} />
-                                </button>
-                              )}
-                              {canDelete && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteSingleOrder(ord);
-                                  }}
-                                  title="Xóa phiếu nhập"
-                                  className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm transition hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer"
-                                >
-                                  <Trash2 size={16} strokeWidth={2.5} />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                disabled={!canPrint}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!canPrint) return;
+                                  handlePrintOrder(ord);
+                                }}
+                                title={!canPrint ? 'Không có quyền in' : 'In phiếu nhập'}
+                                className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                  !canPrint
+                                    ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                    : 'border-cyan-500 dark:border-indigo-500 bg-white dark:bg-slate-900 text-cyan-600 dark:text-indigo-400 hover:bg-cyan-50 dark:hover:bg-indigo-950 hover:text-cyan-700 dark:hover:text-indigo-300 cursor-pointer'
+                                }`}
+                              >
+                                <Printer size={16} strokeWidth={2.5} />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canDelete}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!canDelete) return;
+                                  handleDeleteSingleOrder(ord);
+                                }}
+                                title={!canDelete ? 'Không có quyền xóa' : 'Xóa phiếu nhập'}
+                                className={`flex h-8 w-8 items-center justify-center rounded-xl border-2 shadow-sm transition ${
+                                  !canDelete
+                                    ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-30 pointer-events-none'
+                                    : 'border-rose-500 dark:border-rose-700 bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer'
+                                }`}
+                              >
+                                <Trash2 size={16} strokeWidth={2.5} />
+                              </button>
                             </div>
                           </td>
                         </tr>

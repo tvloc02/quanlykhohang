@@ -717,10 +717,10 @@ function normalizeProduct(product: RawProduct & Record<string, any>): Product {
 }
 
 export default function Products() {
-  const { canPerformAction, isAdmin } = usePermissions();
-  const canCreate = isAdmin || canPerformAction('products-main', 'create');
-  const canEdit = isAdmin || canPerformAction('products-main', 'edit');
-  const canDelete = isAdmin || canPerformAction('products-main', 'delete');
+  const { canPerformAction } = usePermissions();
+  const canCreate = canPerformAction('products-main', 'create');
+  const canEdit = canPerformAction('products-main', 'edit');
+  const canDelete = canPerformAction('products-main', 'delete');
 
   const [products, setProducts] = React.useState<Product[]>([]);
   const [search, setSearch] = React.useState('');
@@ -2350,27 +2350,39 @@ export default function Products() {
                             <History size={18} strokeWidth={2.2} />
                           </button>
                           {/* 3. Sửa */}
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className="flex h-8 w-8 items-center justify-center rounded-[12px] border-2 border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50 hover:border-cyan-700 transition cursor-pointer shadow-xs"
-                              title="Sửa hàng hóa"
-                              onClick={() => openProductModal('edit', product)}
-                            >
-                              <Pencil size={18} strokeWidth={2.2} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canEdit}
+                            className={`flex h-8 w-8 items-center justify-center rounded-[12px] border-2 shadow-xs transition ${
+                              !canEdit
+                                ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-cyan-600 bg-white text-cyan-600 hover:bg-cyan-50 hover:border-cyan-700 cursor-pointer'
+                            }`}
+                            title={!canEdit ? 'Không có quyền sửa' : 'Sửa hàng hóa'}
+                            onClick={() => {
+                              if (!canEdit) return;
+                              openProductModal('edit', product);
+                            }}
+                          >
+                            <Pencil size={18} strokeWidth={2.2} />
+                          </button>
                           {/* 4. Xóa */}
-                          {canDelete && (
-                            <button
-                              type="button"
-                              className="flex h-8 w-8 items-center justify-center rounded-[12px] border-2 border-rose-600 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-700 transition cursor-pointer shadow-xs"
-                              title="Xóa hàng hóa"
-                              onClick={() => openProductModal('delete', product)}
-                            >
-                              <Trash2 size={18} strokeWidth={2.2} />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            disabled={!canDelete}
+                            className={`flex h-8 w-8 items-center justify-center rounded-[12px] border-2 shadow-xs transition ${
+                              !canDelete
+                                ? 'border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 opacity-30 cursor-not-allowed pointer-events-none'
+                                : 'border-rose-600 bg-white text-rose-600 hover:bg-rose-50 hover:border-rose-700 cursor-pointer'
+                            }`}
+                            title={!canDelete ? 'Không có quyền xóa' : 'Xóa hàng hóa'}
+                            onClick={() => {
+                              if (!canDelete) return;
+                              openProductModal('delete', product);
+                            }}
+                          >
+                            <Trash2 size={18} strokeWidth={2.2} />
+                          </button>
                         </div>
                       </td>
                     )}
