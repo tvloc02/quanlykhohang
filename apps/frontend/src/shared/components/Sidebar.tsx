@@ -29,6 +29,7 @@ import {
   Repeat,
   ShoppingCart,
   FileX,
+  X,
   Link as LinkIcon,
   Cpu,
   Zap,
@@ -410,11 +411,13 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   return (
     <aside
       className={`${
-        isOpen ? 'w-80' : 'w-20'
-      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen`}
+        isOpen
+          ? 'w-80 translate-x-0'
+          : 'w-80 -translate-x-full lg:w-20 lg:translate-x-0'
+      } fixed lg:relative z-40 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen shrink-0 shadow-2xl lg:shadow-none`}
     >
-      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex justify-center lg:justify-start box-border">
-        <div className={`flex items-center gap-3 w-full ${!isOpen ? 'justify-center' : ''}`}>
+      <div className="h-20 p-4 border-b-2 bg-white dark:bg-[#090d16] flex-shrink-0 border-slate-200 dark:border-slate-800/80 flex items-center justify-between box-border">
+        <div className={`flex items-center gap-3 ${!isOpen ? 'lg:justify-center w-full' : 'flex-1 overflow-hidden'}`}>
           <img src="/logo.png" alt="Smart WMS" className="h-11 w-11 object-cover rounded-xl shadow-sm flex-shrink-0" />
           {isOpen && (
             <div className="flex-1 overflow-hidden">
@@ -425,6 +428,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             </div>
           )}
         </div>
+        {isOpen && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="lg:hidden p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 cursor-pointer ml-2"
+            title="Đóng menu"
+          >
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       <div className="px-4 py-4 flex-shrink-0">

@@ -36,6 +36,7 @@ import {
   Calendar,
   Hash,
   ArrowDownToLine,
+  Lock,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -2295,7 +2296,7 @@ export default function CreateStockInOrderPage({
   // Toast auto-hide
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3500);
+    const timer = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -3094,6 +3095,18 @@ export default function CreateStockInOrderPage({
     return Math.max(0, grandTotal - paid);
   }, [grandTotal, activeTab]);
 
+  // Kiểm tra xem đã có bất kỳ hàng hóa nào trong phiếu được chọn ô kệ hay chưa
+  const hasAssignedBins = useMemo(() => {
+    if (!activeTab) return false;
+    return (activeTab.details || []).some((r) => {
+      const hasProduct = Boolean(r.productId || r.productName?.trim() || r.productSku?.trim());
+      if (!hasProduct) return false;
+      const hasArray = Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
+      const hasStr = Boolean(r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== '-');
+      return hasArray || hasStr;
+    });
+  }, [activeTab]);
+
   const handleOpenPrintModal = useCallback((overrideItems?: FormDetailRow[]) => {
     if (!activeTab) return;
     const itemsToPrint = overrideItems || activeTab.details.filter(
@@ -3232,10 +3245,6 @@ export default function CreateStockInOrderPage({
     if (!activeTab) return;
 
     const currentRows = overrideRows || activeTab.details;
-    const currentValidItems = currentRows.filter(
-      (r) => (r.productId || r.productName?.trim() || r.productSku?.trim()) && Number(r.qty) > 0
-    );
-
     const isCompleted = isCompletedInboundStatus(activeTab.status);
     if (isCompleted) {
       setToast({
@@ -3245,10 +3254,30 @@ export default function CreateStockInOrderPage({
       return;
     }
 
-    if (currentValidItems.length === 0) {
-      setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
+    const itemsWithProduct = currentRows.filter(
+      (r) => r.productId || r.productName?.trim() || r.productSku?.trim()
+    );
+
+    if (itemsWithProduct.length === 0) {
+      setToast({
+        message: 'Phiếu nhập kho phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.',
+        type: 'error',
+      });
       return;
     }
+
+    const invalidQtyItem = itemsWithProduct.find(
+      (r) => !r.qty || Number(r.qty) < 1 || isNaN(Number(r.qty))
+    );
+    if (invalidQtyItem) {
+      setToast({
+        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || 'trong phiếu'}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
+        type: 'error',
+      });
+      return;
+    }
+
+    const currentValidItems = itemsWithProduct;
 
     if (!bypassAi) {
       setPendingSaveConfig({ isPrint, saveStatus });
@@ -4042,30 +4071,48 @@ export default function CreateStockInOrderPage({
 
           {/* Chọn Kho nhập hàng (Custom Rounded Dropdown) */}
           <div className="relative warehouse-dropdown-box">
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
-              <WarehouseIcon className="h-4 w-4 text-cyan-600" />
-              <span>Kho nhập hàng</span>
-            </label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
+                <WarehouseIcon className="h-4 w-4 text-cyan-600" />
+                <span>Kho nhập hàng</span>
+              </label>
+            </div>
             <div
               onClick={() => {
                 if (isReadOnly) return;
+                if (hasAssignedBins) {
+                  setToast({
+                    message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho lưu trữ!',
+                    type: 'error',
+                  });
+                  return;
+                }
                 setShowWarehouseDropdown((prev) => !prev);
               }}
-              className={`h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 flex items-center justify-between shadow-2xs transition ${isReadOnly ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed' : 'cursor-pointer hover:border-cyan-600'
-                }`}
+              className={`h-10 w-full rounded-xl border-2 px-3 text-sm font-bold flex items-center justify-between shadow-2xs transition ${
+                isReadOnly || hasAssignedBins
+                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                  : 'bg-white border-slate-300 text-slate-800 cursor-pointer hover:border-cyan-600'
+              }`}
+              title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
-              <span className="truncate">
+              <span className="truncate flex items-center gap-1.5">
+                {hasAssignedBins && <Lock size={14} className="text-amber-600 shrink-0" />}
                 {warehouses.find((w) => w.code === activeTab?.warehouseCode)
                   ? `[${activeTab.warehouseCode}] ${warehouses.find((w) => w.code === activeTab.warehouseCode)?.name}`
                   : activeTab?.warehouseCode || (warehouses[0] ? `[${warehouses[0].code}] ${warehouses[0].name}` : 'Đang tải kho...')}
               </span>
-              <ChevronDown
-                size={16}
-                className={`text-slate-500 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`}
-              />
+              {hasAssignedBins ? (
+                <Lock size={16} className="text-amber-600 shrink-0" />
+              ) : (
+                <ChevronDown
+                  size={16}
+                  className={`text-slate-500 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`}
+                />
+              )}
             </div>
 
-            {!isReadOnly && showWarehouseDropdown && (
+            {!isReadOnly && !hasAssignedBins && showWarehouseDropdown && (
               <div className="absolute left-0 top-full z-[100] mt-1.5 w-full rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl animate-[fadeIn_0.15s_ease-out]">
                 <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1">
                   {warehouses.length === 0 ? (
@@ -4115,15 +4162,15 @@ export default function CreateStockInOrderPage({
           {/* ═══ PRODUCT SELECTION TABLE CARD ═══ */}
           <div className={`flex flex-col rounded-xl border-2 border-slate-200 bg-white shadow-sm overflow-hidden min-h-0 ${isFullscreen ? 'flex-1 h-full' : ''}`}>
             {/* Table Header Controls */}
-            <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
+            <div className="px-3 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2 flex-shrink-0">
               <div className="flex items-center gap-2 text-cyan-900 font-black text-xs sm:text-sm">
-                <Package className="h-4 w-4 text-cyan-600" />
+                <Package className="h-4 w-4 text-cyan-600 shrink-0" />
                 <span>
                   THÔNG TIN HÀNG HÓA NHẬP KHO ({activeValidItems.length} MẶT HÀNG - TỔNG SL: {totalQty})
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 {!isReadOnly && (
                   <>
                     <button
@@ -4288,11 +4335,11 @@ export default function CreateStockInOrderPage({
                         <td className="p-1 border-r border-slate-200">
                           <input
                             type="number"
-                            min="0"
+                            min="1"
                             disabled={isReadOnly}
                             value={row.qty === 0 ? '' : row.qty}
                             onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
-                            placeholder="0"
+                            placeholder="1"
                             className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 bg-white font-black text-slate-900 outline-none focus:border-cyan-600 text-xs sm:text-sm disabled:bg-slate-100 disabled:text-slate-700 disabled:cursor-not-allowed"
                           />
                         </td>

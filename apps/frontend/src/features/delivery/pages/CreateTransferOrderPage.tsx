@@ -30,6 +30,7 @@ import {
   Sparkles,
   Bot,
   AlertCircle,
+  Lock,
 } from 'lucide-react';
 import { deliveryApi, type TransferOrder } from '../api/deliveryApi';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -812,6 +813,18 @@ export default function CreateTransferOrderPage({
     return activeTab.details.filter((d) => (d.productName || d.productSku || d.productId) && d.qty > 0);
   }, [activeTab]);
 
+  // Kiểm tra xem đã có bất kỳ hàng hóa nào trong phiếu được chọn ô kệ hay chưa
+  const hasAssignedBins = useMemo(() => {
+    if (!activeTab) return false;
+    return (activeTab.details || []).some((r) => {
+      const hasProduct = Boolean(r.productId || r.productName?.trim() || r.productSku?.trim());
+      if (!hasProduct) return false;
+      const hasArray = Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
+      const hasStr = Boolean(r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== '-');
+      return hasArray || hasStr;
+    });
+  }, [activeTab]);
+
   const activePickBinRow = useMemo(() => {
     if (!activePickBinRowId || !activeTab) return null;
     return activeTab.details.find((r) => r.rowId === activePickBinRowId) || null;
@@ -858,8 +871,26 @@ export default function CreateTransferOrderPage({
   const handleSaveTransfer = async (statusSave: 'DRAFT' | 'APPROVED' | 'IN_TRANSIT' | 'DELIVERED' | 'COMPLETED') => {
     if (!activeTab) return;
 
-    if (activeValidItems.length === 0) {
-      setToast({ type: 'error', message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0' });
+    const itemsWithProduct = (activeTab.details || []).filter(
+      (r) => r.productId || r.productName?.trim() || r.productSku?.trim()
+    );
+
+    if (itemsWithProduct.length === 0) {
+      setToast({
+        type: 'error',
+        message: 'Phiếu điều chuyển phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.',
+      });
+      return;
+    }
+
+    const invalidQtyItem = itemsWithProduct.find(
+      (r) => !r.qty || Number(r.qty) < 1 || isNaN(Number(r.qty))
+    );
+    if (invalidQtyItem) {
+      setToast({
+        type: 'error',
+        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || 'trong phiếu'}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
+      });
       return;
     }
 
@@ -1056,15 +1087,28 @@ export default function CreateTransferOrderPage({
 
           {/* Kho xuất (Kho nguồn) */}
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-              <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
-              <span>KHO XUẤT HÀNG (KHO NGUỒN)</span>
-            </label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                <WarehouseIcon className="h-3.5 w-3.5 text-cyan-600" />
+                <span>KHO XUẤT HÀNG (KHO NGUỒN)</span>
+              </label>
+            </div>
             <select
-              disabled={isReadOnly}
+              disabled={isReadOnly || (!isReceiveMode && hasAssignedBins)}
               value={activeTab?.sourceWarehouseCode || ''}
-              onChange={(e) => handleSourceWarehouseChange(e.target.value)}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
+              onChange={(e) => {
+                if (!isReceiveMode && hasAssignedBins) {
+                  setToast({ message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho!', type: 'error' });
+                  return;
+                }
+                handleSourceWarehouseChange(e.target.value);
+              }}
+              className={`h-10 w-full rounded-xl border-2 px-3 text-xs font-bold transition shadow-2xs ${
+                isReadOnly || (!isReceiveMode && hasAssignedBins)
+                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                  : 'bg-cyan-50/50 border-cyan-500 text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer'
+              }`}
+              title={!isReceiveMode && hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
               {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
                 warehouses
@@ -1086,15 +1130,28 @@ export default function CreateTransferOrderPage({
 
           {/* Kho nhập (Chi nhánh nhận) - Đồng nhất màu Cyan */}
           <div>
-            <label className="mb-1 block text-xs font-bold text-slate-700 flex items-center gap-1">
-              <ArrowRight className="h-3.5 w-3.5 text-cyan-600" />
-              <span>KHO NHẬP (CHI NHÁNH NHẬN)</span>
-            </label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-700 flex items-center gap-1">
+                <ArrowRight className="h-3.5 w-3.5 text-cyan-600" />
+                <span>KHO NHẬP (CHI NHÁNH NHẬN)</span>
+              </label>
+            </div>
             <select
-              disabled={isReadOnly}
+              disabled={isReadOnly || (isReceiveMode && hasAssignedBins)}
               value={activeTab?.destinationWarehouseCode || ''}
-              onChange={(e) => handleDestinationWarehouseChange(e.target.value)}
-              className="h-10 w-full rounded-xl border-2 border-cyan-500 bg-cyan-50/50 px-3 text-xs font-bold text-cyan-900 outline-none transition focus:border-cyan-600 cursor-pointer disabled:bg-slate-100 disabled:text-slate-600 disabled:border-slate-200 disabled:cursor-not-allowed"
+              onChange={(e) => {
+                if (isReceiveMode && hasAssignedBins) {
+                  setToast({ message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho!', type: 'error' });
+                  return;
+                }
+                handleDestinationWarehouseChange(e.target.value);
+              }}
+              className={`h-10 w-full rounded-xl border-2 px-3 text-xs font-bold transition shadow-2xs ${
+                isReadOnly || (isReceiveMode && hasAssignedBins)
+                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                  : 'bg-cyan-50/50 border-cyan-500 text-cyan-900 outline-none focus:border-cyan-600 cursor-pointer'
+              }`}
+              title={isReceiveMode && hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
               {warehouses.filter((wh) => !wh.isFrozen).length > 0 ? (
                 warehouses
@@ -1274,7 +1331,7 @@ export default function CreateTransferOrderPage({
         {/* LEFT COLUMN: Product Table */}
         <div className="lg:col-span-9 flex flex-col rounded-2xl border-2 border-cyan-200 bg-white shadow-sm overflow-hidden">
           {/* Table Header Strip */}
-          <div className="px-4 py-3 border-b border-cyan-200 bg-cyan-50/80 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-cyan-200 bg-cyan-50/80 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-cyan-950 font-black text-xs uppercase tracking-wide">
               <Truck className="h-4.5 w-4.5 text-cyan-600" />
               <span>
@@ -1456,10 +1513,11 @@ export default function CreateTransferOrderPage({
                       <td className="p-1.5 border-r border-slate-200">
                         <input
                           type="number"
-                          min="0"
+                          min="1"
                           disabled={isReadOnly}
                           value={row.qty || ''}
                           onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
+                          placeholder="1"
                           className="w-full h-9 px-2 text-right rounded-lg border border-slate-300 bg-white font-bold text-slate-900 outline-none focus:border-cyan-600 disabled:bg-slate-50 disabled:text-slate-700 disabled:border-slate-200"
                         />
                       </td>

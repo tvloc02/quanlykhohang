@@ -87,7 +87,7 @@ function authHeaders() {
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
   React.useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => onClose(), 3500);
+      const timer = setTimeout(() => onClose(), 3000);
       return () => clearTimeout(timer);
     }
   }, [message, onClose]);

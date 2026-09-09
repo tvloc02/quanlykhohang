@@ -35,6 +35,7 @@ import {
   ArrowUpFromLine,
   TrendingDown,
   FileX,
+  Lock,
 } from 'lucide-react';
 import MainLayout from '../../../shared/components/MainLayout';
 import BarcodeScanner, { type ScannedProduct } from '../../../shared/components/BarcodeScanner';
@@ -543,6 +544,12 @@ export default function CreateOutboundOrderPage({
 
   // Toast alert
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   // Fullscreen & Modal state
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -1262,6 +1269,18 @@ export default function CreateOutboundOrderPage({
     );
   }, [baseSubtotal, totalDiscount, totalVat, activeTab?.shippingFee]);
 
+  // Kiểm tra xem đã có bất kỳ hàng hóa nào trong phiếu được chọn ô kệ hay chưa
+  const hasAssignedBins = useMemo(() => {
+    if (!activeTab) return false;
+    return (activeTab.details || []).some((r) => {
+      const hasProduct = Boolean(r.productId || r.productName?.trim() || r.productSku?.trim());
+      if (!hasProduct) return false;
+      const hasArray = Array.isArray(r.assignedBins) && r.assignedBins.length > 0;
+      const hasStr = Boolean(r.locationBin && r.locationBin.trim() && r.locationBin.trim() !== '-');
+      return hasArray || hasStr;
+    });
+  }, [activeTab]);
+
   const remainingDebt = useMemo(() => {
     if (!activeTab) return 0;
     return Math.max(0, grandTotal - (activeTab.amountPaid || grandTotal));
@@ -1269,8 +1288,27 @@ export default function CreateOutboundOrderPage({
 
   const handleSaveOutboundOrder = async (isPrint = false, saveStatus: 'DRAFT' | 'OFFICIAL' = 'OFFICIAL') => {
     if (!activeTab) return;
-    if (activeValidItems.length === 0) {
-      setToast({ message: 'Vui lòng chọn ít nhất 1 sản phẩm với số lượng > 0', type: 'error' });
+
+    const itemsWithProduct = (activeTab.details || []).filter(
+      (r) => r.productId || r.productName?.trim() || r.productSku?.trim()
+    );
+
+    if (itemsWithProduct.length === 0) {
+      setToast({
+        message: `${isDisposal ? 'Phiếu xuất hủy' : 'Phiếu xuất hàng'} phải có ít nhất 1 hàng hóa! Vui lòng chọn hàng hóa trước khi tạo phiếu.`,
+        type: 'error',
+      });
+      return;
+    }
+
+    const invalidQtyItem = itemsWithProduct.find(
+      (r) => !r.qty || Number(r.qty) < 1 || isNaN(Number(r.qty))
+    );
+    if (invalidQtyItem) {
+      setToast({
+        message: `Mặt hàng "${invalidQtyItem.productName || invalidQtyItem.productSku || 'trong phiếu'}" có số lượng không hợp lệ. Số lượng phải lớn hơn hoặc bằng 1!`,
+        type: 'error',
+      });
       return;
     }
 
@@ -2234,23 +2272,44 @@ export default function CreateOutboundOrderPage({
 
           {/* Custom Styled Dropdown - Chọn Kho xuất hàng / Kho xuất hủy */}
           <div className="relative warehouse-dropdown-box">
-            <label className="mb-1.5 block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
-              <WarehouseIcon className="h-4 w-4 text-cyan-600" />
-              <span>{isDisposal ? 'Kho xuất hủy' : 'Kho xuất hàng'}</span>
-            </label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-xs font-black uppercase text-slate-700 flex items-center gap-1">
+                <WarehouseIcon className="h-4 w-4 text-cyan-600" />
+                <span>{isDisposal ? 'Kho xuất hủy' : 'Kho xuất hàng'}</span>
+              </label>
+            </div>
 
             <button
               type="button"
-              onClick={() => setShowWarehouseDropdown(!showWarehouseDropdown)}
-              className="h-10 w-full rounded-xl border-2 border-slate-300 bg-white px-3 flex items-center justify-between text-xs sm:text-sm font-bold text-slate-800 outline-none transition hover:border-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer shadow-xs"
+              onClick={() => {
+                if (hasAssignedBins) {
+                  setToast({
+                    message: 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho lưu trữ!',
+                    type: 'error',
+                  });
+                  return;
+                }
+                setShowWarehouseDropdown(!showWarehouseDropdown);
+              }}
+              className={`h-10 w-full rounded-xl border-2 px-3 flex items-center justify-between text-xs sm:text-sm font-bold shadow-xs transition ${
+                hasAssignedBins
+                  ? 'bg-slate-100 border-slate-300 text-slate-600 cursor-not-allowed'
+                  : 'bg-white border-slate-300 text-slate-800 outline-none hover:border-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-500/20 cursor-pointer'
+              }`}
+              title={hasAssignedBins ? 'Hàng hóa đã được chọn ô kệ trong kho này. Không thể thay đổi kho.' : undefined}
             >
-              <span className="font-bold text-slate-800 text-xs sm:text-sm truncate">
+              <span className="font-bold text-xs sm:text-sm truncate flex items-center gap-1.5">
+                {hasAssignedBins && <Lock size={14} className="text-amber-600 shrink-0" />}
                 [{selectedWarehouse?.code || activeTab?.branchCode || 'KHO-TONG'}] {selectedWarehouse?.name || `Kho ${activeTab?.branchCode || 'KHO-TONG'}`}
               </span>
-              <ChevronDown className={`h-4 w-4 text-slate-500 shrink-0 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`} />
+              {hasAssignedBins ? (
+                <Lock size={16} className="text-amber-600 shrink-0" />
+              ) : (
+                <ChevronDown className={`h-4 w-4 text-slate-500 shrink-0 transition-transform duration-200 ${showWarehouseDropdown ? 'rotate-180' : ''}`} />
+              )}
             </button>
 
-            {showWarehouseDropdown && (
+            {!hasAssignedBins && showWarehouseDropdown && (
               <div className="absolute left-0 top-full z-[120] mt-1 w-full min-w-[300px] max-h-72 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
                 <div className="p-2.5 bg-slate-100 border-b border-slate-200 text-slate-700 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-1.5">
@@ -2355,7 +2414,7 @@ export default function CreateOutboundOrderPage({
                 </span>
               </div>
 
-              <div className="flex items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setShowScannerModal(true)}
@@ -2563,10 +2622,10 @@ export default function CreateOutboundOrderPage({
                         <td className="p-1 border-r border-slate-200 dark:border-indigo-900/40 w-28">
                           <input
                             type="number"
-                            min="0"
+                            min="1"
                             value={row.qty === 0 ? '' : row.qty}
                             onChange={(e) => updateRow(row.rowId, { qty: Number(e.target.value) })}
-                            placeholder="0"
+                            placeholder="1"
                             className="w-full h-9 px-2 text-center rounded-lg border border-slate-300 dark:border-indigo-900/60 bg-white dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-cyan-600 focus:dark:border-indigo-500 focus:ring-2 focus:ring-cyan-500/20 text-xs shadow-2xs"
                           />
                         </td>

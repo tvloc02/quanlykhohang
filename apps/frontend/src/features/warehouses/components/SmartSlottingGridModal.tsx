@@ -2399,16 +2399,16 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-1.5 sm:p-3 animate-in fade-in duration-200">
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-2 border-cyan-500 dark:border-indigo-900/60 w-full max-w-[98vw] max-w-[1650px] h-[95vh] flex flex-col overflow-hidden">
         {/* Modal Header - Master Cyan/Indigo Theme */}
-        <div className="bg-cyan-700 dark:bg-indigo-900 text-white px-6 py-3.5 flex items-center justify-between shadow-sm border-b dark:border-indigo-800">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-cyan-800 dark:bg-indigo-950 border border-cyan-500/50 dark:border-indigo-700 flex items-center justify-center text-cyan-200 dark:text-indigo-300 shadow-inner">
-              <Sparkles className="h-6 w-6" />
+        <div className="bg-cyan-700 dark:bg-indigo-900 text-white px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between shadow-sm border-b dark:border-indigo-800 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-xl sm:rounded-2xl bg-cyan-800 dark:bg-indigo-950 border border-cyan-500/50 dark:border-indigo-700 flex items-center justify-center text-cyan-200 dark:text-indigo-300 shadow-inner shrink-0">
+              <Sparkles className="h-4 w-4 sm:h-6 sm:w-6" />
             </div>
-            <div>
-              <h3 className="text-base font-black uppercase tracking-wide flex items-center gap-2">
-                <span>Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Kho (Smart WMS Slotting Grid)</span>
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-base font-black uppercase tracking-wide flex items-center gap-1.5 sm:gap-2 truncate">
+                <span className="truncate">Trợ lý AI Chỉ dẫn Vị trí & Sơ đồ Ô Kệ Kho</span>
                 {readOnly && (
-                  <span className="bg-amber-400 text-amber-950 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase border border-amber-300 tracking-normal shadow-2xs">
+                  <span className="bg-amber-400 text-amber-950 text-[10px] px-2 py-0.2 rounded-full font-black uppercase border border-amber-300 tracking-normal shadow-2xs shrink-0">
                     Chế độ xem
                   </span>
                 )}
@@ -2447,9 +2447,9 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
         )}
 
         {/* Modal Body */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-0 flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <div className="flex flex-col md:grid md:grid-cols-12 gap-0 flex-1 overflow-y-auto md:overflow-hidden bg-slate-50 dark:bg-slate-950">
           {/* Left Column: AI Interactive Chat */}
-          <div className="md:col-span-4 border-r border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/30 dark:bg-slate-900 flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="md:col-span-4 border-b md:border-b-0 md:border-r border-cyan-200 dark:border-indigo-900/60 bg-cyan-50/30 dark:bg-slate-900 flex flex-col h-[280px] md:h-full min-h-0 shrink-0 md:shrink">
             <div className="p-3 bg-white dark:bg-slate-950 border-b border-cyan-100 dark:border-indigo-900/40 flex items-center justify-between text-xs font-black text-cyan-900 dark:text-indigo-300 shadow-2xs shrink-0">
               <span className="flex items-center gap-2">
                 <Bot className="h-5 w-5 text-cyan-600 dark:text-indigo-400" /> Trợ lý AI Hỏi Đáp Slotting
@@ -2552,7 +2552,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
           </div>
 
           {/* Right Column: Interactive Visual Rack Topology Grid */}
-          <div className="md:col-span-8 p-4 flex flex-col h-full overflow-hidden bg-white dark:bg-slate-900">
+          <div className="md:col-span-8 p-2.5 sm:p-4 flex flex-col flex-1 min-h-[400px] md:h-full md:overflow-hidden bg-white dark:bg-slate-900">
             {/* 1. Item Switcher Bar */}
             <div className="mb-3 bg-cyan-50/80 dark:bg-indigo-950/50 p-2.5 rounded-2xl border border-cyan-200 dark:border-indigo-900/60 flex items-center justify-between">
               <div className="flex items-center gap-2 overflow-x-auto">
@@ -2728,7 +2728,7 @@ export function SmartSlottingGridModal<T extends SlottingItemRow = SlottingItemR
             </div>
 
             {/* Footer Summary & Action Buttons */}
-            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-indigo-900/40 flex items-center justify-between gap-3">
+            <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-slate-200 dark:border-indigo-900/40 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
               <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                 <span className="text-slate-500 dark:text-slate-400">
                   {readOnly ? 'Vị trí ô đã lưu trữ:' : mode === 'OUTBOUND_TRANSFER' ? 'Các Ô đang chọn xuất:' : 'Các Ô đang chọn nhập:'}

@@ -271,6 +271,18 @@ export default function TransferRequestsPage() {
   // Confirm Stock-In Receive & Bin Slotting
   const handleConfirmReceive = async () => {
     if (!receiveModalOrder) return;
+    if (!receiveItems || receiveItems.length === 0) {
+      setToast({ type: 'error', message: 'Phiếu nhận hàng chuyển kho phải có ít nhất 1 hàng hóa!' });
+      return;
+    }
+    const invalidQtyItem = receiveItems.find((it) => !Number(it.receivedQty) || Number(it.receivedQty) < 1);
+    if (invalidQtyItem) {
+      setToast({
+        type: 'error',
+        message: `Số lượng nhận của hàng hóa "${invalidQtyItem.productName || invalidQtyItem.productSku || 'sản phẩm'}" phải lớn hơn hoặc bằng 1!`,
+      });
+      return;
+    }
     setReceiveSaving(true);
     try {
       const updatedItems: TransferOrderItem[] = receiveItems.map((it) => ({
@@ -1065,32 +1077,32 @@ export default function TransferRequestsPage() {
       </div>
 
       {/* 4 Summary Stat Boxes */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-lg font-black text-cyan-700 uppercase">{total} TỔNG PHIẾU</p>
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-4">
+        <div className="flex h-14 sm:h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-2 sm:px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-xs sm:text-base md:text-lg font-black text-cyan-700 uppercase truncate">{total} TỔNG PHIẾU</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-lg font-black text-cyan-700 uppercase">{pendingCount} CHỜ XỬ LÝ</p>
+        <div className="flex h-14 sm:h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-2 sm:px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-xs sm:text-base md:text-lg font-black text-cyan-700 uppercase truncate">{pendingCount} CHỜ XỬ LÝ</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-lg font-black text-cyan-700 uppercase">{movingCount} ĐANG VẬN CHUYỂN</p>
+        <div className="flex h-14 sm:h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-2 sm:px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-xs sm:text-base md:text-lg font-black text-cyan-700 uppercase truncate">{movingCount} ĐANG GIAO</p>
         </div>
-        <div className="flex h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-4 shadow-sm transition hover:bg-cyan-50">
-          <p className="text-lg font-black text-cyan-700 uppercase">{doneCount} HOÀN THÀNH</p>
+        <div className="flex h-14 sm:h-[72px] items-center justify-center rounded-xl border-2 border-cyan-500 bg-white px-2 sm:px-4 shadow-sm transition hover:bg-cyan-50 text-center">
+          <p className="text-xs sm:text-base md:text-lg font-black text-cyan-700 uppercase truncate">{doneCount} HOÀN THÀNH</p>
         </div>
       </div>
 
       {/* Filter & Search Panel */}
-      <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="rounded-2xl border-2 border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-center lg:justify-between">
           {/* Search input (h-12) */}
-          <div className="relative flex-1 min-w-[320px]">
+          <div className="relative w-full sm:min-w-[260px] flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-cyan-600" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-12 w-full rounded-xl border-2 border-cyan-600/40 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
+              className="h-11 sm:h-12 w-full rounded-xl border-2 border-cyan-600/40 bg-white pl-11 pr-4 text-xs font-bold text-slate-800 outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-500/10 shadow-2xs"
               placeholder="Tìm theo số phiếu, kho chuyển/nhận, tài xế, SĐT, biển số xe, diễn giải..."
             />
           </div>

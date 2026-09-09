@@ -405,7 +405,7 @@ export const WarehouseGoodsPrintModal: React.FC<WarehouseGoodsPrintModalProps> =
         {/* Top Control Bar (Hidden on Print) */}
         <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-slate-800 print:hidden">
           {/* Row 1: Title on left, Action buttons (In Báo Cáo & X) on the FAR RIGHT */}
-          <div className="flex items-center justify-between gap-3 w-full">
+          <div className="flex flex-wrap items-center justify-between gap-3 w-full">
             <div className="flex items-center gap-3 min-w-0">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-700 text-white font-bold text-sm shadow-xs">
                 <Printer className="h-5 w-5" />

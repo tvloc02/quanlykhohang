@@ -44,7 +44,7 @@ import BarcodeScanner, { ScanBarcodeButton, type ScannedProduct } from '../../..
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
   React.useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => onClose(), 3500);
+      const timer = setTimeout(() => onClose(), 3000);
       return () => clearTimeout(timer);
     }
   }, [message, onClose]);
@@ -54,26 +54,22 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
   return (
     <div className="fixed top-6 right-6 z-[99999] pointer-events-none">
       <div
-        className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-2xl border backdrop-blur-md transition-all animate-in slide-in-from-top-4 duration-300 ${
+        className={`pointer-events-auto flex items-center gap-3 rounded-2xl px-5 py-3.5 shadow-lg border transition-all animate-in slide-in-from-top-4 duration-200 ${
           type === 'error'
-            ? 'bg-slate-900/95 text-white border-red-500/50 shadow-red-950/30'
-            : 'bg-slate-900/95 text-white border-emerald-500/50 shadow-emerald-950/30'
+            ? 'bg-red-50 text-red-600 border-red-200'
+            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
         }`}
       >
         {type === 'error' ? (
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/20 text-red-400 shrink-0">
-            <XCircle size={20} />
-          </div>
+          <XCircle size={20} className="shrink-0 text-red-600" />
         ) : (
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
-            <CheckCircle size={20} />
-          </div>
+          <CheckCircle size={20} className="shrink-0 text-emerald-600" />
         )}
-        <p className="text-sm font-bold text-white tracking-wide">{message}</p>
+        <p className="text-sm font-bold tracking-normal">{message}</p>
         <button
           type="button"
           onClick={onClose}
-          className="ml-3 rounded-xl p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+          className="ml-2 rounded-lg p-1 hover:bg-black/5 transition cursor-pointer"
           title="Đóng thông báo"
         >
           <X size={16} />

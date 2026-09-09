@@ -47,7 +47,7 @@ import { usePermissions } from '../../shared/hooks/usePermissions';
 function Toast({ message, type, onClose, onUndo }: { message: string; type: 'success' | 'error'; onClose: () => void; onUndo?: () => void }) {
   React.useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => onClose(), 5000);
+      const timer = setTimeout(() => onClose(), 3000);
       return () => clearTimeout(timer);
     }
   }, [message, onClose]);
@@ -55,8 +55,8 @@ function Toast({ message, type, onClose, onUndo }: { message: string; type: 'suc
   if (!message) return null;
 
   return (
-    <div className={`fixed top-4 right-4 z-[60] flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg transition-all ${type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'}`}>
-      {type === 'error' ? <XCircle size={20} /> : <CheckCircle size={20} />}
+    <div className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg transition-all animate-in fade-in slide-in-from-top-4 duration-200 ${type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+      {type === 'error' ? <XCircle size={20} className="shrink-0 text-red-600" /> : <CheckCircle size={20} className="shrink-0 text-emerald-600" />}
       <p className="text-sm font-semibold">{message}</p>
       {onUndo && (
         <button
@@ -70,7 +70,7 @@ function Toast({ message, type, onClose, onUndo }: { message: string; type: 'suc
           Hoàn tác
         </button>
       )}
-      <button onClick={onClose} className="ml-1 rounded-lg p-1 hover:bg-white/50 transition">
+      <button onClick={onClose} className="ml-1 rounded-lg p-1 hover:bg-black/5 transition cursor-pointer">
         <X size={16} />
       </button>
     </div>
