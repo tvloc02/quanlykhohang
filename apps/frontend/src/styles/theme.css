@@ -1,25 +1,25 @@
 :root {
-  --color-primary: #06B6D4;
-  --color-primary-light: #67E8F9;
-  --color-primary-dark: #0891B2;
-  --color-secondary: #CFFAFE;
-  --color-accent: #ECFEFF;
-  --color-primary-bg: #F0FDFF;
+  --color-primary: #06b6d4;
+  --color-primary-light: #67e8f9;
+  --color-primary-dark: #0891b2;
+  --color-secondary: #cffafe;
+  --color-accent: #ecfeff;
+  --color-primary-bg: #f0fdff;
 }
 
 html.dark {
-  --color-primary: #0891B2; /* Cyan 600 - Deep Cyan */
-  --color-primary-light: #22D3EE; /* Cyan 400 */
-  --color-primary-dark: #0E7490; /* Cyan 700 - Deepest Cyan */
-  --color-secondary: #155E75; /* Cyan 800 */
-  --color-accent: #164E63; /* Cyan 900 */
+  --color-primary: #0891b2; /* Cyan 600 - Deep Cyan */
+  --color-primary-light: #22d3ee; /* Cyan 400 */
+  --color-primary-dark: #0e7490; /* Cyan 700 - Deepest Cyan */
+  --color-secondary: #155e75; /* Cyan 800 */
+  --color-accent: #164e63; /* Cyan 900 */
   --color-primary-bg: #060913;
   color-scheme: dark;
 }
 
 html.dark body {
   background-color: #060913 !important;
-  color: #FFFFFF !important;
+  color: #ffffff !important;
 }
 
 /* ══════════════════════════════════════════════════════════════════ */
@@ -72,14 +72,14 @@ html.dark thead,
 html.dark thead tr,
 html.dark th {
   background-color: #0d1424 !important;
-  color: #FFFFFF !important; /* Crisp Bold White Header Text */
+  color: #ffffff !important; /* Crisp Bold White Header Text */
   border-color: rgba(255, 255, 255, 0.22) !important;
   font-weight: 800 !important;
 }
 
 html.dark table tbody tr {
   background-color: #060913 !important;
-  color: #FFFFFF !important;
+  color: #ffffff !important;
   border-color: rgba(255, 255, 255, 0.18) !important;
   transition: all 0.15s ease-in-out !important;
 }
@@ -92,8 +92,10 @@ html.dark table tbody tr.bg-blue-50\/30,
 html.dark table tbody tr.bg-slate-50,
 html.dark table tbody tr[class*="hover:bg-"]:hover {
   background-color: #1b3d63 !important; /* Luminous Lighter Blue-Cyan Highlight */
-  color: #FFFFFF !important;
-  box-shadow: inset 4px 0 0 0 #0891b2, inset 0 0 0 1px rgba(8, 145, 178, 0.5) !important;
+  color: #ffffff !important;
+  box-shadow:
+    inset 4px 0 0 0 #0891b2,
+    inset 0 0 0 1px rgba(8, 145, 178, 0.5) !important;
 }
 
 html.dark table tbody tr:hover td span,
@@ -101,7 +103,7 @@ html.dark table tbody tr:hover td div,
 html.dark table tbody tr:hover td p,
 html.dark table tbody tr:hover td a,
 html.dark table tbody tr:hover td button {
-  color: #FFFFFF !important;
+  color: #ffffff !important;
   font-weight: 800 !important;
 }
 
@@ -110,7 +112,7 @@ html.dark table td,
 html.dark table td span,
 html.dark table td div,
 html.dark table td p {
-  color: #FFFFFF !important; /* Bold Crisp White Text */
+  color: #ffffff !important; /* Bold Crisp White Text */
   border-color: rgba(255, 255, 255, 0.18) !important;
   font-weight: 600 !important;
 }
@@ -134,14 +136,14 @@ html.dark .bg-blue-600,
 html.dark .bg-blue-700,
 html.dark .bg-blue-800 {
   background-color: #0891b2 !important; /* Deep Cyan 600 / 700 */
-  color: #FFFFFF !important;
+  color: #ffffff !important;
 }
 
 html.dark .bg-cyan-500,
 html.dark .bg-indigo-500,
 html.dark .bg-blue-500 {
   background-color: #0e7490 !important; /* Deepest Cyan 700 */
-  color: #FFFFFF !important;
+  color: #ffffff !important;
 }
 
 /* STATUS BADGES & TRANSPARENT CYAN HIGHLIGHTS */
@@ -176,13 +178,26 @@ html.dark .border-gray-200,
 html.dark .border-gray-300,
 html.dark .border-indigo-500,
 html.dark .border-indigo-600 {
-  border-color: rgba(255, 255, 255, 0.22) !important; /* Medium Light White Border */
+  border-color: rgba(
+    255,
+    255,
+    255,
+    0.22
+  ) !important; /* Medium Light White Border */
 }
 
 /* TEXT COLOR OVERRIDES */
-html.dark h1, html.dark h2, html.dark h3, html.dark h4, html.dark h5, html.dark h6,
-html.dark p, html.dark span, html.dark div, html.dark label {
-  color: #FFFFFF;
+html.dark h1,
+html.dark h2,
+html.dark h3,
+html.dark h4,
+html.dark h5,
+html.dark h6,
+html.dark p,
+html.dark span,
+html.dark div,
+html.dark label {
+  color: #ffffff;
 }
 
 html.dark .text-slate-900,
@@ -193,7 +208,7 @@ html.dark .text-gray-900,
 html.dark .text-gray-800,
 html.dark .text-gray-700,
 html.dark .text-gray-600 {
-  color: #FFFFFF !important;
+  color: #ffffff !important;
 }
 
 html.dark .text-cyan-900,
@@ -230,7 +245,7 @@ html.dark input[type="password"],
 html.dark select,
 html.dark textarea {
   background-color: #060913 !important;
-  color: #FFFFFF !important;
+  color: #ffffff !important;
   border-color: rgba(255, 255, 255, 0.22) !important;
 }
 
@@ -239,11 +254,21 @@ html.dark input::placeholder {
 }
 
 /* Utility helpers for non-tailwind usage */
-.bg-primary { background-color: var(--color-primary); }
-.text-primary { color: var(--color-primary); }
-.bg-primary-light { background-color: var(--color-primary-light); }
-.text-primary-light { color: var(--color-primary-light); }
-.bg-accent { background-color: var(--color-accent); }
+.bg-primary {
+  background-color: var(--color-primary);
+}
+.text-primary {
+  color: var(--color-primary);
+}
+.bg-primary-light {
+  background-color: var(--color-primary-light);
+}
+.text-primary-light {
+  color: var(--color-primary-light);
+}
+.bg-accent {
+  background-color: var(--color-accent);
+}
 
 /* Compatibility Overrides */
 html,
@@ -253,8 +278,16 @@ html,
 }
 
 .backdrop-blur-sm {
-  -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
-  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+  -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness)
+    var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale)
+    var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert)
+    var(--tw-backdrop-opacity) var(--tw-backdrop-saturate)
+    var(--tw-backdrop-sepia);
+  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness)
+    var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale)
+    var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert)
+    var(--tw-backdrop-opacity) var(--tw-backdrop-saturate)
+    var(--tw-backdrop-sepia);
 }
 
 /* Custom Modern Scrollbar */
@@ -300,12 +333,12 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
 }
 
 /* Remove Number Input Spinner Arrows globally */
-input[type=number]::-webkit-inner-spin-button,
-input[type=number]::-webkit-outer-spin-button {
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-input[type=number] {
+input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
@@ -409,7 +442,8 @@ input[type=number] {
   p,
   span,
   div {
-    font-family: 'Times New Roman', Tinos, 'Liberation Serif', Times, serif !important;
+    font-family:
+      "Times New Roman", Tinos, "Liberation Serif", Times, serif !important;
   }
 
   /* Force ALL borders in print to pure solid black, eliminating any cyan/blue/slate mismatch */
@@ -483,7 +517,8 @@ input[type=number] {
   table thead th,
   table tbody td,
   table tfoot td,
-  th, td,
+  th,
+  td,
   th[class*="border-"],
   td[class*="border-"],
   th[class*="min-w-"],
@@ -638,3 +673,40 @@ input[type=number] {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════ */
+/* MOBILE RESPONSIVE & TOUCH UTILITIES                               */
+/* ══════════════════════════════════════════════════════════════════ */
+
+/* 1. Hide Scrollbar while preserving scrollability */
+.scrollbar-none::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none,
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 2. Touch manipulation (prevents 300ms double-tap delay on mobile) */
+button,
+a,
+input,
+select,
+textarea,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* 3. Safe Area Inset Support (iPhone Notch & Home Indicator) */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* 4. Smooth tap highlight on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+}

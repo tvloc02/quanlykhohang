@@ -658,7 +658,7 @@ export default function Sidebar({ isOpen, onToggle, onClose }: SidebarProps) {
     <aside
       className={`fixed inset-y-0 left-0 z-50 bg-white dark:bg-[#090d16] transform transition-all duration-300 ease-in-out border-r-2 border-slate-200 dark:border-slate-800/80 flex flex-col h-screen lg:relative ${
         isOpen
-          ? "translate-x-0 w-80 shadow-2xl lg:shadow-none"
+          ? "translate-x-0 w-72 max-w-[85vw] sm:w-80 shadow-2xl lg:shadow-none"
           : "-translate-x-full lg:translate-x-0 lg:w-20"
       }`}
     >

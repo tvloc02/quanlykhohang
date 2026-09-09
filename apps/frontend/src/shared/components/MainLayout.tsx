@@ -19,6 +19,8 @@ import {
   Box,
   ClipboardList,
   Warehouse,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   ChevronRight,
   ChevronLeft,
   Search,
@@ -300,14 +302,14 @@ export default function MainLayout({ children }: LayoutProps) {
         </div>
 
         {/* Header matching dem.cmcu.edu.vn sample */}
-        <header className="relative bg-white dark:bg-[#090d16] border-b-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between px-3 sm:px-6 z-40 transition-all duration-300 h-16 sm:h-20 box-border shadow-xs print:hidden flex-shrink-0">
+        <header className="relative bg-white dark:bg-[#090d16] border-b-2 border-slate-200 dark:border-slate-800/80 flex items-center justify-between px-2.5 sm:px-6 z-40 transition-all duration-300 h-14 sm:h-20 box-border shadow-xs print:hidden flex-shrink-0">
           {/* Left Section: Toggle, Brand & Clock */}
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               title={sidebarOpen ? "Đóng menu" : "Mở menu"}
               aria-label={sidebarOpen ? "Đóng menu" : "Mở menu"}
-              className="h-10 w-10 sm:h-14 sm:w-14 flex items-center justify-center bg-white dark:bg-[#0f172a] border-2 border-slate-200 dark:border-slate-800/80 hover:bg-cyan-50 dark:hover:bg-[#1a233a] rounded-xl transition-all group lg:hidden cursor-pointer"
+              className="h-9 w-9 sm:h-12 sm:w-12 flex items-center justify-center bg-white dark:bg-[#0f172a] border-2 border-slate-200 dark:border-slate-800/80 hover:bg-cyan-50 dark:hover:bg-[#1a233a] rounded-xl transition-all group lg:hidden cursor-pointer shrink-0"
             >
               {sidebarOpen ? (
                 <X
@@ -399,11 +401,11 @@ export default function MainLayout({ children }: LayoutProps) {
                   }}
                   title="Thông báo"
                   aria-label="Thông báo"
-                  className="relative h-[3.5rem] w-[3.5rem] rounded-xl bg-white dark:bg-[#0f172a] hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center cursor-pointer"
+                  className="relative h-9 w-9 sm:h-12 sm:w-12 rounded-xl bg-white dark:bg-[#0f172a] hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors border-2 border-slate-200 dark:border-slate-800 flex items-center justify-center cursor-pointer shrink-0"
                 >
-                  <Bell className="h-5 w-5 text-slate-600 dark:text-indigo-200" />
+                  <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-slate-600 dark:text-indigo-200" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 h-6 w-6 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs rounded-full flex items-center justify-center font-bold shadow-lg">
+                    <span className="absolute -top-1 -right-1 h-5 w-5 sm:h-6 sm:w-6 bg-gradient-to-r from-red-500 to-pink-500 text-white text-[10px] sm:text-xs rounded-full flex items-center justify-center font-bold shadow-lg">
                       {unreadCount}
                     </span>
                   )}
@@ -555,9 +557,9 @@ export default function MainLayout({ children }: LayoutProps) {
                   setNotificationDropdownOpen(false);
                   setUserDropdownOpen(!userDropdownOpen);
                 }}
-                className="flex items-center space-x-2 p-2 rounded-xl bg-white dark:bg-[#0f172a] hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors border-2 border-slate-200 dark:border-slate-800 h-[3.5rem] cursor-pointer"
+                className="flex items-center space-x-2 p-1.5 sm:p-2 rounded-xl bg-white dark:bg-[#0f172a] hover:bg-cyan-50 dark:hover:bg-[#1a233a] transition-colors border-2 border-slate-200 dark:border-slate-800 h-9 sm:h-12 cursor-pointer shrink-0"
               >
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md overflow-hidden bg-gradient-to-br from-indigo-600 to-blue-600 text-white font-bold text-sm">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl flex items-center justify-center shadow-sm overflow-hidden bg-gradient-to-br from-cyan-600 to-blue-600 text-white font-bold text-xs sm:text-sm shrink-0">
                   {userInitials}
                 </div>
                 <div className="hidden sm:block text-left">
@@ -568,7 +570,7 @@ export default function MainLayout({ children }: LayoutProps) {
                     {userRole}
                   </p>
                 </div>
-                <ChevronDown className="h-4 w-4 text-slate-500 dark:text-indigo-300" />
+                <ChevronDown className="h-3.5 w-3.5 text-slate-500 dark:text-indigo-300" />
               </button>
 
               {userDropdownOpen && (
@@ -630,13 +632,90 @@ export default function MainLayout({ children }: LayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto print:overflow-visible print:p-0 print:bg-white p-3 sm:p-4 md:p-6 pb-6 bg-slate-50 dark:bg-[#060913] transition-colors duration-300">
+        <main className="flex-1 overflow-y-auto print:overflow-visible print:p-0 print:bg-white p-2.5 sm:p-4 md:p-6 pb-24 lg:pb-6 bg-slate-50 dark:bg-[#060913] transition-colors duration-300">
           {children || (
             <div className="flex items-center justify-center h-full text-slate-400 dark:text-indigo-300/60 font-semibold text-xs">
               Nội dung trang web sẽ hiển thị ở đây
             </div>
           )}
         </main>
+
+        {/* Mobile Bottom Navigation Bar */}
+        <nav
+          aria-label="Mobile Navigation"
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#090d16]/95 backdrop-blur-md border-t-2 border-slate-200 dark:border-slate-800 flex items-center justify-around px-1 py-1.5 shadow-2xl print:hidden pb-safe"
+        >
+          <Link
+            to="/dashboard"
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all ${
+              location.pathname === "/dashboard" || location.pathname === "/"
+                ? "text-cyan-600 dark:text-cyan-400 font-black"
+                : "text-slate-600 dark:text-slate-400 hover:text-cyan-600 font-semibold"
+            }`}
+          >
+            <Home className="h-5 w-5" />
+            <span className="text-[10px] mt-0.5 tracking-tight truncate">
+              Trang chủ
+            </span>
+          </Link>
+
+          <Link
+            to="/inbound/stock-in-orders"
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all ${
+              location.pathname.startsWith("/inbound")
+                ? "text-cyan-600 dark:text-cyan-400 font-black"
+                : "text-slate-600 dark:text-slate-400 hover:text-cyan-600 font-semibold"
+            }`}
+          >
+            <ArrowDownToLine className="h-5 w-5" />
+            <span className="text-[10px] mt-0.5 tracking-tight truncate">
+              Nhập hàng
+            </span>
+          </Link>
+
+          <Link
+            to="/outbound/orders"
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all ${
+              location.pathname.startsWith("/outbound")
+                ? "text-cyan-600 dark:text-cyan-400 font-black"
+                : "text-slate-600 dark:text-slate-400 hover:text-cyan-600 font-semibold"
+            }`}
+          >
+            <ArrowUpFromLine className="h-5 w-5" />
+            <span className="text-[10px] mt-0.5 tracking-tight truncate">
+              Xuất bán
+            </span>
+          </Link>
+
+          <Link
+            to="/inventory/stocktake"
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all ${
+              location.pathname.startsWith("/inventory")
+                ? "text-cyan-600 dark:text-cyan-400 font-black"
+                : "text-slate-600 dark:text-slate-400 hover:text-cyan-600 font-semibold"
+            }`}
+          >
+            <FileCheck className="h-5 w-5" />
+            <span className="text-[10px] mt-0.5 tracking-tight truncate">
+              Kiểm kho
+            </span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all cursor-pointer ${
+              sidebarOpen
+                ? "text-cyan-600 dark:text-cyan-400 font-black"
+                : "text-slate-600 dark:text-slate-400 hover:text-cyan-600 font-semibold"
+            }`}
+          >
+            <Menu className="h-5 w-5" />
+            <span className="text-[10px] mt-0.5 tracking-tight truncate">
+              Tất cả menu
+            </span>
+          </button>
+        </nav>
       </div>
     </div>
   );
